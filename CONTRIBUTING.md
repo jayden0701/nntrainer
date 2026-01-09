@@ -27,8 +27,6 @@ The committers are:
 * Hyeonseok Lee @lhs8928
 * Donghak Park @DonghakPark
 * Seungbaek Hong @baek2sm
-* Sungsik Kong @skykongkong8
-* Donghyeon Jeong @djeong20
 * Daekyung Jung @dkjung
 * Eunju Yang @EunjuYang
 * Haehun Yang @haehun
