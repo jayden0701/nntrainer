@@ -120,8 +120,6 @@ std::string resolve_architecture(std::string model_type,
       return "EmbeddingGemma";
     } else if (architecture == "Qwen2Model") {
       return "Qwen2Embedding";
-    } else if (architecture == "TimmViT") {
-      return "TimmViT";
     } else {
       throw std::invalid_argument(
         "Unsupported architecture for embedding model: " + architecture);

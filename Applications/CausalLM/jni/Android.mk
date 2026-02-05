@@ -78,6 +78,7 @@ LOCAL_SRC_FILES := ../main.cpp \
     ../models/gpt_oss_cached_slim/gpt_oss_moe_layer_cached.cpp \
     ../models/gemma3/gemma3_causallm.cpp \
     ../models/gemma3/embedding_gemma.cpp \
+    ../models/timm_vit/timm_vit_transformer.cpp \
 
 
 LOCAL_SHARED_LIBRARIES := nntrainer ccapi-nntrainer
@@ -95,5 +96,6 @@ LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) \
     $(LOCAL_PATH)/../models/qwen3_slim_moe \
     $(LOCAL_PATH)/../models/qwen3_cached_slim_moe \
     $(LOCAL_PATH)/../models/gemma3 \
+    $(LOCAL_PATH)/../models/timm_vit \
 
 include $(BUILD_EXECUTABLE)

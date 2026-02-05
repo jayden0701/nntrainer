@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Copyright (C) 2025 Seungbaek Hong <sb92.hong@samsung.com>
+ * Copyright (C) 2026 Seungbaek Hong <sb92.hong@samsung.com>
  *
  * @file   timm_vit_transformer.cpp
  * @date   28 Jan 2026
  * @see    https://github.com/nnstreamer/nntrainer
  * @author Seungbaek Hong <sb92.hong@samsung.com>
  * @bug    No known bugs except for NYI items
+ * @brief   This timm_vit_transformer.cpp constructs a class for timm ViT model
+ * compatible with the PyTorch timm library.
  */
+
 #include "timm_vit_transformer.h"
 #include <factory.h>
 #include <llm_util.hpp>
@@ -31,7 +34,7 @@ void TimmViTTransformer::setupParameters(json &cfg, json &generation_cfg,
   MAX_POSITION_EMBEDDINGS = cfg.value("max_position_embeddings", 196);
   ROPE_THETA = cfg.value("rope_theta", 10000);
   TIE_WORD_EMBEDDINGS = cfg.value("tie_word_embeddings", false);
-  NORM_EPS = cfg.value("rms_norm_eps", 1e-6);
+  NORM_EPS = cfg.value("norm_eps", 1e-6);
   GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
 
   IS_CAUSAL = cfg.value("is_causal", false);
@@ -43,38 +46,38 @@ void TimmViTTransformer::setupParameters(json &cfg, json &generation_cfg,
   INIT_SEQ_LEN = nntr_cfg.value("init_seq_len", 224);
   MAX_SEQ_LEN = nntr_cfg.value("max_seq_len", 224);
   NUM_TO_GENERATE = nntr_cfg.value("num_to_generate", 0);
+
+  IMG_SIZE = cfg.value("img_size", 224);
+  PATCH_SIZE = cfg.value("patch_size", 16);
+  NUM_PATCHES = cfg.value("num_patches", 196);
+  IMG_CHANNELS = 3;
 }
 
 std::vector<LayerHandle> TimmViTTransformer::createPatchEmbed() {
   std::vector<LayerHandle> layers;
 
-  int img_size = 224;
-  int patch_size = 16;
   int embed_dim = DIM;
 
   layers.push_back(createLayer(
     "input", {withKey("name", "input_image"),
-              withKey("input_shape", "3:" + std::to_string(img_size) + ":" +
-                                       std::to_string(img_size))}));
+              withKey("input_shape", std::to_string(IMG_CHANNELS) + ":" +
+                                       std::to_string(IMG_SIZE) + ":" +
+                                       std::to_string(IMG_SIZE))}));
 
   std::vector<std::string> conv_params = {
     withKey("name", "patch_embed/conv"),
     withKey("kernel_size",
-            {std::to_string(patch_size), std::to_string(patch_size)}),
+            {std::to_string(PATCH_SIZE), std::to_string(PATCH_SIZE)}),
     withKey("filters", std::to_string(embed_dim)),
-    withKey("stride", {std::to_string(patch_size), std::to_string(patch_size)}),
+    withKey("stride", {std::to_string(PATCH_SIZE), std::to_string(PATCH_SIZE)}),
     withKey("padding", "valid"),
     withKey("input_layers", "input_image")};
   layers.push_back(createLayer("conv2d", conv_params));
 
-  int grid_h = img_size / patch_size;
-  int grid_w = img_size / patch_size;
-  int patch_count = grid_h * grid_w;
-
   layers.push_back(createLayer(
     "reshape", {withKey("name", "patch_embed/flatten"),
                 withKey("target_shape", "1:" + std::to_string(embed_dim) + ":" +
-                                          std::to_string(patch_count)),
+                                          std::to_string(NUM_PATCHES)),
                 withKey("input_layers", "patch_embed/conv")}));
 
   layers.push_back(
@@ -85,7 +88,7 @@ std::vector<LayerHandle> TimmViTTransformer::createPatchEmbed() {
   layers.push_back(createLayer(
     "weight",
     {withKey("name", "pos_embed/weights"),
-     withKey("weight_dim", "1:1:" + std::to_string(patch_count) + ":" +
+     withKey("weight_dim", "1:1:" + std::to_string(NUM_PATCHES) + ":" +
                              std::to_string(embed_dim)),
      withKey("tensor_dtype", "FP32"), withKey("weight_name", "pos_embed")}));
 
@@ -104,44 +107,45 @@ TimmViTTransformer::createAttention(const int layer_id,
 
   std::string prefix = "layer" + std::to_string(layer_id) + "_";
 
-  layers.push_back(
-    createLayer("layer_normalization",
-                {withKey("name", prefix + "attention_norm"),
-                 withKey("axis", "3"), withKey("epsilon", std::to_string(1e-6)),
-                 withKey("input_layers", input_name)}));
+  layers.push_back(createLayer("layer_normalization",
+                               {withKey("name", prefix + "attention_norm"),
+                                withKey("axis", "3"),
+                                withKey("epsilon", std::to_string(NORM_EPS)),
+                                withKey("input_layers", input_name)}));
 
-  auto Q = prefix + "qkv_q", K = prefix + "qkv_k", V = prefix + "qkv_v",
-       A = prefix + "attention", O = prefix + "attention_out";
+  auto q = prefix + "qkv_q", k = prefix + "qkv_k", v = prefix + "qkv_v",
+       a = prefix + "attention", o = prefix + "attention_out";
 
   layers.push_back(
     createLayer("fully_connected",
-                {withKey("name", Q), withKey("unit", std::to_string(DIM)),
+                {withKey("name", q), withKey("unit", std::to_string(DIM)),
                  withKey("disable_bias", "false"),
                  withKey("input_layers", prefix + "attention_norm")}));
 
   layers.push_back(
     createLayer("fully_connected",
-                {withKey("name", K), withKey("unit", std::to_string(DIM)),
+                {withKey("name", k), withKey("unit", std::to_string(DIM)),
                  withKey("disable_bias", "false"),
                  withKey("input_layers", prefix + "attention_norm")}));
 
   layers.push_back(
     createLayer("fully_connected",
-                {withKey("name", V), withKey("unit", std::to_string(DIM)),
+                {withKey("name", v), withKey("unit", std::to_string(DIM)),
                  withKey("disable_bias", "false"),
                  withKey("input_layers", prefix + "attention_norm")}));
 
   layers.push_back(createLayer(
     "mha_core",
-    {withKey("name", A), withKey("num_heads", std::to_string(NUM_HEADS)),
+    {withKey("name", a), withKey("num_heads", std::to_string(NUM_HEADS)),
      withKey("num_heads_kv", std::to_string(NUM_HEADS)),
-     withKey("max_timestep", "224"), withKey("is_causal", "false"),
-     withKey("use_rope", "false"), withKey("input_layers", {Q, K, V})}));
+     withKey("max_timestep", std::to_string(NUM_PATCHES + 1)),
+     withKey("is_causal", "false"), withKey("use_rope", "false"),
+     withKey("input_layers", {q, k, v})}));
 
   layers.push_back(createLayer(
     "fully_connected",
-    {withKey("name", O), withKey("unit", std::to_string(DIM)),
-     withKey("disable_bias", "false"), withKey("input_layers", A)}));
+    {withKey("name", o), withKey("unit", std::to_string(DIM)),
+     withKey("disable_bias", "false"), withKey("input_layers", a)}));
 
   return layers;
 }
@@ -156,7 +160,7 @@ TimmViTTransformer::createMlp(const int layer_id,
   layers.push_back(
     createLayer("layer_normalization",
                 {withKey("name", prefix + "ffn_norm"), withKey("axis", "3"),
-                 withKey("epsilon", std::to_string(1e-6)),
+                 withKey("epsilon", std::to_string(NORM_EPS)),
                  withKey("input_layers", input_name)}));
 
   layers.push_back(createLayer(
@@ -180,8 +184,8 @@ TimmViTTransformer::createMlp(const int layer_id,
 }
 
 std::vector<LayerHandle>
-TimmViTTransformer::createTransformerBlock(const int layer_id,
-                                           const std::string &input_name) {
+TimmViTTransformer::createTransformerDecoderBlock(const int layer_id,
+                                                  std::string input_name) {
   std::vector<LayerHandle> layers;
 
   std::string prefix = "layer" + std::to_string(layer_id) + "_";
@@ -216,7 +220,7 @@ void TimmViTTransformer::constructModel() {
 
   std::string last_output = "pos_embed/add";
   for (int i = 0; i < NUM_LAYERS; i++) {
-    auto block_layers = createTransformerBlock(i, last_output);
+    auto block_layers = createTransformerDecoderBlock(i, last_output);
     layers.insert(layers.end(), block_layers.begin(), block_layers.end());
     last_output = "layer" + std::to_string(i) + "_ffn_residual";
   }
@@ -224,7 +228,7 @@ void TimmViTTransformer::constructModel() {
   layers.push_back(createLayer(
     "layer_normalization",
     {withKey("name", "output_norm"), withKey("axis", "3"),
-     withKey("epsilon", std::to_string(1e-6)),
+     withKey("epsilon", std::to_string(NORM_EPS)),
      withKey("input_layers",
              "layer" + std::to_string(NUM_LAYERS - 1) + "_ffn_residual")}));
 
@@ -261,39 +265,36 @@ void TimmViTTransformer::registerCustomLayers() {
   Transformer::registerCustomLayers();
 }
 
-std::vector<LayerHandle>
-TimmViTTransformer::createTransformerDecoderBlock(const int layer_id,
-                                                  std::string input_name) {
-  return {};
-}
-
 void TimmViTTransformer::run(const WSTR prompt, bool do_sample,
                              const WSTR system_prompt, const WSTR tail_prompt) {
+
   if (!is_initialized) {
     throw std::runtime_error("TimmViT model is not initialized. Please call "
                              "initialize() before run().");
   }
 
-  unsigned int img_c = 3, img_h = 224, img_w = 224;
-  unsigned int patch_count = (img_h / 16) * (img_w / 16);
+  unsigned int img_h = IMG_SIZE;
+  unsigned int img_w = IMG_SIZE;
 
-  unsigned int input_size = BATCH_SIZE * img_c * img_h * img_w;
+  unsigned int input_size = BATCH_SIZE * IMG_CHANNELS * img_h * img_w;
   float *input_sample = (float *)malloc(sizeof(float) * input_size);
 
-  std::string image_path_str(prompt);
-  std::vector<float> image_data = loadAndPreprocessImage(
-    image_path_str, img_w, img_h, true); // normalize=true for [0,255] -> [0,1]
-
-  for (size_t i = 0; i < input_size; ++i) {
-    input_sample[i] = image_data[i];
+  if (!input_sample) {
+    throw std::runtime_error("Failed to allocate memory for input_sample.");
   }
+
+  std::string image_path_str(prompt);
+  std::vector<float> image_data =
+    loadAndPreprocessImage(image_path_str, img_w, img_h, true);
+
+  std::copy(image_data.begin(), image_data.end(), input_sample);
 
   std::vector<float *> input;
   input.push_back(input_sample);
   std::vector<float *> label;
 
   std::vector<float *> output = model->incremental_inference(
-    BATCH_SIZE, input, label, patch_count, 0, patch_count, false);
+    BATCH_SIZE, input, label, NUM_PATCHES, 0, NUM_PATCHES, false);
 
   std::cout << "First 10 values: ";
   for (int i = 0; i < std::min(10, DIM); ++i) {
