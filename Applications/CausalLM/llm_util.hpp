@@ -130,4 +130,18 @@ std::vector<float> loadAndPreprocessImage(const std::string &filepath,
                                           int target_width, int target_height,
                                           bool normalize = true);
 
+/**
+ * @brief Resize image using bilinear interpolation
+ *
+ * @param src Source image data
+ * @param src_w Source width
+ * @param src_h Source height
+ * @param channels Number of channels
+ * @param dst_w Destination width
+ * @param dst_h Destination height
+ * @return std::vector<unsigned char> Resized image data
+ */
+std::vector<unsigned char> resizeImage(const unsigned char *src, int src_w, int src_h,
+                                       int channels, int dst_w, int dst_h);
+
 #endif // __LLM_UTIL_HPP__

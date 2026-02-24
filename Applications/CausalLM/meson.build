@@ -71,3 +71,16 @@ e = executable('nntr_causallm',
     include_directories: causallm_inc,
     dependencies: [nntrainer_dep, nntrainer_ccapi_dep, causallm_layer_dependencies, causallm_dep],
 )
+
+# Build test executable for T5Gemma2 image preprocessing
+if get_option('enable-test') == true
+    t5gemma2_image_preprocess_test = executable('t5gemma2_image_preprocess_test',
+        meson.current_source_dir() / 'models/t5gemma2/test_image_preprocess.cpp',
+        include_directories: causallm_inc,
+        dependencies: [
+            nntrainer_dep,
+            causallm_dep,
+        ],
+        link_with: causallm,
+    )
+endif
