@@ -83,4 +83,14 @@ if get_option('enable-test') == true
         ],
         link_with: causallm,
     )
+    
+    t5gemma2_processor_test = executable('t5gemma2_processor_test',
+        meson.current_source_dir() / 'models/t5gemma2/test_processor.cpp',
+        include_directories: causallm_inc,
+        dependencies: [
+            nntrainer_dep,
+            causallm_dep,
+        ],
+        link_with: causallm,
+    )
 endif

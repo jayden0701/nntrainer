@@ -30,6 +30,17 @@ namespace nntrainer {
 std::vector<float> preprocessT5Gemma2Image(const std::string &filepath);
 
 /**
+ * @brief Preprocess multiple images for T5Gemma2 model
+ *
+ * This function processes multiple images and returns them as a batch.
+ * Each image is preprocessed independently and then stacked into a batch tensor.
+ *
+ * @param filepaths List of paths to input image files
+ * @return std::vector<float> Preprocessed image data in NCHW format (batch, 3, 896, 896)
+ */
+std::vector<float> preprocessT5Gemma2Images(const std::vector<std::string> &filepaths);
+
+/**
  * @brief Preprocess image for T5Gemma2 model with custom normalization parameters
  *
  * @param filepath Path to the input image file
@@ -42,6 +53,21 @@ std::vector<float> preprocessT5Gemma2Image(const std::string &filepath);
  */
 std::vector<float> preprocessT5Gemma2ImageCustom(
   const std::string &filepath, int target_width, int target_height,
+  const std::vector<float> &mean, const std::vector<float> &std);
+
+/**
+ * @brief Preprocess multiple images for T5Gemma2 model with custom parameters
+ *
+ * @param filepaths List of paths to input image files
+ * @param target_width Target image width
+ * @param target_height Target image height
+ * @param mean Mean values for normalization (one per channel or single value)
+ * @param std Standard deviation values for normalization (one per channel or single
+ * value)
+ * @return std::vector<float> Preprocessed image data in NCHW format (batch, 3, height, width)
+ */
+std::vector<float> preprocessT5Gemma2ImagesCustom(
+  const std::vector<std::string> &filepaths, int target_width, int target_height,
   const std::vector<float> &mean, const std::vector<float> &std);
 
 } // namespace nntrainer

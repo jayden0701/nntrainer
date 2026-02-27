@@ -56,7 +56,7 @@ std::vector<float> preprocessT5Gemma2Image(const std::string &filepath) {
       }
     }
     debug_file.close();
-    std::cout << "Saved resized pixel values (before normalization) to t5gemma2_resized_output.txt" << std::endl;
+    std::cout << "[T5Gemma2] Saved resized pixel values (before normalization) to t5gemma2_resized_output.txt" << std::endl;
   }
 
   // Step 2: Apply T5Gemma2 normalization
@@ -132,6 +132,88 @@ std::vector<float> preprocessT5Gemma2ImageCustom(
   }
 
   return image_data;
+}
+
+std::vector<float> preprocessT5Gemma2Images(const std::vector<std::string> &filepaths) {
+  const int image_size = 896;
+  const int channels = 3;
+  const int batch_size = filepaths.size();
+
+  if (batch_size == 0) {
+    return std::vector<float>();
+  }
+
+  std::cout << "[T5Gemma2] Preprocessing " << batch_size << " images" << std::endl;
+
+  // Calculate total size: batch_size * channels * height * width
+  const size_t single_image_size = channels * image_size * image_size;
+  const size_t total_size = batch_size * single_image_size;
+
+  std::vector<float> batch_data(total_size);
+
+  // Process each image
+  for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+    std::cout << "[T5Gemma2] Processing image " << (batch_idx + 1) << "/" << batch_size 
+              << ": " << filepaths[batch_idx] << std::endl;
+
+    // Process single image
+    std::vector<float> image_data = preprocessT5Gemma2Image(filepaths[batch_idx]);
+
+    // Copy to batch output
+    size_t batch_offset = batch_idx * single_image_size;
+    std::copy(image_data.begin(), image_data.end(), batch_data.begin() + batch_offset);
+  }
+
+  std::cout << "[T5Gemma2] Preprocessing complete. Output shape: [" << batch_size 
+            << ", " << channels << ", " << image_size << ", " << image_size << "]" << std::endl;
+
+  return batch_data;
+}
+
+std::vector<float> preprocessT5Gemma2ImagesCustom(
+  const std::vector<std::string> &filepaths, int target_width, int target_height,
+  const std::vector<float> &mean, const std::vector<float> &std) {
+
+  if (mean.empty() || mean.size() > 3) {
+    throw std::runtime_error("mean must have 1-3 elements");
+  }
+  if (std.empty() || std.size() > 3) {
+    throw std::runtime_error("std must have 1-3 elements");
+  }
+
+  const int channels = 3;
+  const int batch_size = filepaths.size();
+
+  if (batch_size == 0) {
+    return std::vector<float>();
+  }
+
+  std::cout << "[T5Gemma2] Preprocessing " << batch_size << " images (custom params)" << std::endl;
+
+  // Calculate total size: batch_size * channels * height * width
+  const size_t single_image_size = channels * target_height * target_width;
+  const size_t total_size = batch_size * single_image_size;
+
+  std::vector<float> batch_data(total_size);
+
+  // Process each image
+  for (int batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+    std::cout << "[T5Gemma2] Processing image " << (batch_idx + 1) << "/" << batch_size 
+              << ": " << filepaths[batch_idx] << std::endl;
+
+    // Process single image
+    std::vector<float> image_data = preprocessT5Gemma2ImageCustom(
+      filepaths[batch_idx], target_width, target_height, mean, std);
+
+    // Copy to batch output
+    size_t batch_offset = batch_idx * single_image_size;
+    std::copy(image_data.begin(), image_data.end(), batch_data.begin() + batch_offset);
+  }
+
+  std::cout << "[T5Gemma2] Preprocessing complete. Output shape: [" << batch_size 
+            << ", " << channels << ", " << target_height << ", " << target_width << "]" << std::endl;
+
+  return batch_data;
 }
 
 } // namespace nntrainer
