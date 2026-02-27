@@ -81,8 +81,10 @@ public:
 
   /**
    * @brief Initialize and Construct the Transformer model
+   * @param hasImageInput Whether the model has image input (for multimodal
+   * models)
    */
-  virtual void initialize();
+  virtual void initialize(bool hasImageInput = false);
 
   /**
    * @brief Load the model weights from a file
@@ -100,6 +102,15 @@ public:
   virtual void run(const WSTR prompt, bool do_sample = false,
                    const WSTR system_prompt = "", const WSTR tail_prompt = "");
 
+  /**
+   * @brief Check if the model has image input. False by default. 
+   * For multi-modal models, override this function with 
+   * it's own image input checker.
+   * @param input_text the input for model (for checking if it contains image)
+   * @return true if the model has image input, false otherwise
+   */
+  virtual bool checkImageInput(const std::string &input_text) { return false; }
+
 protected:
   /**
    * @brief Setup the parameters for the Transformer model
@@ -108,6 +119,8 @@ protected:
 
   /**
    * @brief Construct Model
+   * @param hasImageInput Whether the model has image input (for multimodal
+   * models)
    */
   virtual void constructModel();
 

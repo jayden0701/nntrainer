@@ -59,7 +59,7 @@ protected:
   /**
    * @brief Initialize (override to skip compile/initialize for TimmViT)
    */
-  void initialize() override;
+  void initialize(bool hasImageInput) override;
 
 private:
   unsigned int IMG_SIZE = 224;    /**< Image height/width */

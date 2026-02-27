@@ -67,6 +67,14 @@ void printStatistics(const std::vector<float> &data, const std::string &name) {
 int main(int argc, char *argv[]) {
   std::string image_path;
 
+  std::ofstream out("output.txt");
+    
+    // 1. 기존 cout의 버퍼를 저장해둡니다 (나중에 복구하기 위함)
+    std::streambuf* coutbuf = std::cout.rdbuf();
+
+    // 2. cout의 버퍼를 파일 스트림의 버퍼로 교체합니다.
+    std::cout.rdbuf(out.rdbuf());
+
   // Check if image path is provided as argument
   if (argc > 1) {
     image_path = argv[1];

@@ -79,6 +79,15 @@ void printProcessorOutput(const T5Gemma2ProcessorOutput &output, const std::stri
 }
 
 int main(int argc, char *argv[]) {
+
+    std::ofstream out("t5_log.log");
+    
+    // 1. 기존 cout의 버퍼를 저장해둡니다 (나중에 복구하기 위함)
+    std::streambuf* coutbuf = std::cout.rdbuf();
+
+    // 2. cout의 버퍼를 파일 스트림의 버퍼로 교체합니다.
+    std::cout.rdbuf(out.rdbuf());
+
   std::cout << "\n=== T5Gemma2 Processor Test ===\n" << std::endl;
 
   try {
@@ -108,7 +117,7 @@ int main(int argc, char *argv[]) {
     std::cout << "=======================================" << std::endl;
     
     T5Gemma2Processor processor2;
-    std::string text = "Describe this image";
+    std::string text = "<start_of_image>Describe this image";
     
     T5Gemma2ProcessorOutput output2 = processor2.process(text, image_paths);
     printProcessorOutput(output2, "Output");

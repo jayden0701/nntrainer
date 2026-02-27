@@ -142,7 +142,7 @@ void Transformer::setupParameters(json &cfg, json &generation_cfg,
   return;
 };
 
-void Transformer::initialize() {
+void Transformer::initialize(bool hasImageInput) {
 
   // RegisterCustomLayers
   registerCustomLayers();

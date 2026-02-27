@@ -77,6 +77,17 @@ image 사용 여부 flag에 따라 생각보다 구조를 바꿔서 잘 붙여�
 나중에 모델의 부분부분을 모듈화/클래스화 할 수 있을지 생각해 보자
 
 
+멀티모달의 경우 만약 image계열 input이 없다면 모델에 vision encoder등을 load하지 않는 식으로 최적화가 가능함으로, model construct / model weight load전에 이를 알려줘야 함.
+
+weight load가 lazy임으로 나중에 결정해도 될것처럼 보이지만
+load_weight시점에서 구조에 맞는 weight를 다 로딩함으로, 그 전에 구조를 결정해놓아야 함
+
+
+그렇기에 initialize() 시점에 알려주는 로직을 추가하자...
+
+
+
+
 
 서로 다른 layer에 서로 다른 input을 줄 수 있습니다!
 

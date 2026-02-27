@@ -78,17 +78,18 @@ T5Gemma2ProcessorOutput T5Gemma2Processor::process(
   std::string processed_text = text;
   
   if (images.empty() && !text.empty()) {
-    // Text only processing
+    // case 1) Text only processing
     if (debug_output_) {
       std::cout << "[T5Gemma2Processor] Processing text only" << std::endl;
     }
     output.input_ids = tokenize(processed_text, 0);
   } else if (!images.empty()) {
-    // Images only or mixed processing
+    // case 2) Images only or mixed processing
+
     int image_placeholder_count = images.size();
     
     if (text.empty()) {
-      // Create placeholder text for images only
+      // create BOI_TOKEN for image holding
       processed_text = "";
       for (size_t i = 0; i < images.size(); ++i) {
         processed_text += BOI_TOKEN;
@@ -168,6 +169,8 @@ std::vector<float> T5Gemma2Processor::preprocessImages(const std::vector<std::st
   );
 }
 
+
+// TODO change to NNTrainer Tokenizer
 std::vector<int> T5Gemma2Processor::tokenize(const std::string &text, int image_placeholder_count) {
   if (debug_output_) {
     std::cout << "[T5Gemma2Processor] Tokenizing text with " 

@@ -237,7 +237,7 @@ void TimmViTTransformer::constructModel() {
   }
 }
 
-void TimmViTTransformer::initialize() {
+void TimmViTTransformer::initialize(bool hasImageInput) {
   registerCustomLayers();
 
   constructModel();
