@@ -257,14 +257,16 @@ int main(int argc, char *argv[]) {
 
     auto model = causallm::Factory::Instance().create(architecture, cfg,
                                                       generation_cfg, nntr_cfg);
-  
-    // multimodal checker을 구현하자 Transformer에서 구현, return false로 고정
-    // 필요한 모델들은 해당 함수를 override해서 본인의 조건대로 check하고 
-    // image 있는지 여부는 확인 쉬우니 check해서 return하자
 
-    //일단 t5gemma는 나중에 구현하자 (걍 하드코딩 ㄱㄱ)
-    bool has_image_input = model->checkImageInput(input_text);
-    model->initialize(has_image_input);
+    // Check for multimodal support in config
+    // if supported, check if it needs to run in multimodal mode
+    if (nntr_cfg.contains("multimodal_support") &&
+        nntr_cfg["multimodal_support"].get<bool>()) {
+          model->checkImageInput(input_text);
+    }
+
+    
+    model->initialize();
     model->load_weight(weight_file);
 
     bool do_sample = generation_cfg.value("do_sample", false);

@@ -11,25 +11,25 @@
  * compatible with the PyTorch timm library.
  */
 
-#ifndef __TIMM_VIT_TRANSFORMER_H__
-#define __TIMM_VIT_TRANSFORMER_H__
+#ifndef __T5GEMMA2_H__
+#define __T5GEMMA2_H__
 
 #include <transformer.h>
 
 namespace causallm {
 
 /**
- * @brief TimmViTTransformer class
+ * @brief T5Gemma2Transformer class
  */
-class TimmViTTransformer : virtual public Transformer {
+class T5Gemma2Transformer : virtual public Transformer {
 
 public:
-  static constexpr const char *architectures = "TimmViT";
+  static constexpr const char *architectures = "T5Gemma2";
 
-  TimmViTTransformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
+  T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
     Transformer(cfg, generation_cfg, nntr_cfg, ModelType::MODEL) {}
 
-  virtual ~TimmViTTransformer() = default;
+  virtual ~T5Gemma2Transformer() = default;
 
 public:
   std::vector<LayerHandle> createPatchEmbed();
@@ -57,15 +57,28 @@ protected:
            const WSTR system_prompt = "", const WSTR tail_prompt = "") override;
 
   /**
-   * @brief Initialize (override to skip compile/initialize for TimmViT)
+   * @brief Initialize (override to skip compile/initialize for T5Gemma2)
    */
   void initialize() override;
 
+  /**
+   * @brief Check if the model has image input by looking for BOI_TOKEN
+   * @param input_text the input for model (for checking if it contains image)
+   * @return true if the model has image input (BOI_TOKEN found), false otherwise
+   */
+  bool checkImageInput(const std::string &input_text) override;
+
 private:
+
+  // TODO : get from config
+
   unsigned int IMG_SIZE = 224;    /**< Image height/width */
   unsigned int PATCH_SIZE = 16;   /**< Patch height/width */
   unsigned int NUM_PATCHES = 196; /**< Number of patches */
   unsigned int IMG_CHANNELS = 3;  /**< Image channels (RGB) */
+
+  std::string BOI_TOKEN = "<start_of_image>";
+
 };
 
 } // namespace causallm

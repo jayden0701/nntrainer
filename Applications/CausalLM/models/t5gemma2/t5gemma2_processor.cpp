@@ -132,12 +132,49 @@ T5Gemma2ProcessorOutput T5Gemma2Processor::process(
   return output;
 }
 
-T5Gemma2ProcessorOutput T5Gemma2Processor::process(const std::vector<std::string> &images) {
-  return process("", images);
-}
 
-T5Gemma2ProcessorOutput T5Gemma2Processor::process(const std::string &text) {
-  return process(text, std::vector<std::string>());
+T5Gemma2ProcessorOutput T5Gemma2Processor::process(const std::string &input_prompt) {
+  std::string processed_text = input_prompt;
+  std::vector<std::string> images;
+  
+  // Check if BOI_TOKEN is present in the input
+  if (input_prompt.find(BOI_TOKEN) != std::string::npos) {
+    // Parse image paths from input text
+    // Pattern: <BOI_TOKEN> followed by image path (with extension like .jpg, .png, etc.)
+    std::regex image_pattern(BOI_TOKEN + std::string(R"(\s+([^\s]+\.(?:jpg|jpeg|png|gif|bmp|tiff|webp)))"));
+    std::sregex_iterator it(input_prompt.begin(), input_prompt.end(), image_pattern);
+    std::sregex_iterator end;
+    
+    // Extract all image paths
+    while (it != end) {
+      std::smatch match = *it;
+      if (match.size() > 1) {
+        std::string image_path = match[1].str();
+        images.push_back(image_path);
+        
+        if (debug_output_) {
+          std::cout << "[T5Gemma2Processor] Found image path: " << image_path << std::endl;
+        }
+      }
+      ++it;
+    }
+    
+    // Remove image paths from the text (keep BOI_TOKEN)
+    processed_text = std::regex_replace(input_prompt, image_pattern, BOI_TOKEN);
+    
+    if (debug_output_) {
+      std::cout << "[T5Gemma2Processor] Extracted " << images.size() << " image(s)" << std::endl;
+      std::cout << "[T5Gemma2Processor] Processed text: " << processed_text << std::endl;
+    }
+  } else {
+    // No BOI_TOKEN found, treat entire input as text
+    if (debug_output_) {
+      std::cout << "[T5Gemma2Processor] No BOI_TOKEN found, treating as text-only input" << std::endl;
+    }
+  }
+  
+  // Call the main process function with extracted text and images
+  return process(processed_text, images);
 }
 
 void T5Gemma2Processor::setImageConfig(const ImageProcessingConfig &config) {

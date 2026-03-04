@@ -81,10 +81,8 @@ public:
 
   /**
    * @brief Initialize and Construct the Transformer model
-   * @param hasImageInput Whether the model has image input (for multimodal
-   * models)
    */
-  virtual void initialize(bool hasImageInput = false);
+  virtual void initialize();
 
   /**
    * @brief Load the model weights from a file
@@ -105,7 +103,7 @@ public:
   /**
    * @brief Check if the model has image input. False by default. 
    * For multi-modal models, override this function with 
-   * it's own image input checker.
+   * it's own image input checker. 
    * @param input_text the input for model (for checking if it contains image)
    * @return true if the model has image input, false otherwise
    */
@@ -188,6 +186,7 @@ protected:
   unsigned int FSU_LOOKAHEAD;
   float ATTN_LOGIT_SOFTCAPPING = 0.0f; /**< attention logit softcapping */
   bool IS_CAUSAL = true;
+  bool HAS_IMAGE_INPUT = false;
 };
 /**
  * Loads JSON data from a file with detailed error handling

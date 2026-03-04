@@ -15,32 +15,6 @@
 namespace nntrainer {
 
 /**
- * @brief Preprocess image for T5Gemma2 model
- *
- * This function:
- * 1. Loads and resizes the image to 896x896 using loadAndPreprocessImage()
- * 2. Applies T5Gemma2-specific normalization:
- *    - Rescale: pixel_value / 255.0
- *    - Normalize: (pixel_value - mean) / std
- *    - Where mean=[0.5, 0.5, 0.5] and std=[0.5, 0.5, 0.5]
- *
- * @param filepath Path to the input image file
- * @return std::vector<float> Preprocessed image data in CHW format (3, 896, 896)
- */
-std::vector<float> preprocessT5Gemma2Image(const std::string &filepath);
-
-/**
- * @brief Preprocess multiple images for T5Gemma2 model
- *
- * This function processes multiple images and returns them as a batch.
- * Each image is preprocessed independently and then stacked into a batch tensor.
- *
- * @param filepaths List of paths to input image files
- * @return std::vector<float> Preprocessed image data in NCHW format (batch, 3, 896, 896)
- */
-std::vector<float> preprocessT5Gemma2Images(const std::vector<std::string> &filepaths);
-
-/**
  * @brief Preprocess image for T5Gemma2 model with custom normalization parameters
  *
  * @param filepath Path to the input image file

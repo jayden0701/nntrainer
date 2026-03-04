@@ -89,18 +89,7 @@ int main(int argc, char *argv[]) {
   std::cout << "Processing image: " << image_path << "\n" << std::endl;
 
   try {
-    // Test 1: Standard T5Gemma2 preprocessing (896x896)
-    std::cout << "Test 1: Standard T5Gemma2 preprocessing (896x896)" << std::endl;
-    std::cout << "Parameters: resize to 896x896, rescale by 1/255, "
-                 "normalize with mean=[0.5,0.5,0.5], std=[0.5,0.5,0.5]"
-              << std::endl;
 
-    std::vector<float> preprocessed = preprocessT5Gemma2Image(image_path);
-    printStatistics(preprocessed, "Preprocessed image");
-
-    // Save to file for comparison with PyTorch
-    std::string output_file = "t5gemma2_preprocessed_output.txt";
-    saveToFile(preprocessed, output_file);
 
     // Test 2: Custom normalization parameters
     std::cout << "\nTest 2: Custom normalization parameters" << std::endl;
@@ -110,24 +99,11 @@ int main(int argc, char *argv[]) {
     std::vector<float> preprocessed_custom = preprocessT5Gemma2ImageCustom(
       image_path, 896, 896, custom_mean, custom_std);
     printStatistics(preprocessed_custom, "Preprocessed image (custom params)");
+        // Save to file for comparison with PyTorch
+    std::string output_file = "t5gemma2_preprocessed_output.txt";
+    saveToFile(preprocessed_custom, output_file);
 
-    std::cout << "\n=== Comparison with Test 1 ===" << std::endl;
-    if (preprocessed.size() == preprocessed_custom.size()) {
-      bool match = true;
-      for (size_t i = 0; i < preprocessed.size(); ++i) {
-        if (std::abs(preprocessed[i] - preprocessed_custom[i]) > 1e-6f) {
-          match = false;
-          std::cout << "Mismatch at index " << i << ": " << preprocessed[i]
-                    << " vs " << preprocessed_custom[i] << std::endl;
-          break;
-        }
-      }
-      if (match) {
-        std::cout << "✓ Test 1 and Test 2 results match perfectly!" << std::endl;
-      }
-    } else {
-      std::cout << "✗ Size mismatch between Test 1 and Test 2" << std::endl;
-    }
+   
 
     std::cout << "\n=== Test completed successfully ===" << std::endl;
     std::cout << "\nTo compare with PyTorch output:" << std::endl;

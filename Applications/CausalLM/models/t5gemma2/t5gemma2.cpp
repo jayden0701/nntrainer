@@ -11,14 +11,13 @@
  * compatible with the PyTorch timm library.
  */
 
-#include "timm_vit_transformer.h"
+#include "t5gemma2.h"
 #include <factory.h>
 #include <llm_util.hpp>
 
 namespace causallm {
 
-  // key, default value
-void TimmViTTransformer::setupParameters(json &cfg, json &generation_cfg,
+void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
                                          json &nntr_cfg) {
   BATCH_SIZE = nntr_cfg.value("batch_size", 1);
   MODEL_TENSOR_TYPE = nntr_cfg.value("model_tensor_type", "FP32-FP32");
@@ -54,7 +53,7 @@ void TimmViTTransformer::setupParameters(json &cfg, json &generation_cfg,
   IMG_CHANNELS = 3;
 }
 
-std::vector<LayerHandle> TimmViTTransformer::createPatchEmbed() {
+std::vector<LayerHandle> T5Gemma2Transformer::createPatchEmbed() {
   std::vector<LayerHandle> layers;
 
   int embed_dim = DIM;
@@ -102,8 +101,8 @@ std::vector<LayerHandle> TimmViTTransformer::createPatchEmbed() {
 }
 
 std::vector<LayerHandle>
-TimmViTTransformer::createAttention(const int layer_id,
-                                    const std::string &input_name) {
+T5Gemma2Transformer::createAttention(const int layer_id,
+                                     const std::string &input_name) {
   std::vector<LayerHandle> layers;
 
   std::string prefix = "layer" + std::to_string(layer_id) + "_";
@@ -152,8 +151,8 @@ TimmViTTransformer::createAttention(const int layer_id,
 }
 
 std::vector<LayerHandle>
-TimmViTTransformer::createMlp(const int layer_id,
-                              const std::string &input_name) {
+T5Gemma2Transformer::createMlp(const int layer_id,
+                               const std::string &input_name) {
   std::vector<LayerHandle> layers;
 
   std::string prefix = "layer" + std::to_string(layer_id) + "_";
@@ -185,8 +184,8 @@ TimmViTTransformer::createMlp(const int layer_id,
 }
 
 std::vector<LayerHandle>
-TimmViTTransformer::createTransformerDecoderBlock(const int layer_id,
-                                                  std::string input_name) {
+T5Gemma2Transformer::createTransformerDecoderBlock(const int layer_id,
+                                                   std::string input_name) {
   std::vector<LayerHandle> layers;
 
   std::string prefix = "layer" + std::to_string(layer_id) + "_";
@@ -210,7 +209,7 @@ TimmViTTransformer::createTransformerDecoderBlock(const int layer_id,
   return layers;
 }
 
-void TimmViTTransformer::constructModel() {
+void T5Gemma2Transformer::constructModel() {
   std::vector<LayerHandle> layers;
 
   model = ml::train::createModel(ml::train::ModelType::NEURAL_NET);
@@ -238,7 +237,7 @@ void TimmViTTransformer::constructModel() {
   }
 }
 
-void TimmViTTransformer::initialize() {
+void T5Gemma2Transformer::initialize() {
   registerCustomLayers();
 
   constructModel();
@@ -262,15 +261,15 @@ void TimmViTTransformer::initialize() {
   model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 }
 
-void TimmViTTransformer::registerCustomLayers() {
+void T5Gemma2Transformer::registerCustomLayers() {
   Transformer::registerCustomLayers();
 }
 
-void TimmViTTransformer::run(const WSTR prompt, bool do_sample,
-                             const WSTR system_prompt, const WSTR tail_prompt) {
+void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
+                              const WSTR system_prompt, const WSTR tail_prompt) {
 
   if (!is_initialized) {
-    throw std::runtime_error("TimmViT model is not initialized. Please call "
+    throw std::runtime_error("T5Gemma2 model is not initialized. Please call "
                              "initialize() before run().");
   }
 
@@ -304,6 +303,13 @@ void TimmViTTransformer::run(const WSTR prompt, bool do_sample,
   std::cout << std::endl;
 
   free(input_sample);
+}
+
+bool T5Gemma2Transformer::checkImageInput(const std::string &input_text) {
+  // Check if BOI_TOKEN is present in the input text
+  // if so, update HAS_IMAGE_INPUT
+  HAS_IMAGE_INPUT = (input_text.find(BOI_TOKEN) != std::string::npos);
+  return HAS_IMAGE_INPUT;
 }
 
 } // namespace causallm
