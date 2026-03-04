@@ -12,6 +12,7 @@
  */
 
 #include "t5gemma2.h"
+#include "t5gemma2_processor.h"
 #include <factory.h>
 #include <llm_util.hpp>
 
@@ -24,33 +25,79 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
   EMBEDDING_DTYPE = nntr_cfg.value("embedding_dtype", "FP32");
   FC_LAYER_DTYPE = nntr_cfg.value("fc_layer_dtype", "FP32");
 
+  // T5Gemma2 has nested config structure - access decoder config for text model parameters
   NUM_VOCAB = cfg.value("vocab_size", 1000);
-  DIM = cfg.value("hidden_size", 768);
-  INTERMEDIATE_SIZE = cfg.value("intermediate_size", 3072);
-  NUM_LAYERS = cfg.value("num_hidden_layers", 12);
-  NUM_HEADS = cfg.value("num_attention_heads", 12);
-  HEAD_DIM = cfg.value("head_dim", DIM / NUM_HEADS);
-  NUM_KEY_VALUE_HEADS = cfg.value("num_key_value_heads", NUM_HEADS);
-  MAX_POSITION_EMBEDDINGS = cfg.value("max_position_embeddings", 196);
-  ROPE_THETA = cfg.value("rope_theta", 10000);
+  
+  // Decoder configuration
+  if (cfg.contains("decoder")) {
+    json &decoder_cfg = cfg["decoder"];
+    DIM = decoder_cfg.value("hidden_size", 768);
+    INTERMEDIATE_SIZE = decoder_cfg.value("intermediate_size", 3072);
+    NUM_LAYERS = decoder_cfg.value("num_hidden_layers", 12);
+    NUM_HEADS = decoder_cfg.value("num_attention_heads", 12);
+    HEAD_DIM = decoder_cfg.value("head_dim", DIM / NUM_HEADS);
+    NUM_KEY_VALUE_HEADS = decoder_cfg.value("num_key_value_heads", NUM_HEADS);
+    MAX_POSITION_EMBEDDINGS = decoder_cfg.value("max_position_embeddings", 196);
+    NORM_EPS = decoder_cfg.value("rms_norm_eps", 1e-6);
+    IS_CAUSAL = decoder_cfg.value("use_bidirectional_attention", false);
+    GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
+    
+    // Sliding window
+    if (decoder_cfg.contains("sliding_window") && !decoder_cfg["sliding_window"].is_null()) {
+      SLIDING_WINDOW = decoder_cfg["sliding_window"].get<unsigned int>();
+    } else {
+      SLIDING_WINDOW = UINT_MAX;
+    }
+    
+    // RoPE parameters (use sliding attention defaults)
+    if (decoder_cfg.contains("rope_parameters") && 
+        decoder_cfg["rope_parameters"].contains("sliding_attention")) {
+      json &rope_cfg = decoder_cfg["rope_parameters"]["sliding_attention"];
+      ROPE_THETA = rope_cfg.value("rope_theta", 10000);
+    } else {
+      ROPE_THETA = 10000;
+    }
+  } else {
+    // Fallback to top-level config for compatibility
+    DIM = cfg.value("hidden_size", 768);
+    INTERMEDIATE_SIZE = cfg.value("intermediate_size", 3072);
+    NUM_LAYERS = cfg.value("num_hidden_layers", 12);
+    NUM_HEADS = cfg.value("num_attention_heads", 12);
+    HEAD_DIM = cfg.value("head_dim", DIM / NUM_HEADS);
+    NUM_KEY_VALUE_HEADS = cfg.value("num_key_value_heads", NUM_HEADS);
+    MAX_POSITION_EMBEDDINGS = cfg.value("max_position_embeddings", 196);
+    ROPE_THETA = cfg.value("rope_theta", 10000);
+    NORM_EPS = cfg.value("norm_eps", 1e-6);
+    GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
+    IS_CAUSAL = cfg.value("is_causal", false);
+    SLIDING_WINDOW =
+      cfg.contains("sliding_window") && !cfg["sliding_window"].is_null()
+        ? cfg["sliding_window"].get<unsigned int>()
+        : UINT_MAX;
+  }
+  
   TIE_WORD_EMBEDDINGS = cfg.value("tie_word_embeddings", false);
-  NORM_EPS = cfg.value("norm_eps", 1e-6);
-  GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
-
-  IS_CAUSAL = cfg.value("is_causal", false);
-  SLIDING_WINDOW =
-    cfg.contains("sliding_window") && !cfg["sliding_window"].is_null()
-      ? cfg["sliding_window"].get<unsigned int>()
-      : UINT_MAX;
 
   INIT_SEQ_LEN = nntr_cfg.value("init_seq_len", 224);
   MAX_SEQ_LEN = nntr_cfg.value("max_seq_len", 224);
   NUM_TO_GENERATE = nntr_cfg.value("num_to_generate", 0);
 
-  IMG_SIZE = cfg.value("img_size", 224);
-  PATCH_SIZE = cfg.value("patch_size", 16);
-  NUM_PATCHES = cfg.value("num_patches", 196);
-  IMG_CHANNELS = 3;
+  // Encoder configuration (vision model)
+  if (cfg.contains("encoder") && cfg["encoder"].contains("vision_config")) {
+    json &vision_cfg = cfg["encoder"]["vision_config"];
+    IMG_SIZE = vision_cfg.value("image_size", 224);
+    PATCH_SIZE = vision_cfg.value("patch_size", 14);
+    IMG_CHANNELS = vision_cfg.value("num_channels", 3);
+    
+    // Calculate number of patches: (IMG_SIZE / PATCH_SIZE) ^ 2
+    NUM_PATCHES = (IMG_SIZE / PATCH_SIZE) * (IMG_SIZE / PATCH_SIZE);
+  } else {
+    // Fallback to top-level config for compatibility
+    IMG_SIZE = cfg.value("img_size", 224);
+    PATCH_SIZE = cfg.value("patch_size", 16);
+    NUM_PATCHES = cfg.value("num_patches", 196);
+    IMG_CHANNELS = 3;
+  }
 }
 
 std::vector<LayerHandle> T5Gemma2Transformer::createPatchEmbed() {
@@ -273,36 +320,54 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
                              "initialize() before run().");
   }
 
-  unsigned int img_h = IMG_SIZE;
-  unsigned int img_w = IMG_SIZE;
+  // Convert WSTR to std::string if needed (for Windows compatibility)
+  std::string input_prompt;
+#ifdef _WIN32
+  input_prompt = std::string(prompt.begin(), prompt.end());
+#else
+  input_prompt = prompt;
+#endif
 
-  unsigned int input_size = BATCH_SIZE * IMG_CHANNELS * img_h * img_w;
-  float *input_sample = (float *)malloc(sizeof(float) * input_size);
+  // Create processor instance
+  // TODO : maybe change this to init
+  nntrainer::T5Gemma2Processor processor(256, 256000);
 
-  if (!input_sample) {
-    throw std::runtime_error("Failed to allocate memory for input_sample.");
-  }
+  // Process input prompt (extracts text and images)
+  auto processor_output = processor.process(input_prompt);
 
-  std::string image_path_str(prompt);
-  std::vector<float> image_data =
-    loadAndPreprocessImage(image_path_str, img_w, img_h, true);
+  std::cout << "[T5Gemma2Transformer] Processed input:" << std::endl;
+  std::cout << "  input_ids length: " << processor_output.input_ids.size() << std::endl;
+  std::cout << "  pixel_values size: " << processor_output.pixel_values.size() << std::endl;
 
-  std::copy(image_data.begin(), image_data.end(), input_sample);
-
+  // Prepare model input
   std::vector<float *> input;
-  input.push_back(input_sample);
-  std::vector<float *> label;
 
-  std::vector<float *> output = model->incremental_inference(
-    BATCH_SIZE, input, label, NUM_PATCHES, 0, NUM_PATCHES, false);
+  if (!processor_output.pixel_values.empty()) {
+    // Image input: use pixel_values from processor
+    float *input_sample = (float *)malloc(sizeof(float) * processor_output.pixel_values.size());
+    if (!input_sample) {
+      throw std::runtime_error("Failed to allocate memory for input_sample.");
+    }
 
-  std::cout << "First 10 values: ";
-  for (int i = 0; i < std::min(10, DIM); ++i) {
-    std::cout << "[" << i << "]=" << output[0][i] << " ";
+    std::copy(processor_output.pixel_values.begin(), processor_output.pixel_values.end(), input_sample);
+    input.push_back(input_sample);
+
+    std::vector<float *> label;
+    std::vector<float *> output = model->incremental_inference(
+      BATCH_SIZE, input, label, NUM_PATCHES, 0, NUM_PATCHES, false);
+
+    std::cout << "First 10 output values: ";
+    for (int i = 0; i < std::min(10, DIM); ++i) {
+      std::cout << "[" << i << "]=" << output[0][i] << " ";
+    }
+    std::cout << std::endl;
+
+    free(input_sample);
+  } else {
+    // Text-only input
+    std::cout << "[T5Gemma2Transformer] Text-only input - processing not yet implemented" << std::endl;
+    // TODO: Implement text-only inference path
   }
-  std::cout << std::endl;
-
-  free(input_sample);
 }
 
 bool T5Gemma2Transformer::checkImageInput(const std::string &input_text) {

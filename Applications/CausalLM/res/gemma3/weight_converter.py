@@ -75,7 +75,7 @@ if __name__ == "__main__":
     device = 'cpu'
     
     config = AutoConfig.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(model_path, dtype="float", trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype="float", trust_remote_code=True)
     model.eval()
 
     print(model)

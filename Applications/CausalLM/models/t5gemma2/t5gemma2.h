@@ -24,10 +24,15 @@ namespace causallm {
 class T5Gemma2Transformer : virtual public Transformer {
 
 public:
-  static constexpr const char *architectures = "T5Gemma2";
+
+  // TODO : divide architecture to T5Gemma2 / T5Gemma2ForConditionalGeneration
+  static constexpr const char *architectures = "T5Gemma2ForConditionalGeneration";
 
   T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
-    Transformer(cfg, generation_cfg, nntr_cfg, ModelType::MODEL) {}
+    Transformer(cfg, generation_cfg, nntr_cfg, ModelType::MODEL) {
+    setupParameters(cfg, generation_cfg, nntr_cfg);
+
+    }
 
   virtual ~T5Gemma2Transformer() = default;
 

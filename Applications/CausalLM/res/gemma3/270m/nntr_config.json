@@ -13,7 +13,7 @@
     "init_seq_len": 128,
     "max_seq_len": 256,
     "batch_size": 1,
-    "tokenizer_file": "/tmp/tokenizer.json",
+    "tokenizer_file": "/home/jayden/NNTrainer_Playground/t5gemma2/nntrainer/Applications/CausalLM/res/gemma3/270m/tokenizer.json",
     "sample_input": "Explain the concept of AI"
 }
 

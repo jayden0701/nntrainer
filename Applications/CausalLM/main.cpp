@@ -42,6 +42,7 @@
 #include "qwen3_moe_causallm.h"
 #include "qwen3_slim_moe_causallm.h"
 #include "timm_vit/timm_vit_transformer.h"
+#include "t5gemma2/t5gemma2.h"
 #include <sys/resource.h>
 
 #include <atomic>
@@ -200,6 +201,11 @@ int main(int argc, char *argv[]) {
   causallm::Factory::Instance().registerModel(
     "TimmViT", [](json cfg, json generation_cfg, json nntr_cfg) {
       return std::make_unique<causallm::TimmViTTransformer>(cfg, generation_cfg,
+                                                            nntr_cfg);
+    });
+  causallm::Factory::Instance().registerModel(
+    "T5Gemma2ForConditionalGeneration", [](json cfg, json generation_cfg, json nntr_cfg) {
+      return std::make_unique<causallm::T5Gemma2Transformer>(cfg, generation_cfg,
                                                             nntr_cfg);
     });
 

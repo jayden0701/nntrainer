@@ -91,63 +91,31 @@ int main(int argc, char *argv[]) {
   std::cout << "\n=== T5Gemma2 Processor Test ===\n" << std::endl;
 
   try {
-    // Test 1: Process images only
-    std::cout << "\nTest 1: Process images only" << std::endl;
-    std::cout << "========================================" << std::endl;
+    
+    
+    std::string text = "I love korea because";
+    // Test 1: Process text only
+    std::cout << "\n\nTest 1: Process text only" << std::endl;
+    std::cout << "=============================" << std::endl;
     
     T5Gemma2Processor processor1;
-    std::vector<std::string> image_paths;
-    
-    // Use default test image
-    image_paths.push_back("./Cat.jpg");
-
-    
-    
-    T5Gemma2ProcessorOutput output1 = processor1.process(image_paths);
+    T5Gemma2ProcessorOutput output1 = processor1.process(text);
     printProcessorOutput(output1, "Output");
     
-    // Save outputs to files
-    saveToFile(output1.pixel_values, "processor_pixel_values.txt");
-    saveToFile(output1.input_ids, "processor_input_ids.txt");
-    saveToFile(output1.attention_mask, "processor_attention_mask.txt");
-    saveToFile(output1.token_type_ids, "processor_token_type_ids.txt");
-    
-    // Test 2: Process text and images
+
+       
+    // Test 2: Process text and image
     std::cout << "\n\nTest 2: Process text and images" << std::endl;
     std::cout << "=======================================" << std::endl;
     
     T5Gemma2Processor processor2;
-    std::string text = "<start_of_image>Describe this image";
+    text = "<start_of_image> ./Cat.jpg Describe this image";
     
-    T5Gemma2ProcessorOutput output2 = processor2.process(text, image_paths);
+    T5Gemma2ProcessorOutput output2 = processor2.process(text);
     printProcessorOutput(output2, "Output");
     
-    // Test 3: Process multiple images
-    std::cout << "\n\nTest 3: Process multiple images" << std::endl;
-    std::cout << "======================================" << std::endl;
-    
-    T5Gemma2Processor processor3;
-    std::vector<std::string> multiple_images;
-    multiple_images.push_back("./Cat.jpg");
-    multiple_images.push_back("./Dog.jpg");
-    
-    T5Gemma2ProcessorOutput output3 = processor3.process(multiple_images);
-    printProcessorOutput(output3, "Output");
-    
-    // Test 4: Process text only
-    std::cout << "\n\nTest 4: Process text only" << std::endl;
-    std::cout << "=============================" << std::endl;
-    
-    T5Gemma2Processor processor4;
-    T5Gemma2ProcessorOutput output4 = processor4.process(text);
-    printProcessorOutput(output4, "Output");
-    
-    std::cout << "\n\n=== All tests completed successfully ===" << std::endl;
-    std::cout << "\nOutput files saved:" << std::endl;
-    std::cout << "  - processor_pixel_values.txt (flattened image tensor)" << std::endl;
-    std::cout << "  - processor_input_ids.txt (tokenized text)" << std::endl;
-    std::cout << "  - processor_attention_mask.txt" << std::endl;
-    std::cout << "  - processor_token_type_ids.txt" << std::endl;
+        
+    //TODO : Test 3 : process text + multi image
     
     return 0;
     
