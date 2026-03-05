@@ -13,7 +13,7 @@ Tokenizer은 Transformer이 들고 있으니, 여기까지만 하고 값을 모�
 0) 모든 시나리오 (text only / image only / multiimage / text + multi image)에 대해 Processor이 TextProcessor/ImageProcessor잘하는지 확인. (확장text / processed image pixels / image mask)를 리턴해야 함.
 -> processor을 바꿔서 input_prompt를 잘 처리하게 바꿈
 
--> 이 시점에서 PR(DRAFT)만들고 Processor 만들고 올리기
+-> 이 시점에서 PR(DRAFT)만들고 Processor 만들고 올리기 (확장된 거만 올림)
 
 
 1) t5gemma2.cpp 만들어서 뼈대 만들고(가능하면 주말 codex) Processor 불러서 text(아직 text, token만 추가됨)에 tokenzier 적용하자
@@ -26,8 +26,10 @@ init()까지 되려면
 -> PR에 commit
 
 2) tokenize 된거 확인하면 text쪽 encoder를 미리 다 만들어 놓자
-...
-완성시 PR에 commit
+-> RMS norm epsilon값 맞춰야 함
+-> 차원 다 맞춰야 함
+-> encoder구조는 완료. 차원 맞추자.
+
 
 3) 
 

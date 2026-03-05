@@ -196,10 +196,19 @@ int NetworkGraph::addLossLayer(const std::string &loss_type_) {
 void NetworkGraph::setOutputConnections() {
   for (auto layer_iter = cbegin(); layer_iter != cend(); layer_iter++) {
     const auto &node = *layer_iter;
+    std::cout << "====Connecting Input for " <<       node->getName() << " =====" <<std::endl;
     for (auto i = 0u, num_inode = node->getNumInputConnections(); i < num_inode;
          ++i) {
+
+      //node->printPreset(std::cout);
+
+
+
+      
       const auto &name = node->getInputConnectionName(i);
       const auto &idx = node->getInputConnectionIndex(i);
+
+      std::cout << name << " idx : " << idx << " "<<std::endl;
 
       auto node_setting_output = getLayerNode(name);
       node_setting_output->setOutputConnection(idx, node->getName(), i);

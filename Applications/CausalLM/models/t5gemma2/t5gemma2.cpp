@@ -19,15 +19,16 @@
 namespace causallm {
 
 void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
-                                         json &nntr_cfg) {
+                                          json &nntr_cfg) {
   BATCH_SIZE = nntr_cfg.value("batch_size", 1);
   MODEL_TENSOR_TYPE = nntr_cfg.value("model_tensor_type", "FP32-FP32");
   EMBEDDING_DTYPE = nntr_cfg.value("embedding_dtype", "FP32");
   FC_LAYER_DTYPE = nntr_cfg.value("fc_layer_dtype", "FP32");
 
-  // T5Gemma2 has nested config structure - access decoder config for text model parameters
+  // T5Gemma2 has nested config structure - access decoder config for text model
+  // parameters
   NUM_VOCAB = cfg.value("vocab_size", 1000);
-  
+
   // Decoder configuration
   if (cfg.contains("decoder")) {
     json &decoder_cfg = cfg["decoder"];
@@ -41,16 +42,17 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
     NORM_EPS = decoder_cfg.value("rms_norm_eps", 1e-6);
     IS_CAUSAL = decoder_cfg.value("use_bidirectional_attention", false);
     GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
-    
+
     // Sliding window
-    if (decoder_cfg.contains("sliding_window") && !decoder_cfg["sliding_window"].is_null()) {
+    if (decoder_cfg.contains("sliding_window") &&
+        !decoder_cfg["sliding_window"].is_null()) {
       SLIDING_WINDOW = decoder_cfg["sliding_window"].get<unsigned int>();
     } else {
       SLIDING_WINDOW = UINT_MAX;
     }
-    
+
     // RoPE parameters (use sliding attention defaults)
-    if (decoder_cfg.contains("rope_parameters") && 
+    if (decoder_cfg.contains("rope_parameters") &&
         decoder_cfg["rope_parameters"].contains("sliding_attention")) {
       json &rope_cfg = decoder_cfg["rope_parameters"]["sliding_attention"];
       ROPE_THETA = rope_cfg.value("rope_theta", 10000);
@@ -75,7 +77,16 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
         ? cfg["sliding_window"].get<unsigned int>()
         : UINT_MAX;
   }
-  
+
+    if (cfg.contains("encoder")) {
+    json &encoder_cfg = cfg["encoder"];
+    ENC_MLP_HIDDEN_SIZE = encoder_cfg.value("hidden_size", 640);
+    }
+    else
+    {
+      // create error
+    }
+
   TIE_WORD_EMBEDDINGS = cfg.value("tie_word_embeddings", false);
 
   INIT_SEQ_LEN = nntr_cfg.value("init_seq_len", 224);
@@ -88,7 +99,7 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
     IMG_SIZE = vision_cfg.value("image_size", 224);
     PATCH_SIZE = vision_cfg.value("patch_size", 14);
     IMG_CHANNELS = vision_cfg.value("num_channels", 3);
-    
+
     // Calculate number of patches: (IMG_SIZE / PATCH_SIZE) ^ 2
     NUM_PATCHES = (IMG_SIZE / PATCH_SIZE) * (IMG_SIZE / PATCH_SIZE);
   } else {
@@ -148,11 +159,11 @@ std::vector<LayerHandle> T5Gemma2Transformer::createPatchEmbed() {
 }
 
 std::vector<LayerHandle>
-T5Gemma2Transformer::createAttention(const int layer_id,
+T5Gemma2Transformer::createEncoderAttention(const int layer_id,
                                      const std::string &input_name) {
   std::vector<LayerHandle> layers;
 
-  std::string prefix = "layer" + std::to_string(layer_id) + "_";
+  std::string prefix = "encoder_layer" + std::to_string(layer_id) + "_";
 
   layers.push_back(createLayer("layer_normalization",
                                {withKey("name", prefix + "attention_norm"),
@@ -197,87 +208,68 @@ T5Gemma2Transformer::createAttention(const int layer_id,
   return layers;
 }
 
-std::vector<LayerHandle>
-T5Gemma2Transformer::createMlp(const int layer_id,
-                               const std::string &input_name) {
+std::vector<LayerHandle> T5Gemma2Transformer::createMlp(std::string prefix,
+                                                      int dim, int hidden_dim,
+                                                      std::string input_name) {
   std::vector<LayerHandle> layers;
 
-  std::string prefix = "layer" + std::to_string(layer_id) + "_";
-
-  layers.push_back(
-    createLayer("layer_normalization",
-                {withKey("name", prefix + "ffn_norm"), withKey("axis", "3"),
-                 withKey("epsilon", std::to_string(NORM_EPS)),
-                 withKey("input_layers", input_name)}));
-
+  // Gate projection
   layers.push_back(createLayer(
-    "fully_connected", {withKey("name", prefix + "ffn_up"),
-                        withKey("unit", std::to_string(INTERMEDIATE_SIZE)),
-                        withKey("disable_bias", "false"),
-                        withKey("input_layers", prefix + "ffn_norm")}));
+    "fully_connected",
+    {withKey("name", prefix + "ffn_gate"),
+     withKey("unit", hidden_dim), withKey("disable_bias", "true"),
+     withKey("input_layers", input_name),
+     withKey("weight_initializer", "ones")}));
 
-  layers.push_back(
-    createLayer("activation", {withKey("name", prefix + "ffn_gelu"),
-                               withKey("activation", "gelu"),
-                               withKey("input_layers", prefix + "ffn_up")}));
+  // GeLU
+  layers.push_back(createLayer(
+    "activation",
+    {withKey("name", prefix + "ffn_gate_gelu"),
+     withKey("activation", "tanh_gelu"),
+     withKey("input_layers",
+             prefix + "ffn_gate")}));
 
-  layers.push_back(createLayer("fully_connected",
-                               {withKey("name", prefix + "ffn_down"),
-                                withKey("unit", std::to_string(DIM)),
-                                withKey("disable_bias", "false"),
-                                withKey("input_layers", prefix + "ffn_gelu")}));
+  // Up projection
+  layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", prefix + "ffn_up"),
+     withKey("unit", hidden_dim), withKey("disable_bias", "true"),
+     withKey("input_layers", input_name),
+     withKey("weight_initializer", "ones")}));
+
+  // Multiply
+  layers.push_back(createLayer(
+    "multiply",
+    {withKey("name", prefix + "ffn_geglu"),
+     withKey("input_layers", prefix +
+                               "ffn_gate_gelu" + ","+ prefix + "ffn_up")}));
+
+  // Down projection
+  layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", prefix + "ffn_down"),
+     withKey("unit", dim), withKey("disable_bias", "true"),
+     withKey("input_layers", prefix + "ffn_geglu"),
+     withKey("weight_initializer", "ones")}));
 
   return layers;
 }
 
-std::vector<LayerHandle>
-T5Gemma2Transformer::createTransformerDecoderBlock(const int layer_id,
-                                                   std::string input_name) {
-  std::vector<LayerHandle> layers;
-
-  std::string prefix = "layer" + std::to_string(layer_id) + "_";
-
-  auto attention = createAttention(layer_id, input_name);
-  layers.insert(layers.end(), attention.begin(), attention.end());
-
-  layers.push_back(createLayer(
-    "addition",
-    {withKey("name", prefix + "attention_residual"),
-     withKey("input_layers", {input_name, prefix + "attention_out"})}));
-
-  auto mlp = createMlp(layer_id, prefix + "attention_residual");
-  layers.insert(layers.end(), mlp.begin(), mlp.end());
-
-  layers.push_back(createLayer(
-    "addition", {withKey("name", prefix + "ffn_residual"),
-                 withKey("input_layers", {prefix + "attention_residual",
-                                          prefix + "ffn_down"})}));
-
-  return layers;
-}
 
 void T5Gemma2Transformer::constructModel() {
   std::vector<LayerHandle> layers;
 
   model = ml::train::createModel(ml::train::ModelType::NEURAL_NET);
 
-  auto patch_embed_layers = createPatchEmbed();
-  layers.insert(layers.end(), patch_embed_layers.begin(),
-                patch_embed_layers.end());
-
-  std::string last_output = "pos_embed/add";
-  for (int i = 0; i < NUM_LAYERS; i++) {
-    auto block_layers = createTransformerDecoderBlock(i, last_output);
-    layers.insert(layers.end(), block_layers.begin(), block_layers.end());
-    last_output = "layer" + std::to_string(i) + "_ffn_residual";
-  }
-
   layers.push_back(createLayer(
-    "layer_normalization",
-    {withKey("name", "output_norm"), withKey("axis", "3"),
-     withKey("epsilon", std::to_string(NORM_EPS)),
-     withKey("input_layers",
-             "layer" + std::to_string(NUM_LAYERS - 1) + "_ffn_residual")}));
+    "input", {withKey("name", "input0"),
+              withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))}));
+
+  
+  auto encoder = createEncoder("input0");            
+
+  layers.insert(layers.end(), encoder.begin(), encoder.end());
+
 
   for (auto &layer : layers) {
     model->addLayer(layer);
@@ -288,6 +280,8 @@ void T5Gemma2Transformer::initialize() {
   registerCustomLayers();
 
   constructModel();
+
+
 
   std::vector<std::string> model_props = {
     withKey("batch_size", BATCH_SIZE), withKey("epochs", "1"),
@@ -303,9 +297,11 @@ void T5Gemma2Transformer::initialize() {
     throw std::invalid_argument("Model initialization failed.");
   }
 
+      model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+
   is_initialized = true;
 
-  model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+
 }
 
 void T5Gemma2Transformer::registerCustomLayers() {
@@ -313,7 +309,8 @@ void T5Gemma2Transformer::registerCustomLayers() {
 }
 
 void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
-                              const WSTR system_prompt, const WSTR tail_prompt) {
+                              const WSTR system_prompt,
+                              const WSTR tail_prompt) {
 
   if (!is_initialized) {
     throw std::runtime_error("T5Gemma2 model is not initialized. Please call "
@@ -328,28 +325,28 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
   input_prompt = prompt;
 #endif
 
-  // Create processor instance
-  // TODO : maybe change this to init
-  nntrainer::T5Gemma2Processor processor(256, 256000);
-
   // Process input prompt (extracts text and images)
-  auto processor_output = processor.process(input_prompt);
+  auto processor_output = processor->process(input_prompt);
 
   std::cout << "[T5Gemma2Transformer] Processed input:" << std::endl;
-  std::cout << "  input_ids length: " << processor_output.input_ids.size() << std::endl;
-  std::cout << "  pixel_values size: " << processor_output.pixel_values.size() << std::endl;
+  std::cout << "  input_ids length: " << processor_output.input_ids.size()
+            << std::endl;
+  std::cout << "  pixel_values size: " << processor_output.pixel_values.size()
+            << std::endl;
 
   // Prepare model input
   std::vector<float *> input;
 
   if (!processor_output.pixel_values.empty()) {
     // Image input: use pixel_values from processor
-    float *input_sample = (float *)malloc(sizeof(float) * processor_output.pixel_values.size());
+    float *input_sample =
+      (float *)malloc(sizeof(float) * processor_output.pixel_values.size());
     if (!input_sample) {
       throw std::runtime_error("Failed to allocate memory for input_sample.");
     }
 
-    std::copy(processor_output.pixel_values.begin(), processor_output.pixel_values.end(), input_sample);
+    std::copy(processor_output.pixel_values.begin(),
+              processor_output.pixel_values.end(), input_sample);
     input.push_back(input_sample);
 
     std::vector<float *> label;
@@ -365,9 +362,106 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
     free(input_sample);
   } else {
     // Text-only input
-    std::cout << "[T5Gemma2Transformer] Text-only input - processing not yet implemented" << std::endl;
+    std::cout << "[T5Gemma2Transformer] Text-only input - processing not yet "
+                 "implemented"
+              << std::endl;
     // TODO: Implement text-only inference path
   }
+}
+
+std::vector<LayerHandle>
+T5Gemma2Transformer::createEncoder(const std::string &input_name) {
+  std::vector<LayerHandle> layers;
+
+  // Create embedding layer (with scaling as in Gemma3TextScaledWordEmbedding)
+  // Embedding scale = sqrt(hidden_size)
+  float embed_scale = std::sqrt(DIM);
+  layers.push_back(createLayer("embedding_layer",
+                               {withKey("name", "encoder_embedding"),
+                                withKey("in_dim", std::to_string(NUM_VOCAB)),
+                                withKey("out_dim", std::to_string(DIM)),
+                                withKey("scale", std::to_string(embed_scale)),
+                                withKey("weight_dtype", EMBEDDING_DTYPE),
+                                withKey("input_layers", input_name)}));
+
+  std::string residual_checkpoint = "encoder_embedding";
+
+  // Create encoder layers (T5Gemma2 has NUM_LAYERS encoder layers)
+  for (int i = 0; i < NUM_LAYERS; i++) {
+    // Create attention type based on layer pattern
+    // T5Gemma2 uses mix of sliding_attention and full_attention
+    bool is_full_attention = ((i + 1) % 6 == 0);
+
+    std::string prefix = "encoder_layer" + std::to_string(i) + "_";
+
+    // Input layernorm
+    layers.push_back(
+      createLayer("rms_norm", {withKey("name", prefix + "pre_attention_layernorm"),
+                               withKey("epsilon", std::to_string(NORM_EPS)),
+                               withKey("input_layers", residual_checkpoint),
+                               withKey("packed", "false")}));
+
+    // Self-attention
+    // prefix + "attention_out"
+    auto att_layers = createEncoderAttention(i, prefix + "pre_attention_layernorm");
+    layers.insert(layers.end(), att_layers.begin(), att_layers.end());
+
+    // Post-attention layernorm
+    layers.push_back(createLayer(
+      "rms_norm",
+      {withKey("name", prefix + "post_attention_layernorm"),
+       withKey("epsilon", std::to_string(NORM_EPS)),
+       withKey("input_layers", prefix + "attention_out"), withKey("packed", "false")}));
+
+
+    // TODO : 딱 봐도 여기 input 이름이 잘 안되어 있음.
+    // 다른 거도 다 잘 연결되었는지 찾아보자 + 구조 잘 맞는지 확인
+    // 일단 pytorch보면서 구조를 한번 그려보자
+
+
+    // Residual connection after attention
+    layers.push_back(createLayer(
+      "addition",
+      {withKey("name", prefix + "attention_residual"),
+       withKey("input_layers", {residual_checkpoint, prefix + "post_attention_layernorm"})}));
+
+    residual_checkpoint = prefix + "attention_residual";
+
+    // Pre-FFN layernorm
+    layers.push_back(createLayer(
+      "rms_norm",
+      {withKey("name", prefix + "pre_feedforward_layernorm"),
+       withKey("epsilon", std::to_string(NORM_EPS)),
+       withKey("input_layers", residual_checkpoint), withKey("packed", "false")}));
+
+    // MLP (SwiGLU) - need to modify createMlp for encoder
+    auto mlp_layers = createMlp(prefix, DIM, ENC_MLP_HIDDEN_SIZE, prefix + "pre_feedforward_layernorm");
+    layers.insert(layers.end(), mlp_layers.begin(), mlp_layers.end());
+
+    // Post-FFN layernorm
+    layers.push_back(createLayer(
+      "rms_norm",
+      {withKey("name", prefix + "post_feedforward_layernorm"),
+       withKey("epsilon", std::to_string(NORM_EPS)),
+       withKey("input_layers", prefix+"ffn_down"), withKey("packed", "false")}));
+
+    // Residual connection after FFN
+    layers.push_back(createLayer(
+      "addition", {withKey("name", prefix + "ffn_residual"),
+                   withKey("input_layers", {residual_checkpoint,
+                                            prefix + "post_feedforward_layernorm"})}));
+
+    residual_checkpoint = prefix + "ffn_residual";
+  }
+
+  // Final normalization layer
+  layers.push_back(
+    createLayer("rms_norm", {withKey("name", "encoder_output_norm"),
+                             withKey("epsilon", std::to_string(NORM_EPS)),
+                             withKey("input_layers", residual_checkpoint),
+                             withKey("packed", "false")}));
+
+  return layers;
 }
 
 bool T5Gemma2Transformer::checkImageInput(const std::string &input_text) {

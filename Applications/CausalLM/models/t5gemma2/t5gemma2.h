@@ -15,6 +15,8 @@
 #define __T5GEMMA2_H__
 
 #include <transformer.h>
+#include <memory>
+#include "t5gemma2_processor.h"
 
 namespace causallm {
 
@@ -31,17 +33,20 @@ public:
   T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
     Transformer(cfg, generation_cfg, nntr_cfg, ModelType::MODEL) {
     setupParameters(cfg, generation_cfg, nntr_cfg);
-
+    
+    // Initialize processor (TODO: get parameters from config)
+    processor = std::make_unique<nntrainer::T5Gemma2Processor>(256, 256000);
     }
 
   virtual ~T5Gemma2Transformer() = default;
 
 public:
   std::vector<LayerHandle> createPatchEmbed();
-  std::vector<LayerHandle> createAttention(const int layer_id,
+  std::vector<LayerHandle> createEncoderAttention(const int layer_id,
                                            const std::string &input_name);
-  std::vector<LayerHandle> createMlp(const int layer_id,
-                                     const std::string &input_name);
+  std::vector<LayerHandle> createMlp(std::string prefix,
+                                                      int dim, int hidden_dim,
+                                                      std::string input_name);
 
 protected:
   void constructModel() override;
@@ -49,9 +54,14 @@ protected:
   void setupParameters(json &cfg, json &generation_cfg,
                        json &nntr_cfg) override;
 
-  std::vector<LayerHandle>
-  createTransformerDecoderBlock(const int layer_id,
-                                std::string input_name) override;
+  /**
+   * @brief Create encoder layers for T5Gemma2 text encoder
+   * @param input_name Name of the input layer
+   * @return encoder layers
+   */
+  std::vector<LayerHandle> createEncoder(const std::string &input_name);
+
+
 
   void registerCustomLayers() override;
 
@@ -73,9 +83,15 @@ protected:
    */
   bool checkImageInput(const std::string &input_text) override;
 
+
+
 private:
 
   // TODO : get from config
+
+  // TODO : change these to ENC_ / DEC_ / VISION_ 
+
+  int ENC_MLP_HIDDEN_SIZE;
 
   unsigned int IMG_SIZE = 224;    /**< Image height/width */
   unsigned int PATCH_SIZE = 16;   /**< Patch height/width */
@@ -83,6 +99,9 @@ private:
   unsigned int IMG_CHANNELS = 3;  /**< Image channels (RGB) */
 
   std::string BOI_TOKEN = "<start_of_image>";
+  
+  /** T5Gemma2 processor for multimodal input processing */
+  std::unique_ptr<nntrainer::T5Gemma2Processor> processor;
 
 };
 

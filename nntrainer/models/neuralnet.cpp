@@ -676,6 +676,42 @@ void NeuralNetwork::save(const std::string &file_path,
   }
 }
 
+
+size_t NeuralNetwork::getTotalModelBytes() const {
+  size_t total_bytes = 0;
+  
+  std::cout << "Model Weight Bytes Breakdown:" << std::endl;
+  std::cout << "=========================" << std::endl;
+  
+  for (auto iter = model_graph.cbegin(); iter != model_graph.cend(); iter++) {
+    auto weights = (*iter)->getRunContext().getWeights();
+    for (auto weight : weights) {
+      size_t size = weight->getVariable().getMemoryBytes();
+      auto tensor_data_type = weight->getDim().getDataType();
+      
+      // Add qparam size for quantized tensors
+      if (tensor_data_type != TensorDim::DataType::FP32 &&
+          tensor_data_type != TensorDim::DataType::FP16 &&
+          tensor_data_type != TensorDim::DataType::Q6_K &&
+          tensor_data_type != TensorDim::DataType::Q4_0) {
+        // for tensor with qparam
+        size += sizeof(uint16_t);
+      }
+      
+      std::cout << (*iter)->getName() << " | " << weight->getName() 
+                << " | " << size << " bytes" << std::endl;
+      
+      total_bytes += size;
+    }
+  }
+  
+  std::cout << "=========================" << std::endl;
+  std::cout << "Total: " << total_bytes << " bytes" << std::endl;
+  
+  return total_bytes;
+}
+
+
 void NeuralNetwork::load(const std::string &file_path,
                          ml::train::ModelFormat format) {
   /// @todo this switch case should be delegating the function call only. It's
@@ -1638,6 +1674,8 @@ void NeuralNetwork::printPreset(std::ostream &out, unsigned int preset) {
     throw std::invalid_argument("given verbosity is invalid");
   }
 
+  getTotalModelBytes();
+
   print(out, flags, layer_preset);
 }
 
@@ -1734,7 +1772,7 @@ void NeuralNetwork::print(std::ostream &out, unsigned int flags,
 
   if (flags & PRINT_GRAPH_INFO) {
     unsigned int total_col_size = 80;
-    std::vector<unsigned int> column_size = {20, 20, 20, 20};
+    std::vector<unsigned int> column_size = {40, 20, 20, 40};
     auto print_graph_layer_info =
       [column_size](std::ostream &out, std::vector<std::string> layer_info) {
         const auto &trim_string = [](std::string str,

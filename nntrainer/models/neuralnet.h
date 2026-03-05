@@ -771,6 +771,8 @@ private:
    * @retval true if matches, false is error
    */
   bool validateInput(sharedConstTensors X);
+
+  size_t getTotalModelBytes() const;
 };
 
 } /* namespace nntrainer */

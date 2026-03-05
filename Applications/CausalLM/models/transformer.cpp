@@ -170,6 +170,9 @@ void Transformer::initialize() {
     throw std::invalid_argument("Model initialization failed.");
   }
 
+  model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+
+
   is_initialized = true;
 
 #ifdef DEBUG
@@ -182,8 +185,11 @@ void Transformer::constructModel() {
   // layers used in the model
   std::vector<LayerHandle> layers;
 
+
+
   // create model
   model = ml::train::createModel(ml::train::ModelType::NEURAL_NET);
+
 
   // create input layer
   layers.push_back(createLayer(
