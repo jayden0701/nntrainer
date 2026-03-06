@@ -13,8 +13,13 @@
 
 #include "t5gemma2.h"
 #include "t5gemma2_processor.h"
+#include <reshaped_rms_norm.h>
 #include <factory.h>
 #include <llm_util.hpp>
+#include <app_context.h>
+#include <engine.h>
+
+
 
 namespace causallm {
 
@@ -25,9 +30,11 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
   EMBEDDING_DTYPE = nntr_cfg.value("embedding_dtype", "FP32");
   FC_LAYER_DTYPE = nntr_cfg.value("fc_layer_dtype", "FP32");
 
-  // T5Gemma2 has nested config structure - access decoder config for text model
-  // parameters
-  NUM_VOCAB = cfg.value("vocab_size", 1000);
+  // we use same tokenizer over all
+  NUM_VOCAB = cfg.value("vocab_size", 262144);
+
+  TOKEN_INDEX_EOI = cfg.value("eoi_token_index", 256000);
+  TOKEN_INDEX_IMAGE = cfg.value("image_token_index", 256001);
 
   // Decoder configuration
   if (cfg.contains("decoder")) {
@@ -78,14 +85,6 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
         : UINT_MAX;
   }
 
-    if (cfg.contains("encoder")) {
-    json &encoder_cfg = cfg["encoder"];
-    ENC_MLP_HIDDEN_SIZE = encoder_cfg.value("hidden_size", 640);
-    }
-    else
-    {
-      // create error
-    }
 
   TIE_WORD_EMBEDDINGS = cfg.value("tie_word_embeddings", false);
 
@@ -93,22 +92,148 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
   MAX_SEQ_LEN = nntr_cfg.value("max_seq_len", 224);
   NUM_TO_GENERATE = nntr_cfg.value("num_to_generate", 0);
 
-  // Encoder configuration (vision model)
-  if (cfg.contains("encoder") && cfg["encoder"].contains("vision_config")) {
-    json &vision_cfg = cfg["encoder"]["vision_config"];
-    IMG_SIZE = vision_cfg.value("image_size", 224);
-    PATCH_SIZE = vision_cfg.value("patch_size", 14);
-    IMG_CHANNELS = vision_cfg.value("num_channels", 3);
+  // ==========ENCODER CONFIGURATION ==========
+  if (cfg.contains("encoder")) {
+    json &encoder_cfg = cfg["encoder"];
 
-    // Calculate number of patches: (IMG_SIZE / PATCH_SIZE) ^ 2
-    NUM_PATCHES = (IMG_SIZE / PATCH_SIZE) * (IMG_SIZE / PATCH_SIZE);
-  } else {
-    // Fallback to top-level config for compatibility
-    IMG_SIZE = cfg.value("img_size", 224);
-    PATCH_SIZE = cfg.value("patch_size", 16);
-    NUM_PATCHES = cfg.value("num_patches", 196);
-    IMG_CHANNELS = 3;
+    // Encoder text config (for processing image features in text space)
+    if (encoder_cfg.contains("text_config")) {
+      json &enc_text_cfg = encoder_cfg["text_config"];
+      ENC_NUM_LAYERS = enc_text_cfg.value("num_hidden_layers", 18);
+      ENC_NUM_HEADS = enc_text_cfg.value("num_attention_heads", 4);
+      ENC_NUM_KEY_VALUE_HEADS = enc_text_cfg.value("num_key_value_heads", 1);
+      ENC_HEAD_DIM = enc_text_cfg.value("head_dim", 256);
+      ENC_HIDDEN_SIZE = enc_text_cfg.value("hidden_size", 640);
+      ENC_INTERMEDIATE_SIZE = enc_text_cfg.value("intermediate_size", 2048);
+      ENC_MAX_POSITION_EMBEDDINGS =
+        enc_text_cfg.value("max_position_embeddings", 32768);
+      ENC_NORM_EPS = enc_text_cfg.value("rms_norm_eps", 1e-6f);
+      ENC_SLIDING_WINDOW = enc_text_cfg.value("sliding_window", 512);
+      ENC_IS_BIDIRECTIONAL =
+        enc_text_cfg.value("use_bidirectional_attention", false);
+      ENC_USE_CROSS_ATTENTION =
+        enc_text_cfg.value("add_cross_attention", false);
+      ENC_SLIDING_WINDOW_PATTERN =
+        enc_text_cfg.value("_sliding_window_pattern", 6);
+      ENC_GQA_SIZE = ENC_NUM_HEADS / ENC_NUM_KEY_VALUE_HEADS;
+
+      ENC_MM_TOKENS_PER_IMAGE = encoder_cfg.value("mm_tokens_per_image", 256);
+
+      // RoPE parameters for encoder
+      if (enc_text_cfg.contains("rope_parameters")) {
+        json &rope_params = enc_text_cfg["rope_parameters"];
+        
+        // Sliding attention RoPE parameters
+        if (rope_params.contains("sliding_attention")) {
+          json &rope_cfg = rope_params["sliding_attention"];
+          ENC_ROPE_THETA_SLIDING = rope_cfg.value("rope_theta", 10000.0f);
+        } else {
+          ENC_ROPE_THETA_SLIDING = 10000.0f;
+        }
+        
+        // Full attention RoPE parameters
+        if (rope_params.contains("full_attention")) {
+          json &rope_cfg = rope_params["full_attention"];
+          ENC_ROPE_THETA = rope_cfg.value("rope_theta", 1000000.0f);
+        } else {
+          ENC_ROPE_THETA = 1000000.0f;
+        }
+      } else {
+        // Default values
+        ENC_ROPE_THETA_SLIDING = 10000.0f;
+        ENC_ROPE_THETA = 1000000.0f;
+      }
+    }
+
+    // Vision config (SigLIP)
+    if (encoder_cfg.contains("vision_config")) {
+      json &vision_cfg = encoder_cfg["vision_config"];
+      VISION_NUM_LAYERS = vision_cfg.value("num_hidden_layers", 27);
+      VISION_NUM_HEADS = vision_cfg.value("num_attention_heads", 16);
+      VISION_HIDDEN_SIZE = vision_cfg.value("hidden_size", 1152);
+      VISION_INTERMEDIATE_SIZE = vision_cfg.value("intermediate_size", 4304);
+      VISION_IMAGE_SIZE = vision_cfg.value("image_size", 896);
+      VISION_PATCH_SIZE = vision_cfg.value("patch_size", 14);
+      VISION_NUM_CHANNELS = vision_cfg.value("num_channels", 3);
+      VISION_NORM_EPS = vision_cfg.value("layer_norm_eps", 1e-6f);
+      VISION_HEAD_DIM = VISION_HIDDEN_SIZE / VISION_NUM_HEADS;
+      VISION_NUM_PATCHES = (VISION_IMAGE_SIZE / VISION_PATCH_SIZE) *
+                           (VISION_IMAGE_SIZE / VISION_PATCH_SIZE);
+    }
   }
+
+  // ========== DECODER CONFIGURATION ==========
+  if (cfg.contains("decoder")) {
+    json &decoder_cfg = cfg["decoder"];
+    DEC_NUM_LAYERS = decoder_cfg.value("num_hidden_layers", 18);
+    DEC_NUM_HEADS = decoder_cfg.value("num_attention_heads", 4);
+    DEC_NUM_KEY_VALUE_HEADS = decoder_cfg.value("num_key_value_heads", 1);
+    DEC_HEAD_DIM = decoder_cfg.value("head_dim", 256);
+    DEC_HIDDEN_SIZE = decoder_cfg.value("hidden_size", 640);
+    DEC_INTERMEDIATE_SIZE = decoder_cfg.value("intermediate_size", 2048);
+    DEC_MAX_POSITION_EMBEDDINGS =
+      decoder_cfg.value("max_position_embeddings", 32768);
+    DEC_NORM_EPS = decoder_cfg.value("rms_norm_eps", 1e-6f);
+    DEC_SLIDING_WINDOW = decoder_cfg.value("sliding_window", 512);
+    DEC_IS_CAUSAL = !decoder_cfg.value("use_bidirectional_attention", false);
+    DEC_IS_BIDIRECTIONAL =
+      decoder_cfg.value("use_bidirectional_attention", false);
+    DEC_QUERY_PRE_ATTN_SCALAR = decoder_cfg.value("query_pre_attn_scalar", 256);
+    DEC_SLIDING_WINDOW_PATTERN = decoder_cfg.value("_sliding_window_pattern", 6);
+    // DEC_ATTN_LOGIT_SOFTCAPPING =
+    //   decoder_cfg.value("attn_logit_softcapping", 0.0);
+    // DEC_FINAL_LOGIT_SOFTCAPPING =
+    //   decoder_cfg.value("final_logit_softcapping", 0.0);
+
+    // RoPE parameters for decoder
+    if (decoder_cfg.contains("rope_parameters")) {
+      json &rope_params = decoder_cfg["rope_parameters"];
+      
+      // Sliding attention RoPE parameters
+      if (rope_params.contains("sliding_attention")) {
+        json &rope_cfg = rope_params["sliding_attention"];
+        DEC_ROPE_THETA_SLIDING = rope_cfg.value("rope_theta", 10000.0f);
+      } else {
+        DEC_ROPE_THETA_SLIDING = 10000.0f;
+      }
+      
+      // Full attention RoPE parameters
+      if (rope_params.contains("full_attention")) {
+        json &rope_cfg = rope_params["full_attention"];
+        DEC_ROPE_THETA = rope_cfg.value("rope_theta", 1000000.0f);
+      } else {
+        DEC_ROPE_THETA = 1000000.0f;
+      }
+    } else {
+      // Default values
+      DEC_ROPE_THETA_SLIDING = 10000.0f;
+      DEC_ROPE_THETA = 1000000.0f;
+    }
+  }
+
+  // ========== LEGACY: Update old variables for backward compatibility
+  // ==========
+  NUM_LAYERS = DEC_NUM_LAYERS;
+  NUM_HEADS = DEC_NUM_HEADS;
+  HEAD_DIM = DEC_HEAD_DIM;
+  DIM = DEC_HIDDEN_SIZE;
+  INTERMEDIATE_SIZE = DEC_INTERMEDIATE_SIZE;
+  NUM_KEY_VALUE_HEADS = DEC_NUM_KEY_VALUE_HEADS;
+  MAX_POSITION_EMBEDDINGS = DEC_MAX_POSITION_EMBEDDINGS;
+  NORM_EPS = DEC_NORM_EPS;
+  GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
+  IS_CAUSAL = DEC_IS_CAUSAL;
+  ROPE_THETA = DEC_ROPE_THETA;
+  SLIDING_WINDOW = DEC_SLIDING_WINDOW;
+
+  // Encoder MLP hidden size (for cross-attention)
+  ENC_MLP_HIDDEN_SIZE = ENC_INTERMEDIATE_SIZE;
+
+  // Image configuration
+  IMG_SIZE = VISION_IMAGE_SIZE;
+  PATCH_SIZE = VISION_PATCH_SIZE;
+  NUM_PATCHES = VISION_NUM_PATCHES;
+  IMG_CHANNELS = VISION_NUM_CHANNELS;
 }
 
 std::vector<LayerHandle> T5Gemma2Transformer::createPatchEmbed() {
@@ -158,103 +283,124 @@ std::vector<LayerHandle> T5Gemma2Transformer::createPatchEmbed() {
   return layers;
 }
 
-std::vector<LayerHandle>
-T5Gemma2Transformer::createEncoderAttention(const int layer_id,
-                                     const std::string &input_name) {
+// TODO : vision에서 코드 재활용 가능한지는 나중에 확인
+std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(std::string prefix, const int layer_id, int seq_len, int n_heads,
+  int head_dim, int gqa_size, std::string query_name, std::string key_name,
+  std::string value_name) {
+
   std::vector<LayerHandle> layers;
 
-  std::string prefix = "encoder_layer" + std::to_string(layer_id) + "_";
+  auto Q = prefix + "wq";
+  auto K = prefix + "wk";
+  auto V = prefix + "wv";
+  auto A = prefix + "attention";
+  auto O = prefix + "attention_out";
 
-  layers.push_back(createLayer("layer_normalization",
-                               {withKey("name", prefix + "attention_norm"),
-                                withKey("axis", "3"),
-                                withKey("epsilon", std::to_string(NORM_EPS)),
-                                withKey("input_layers", input_name)}));
+  auto Q_norm = Q + "_norm";
+  auto K_norm = K + "_norm";
 
-  auto q = prefix + "qkv_q", k = prefix + "qkv_k", v = prefix + "qkv_v",
-       a = prefix + "attention", o = prefix + "attention_out";
+  // V layer
+  std::vector<std::string> v_params = {
+    withKey("name", V), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"), withKey("input_layers", value_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", v_params));
 
-  layers.push_back(
-    createLayer("fully_connected",
-                {withKey("name", q), withKey("unit", std::to_string(DIM)),
-                 withKey("disable_bias", "false"),
-                 withKey("input_layers", prefix + "attention_norm")}));
+  // K layer
+  std::vector<std::string> k_params = {
+    withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"), withKey("input_layers", key_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", k_params));
 
-  layers.push_back(
-    createLayer("fully_connected",
-                {withKey("name", k), withKey("unit", std::to_string(DIM)),
-                 withKey("disable_bias", "false"),
-                 withKey("input_layers", prefix + "attention_norm")}));
+  // Q layer
+  std::vector<std::string> q_params = {
+    withKey("name", Q), withKey("unit", head_dim * n_heads),
+    withKey("disable_bias", "true"), withKey("input_layers", query_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", q_params));
 
-  layers.push_back(
-    createLayer("fully_connected",
-                {withKey("name", v), withKey("unit", std::to_string(DIM)),
-                 withKey("disable_bias", "false"),
-                 withKey("input_layers", prefix + "attention_norm")}));
 
-  layers.push_back(createLayer(
-    "mha_core",
-    {withKey("name", a), withKey("num_heads", std::to_string(NUM_HEADS)),
-     withKey("num_heads_kv", std::to_string(NUM_HEADS)),
-     withKey("max_timestep", std::to_string(NUM_PATCHES + 1)),
-     withKey("is_causal", "false"), withKey("use_rope", "false"),
-     withKey("input_layers", {q, k, v})}));
+  // Q_normalized
+       std::vector<std::string> q_norm_params = {
+    withKey("name", Q_norm), withKey("input_layers", Q),
+    withKey("packed", "false"), withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
-  layers.push_back(createLayer(
-    "fully_connected",
-    {withKey("name", o), withKey("unit", std::to_string(DIM)),
-     withKey("disable_bias", "false"), withKey("input_layers", a)}));
+  // K_normalized
+       std::vector<std::string> k_norm_params = {
+    withKey("name", K_norm), withKey("input_layers", K),
+    withKey("packed", "false"), withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
+
+  // Determine RoPE theta based on layer type
+  bool is_full_attention = ((layer_id + 1) % ENC_SLIDING_WINDOW_PATTERN == 0);
+
+  // Attention core layer
+  std::vector<std::string> a_params = {
+    withKey("name", A),
+    withKey("num_heads", n_heads),
+    withKey("num_heads_kv", n_heads / gqa_size),
+    withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
+    withKey("sliding_window", is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
+    withKey("rope_theta", is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
+    withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
+    // TODO : change this if it is causal!!
+    withKey("is_causal", "false"),
+    withKey("input_layers", {Q_norm, K_norm, V})};
+  layers.push_back(createLayer("mha_core", a_params));
+
+  // O layer
+  std::vector<std::string> o_params = {
+    withKey("name", O), withKey("unit", ENC_HIDDEN_SIZE), withKey("disable_bias", "true"),
+    withKey("input_layers", A), withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", o_params));
 
   return layers;
 }
 
-std::vector<LayerHandle> T5Gemma2Transformer::createMlp(std::string prefix,
-                                                      int dim, int hidden_dim,
-                                                      std::string input_name) {
+std::vector<LayerHandle>
+T5Gemma2Transformer::createMlp(std::string prefix, int dim, int intermediate_dim,
+                               std::string input_name) {
   std::vector<LayerHandle> layers;
 
   // Gate projection
   layers.push_back(createLayer(
     "fully_connected",
-    {withKey("name", prefix + "ffn_gate"),
-     withKey("unit", hidden_dim), withKey("disable_bias", "true"),
-     withKey("input_layers", input_name),
+    {withKey("name", prefix + "ffn_gate"), withKey("unit", intermediate_dim),
+     withKey("disable_bias", "true"), withKey("input_layers", input_name),
      withKey("weight_initializer", "ones")}));
 
   // GeLU
-  layers.push_back(createLayer(
-    "activation",
-    {withKey("name", prefix + "ffn_gate_gelu"),
-     withKey("activation", "tanh_gelu"),
-     withKey("input_layers",
-             prefix + "ffn_gate")}));
+  layers.push_back(
+    createLayer("activation", {withKey("name", prefix + "ffn_gate_gelu"),
+                               withKey("activation", "tanh_gelu"),
+                               withKey("input_layers", prefix + "ffn_gate")}));
 
   // Up projection
   layers.push_back(createLayer(
     "fully_connected",
-    {withKey("name", prefix + "ffn_up"),
-     withKey("unit", hidden_dim), withKey("disable_bias", "true"),
-     withKey("input_layers", input_name),
+    {withKey("name", prefix + "ffn_up"), withKey("unit", intermediate_dim),
+     withKey("disable_bias", "true"), withKey("input_layers", input_name),
      withKey("weight_initializer", "ones")}));
 
   // Multiply
   layers.push_back(createLayer(
-    "multiply",
-    {withKey("name", prefix + "ffn_geglu"),
-     withKey("input_layers", prefix +
-                               "ffn_gate_gelu" + ","+ prefix + "ffn_up")}));
+    "multiply", {withKey("name", prefix + "ffn_geglu"),
+                 withKey("input_layers",
+                         prefix + "ffn_gate_gelu" + "," + prefix + "ffn_up")}));
 
   // Down projection
   layers.push_back(createLayer(
-    "fully_connected",
-    {withKey("name", prefix + "ffn_down"),
-     withKey("unit", dim), withKey("disable_bias", "true"),
-     withKey("input_layers", prefix + "ffn_geglu"),
-     withKey("weight_initializer", "ones")}));
+    "fully_connected", {withKey("name", prefix + "ffn_down"),
+                        withKey("unit", dim), withKey("disable_bias", "true"),
+                        withKey("input_layers", prefix + "ffn_geglu"),
+                        withKey("weight_initializer", "ones")}));
 
   return layers;
 }
-
 
 void T5Gemma2Transformer::constructModel() {
   std::vector<LayerHandle> layers;
@@ -265,11 +411,9 @@ void T5Gemma2Transformer::constructModel() {
     "input", {withKey("name", "input0"),
               withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))}));
 
-  
-  auto encoder = createEncoder("input0");            
+  auto encoder = createEncoder("input0");
 
   layers.insert(layers.end(), encoder.begin(), encoder.end());
-
 
   for (auto &layer : layers) {
     model->addLayer(layer);
@@ -280,8 +424,6 @@ void T5Gemma2Transformer::initialize() {
   registerCustomLayers();
 
   constructModel();
-
-
 
   std::vector<std::string> model_props = {
     withKey("batch_size", BATCH_SIZE), withKey("epochs", "1"),
@@ -297,15 +439,25 @@ void T5Gemma2Transformer::initialize() {
     throw std::invalid_argument("Model initialization failed.");
   }
 
-      model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+  //model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 
   is_initialized = true;
-
-
 }
 
 void T5Gemma2Transformer::registerCustomLayers() {
   Transformer::registerCustomLayers();
+
+  auto &ct_engine = nntrainer::Engine::Global();
+  auto app_context =
+    static_cast<nntrainer::AppContext *>(ct_engine.getRegisteredContext("cpu"));
+
+  try {
+    app_context->registerFactory(
+      nntrainer::createLayer<causallm::ReshapedRMSNormLayer>);
+  } catch (std::invalid_argument &e) {
+    std::cerr << "failed to register factory, reason: " << e.what()
+              << std::endl;
+  }
 }
 
 void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
@@ -375,14 +527,14 @@ T5Gemma2Transformer::createEncoder(const std::string &input_name) {
 
   // Create embedding layer (with scaling as in Gemma3TextScaledWordEmbedding)
   // Embedding scale = sqrt(hidden_size)
-  float embed_scale = std::sqrt(DIM);
-  layers.push_back(createLayer("embedding_layer",
-                               {withKey("name", "encoder_embedding"),
-                                withKey("in_dim", std::to_string(NUM_VOCAB)),
-                                withKey("out_dim", std::to_string(DIM)),
-                                withKey("scale", std::to_string(embed_scale)),
-                                withKey("weight_dtype", EMBEDDING_DTYPE),
-                                withKey("input_layers", input_name)}));
+  float embed_scale = std::sqrt(ENC_HIDDEN_SIZE);
+  layers.push_back(createLayer(
+    "embedding_layer", {withKey("name", "encoder_embedding"),
+                        withKey("in_dim", std::to_string(NUM_VOCAB)),
+                        withKey("out_dim", std::to_string(ENC_HIDDEN_SIZE)),
+                        withKey("scale", std::to_string(embed_scale)),
+                        withKey("weight_dtype", EMBEDDING_DTYPE),
+                        withKey("input_layers", input_name)}));
 
   std::string residual_checkpoint = "encoder_embedding";
 
@@ -395,61 +547,65 @@ T5Gemma2Transformer::createEncoder(const std::string &input_name) {
     std::string prefix = "encoder_layer" + std::to_string(i) + "_";
 
     // Input layernorm
-    layers.push_back(
-      createLayer("rms_norm", {withKey("name", prefix + "pre_attention_layernorm"),
-                               withKey("epsilon", std::to_string(NORM_EPS)),
-                               withKey("input_layers", residual_checkpoint),
-                               withKey("packed", "false")}));
+    layers.push_back(createLayer(
+      "rms_norm", {withKey("name", prefix + "pre_attention_layernorm"),
+                   withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+                   withKey("input_layers", residual_checkpoint),
+                   withKey("packed", "false")}));
 
     // Self-attention
     // prefix + "attention_out"
-    auto att_layers = createEncoderAttention(i, prefix + "pre_attention_layernorm");
+    auto att_layers = createSelfAttention(
+      prefix, i, INIT_SEQ_LEN, ENC_NUM_HEADS, ENC_HEAD_DIM, ENC_GQA_SIZE,
+      prefix + "pre_attention_layernorm", prefix + "pre_attention_layernorm",
+      prefix + "pre_attention_layernorm");
     layers.insert(layers.end(), att_layers.begin(), att_layers.end());
 
     // Post-attention layernorm
     layers.push_back(createLayer(
-      "rms_norm",
-      {withKey("name", prefix + "post_attention_layernorm"),
-       withKey("epsilon", std::to_string(NORM_EPS)),
-       withKey("input_layers", prefix + "attention_out"), withKey("packed", "false")}));
-
+      "rms_norm", {withKey("name", prefix + "post_attention_layernorm"),
+                   withKey("epsilon", std::to_string(NORM_EPS)),
+                   withKey("input_layers", prefix + "attention_out"),
+                   withKey("packed", "false")}));
 
     // TODO : 딱 봐도 여기 input 이름이 잘 안되어 있음.
     // 다른 거도 다 잘 연결되었는지 찾아보자 + 구조 잘 맞는지 확인
     // 일단 pytorch보면서 구조를 한번 그려보자
 
-
     // Residual connection after attention
     layers.push_back(createLayer(
       "addition",
       {withKey("name", prefix + "attention_residual"),
-       withKey("input_layers", {residual_checkpoint, prefix + "post_attention_layernorm"})}));
+       withKey("input_layers",
+               {residual_checkpoint, prefix + "post_attention_layernorm"})}));
 
     residual_checkpoint = prefix + "attention_residual";
 
     // Pre-FFN layernorm
     layers.push_back(createLayer(
-      "rms_norm",
-      {withKey("name", prefix + "pre_feedforward_layernorm"),
-       withKey("epsilon", std::to_string(NORM_EPS)),
-       withKey("input_layers", residual_checkpoint), withKey("packed", "false")}));
+      "rms_norm", {withKey("name", prefix + "pre_feedforward_layernorm"),
+                   withKey("epsilon", std::to_string(NORM_EPS)),
+                   withKey("input_layers", residual_checkpoint),
+                   withKey("packed", "false")}));
 
     // MLP (SwiGLU) - need to modify createMlp for encoder
-    auto mlp_layers = createMlp(prefix, DIM, ENC_MLP_HIDDEN_SIZE, prefix + "pre_feedforward_layernorm");
+    auto mlp_layers = createMlp(prefix, ENC_HIDDEN_SIZE, ENC_MLP_HIDDEN_SIZE,
+                                prefix + "pre_feedforward_layernorm");
     layers.insert(layers.end(), mlp_layers.begin(), mlp_layers.end());
 
     // Post-FFN layernorm
     layers.push_back(createLayer(
-      "rms_norm",
-      {withKey("name", prefix + "post_feedforward_layernorm"),
-       withKey("epsilon", std::to_string(NORM_EPS)),
-       withKey("input_layers", prefix+"ffn_down"), withKey("packed", "false")}));
+      "rms_norm", {withKey("name", prefix + "post_feedforward_layernorm"),
+                   withKey("epsilon", std::to_string(NORM_EPS)),
+                   withKey("input_layers", prefix + "ffn_down"),
+                   withKey("packed", "false")}));
 
     // Residual connection after FFN
     layers.push_back(createLayer(
-      "addition", {withKey("name", prefix + "ffn_residual"),
-                   withKey("input_layers", {residual_checkpoint,
-                                            prefix + "post_feedforward_layernorm"})}));
+      "addition",
+      {withKey("name", prefix + "ffn_residual"),
+       withKey("input_layers",
+               {residual_checkpoint, prefix + "post_feedforward_layernorm"})}));
 
     residual_checkpoint = prefix + "ffn_residual";
   }

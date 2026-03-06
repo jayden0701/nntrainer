@@ -134,7 +134,7 @@ int main(int argc, char *argv[]) {
 
 
   std::ios_base::sync_with_stdio(false);
-  std::ofstream out("debug_t5gemma2.txt");
+  std::ofstream out("/home/jayden/NNTrainer_Playground/t5gemma2/nntrainer/Applications/CausalLM/models/t5gemma2/debug_t5gemma2.txt");
   std::streambuf *coutbuf = std::cout.rdbuf();
   std::cout.rdbuf(out.rdbuf());
 

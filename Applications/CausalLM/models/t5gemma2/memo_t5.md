@@ -92,7 +92,17 @@ load_weight시점에서 구조에 맞는 weight를 다 로딩함으로, 그 전�
 
 모델이 compile단계 (그 중 output setting)에서 막힘. 제대로 구성이 안되어서 그런 거 같으니 걍 코드쪽에서 한번 더 보자
 
+(0305 퇴근전) Encoder일단 구현 후 weight loading까지는 됨 (config기반 수치들도 일단 넣긴 함)
+gemma3의 구조를 많이 재활용함...미리 알았으면 좋았을 듯
+내일 와서는 
+  1) Weight Loading잘 되었는지 비교
+  2) Run()을 텍스트 용으로 만들어서 encoder값이 잘 통과되는지 확인
 
+
+
+
+
+  
 
 
 
