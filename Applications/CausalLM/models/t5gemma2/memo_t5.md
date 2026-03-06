@@ -98,11 +98,14 @@ gemma3의 구조를 많이 재활용함...미리 알았으면 좋았을 듯
   1) Weight Loading잘 되었는지 비교
   2) Run()을 텍스트 용으로 만들어서 encoder값이 잘 통과되는지 확인
 
+(0306 점심전) Weight loading을 확인해 봤는데, 아예 다름. converter에서 잘못된 순서로 준 거 같은데, converter의 디버깅 과정과, t5gemma의 layer순서 (compile이랑 순서 확인 완료 후) 를 찍어봐서 제대로 로딩하는지 확인해보자. 순서는 일단 처음이 일치하는데, load시 들어가는 순서가 맞는지 보자(그 load하는 file offset 찍는 gauss3n에 넣은 디버거로 )
 
 
 
 
-  
+
+
+
 
 
 

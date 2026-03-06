@@ -65,6 +65,13 @@ void TensorBase::read(std::ifstream &file, size_t start_offset,
   }
   std::streamsize sz = static_cast<std::streamsize>(bytes());
 
+    std::cout << "=============================\n" << std::endl;
+    std::cout << "Tensor Name: " << name << std::endl;
+    std::cout << "Tensor Dim: " << dim << std::endl;
+    std::cout << "Bytes to read: " << bytes() << std::endl;
+    std::cout << "Start offset: " << start_offset << std::endl;
+    std::cout << "=============================\n" << std::endl;
+
   NNTR_THROW_IF(sz < 0, std::invalid_argument)
     << "read size: " << bytes()
     << " is too big. It cannot be represented by std::streamsize";

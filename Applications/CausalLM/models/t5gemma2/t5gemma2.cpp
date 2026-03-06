@@ -439,7 +439,7 @@ void T5Gemma2Transformer::initialize() {
     throw std::invalid_argument("Model initialization failed.");
   }
 
-  //model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+  model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 
   is_initialized = true;
 }
