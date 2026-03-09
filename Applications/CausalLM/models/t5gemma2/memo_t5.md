@@ -100,9 +100,14 @@ gemma3의 구조를 많이 재활용함...미리 알았으면 좋았을 듯
 
 (0306 점심전) Weight loading을 확인해 봤는데, 아예 다름. converter에서 잘못된 순서로 준 거 같은데, converter의 디버깅 과정과, t5gemma의 layer순서 (compile이랑 순서 확인 완료 후) 를 찍어봐서 제대로 로딩하는지 확인해보자. 순서는 일단 처음이 일치하는데, load시 들어가는 순서가 맞는지 보자(그 load하는 file offset 찍는 gauss3n에 넣은 디버거로 )
 
+(0306 퇴근전) weight별 loading값, offset등 넣었는데, 섞여서 나옴(멀티스레드). 단일 스레드로 할지나 프린트문을 스레드와 상관없이 잘나오게 하는 방법 생각해보자
 
 
+pre_attn_layernorm은 NNTrainer측 weight가 1 큼 (변환기에서 알아서 했네ㅋㅋ 이게 맞는건지는 나중에 생각해 보자)
+q_norm도 마찬가지. 모든 RMS가 이리 했네ㅋㅋ
 
+layer2가 결과가 좀 안정적이라 여기서 확인 ㄱㄱ
+-> 대충 다 맞는 거 같음
 
 
 

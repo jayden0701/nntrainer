@@ -514,10 +514,10 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
     free(input_sample);
   } else {
     // Text-only input
-    std::cout << "[T5Gemma2Transformer] Text-only input - processing not yet "
-                 "implemented"
-              << std::endl;
-    // TODO: Implement text-only inference path
+
+
+    
+
   }
 }
 

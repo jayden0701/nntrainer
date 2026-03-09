@@ -676,19 +676,18 @@ void NeuralNetwork::save(const std::string &file_path,
   }
 }
 
-
 size_t NeuralNetwork::getTotalModelBytes() const {
   size_t total_bytes = 0;
-  
+
   std::cout << "Model Weight Bytes Breakdown:" << std::endl;
   std::cout << "=========================" << std::endl;
-  
+
   for (auto iter = model_graph.cbegin(); iter != model_graph.cend(); iter++) {
     auto weights = (*iter)->getRunContext().getWeights();
     for (auto weight : weights) {
       size_t size = weight->getVariable().getMemoryBytes();
       auto tensor_data_type = weight->getDim().getDataType();
-      
+
       // Add qparam size for quantized tensors
       if (tensor_data_type != TensorDim::DataType::FP32 &&
           tensor_data_type != TensorDim::DataType::FP16 &&
@@ -697,20 +696,19 @@ size_t NeuralNetwork::getTotalModelBytes() const {
         // for tensor with qparam
         size += sizeof(uint16_t);
       }
-      
-      std::cout << (*iter)->getName() << " | " << weight->getName() 
-                << " | " << size << " bytes" << std::endl;
-      
+
+      std::cout << (*iter)->getName() << " | " << weight->getName() << " | "
+                << size << " bytes" << std::endl;
+
       total_bytes += size;
     }
   }
-  
+
   std::cout << "=========================" << std::endl;
   std::cout << "Total: " << total_bytes << " bytes" << std::endl;
-  
+
   return total_bytes;
 }
-
 
 void NeuralNetwork::load(const std::string &file_path,
                          ml::train::ModelFormat format) {
@@ -788,21 +786,20 @@ void NeuralNetwork::load(const std::string &file_path,
             node->read(local_model_file, false, exec_mode, fsu_mode,
                        std::numeric_limits<size_t>::max(), true, model_file_fd);
 
-
-            
-                        auto num_weights = node->getNumWeights();
-            if (static_cast<unsigned int>(num_weights) != 0)
-            {
-              std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() << std::endl;
+            auto num_weights = node->getNumWeights();
+            if (static_cast<unsigned int>(num_weights) != 0) {
+              std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() << "\n";
               auto num_weights = node->getNumWeights();
-              std::cout << "DEBUG: num weight: " << num_weights << std::endl;
-              for (size_t i = 0; i < num_weights; i++)
-              {
-                auto weight = node->getWeightObject(static_cast<unsigned int>(i));
-                std::cout << "DEBUG: weight: " << static_cast<Weight>(weight).getVariable() << std::endl;
+              std::cout << "DEBUG: num weight: " << num_weights << "\n";
+              for (size_t i = 0; i < num_weights; i++) {
+                auto weight =
+                  node->getWeightObject(static_cast<unsigned int>(i));
+                std::cout << "DEBUG: weight: "
+                          << static_cast<Weight>(weight).getVariable()
+                          << std::endl;
               }
             }
-           
+
           } else {
 #if defined(_WIN32)
             // Map per-ask, then unmap immediately after: enables early release
@@ -836,7 +833,7 @@ void NeuralNetwork::load(const std::string &file_path,
             NNTR_THROW_IF((fd == -1), std::invalid_argument)
               << "Cannot open file : " << f_path;
 
-            struct stat st {};
+            struct stat st{};
             NNTR_THROW_IF((::fstat(fd, &st) == -1), std::invalid_argument)
               << "Cannot get file info (fstat): " << f_path;
 

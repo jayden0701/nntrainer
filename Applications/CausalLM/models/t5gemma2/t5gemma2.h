@@ -14,9 +14,9 @@
 #ifndef __T5GEMMA2_H__
 #define __T5GEMMA2_H__
 
-#include <transformer.h>
-#include <memory>
 #include "t5gemma2_processor.h"
+#include <memory>
+#include <transformer.h>
 
 namespace causallm {
 
@@ -26,28 +26,32 @@ namespace causallm {
 class T5Gemma2Transformer : virtual public Transformer {
 
 public:
-
   // TODO : divide architecture to T5Gemma2 / T5Gemma2ForConditionalGeneration
-  static constexpr const char *architectures = "T5Gemma2ForConditionalGeneration";
+  static constexpr const char *architectures =
+    "T5Gemma2ForConditionalGeneration";
 
   T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
     Transformer(cfg, generation_cfg, nntr_cfg, ModelType::MODEL) {
     setupParameters(cfg, generation_cfg, nntr_cfg);
-    
+
     // Initialize processor (TODO: get parameters from config)
     processor = std::make_unique<nntrainer::T5Gemma2Processor>(256, 256000);
+    if (tokenizer) {
+      processor->setTokenizer(std::move(tokenizer));
     }
+  }
 
   virtual ~T5Gemma2Transformer() = default;
 
 public:
   std::vector<LayerHandle> createPatchEmbed();
-  std::vector<LayerHandle> createSelfAttention(std::string prefix, const int layer_id, int seq_len, int n_heads,
-                             int head_dim, int gqa_size, std::string query_name,
-                             std::string key_name, std::string value_name);
-  std::vector<LayerHandle> createMlp(std::string prefix,
-                                                      int dim, int hidden_dim,
-                                                      std::string input_name);
+  std::vector<LayerHandle>
+  createSelfAttention(std::string prefix, const int layer_id, int seq_len,
+                      int n_heads, int head_dim, int gqa_size,
+                      std::string query_name, std::string key_name,
+                      std::string value_name);
+  std::vector<LayerHandle> createMlp(std::string prefix, int dim,
+                                     int hidden_dim, std::string input_name);
 
 protected:
   void constructModel() override;
@@ -61,8 +65,6 @@ protected:
    * @return encoder layers
    */
   std::vector<LayerHandle> createEncoder(const std::string &input_name);
-
-
 
   void registerCustomLayers() override;
 
@@ -80,23 +82,19 @@ protected:
   /**
    * @brief Check if the model has image input by looking for BOI_TOKEN
    * @param input_text the input for model (for checking if it contains image)
-   * @return true if the model has image input (BOI_TOKEN found), false otherwise
+   * @return true if the model has image input (BOI_TOKEN found), false
+   * otherwise
    */
   bool checkImageInput(const std::string &input_text) override;
 
-
-
 private:
-
   // TODO : get from config
 
-  // TODO : change these to ENC_ / DEC_ / VISION_ 
-
+  // TODO : change these to ENC_ / DEC_ / VISION_
 
   // shared configuration
   int TOKEN_INDEX_EOI;
   int TOKEN_INDEX_IMAGE;
-
 
   // Encoder configuration (text encoder for vision model)
   int ENC_NUM_LAYERS;
@@ -111,13 +109,13 @@ private:
   unsigned int ENC_SLIDING_WINDOW;
   float ENC_ROPE_THETA;
   float ENC_ROPE_THETA_SLIDING;
-  
+
   bool ENC_USE_CROSS_ATTENTION;
   bool ENC_IS_BIDIRECTIONAL;
   int ENC_MLP_HIDDEN_SIZE;
   int ENC_MM_TOKENS_PER_IMAGE;
   int ENC_SLIDING_WINDOW_PATTERN;
-  
+
   // Decoder configuration (text generation model)
   int DEC_NUM_LAYERS;
   int DEC_NUM_HEADS;
@@ -131,13 +129,13 @@ private:
   float DEC_ROPE_THETA;
   float DEC_ROPE_THETA_SLIDING;   // RoPE theta for sliding attention layers
   float DEC_ROPE_THETA_FULL;      // RoPE theta for full attention layers
-  int DEC_SLIDING_WINDOW_PATTERN;  // Pattern for alternating attention types
+  int DEC_SLIDING_WINDOW_PATTERN; // Pattern for alternating attention types
   bool DEC_IS_CAUSAL;
   bool DEC_IS_BIDIRECTIONAL;
   int DEC_QUERY_PRE_ATTN_SCALAR;
   float DEC_ATTN_LOGIT_SOFTCAPPING;
   float DEC_FINAL_LOGIT_SOFTCAPPING;
-  
+
   // Vision encoder configuration (SigLIP)
   int VISION_NUM_LAYERS;
   int VISION_NUM_CHANNELS;
@@ -156,10 +154,9 @@ private:
   unsigned int IMG_CHANNELS = 3;  /**< Image channels (RGB) */
 
   std::string BOI_TOKEN = "<start_of_image>";
-  
+
   /** T5Gemma2 processor for multimodal input processing */
   std::unique_ptr<nntrainer::T5Gemma2Processor> processor;
-
 };
 
 } // namespace causallm

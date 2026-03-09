@@ -9,6 +9,7 @@
   full_image_sequence: 
 
 <start_of_image><image_soft_token><image_soft_to...
+[T5Gemma2Processor] Tokenizer set successfully
 Model Weight Bytes Breakdown:
 =========================
 encoder_embedding | encoder_embedding:Embedding | 671088640 bytes
@@ -1140,4032 +1141,1685 @@ Total: 1072392704 bytes
 --------------------------------------------------------------------------------
                      encoder_output_norm            rms_norm        1:1:1024:640            encoder_layer17_ffn_residual
 ================================================================================
-=============================
-
-Tensor Name: encoder_embedding:Embedding
-Tensor Dim: Shape: 1:1:262144:640 [ FP32 : NCHW ]
-
-Bytes to read: 671088640
-Start offset: 0
-=============================
-
-=============================
-
-Tensor Name: encoder_layer0_pre_attention_layernorm:gamma
-==
-
-Tensor Name: encoder_layer0_wq_norm:gamma
-layernorm:gamma
-==
-
-=============================
-
-Tensor Name: encoder_layer0_wq:weight
-mma
-layernorm:gamma
-Tensor Dim:  encoder_layer0_wq:weight
-====Tensor Dim: Shape: 1:1:1:640 [ FP32 : Tensor Dim: Shape: 1:1:640:1024 [ FP32 : NCHW ]
-===================
-
-Tensor Name: encoder_layer0_wk_norm:gamma
-CHW
-ensor Name: encoder_layer0_wk_norm:gamma
-CHW
-ensor Name: encoder_layer0_wk_norm:gamma
-CHW ]
-
-ensor Name: encoder_layer0_wk_norm:gamma
-T BBytes to read: 26
-ytes to read: 2621440Start offset: 671088Start offset: 673712640SBytes to read: 1024
-200
-====================================================================Start offset: 674369024
-=====
-
-Start offset: 674369024
-=====
-
-Start offset: 674369024
-=====
-
-Start offset: 674369024
-=============================
-
-=============================
-
-Tensor Name: encoder_layer0_wv:weight
-Tensor Dim: Shape: 1:1:640:256 [ FP32 : NCHW ]
-
-Bytes to read: 655360
-Start offset: 674370048
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> =============================
-============
-
-========
+DEBUG: NAME: >>>>>>>>>>> encoder_layer0_pre_attention_layernorm
 DEBUG: num weight: 1
->>> =============================
-============
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffea2c5f6a0>
+data addr: 0x7ffeb1a12210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[16.5 16.8125 11.375 ... 15.75 9.9375 10.4375]
 
-========
-
-Tensor Name: encoder_Tensor Name: encoder_layer0_wk:weight
-Tensor Dim: Shape: 1:1:640:256 [ FP32 : NCHW ]
-
-Bytes to read: 655360
-Start offset: 673713664
-=============================
-
-DEBUG: weight: <N9nntrainer6TensorE at 0x72770edef6a0>
-data addr: 0x72772ba92c10
+DEBUG: NAME: >>>>>>>>>>> encoder_layer0_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffea145c6a0>
+data addr: 0x7ffeb1c92c10
 Shape: 1:1:1:256 [ FP32 : NCHW ]
 [0.623047 1.17969 1.41992 ... 1.63281 2.47656 1.83203]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer0_wk_norm
 DEBUG: num weight: 1
->>> encoder_layer0_wk_norm
-DEBUG: NAME: >>>>>>>>>>> encoder_layer0_pre_attention_layernorm
-DEBUG: num weight: 1
-DEBUG: num weight: 1
-DEBUG: weight: DEBUG: weight: <N9nntrainer6TensorE at 0x7277167ec6a0>
-DEBUG: weight: DEBUG: weight: <N9nntrainer6TensorE at 0x7277167ec6a0>
-<N9nntrainer6TensorE at 0x72771ca5f6a0>
-data addr: 0x72772bb33010
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe93fef6a0>
+data addr: 0x7ffeb1d33010
 Shape: 1:1:1:256 [ FP32 : NCHW ]
-[ata addr: 0x72772b812210
-Shape: 1:1:1:640 [ FP32 : NCHW ]
 [0.883301 1.1543 1.22656 ... 2.64062 1.84766 2.42188]
 
-
- ... 15.75 9.9375 10.4375]
-
-=============================
-
-Tensor Name: encoder_layer0_attention_out:weight
-Tensor Dim: Shape: 1:1:1024:640 [ FP32 : NCHW ]
-
-Bytes to read: 2621440
-Start offset: 675025408
-=============================
-
-=============================
-
-Tensor Name: encoder_layer0_post_attention_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 677646848
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer0_post_attention_layernorm
+DEBUG: NAME: >>>>>>>>>>> encoder_layer0_wk
 DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72770ffef6a0>
-data addr: 0x72772be53410
-Shape: 1:1:1:640 [ FP32 : NCHW ]
-[0.0625 0.0898438 0.25 ... 0.0703125 0.265625 7.9375]
-
-=============================
-
-Tensor Name: encoder_layer0_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 677649408
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer0_pre_feedforward_layernorm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72770dded6a0>
-data addr: 0x72772be53e10
-Shape: 1:1:1:640 [ FP32 : NCHW ]
-[4.23438 4.15625 5.4375 ... 4.03125 5.78125 2.50781]
-
-=============================
-
-Tensor Name: encoder_layer0_ffn_up:weight
-Tensor Dim: Shape: 1:1:640:2048 [ FP32 : NCHW ]
-
-Bytes to read: 5242880
-Start offset: 677651968
-=============================
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffea0c5b6a0>
+data addr: 0x7ffeb1c93010
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.00588989 0.00714111 -0.00772095 ... -0.00543213 0.00387573 -0.00448608]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer0_wv
 DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727715feb6a0>
-data addr: 0x72772bb33410
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe937ee6a0>
+data addr: 0x7ffeb1d33410
 Shape: 1:1:640:256 [ FP32 : NCHW ]
 [-0.00436401 -0.00193787 -0.00141144 ... -0.00326538 -0.000322342 -0.0022583]
 
-=============================
-DEBUG: NAME: >>>>>>>>>>> .Tensor Name: encoder_layer0_ffn_down:weight
->>>>>>>>>> .Tensor Name: encoder_layer0_ffn_gate:weight
->>>>>>>>>> .encoder_layer0_wk
-DEBUG: num weight: r_layer0_ffn_gate:weight
-Tensor Dim: Shape: 1
-layer0_ffn_gate:weight
-Tensor Dim: Shape: 1:Tensor Dim: Shape: 1:1:640:2048 [ FP32 : NCHW ]
-
-EBUG: weight: pe: 1:1:640:2048 [ FP32 : NCHW ]
-
-
-Bytes to read: 5242880
-t 0x727716fed6a0B
-Bytes to read: 5242880
-t 0x727716fed6a0B
-5242880
-Start offset: 688137728Start offset: 682894848
-0
-Shape: 1:1:640:256 [ FP32 : NCHW ]
-[tart offset: 682894848
-=====================================================
-
--0.00588989 0.00714111 
-Tensor Name: encoder_layer0_posTensor Name: encoder_layer0_posTensor Name: encoder_layer0_post_feedforward_layernorm:gamma
-2095 ... -0.00543213 0.00387573 -0.00448608]
-
-ensor Name: encoder_layer0_post_feedforward_layernorm:gamma
-TTensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 693380608
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer0_post_feedforward_layernorm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276fdfeb6a0>
-data addr: 0x72772cd54810
-Shape: 1:1:1:640 [ FP32 : NCHW ]
-[0.265625 0.328125 0.800781 ... 0.015625 0.823242 26]
-
-=============================
-
-Tensor Name: encoder_layer1_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 693383168
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_pre_attention_layernorm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276effef6a0>
-data addr: 0x72772cd55210
-Shape: 1:1:1:640 [ FP32 : NCHW ]
-[32.125 33.25 24.375 ... 35 21.75 1.16797]
-
-=============================
-
-Tensor Name: encoder_layer1_wq:weight
-Tensor Dim: Shape: 1:1:640:1024 [ FP32 : NCHW ]
-
-Bytes to read: 2621440
-Start offset: 693385728
-=============================
-
-=============================
-
-Tensor Name: encoder_layer1_wq_norm:gamma
-Tensor Dim: Shape: 1:1:1:256 [ FP32 : NCHW ]
-
-Bytes to read: 1024
-Start offset: 696007168
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wq_norm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276e7fef6a0>
-data addr: 0x72772cfd5c10
-Shape: 1:1:1:256 [ FP32 : NCHW ]
-[1.05396 2.02344 2.38281 ... 2.35938 2.25 2.3125]
-
-=============================
-
-Tensor Name: encoder_layer1_wk:weight
-Tensor Dim: Shape: 1:1:640:256 [ FP32 : NCHW ]
-
-Bytes to read: 655360
-Start offset: 696008192
-=============================
-
-=============================
-
-Tensor Name: encoder_layer1_wk_norm:gamma
-Tensor Dim: Shape: 1:1:1:256 [ FP32 : NCHW ]
-
-Bytes to read: 1024
-Start offset: 696663552
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wk_norm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276edfeb6a0>
-data addr: 0x72772d076010
-Shape: 1:1:1:256 [ FP32 : NCHW ]
-[1.20703 1.90625 2.04688 ... 2.74219 3.1875 2.72656]
-
-=============================
-
-Tensor Name: encoder_layer1_wv:weight
-======================
-
-Tensor Name: encoder_layer1_attention_Tensor Dim:  encoder_layer1_attention_out:weight
-Tensor Dim: Shape: 1:1:640:256 [ FP32 : NCHW ]
-
-ensor Dim: Shape: 1:1:1024:640 [ FP32 : NCHW ]
-
-BBytes to read: 2621440Start offset: 696664576Start offset: 697319936
-=====================================================
-
-=============================
-
-=============================
-
-Tensor Name: encoder_layer1_post_attention_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 699941376
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_post_attention_layernorm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276e77ee6a0>
-data addr: 0x72772d396410
-Shape: 1:1:1:640 [ FP32 : NCHW ]
-[0.230469 0.292969 1.64453 ... 0.261719 0.93457 61.75]
-
-=============================
-
-Tensor Name: encoder_layer1_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 699943936
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_pre_feedforward_layernorm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276e5feb6a0>
-data addr: 0x72772d396e10
-Shape: 1:1:1:640 [ FP32 : NCHW ]
-=========================
-
-Tensor Name: encoder_layer1_ffn_up:weight
- [ FP32 : NCHW ]
-[ensor Name: encoder_layer1_ffn_up:weight
-Tensor Dim: Shape: 1:32.751:640:2048 [ FP32 : NCHW ]
-
-ensor Dim: Shape: 1:32.751:640:2048 [ FP32 : NCHW ]
-34.25 30.125 ... 29.125 32.25 1.76953]
-
-BBytes to read: 5242880
-Start offset: 699946496
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wk
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276ee7ec6a0>
-data addr: 0x72772cfd6010
-Shape: 1:1:640:256 [ FP32 : NCHW ]
-[-0.00202942 -0.000934601 -0.00570679 ... 0.0123901 0.0038147 -0.00176239]
-
-=============================
-
-Tensor Name: encoder_layer1_ffn_gate:weight
-Tensor Dim: Shape: 1:1:640:2048 [ FP32 : NCHW ]
-
-Bytes to read: 5242880
-Start offset: 705189376
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wv
-DEBUG: num weight: 1
-=============================
-
-Tensor Name: encoder_layer1_ffn_down:weight
-Tensor Dim: Shape: <N9nntrainer6TensorE1: :2048:640 [ FP32 : NCHW ]
-
-ensor Dim: Shape: <N9nntrainer6TensorE1: :2048:640 [ FP32 : NCHW ]
->
-
-Bytes to read: 5242880
-Start offset: 710432256
-:1:640:256 [ FP32 : NCHW ]
-[tart offset: 710432256
-=============================
-
--0.00485229 0.00176239 -0.0105591 ... -0.00230408 0.00836182 -0.00245667]
-
-=============================
-
-Tensor Name: encoder_layer1_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 715675136
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_post_feedforward_layernorm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276dd5eb6a0>
-data addr: 0x72772e297810
-Shape: 1:1:1:640 [ FP32 : NCHW ]
-[0.199219 0.277344 1.59375 ... 0.183594 1.2207 18.5]
-
 DEBUG: NAME: >>>>>>>>>>> encoder_layer0_wq
 DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7277177ee6a0>
-data addr: 0x72772b812c10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffea1c5d6a0>
+data addr: 0x7ffeb1a12c10
 Shape: 1:1:640:1024 [ FP32 : NCHW ]
 [-0.000164986 -0.006073 -0.00466919 ... 0.00418091 -0.000104904 -0.00512695]
 
-=============================
-
-Tensor Name: encoder_layer2_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 715677696
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_pre_attention_layernorm
+DEBUG: NAME: >>>>>>>>>>> encoder_layer0_post_attention_layernorm
 DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276cf7ee6a0>
-data addr: 0x72772e298210
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe91feb6a0>
+data addr: 0x7ffeb2053410
 Shape: 1:1:1:640 [ FP32 : NCHW ]
-[49.5 54 22 ... 42.5 25.125 7.03125]
+[0.0625 0.0898438 0.25 ... 0.0703125 0.265625 7.9375]
 
-=============================
-
-Tensor Name: encoder_layer2_wq:weight
-Tensor Dim: Shape: 1:1:640:1024 [ FP32 : NCHW ]
-
-Bytes to read: 2621440
-Start offset: 715680256
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer0_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe8bfef6a0>
+data addr: 0x7ffeb2053e10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[4.23438 4.15625 5.4375 ... 4.03125 5.78125 2.50781]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer0_attention_out
 DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727714fe96a0>
-data addr: 0x72772bbd3410
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe927ec6a0>
+data addr: 0x7ffeb1dd3410
 Shape: 1:1:1024:640 [ FP32 : NCHW ]
 [-0.00708008 0.00140381 0.000919342 ... 0.00230408 0.00141907 -0.00588989]
 
-=============================
-
-Tensor Name: encoder_layer2_wq_norm:gamma
-Tensor Dim: Shape: 1:1:1:256 [ FP32 : NCHW ]
-
-Bytes to read: 1024
-Start offset: 718301696
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_wq_norm
+DEBUG: NAME: >>>>>>>>>>> encoder_layer0_post_feedforward_layernorm
 DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276cdfeb6a0>
-data addr: 0x727729faee10
-Shape: 1:1:1:256 [ FP32 : NCHW ]
-[1.26562 1.71484 0.98938 ... 1.17676 1.38477 1.78125]
-
-=============================
-
-Tensor Name: encoder_layer2_wk:weight
-Tensor Dim: Shape: 1:1:640:256 [ FP32 : NCHW ]
-
-Bytes to read: 655360
-Start offset: 718302720
-=============================
-
-=============================
-
-Tensor Name: encoder_layer2_wk_norm:gamma
-Tensor Dim: Shape: 1:1:1:256 [ FP32 : NCHW ]
-
-Bytes to read: 1024
-Start offset: 718958080
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_wk_norm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276ccfe96a0>
-data addr: 0x727728a6be10
-Shape: 1:1:1:256 [ FP32 : NCHW ]
-[1.83594 1.17676 1.41602 ... 2.59375 2.05469 1.74609]
-
-=============================
-
-Tensor Name: encoder_layer2_wv:weight
-Tensor Dim: Shape: 1:1:640:256 [ FP32 : NCHW ]
-
-Bytes to read: 655360
-Start offset: 718959104
-=============================
-
-=============================
-
-Tensor Name: encoder_layer2_attention_out:weight
-Tensor Dim: Shape: 1:1:1024:640 [ FP32 : NCHW ]
-
-Bytes to read: 2621440
-Start offset: 719614464
-=============================
-
-=============================
-
-Tensor Name: encoder_layer2_post_attention_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 722235904
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_post_attention_layernorm
-DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276cafe56a0>
-data addr: 0x727728d8c210
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe88fe96a0>
+data addr: 0x7ffeb2f54810
 Shape: 1:1:1:640 [ FP32 : NCHW ]
-[0.0898438 0.140625 0.827148 ... 0.078125 0.535156 9.625]
+[0.265625 0.328125 0.800781 ... 0.015625 0.823242 26]
 
-=============================
-
-Tensor Name: encoder_layer2_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 722238464
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_pre_feedforward_layernorm
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_pre_attention_layernorm
 DEBUG: num weight: 1
-BUG: NAME: >>>>>>>>>>> DEBUG: num weight: 1
-BUG: NAME: >>>>>>>>>>> encoder_layer2_wv
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe82fed6a0>
+data addr: 0x7ffeb2f55210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[32.125 33.25 24.375 ... 35 21.75 1.16797]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wq_norm
 DEBUG: num weight: 1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276c9fe36a0>
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276c9fe36a0>
-<N9nntrainer6TensorE at 0x7276cc7e86a0>
-1:1:640 [ FP32 : NCHW ]
-[:1:640 [ FP32 : NCHW ]
-Shape: 1:1:640:256 [ FP32 : NCHW ]
-[32.75 33 .20.625 ... -0.00958252 29.375 0.00479126 ... 25.125 -0.00020504 1.85938]
-
-32.75 33 .20.625 ... -0.00958252 29.375 0.00479126 ... 25.125 -0.00020504 1.85938]
-0.000984192 0.00289917]
-
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_wk
-DEBUG: num weight: 1
-DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> <N9nntrainer6TensorE at 0x7276cd7ea6a0>
-DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> <N9nntrainer6TensorE at 0x7276cd7ea6a0>
-=============================
-
-:ensor Name: encoder_layer2_f
-:640:256 [ FP32 : NCHW ]
-nsorE at 0x7276cd7ea6a0>
-=============================
-
-encoder_layer1_wq
-:ensor Name: encoder_layer2_f
-Tensor Dim: Shape: 1:1:640:2048 [ FP32 : NCHW ]
-NCHW ]
-[ensor Dim: Shape: 1:[ensor Dim: Shape: 1:1:640:2048 [ FP32 : NCHW ]
-
-Bytes to read: 5242880
-Start offset: 722241024
-=============================
-
-9373 ... 0.000732422 0.000310898 -0.00222778]
-
-============================
-
-
-============================
-
-<N9nntrainer6TensorE at 0x7276eefed6a0>
-
-data addr: 0x72772b592210
-Shape: 1:1:640:1024 [ FP32 : NCHW ]
-[0.00222778 0.00588989 -0.00613403 ... -0.00128174 -0.000709534 -0.00878906]
-
-
-=============================
-
-Tensor Name: encoder_layer2_ffn_gate:weight
-Tensor Dim: Shape: 1:1:640:2048 [ FP32 : NCHW ]
-
-Bytes to read: 5242880
-Start offset: 727483904
-=============================
-
-=============================
-
-Tensor Name: encoder_layer2_ffn_down:weight
-Tensor Dim: Shape: 1:1:2048:640 [ FP32 : NCHW ]
-
-Bytes to read: 5242880
-Start offset: 732726784
-=============================
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe80dee6a0>
+data addr: 0x7ffeb31d5c10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.05396 2.02344 2.38281 ... 2.35938 2.25 2.3125]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer0_ffn_up
 DEBUG: num weight: 1
->>> encoder_layer0_ffn_up
-=============================
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe8afed6a0>
+data addr: 0x7ffeb2054810
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-8.01086e-05 -0.00331116 -0.00309753 ... 0.00222778 0.00311279 -0.0011673]
 
-Tensor Name: encoder_Tensor Name: encoder_layer2_post_feedforward_layernorm:gamma
-Tensor Dim: DEBUG: weight: Shape: 1:1:1:640 [ FP32 : NCHW ]
-
-Bytes to read: 2560
-Start offset: 737969664
-ntrainer6TensorE at 0x72770cdeb6a0>
-data addr: 0x72772be5481=============================
-
-: 1:1:640:2048 [ FP32 : NCHW ]
-[============================
-
--8.01086e-05 -0.00331116 -0.00309753 ... 0.00222778 DEBUG: NAME: >>>>>>>>>>> 0.00311279 -0.0011673]
-
-encoder_layer1_attention_out
-encoder_layer2_post_feedforward_layernorm
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wk_norm
 DEBUG: num weight: 1
-eedforward_layernorm
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe7bfef6a0>
+data addr: 0x7ffeb3276010
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.20703 1.90625 2.04688 ... 2.74219 3.1875 2.72656]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wk
 DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe783ef6a0>
+data addr: 0x7ffeb31d6010
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.00202942 -0.000934601 -0.00570679 ... 0.0123901 0.0038147 -0.00176239]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wv
 DEBUG: num weight: 1
-DEBUG: weight: DEBUG: weight: <<N9nntrainer6TensorE at  at 0x7276df5ef6a0>
-data addr: ht: DEBUG: weight: <<N9nntrainer6TensorE at  at 0x7276df5ef6a0>
->
-data addr: 0x72772d116410
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[ata addr: 0x727729c8d610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[-0.000919342 -0.00311279 0.222656 0.000579834 ... -0.00637817 0.261719 0.00466919 0.00488281 .
--0.000919342 -0.00311279 0.222656 0.000579834 ... -0.00637817 0.261719 0.00466919 0.00488281 ... 0.191406 1.96484 28.125]
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe7b7ee6a0>
+data addr: 0x7ffeb3276410
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.00485229 0.00176239 -0.0105591 ... -0.00230408 0.00836182 -0.00245667]
 
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe79feb6a0>
+data addr: 0x7ffeb3596410
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[0.230469 0.292969 1.64453 ... 0.261719 0.93457 61.75]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer0_ffn_gate
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe8a7ec6a0>
+data addr: 0x7ffeb2554810
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.00750732 -0.00341797 0.00247192 ... 0.00282288 -0.00933838 -0.0114746]
 
-Tensor Name: encoder_layer3_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe81feb6a0>
+data addr: 0x7ffeb1792210
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[0.00222778 0.00588989 -0.00613403 ... -0.00128174 -0.000709534 -0.00878906]
 
-Bytes to read: 0xa00
-Start offset: 0x2bfc9000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer3_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276bb7ee6a0>
-data addr: 0x727729c8e010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[52.25 47.75 15 ... 50.5 19.75 2.57812]
-
-=============================
-
-Tensor Name: encoder_layer3_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x2bfc9a00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer3_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x2c249a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276b9feb6a0>
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276b9feb6a0>
-=============================
-
-Tensor Name: encoder_layer3_wk:weight
-x1:0x1:0x100 [ FP32 : NCHW ]
-[ensor Name: encoder_layer3_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-1.5625 Start offset: 0x2c249e00
-5625 2.08594 1.43945]
-
-tart offset: 0x2c249e00
-==============================
-
-=============================
-
-Tensor Name: encoder_layer3_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x2c2e9e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276b8fe96a0>
-data addr: 0x7277289cba10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[0.693359 1.90625 1.49805 ... 1.84375 1.35742 2]
-
-=============================
-
-Tensor Name: encoder_layer3_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x2c2ea200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer3_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x2c38a200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wk
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276b97ea6a0>
-data addr: 0x727729f0ee10
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.00268555 -0.00221252 -0.00127411 ... -0.00650024 -0.00133514 -0.00952148]
-
-=============================
-
-Tensor Name: encoder_layer3_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x2c60a200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer3_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276b6fe56a0>
-data addr: 0x72772a2cf210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[0.0976562 0.136719 2.97656 ... 0.0703125 1.90234 17.25]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_wq
-DEBUG: num weight: 0x1
-> encoder_layer2_wq
-=============================
-
-Tensor Name: encoder_laTensor Name: encoder_layer3_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x2c60ac00
-=============================
-
-<N9nntrainer6TensorE at 0x7276ce7ec6a0>
-data addr: 0x72772e298c10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[ata addr: 0x72772e298c10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-encoder_layer3_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
--0.00112915 -0.00069809 ... 0.00982666 -0.00236511 DEBUG: weight: -0.00665283]
-
-
-<N9nntrainer6TensorE at 0x7276b57e26a0>
-data addr: 0x72772a2cfc10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[61.25 54 11.4375 ... 63.75 17 1.95312]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_ffn_gate
-DEBUG: num weight: 0x1
-DEBUG: weight: =============================
-
-Tensor Name: encoder_layer3_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800ght
-<N9nntrainer6TensorE at 0x7276dffef6a0>
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-: NCHW ]
-[ytes to read: 0x500000
-Start offset: 0x2c60b600
-=============================
-
--0.000495911 -0.00204468 -0.00148773 ... 0.0038147 -0.000621796 -0.00527954]
-
-=============================
-
-Tensor Name: encoder_layer3_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x2cb0b600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer1_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276dddec6a0>
-data addr: 0x72772dd97810
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[-0.00318909 0.00915527 -0.00164032 ... 0.0090332 -0.0045166 -0.00133514]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wv
-DEBUG: num weight: 0x1
-DEBUG: weight: =============================
-
-Tensor Name: encoder_layer3_ffn_down:weight
-
-
-<N9nntrainer6TensorE at 0x7276b87e86a0>
-Tensor Name: encoder_layer3_ffn_down:weight
-Tensor Dim: Shape: faf210
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[ensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x2d00b600
-=============================
-
-=============================
-
-68933 -0.00323486 ... -0.00506592 -0.015625 0.000537872]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_attention_out
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276cb7e66a0>
-data addr: 0x727728b0c210
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[ata addr: 0x727728b0c210
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-=============================
-
-Tensor Name: encoder_layer3_post_feedforward_layernorm:gamma
-0.00352478 Tensor Dim: 0.000123024 -0.00360107]
-
-.00352478 Tensor Dim: 0.000123024 -0.00360107]
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-
-Bytes to read: 0xa00
-Start offset: 0x2d50b600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer3_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276ad7ea6a0>
-data addr: 0x72772b1d0610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[0.0820312 0.576172 16.1875 ... 0.599609 4.17188 53.25]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe77bee6a0>
+data addr: 0x7ffeb3596e10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[32.75 34.25 30.125 ... 29.125 32.25 1.76953]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer0_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: NAME: >>>>>>>>>>> encoder_layer0_ffn_gate
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-<N9nntrainer6TensorE at 0x7276fe7ec6a0>
-data addr: 0x72772c854810
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[data addr: 0x72772c354810
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[-0.0062561 0.00335693]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe897ea6a0>
+data addr: 0x7ffeb2a54810
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[0.00274658 -0.00154114 -0.00686646 ... 0.00537109 -0.0062561 0.00335693]
 
--0.00750732 -0.00341797 0.00247192 ... 0.00282288 -0.00933838 -0.0114746]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe7a7ec6a0>
+data addr: 0x7ffeb3316410
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[-0.000919342 -0.00311279 0.000579834 ... -0.00637817 0.00466919 0.00488281]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe6ffef6a0>
+data addr: 0x7ffeb4497810
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[0.199219 0.277344 1.59375 ... 0.183594 1.2207 18.5]
 
-Tensor Name: encoder_layer4_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe6e7ec6a0>
+data addr: 0x7ffeb4498210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[49.5 54 22 ... 42.5 25.125 7.03125]
 
-Bytes to read: 0xa00
-Start offset: 0x2d50c000
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe6cfe96a0>
+data addr: 0x7ffeb01aee10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.26562 1.71484 0.98938 ... 1.17676 1.38477 1.78125]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer4_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276a77ee6a0>
-data addr: 0x72772b1d1010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[99 63 6.78125 ... 88 21.5 4.5625]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_ffn_up
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe76bec6a0>
+data addr: 0x7ffeb3597810
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.00340271 -0.000686646 DEBUG: NAME: >>>>>>>>>>> 0.00311279 ... -0.00830078 -0.000904083 -0.00132751]
 
-=============================
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe6bfe76a0>
+data addr: 0x7ffeaec6be10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[DEBUG: NAME: >>>>>>>>>>> 1.83594 ncoder_layer1_ffn_gate
+DEBUG: num weight: 1.17676 1
+1.41602 ... 2.59375 2.05469 1.74609]
 
-Tensor Name: encoder_layer4_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
+<N9nntrainer6TensorE at 0x7ffe763eb6a0>
+data addr: 0x7ffeb3a97810
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.000495911 -0.00204468 -0.00148773 ... 0.0038147 -0.000621796 -0.00527954]
 
-Bytes to read: 0x280000
-Start offset: 0x2d50ca00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe6c7e86a0>
+data addr: 0x7ffeaebcbe10
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.00334167 -0.00289917 -0.00169373 ... 0.000732422 0.000310898 -0.00222778]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe6b7e66a0>
+data addr: 0x7ffeaec6c210
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.000453949 -0.00958252 0.00479126 ... -0.00020504 0.000984192 0.00289917]
 
-Tensor Name: encoder_layer4_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer1_ffn_down
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe74be86a0>
+data addr: 0x7ffeb3f97810
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[-0.00318909 0.00915527 -0.00164032 ... 0.0090332 -0.0045166 -0.00133514]
 
-Bytes to read: 0x400
-Start offset: 0x2d78ca00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe69fe36a0>
+data addr: 0x7ffeaef8c210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[0.0898438 0.140625 0.827148 ... 0.078125 0.535156 9.625]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276a5feb6a0>
-data addr: 0x72772b451a10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.27344 2.53125 1.35547 ... 0.98291 1.03784 0.75]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe6d7ea6a0>
+data addr: 0x7ffeb4498c10
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[-0.000572205 -0.00112915 -0.00069809 ... 0.00982666 -0.00236511 -0.00665283]
 
-1.27344 2.53125 1.35547 ... 0.98291 1.03784 0.75]
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe687e06a0>
+data addr: 0x7ffeaef8cc10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[32.75 33 20.625 ... 29.375 25.125 1.85938]
 
-TTensor Name: encoder_layer4_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe6a7e46a0>
+data addr: 0x7ffeaed0c210
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[-0.00634766 -0.000427246 -0.0236816 ... 0.00352478 0.000123024 -0.00360107]
 
-Bytes to read: 0xa0000
-Start offset: 0x2d78ce00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe64fd96a0>
+data addr: 0x7ffeafe8d610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[0.222656 0.261719 3.4375 ... 0.191406 1.96484 28.125]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer3_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe637d66a0>
+data addr: 0x7ffeafe8e010
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[52.25 47.75 15 ... 50.5 19.75 2.57812]
 
-Tensor Name: encoder_layer4_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe61fd36a0>
+data addr: 0x7ffeb010ea10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.63672 1.43164 1.60156 ... 1.5625 2.08594 1.43945]
 
-Bytes to read: 0x400
-Start offset: 0x2d82ce00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe60fd16a0>
+data addr: 0x7ffeaebcba10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[0.693359 1.90625 1.49805 ... 1.84375 1.35742 2]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276a4fe96a0>
-data addr: 0x72772b4f1e10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[0.564453 1.74219 1.24805 ... 1.23438 0.915527 0.831055]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe617d26a0>
+data addr: 0x7ffeb010ee10
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.00268555 -0.00221252 -0.00127411 ... -0.00650024 -0.00133514 -0.00952148]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wv
+DEBUG: num weight: 1
+DEBUG: weight: encoder_layer2_ffn_up
+DEBUG: num weight: 1
+<N9nntrainer6TensorE at 0x7ffe607d06a0>
+data addr: 0x7ffeb01af210
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.0101929 0.000968933 -0.00323486 ... -0.00506592 <-0.015625 N9nntrainer6TensorE at 0.000537872]
 
-Tensor Name: encoder_layer4_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
+-0.0101929 0.000968933 -0.00323486 ... -0.00506592 <-0.015625 N9nntrainer6TensorE at 0.000537872]
+0x7ffe677de6a0>
 
-Bytes to read: 0xa0000
-Start offset: 0x2d82d200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer4_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x2d8cd200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_ffn_up
-DEBUG: num weight: 0x1
-> encoder_layer2_ffn_up
-=============================
-
-Tensor Name: encoder_laTensor Name: encoder_layer4_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
- at 0x7276c8fe16a0>
-Bytes to read: 0xa00
-Start offset: 0x2db4d200
-
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[tart offset: 0x2db4d200
-=============================
-
--0.00334167 -0.00234985 -0.00222778 ... 0.00521851 -0.000938416 0.00360107]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer4_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276a2fe56a0>
-data addr: 0x727731ea0010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[5.3125 2.59375 0.980225 ... 2.17969 2.24219 10.75]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer3_attention_out
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276b77e66a0>
-data addr: 0x72772a04f210
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[0.00209045 -0.0187988 0.00811768 ... 0.0167236 -0.00248718 -0.00601196]
+data addr: 0x7ffeaef8d610
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.00334167 -0.00234985 -0.00222778 ... 0.00521851 -0.000938416 0.00360107]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer2_ffn_gate
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276c3fef6a0>
-data addr: 0x72772928d610
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe66fdd6a0>
+data addr: 0x7ffeaf48d610
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [-0.000659943 0.0025177 0.00427246 ... -0.00250244 0.00196838 0.00212097]
 
-=============================
-
-Tensor Name: encoder_layer4_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x2db4dc00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer4_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wv
-DEBUG: num weight: 0x1
-AME: >>>>>>>>>>> encoder_layer4_wv
-<N9nntrainer6TensorE at 0x7276a17e26a0>
-data addr: 0x727731ea0adata addr: 0x727731ea0a10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[<N9nntrainer6TensorE at 0x7276a47e86a0>
-data addr: 0x72772b4f2210
-DEBUG: NAME: >>>>>>>>>>> [ FP32 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[ata addr: 0x72772b4f2210
-DEBUG: NAME: >>>>>>>>>>> [ FP32 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-35.25 15.9375 1.64062]
-
-
-
--0.00344849 -0.00665283 ... 0.00469971 -0.00375366 -0.00190735]
-
-
-
-DEB
-DEB
-DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wk
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276e4fe96a0>
-<data addr: N9nntrainer6TensorE0x72772d397810
-0x7276a57ea6a0>
-data addr:  N9nntrainer6TensorE0x72772d397810
-0x7276a57ea6a0>
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[ata addr: 0x72772b451e10
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[-0.00340271 -0.00177765 -0.000686646 -0.000499725 0.00311279 ... -0.00531006 ... -0.00830078 0.00537109 -0.000904083 -0.000610352 -0.00132751]
-0.00509644]
-
--0.00340271 -0.00177765 -0.000686646 -0.000499725 0.00311279 ... -0.00531006 ... -0.00830078 0.00537109 -0.000904083 -0.000610352 -0.00132751]
-
-
-=============================
-
-Tensor Name: encoder_layer4_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x2db4e600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer4_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x2e04e600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer3_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe5f7ce6a0>
+data addr: 0x7ffeb04cf210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[0.0976562 0.136719 2.97656 ... 0.0703125 1.90234 17.25]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer3_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276ba7ec6a0>
-data addr: 0x727729c8ea10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe627d46a0>
+data addr: 0x7ffeafe8ea10
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
 [-0.00028801 0.00218201 -0.00145721 ... 0.000425339 -0.0027771 -0.0100098]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer2_ffn_down
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe657da6a0>
+data addr: 0x7ffeaf98d610
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[-0.000957489 -0.00389099 0.0103149 ... -0.00262451 0.00340271 -0.00239563]
 
-Tensor Name: encoder_layer4_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer3_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe5dfcb6a0>
+data addr: 0x7ffeb04cfc10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[61.25 54 11.4375 ... 63.75 17 1.95312]
 
-Bytes to read: 0x500000
-Start offset: 0x2e54e600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer3_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe575ef6a0>
+data addr: 0x7ffeb024f210
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[0.00209045 -0.0187988 0.00811768 ... 0.0167236 -0.00248718 -0.00601196]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer3_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe555eb6a0>
+data addr: 0x7ffeb13d0610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[0.0820312 0.576172 16.1875 ... 0.599609 4.17188 53.25]
 
-Tensor Name: encoder_layer4_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe53de86a0>
+data addr: 0x7ffeb13d1010
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[99 63 6.78125 ... 88 21.5 4.5625]
 
-Bytes to read: 0xa00
-Start offset: 0x2ea4e600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe525e56a0>
+data addr: 0x7ffeb1651a10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.27344 2.53125 1.35547 ... 0.98291 1.03784 0.75]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer4_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72769dfdb6a0>
-data addr: 0x727732da1410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[1.49805 3.39062 3.0625 ... 2.63281 6.5 21.625]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe515e36a0>
+data addr: 0x7ffeb16f1e10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[0.564453 1.74219 1.24805 ... 1.23438 0.915527 0.831055]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe51de46a0>
+data addr: 0x7ffeb1651e10
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.00177765 -0.000499725 -0.00531006 ... 0.00537109 -0.000610352 0.00509644]
 
-Tensor Name: encoder_layer5_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe4f5df6a0>
+data addr: 0x7ffeb80a0010
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[5.3125 2.59375 0.980225 ... 2.17969 2.24219 10.75]
 
-Bytes to read: 0xa00
-Start offset: 0x2ea4f000
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe50de26a0>
+data addr: 0x7ffeb16f2210
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.00485229 -0.00344849 -0.00665283 ... 0.00469971 -0.00375366 -0.00190735]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer5_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72769c7d86a0>
-data addr: 0x727732da1e10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[28.5 24.25 6.25 ... 33.25 9.875 2.21875]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe4dddc6a0>
+data addr: 0x7ffeb80a0a10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[14.25 28.625 2.42969 ... 35.25 15.9375 1.64062]
 
-=============================
-
-Tensor Name: encoder_layer5_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x2ea4fa00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer5_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x2eccfa00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72769afd56a0>
-data addr: 0x727733022810
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[ata addr: 0x727733022810
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-=============================
-
-Tensor Name: encoder_layer5_wk:weight
-0.669922 0.877441]
-
-.669922 0.877441]
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-
-Bytes to read: 0xa0000
-Start offset: 0x2eccfe00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer5_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x2ed6fe00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727699fd36a0>
-data addr: 0x7277330c2c10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.97656 0.546875 1.19727 ... 3.78125 7.96875 6.375]
-
-=============================
-
-Tensor Name: encoder_layer5_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x2ed70200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer5_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x2ee10200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer5_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x2f090200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer5_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727697fcf6a0>
-data addr: 0x7277333e3010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[15.9375 5.78125 2.45312 ... 3.35938 5.53125 33.5]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe52de66a0>
+data addr: 0x7ffeb13d1a10
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[-0.00144196 0.000614166 -0.00372314 ... 0.00842285 0.00506592 -0.00680542]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer3_ffn_up
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276affef6a0>
-data addr: 0x72772a2d0610
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe5cfc96a0>
+data addr: 0x7ffeb04d0610
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [0.00231934 -0.00172424 0.00115204 ... -0.00256348 0.0045166 -0.00421143]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wv
-DEBUG: num weight: DEBUencoder_layer4_wq
-encoder_layer4_wq
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276997d26a0>
-data addr: 0x7277330c30data addr: 0x7277330c3010
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[DEBUG: weight: 0.00286865 0.0067749 0.00506592 ... -0.00069046 -0.00198364 0.000709534]
+DEBUG: NAME: >>>>>>>>>>> DEBUG: NAME: >>>>>>>>>>> encoder_layer4_attention_out
+DEBUG: num weight: 1
+encoder_layer3_ffn_gate
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe4fde06a0>
+data addr: 0x7ffeb2f55c10
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+r4_attention_out
+DEBUG: num weight: 1
+encoder_layer3_ffn_gate
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe4fde06a0>
+<N9nntrainer6TensorE at 0x7ffe57fef6a0>
+data addr: 0x7ffeb2f55c10
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.000823975 -0.00139618 ... -0.00230408 -0.00119019 0.00289917]
 
-<N9nntrainer6TensorE at 0x7276a67ec6a0>
-data addr: 0x72772b1d1a10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[ata addr: 0x72772b1d1a10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-=============================
+0.00124359 0.00173187 -0.00306702 ... -0.000209808 0.00190735 0.00326538]
 
-Tensor Name: 0.000614166encoder_layer5_pre_feedforward_layernorm:gamma===========
-Tensor Dim:  0.000614166encoder_layer5_pre_feedforward_layernorm:gamma===========
--0.00680542]
-
-
-0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x2f090c00
-der_layer5_wk
-Start offset: 0x2f090c00
-====================================================
-
-<N9nntrainer6TensorE at 0x72769a7d46a0>
-data addr: 0x727733022c10
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHWen
-[ata addr: 0x727733022c10
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHWen
-oder_layer5_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
--0.00253296 -0.000659943 ... 0.00543213 0.00415039 0.00227356]
-
-<N9nntrainer6TensorE at 0x7276967cc6a0>
-data addr: 0x727731e9f610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[10.75 22.375 3.84375 ... 29.375 14.3125 2.47656]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer2_ffn_down
-DEBUG: num weight: 0x1
-> encoder_layer2_ffn_down
-=============================
-
-Tensor Name: encoder_laTensor Name: encoder_layer5_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-0x7276c27ec6a0>
-Bytes to read: 0x500000
-datS0x1:0x800:0x280 [ FP=============================
-
-HW ]
-[============================
-
--0.000957489 -0.00389099 0.0103149 ... -0.00262451 0.00340271 -0.00239563]
-
-=============================
-
-Tensor Name: encoder_layer5_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x2f591600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer4_attention_out
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276a37e66a0>
-data addr: 0x72772cd55c10
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[DEBUG: NAME: >>>>>>>>>>> encoder_layer3_ffn_gate
-DEBUG: num weight: 0x1
->> encoder_layer3_ffn_gate
-0.0115356 -0.000823975 -0.00139618 ... -0.00230408 -0.00119019 0.00289917]
-
-EBUG: num weight: 0x1
-
-<N9nntrainer6TensorE at 0x7276af7ee6a0>
-data addr: 0x72772a7d0610
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[0.00124359 0.00173187 -0.00306702 ... -0.000209808 0.00190735 0.00326538]
-
-=============================
-
-Tensor Name: encoder_layer5_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x2fa91600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer5_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x2ff91600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer5_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727692fc56a0>
-data addr: 0x72775c2e3a10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[13.9375 7.09375 3.40625 ... 3.46875 8.03125 24.25]
-
-=============================
-
-Tensor Name: encoder_layer6_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x2ff92000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276917c26a0>
-data addr: 0x72775c2e4410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[15 36.25 9.125 ... 53 21 4.8125]
-
-=============================
-
-Tensor Name: encoder_layer6_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x2ff92a00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer6_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x30212a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72768ffbf6a0>
-data addr: 0x72775c564e10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.04883 1.39648 -0.789062 ... 1.18262 1.375 1.57812]
-
-=============================
-
-Tensor Name: encoder_layer6_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x30212e00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer6_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x302b2e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72768efbd6a0>
-data addr: 0x72775c605210
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.46289 1.23633 0.867188 ... 1.98047 1.67578 1.57812]
-
-=============================
-
-Tensor Name: encoder_layer6_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x302b3200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer6_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x30353200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wk
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72768f7be6a0>
-data addr: 0x72775c565210
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[-0.00286865 -0.000347137 -0.0100098 ... -0.00012207 0.00254822 -0.010498]
-
-=============================
-
-Tensor Name: encoder_layer6_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x305d3200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72768cfb96a0>
-data addr: 0x72775c925610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[16.75 10.375 0.71875 ... 4.78125 7.59375 14.25]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wq
-DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wq
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wv
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: weight: DEBUG: weight: <N9nntrainer6TensorE at 0x72768e7bc6a0>
-data addr: 0x72775c605610
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[<N9nntrainer6TensorE at 0x72769b7d66a0>
-[<N9nntrainer6TensorE at 0x72769b7d66a0>
-0.00306702 -0.00976562 0.00102997 ... -0.00466919 0.0039978 -0.00030899]
-
-FP32 : NCHW ]
-[0.0030365 DEBUG: NAME: >>>>>>>>>>> -0.00288391 0.003479 ... -0.0205078 0.00714111yer4_ffn_gate
-DEBUG: num weight: 0x1
- >>>>>>>>>>> -0.00288391 0.003479 ... -0.0205078 0.00714111yer4_ffn_gate
- 0.0022583]
-
-EBUG: num weight: 0x1
-DDEBUG: weight: <N9nntrainer6TensorE at 0x72769ffdf6a0>
-data addr: 0x7277323a1410
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[ata addr: 0x7277323a1410
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-=============================
-
-Tensor Name: encoder_layer6_pre_feedforward_layernorm:gamma
-Tensor Dim: -0.00268555 Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-ensor Dim: -0.00268555 Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-0.0055542 -0.000423431 -0.00131226]
-
-BBytes to read: 0xa00
-Start offset: 0x305d3c00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72768b7b66a0>
-data addr: 0x72775c926010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[6.375 11.5625 4.15625 ... 18.875 10.0625 2.48438]
-
-
-encoder_layer5_attention_out
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276987d06a0>
-data addr: 0x727733163010
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[-0.000835419 -0.00689697 0.00213623 ... -0.0098877 0.00279236 -0.00250244]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe4a5d56a0>
+data addr: 0x7ffeb8fa1410
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[1.49805 3.39062 3.0625 ... 2.63281 6.5 21.625]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer3_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276adfeb6a0>
-data addr: 0x72772acd0610
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe55dec6a0>
+data addr: 0x7ffeb0ed0610
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
 [-0.00650024 -0.00248718 -0.00111389 ... -0.00512695 -0.000675201 -1.78814e-05]
 
-=============================
+<N9nntrainer6TensorE at 0x7ffe48dd26a0>
+data addr: 0x7ffeb8fa1e10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[28.5 24.25 6.25 ... 33.25 9.875 2.21875]
 
-Tensor Name: encoder_layer6_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe475cf6a0>
+data addr: 0x7ffeb9222810
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[2 0.560547 -1.51562 ... 1.71094 0.669922 0.877441]
 
-Bytes to read: 0x500000
-> encoder_layer4_ffn_down
-DEBUG: num weight: 0x1
+DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe465cd6a0>
+data addr: 0x7ffeb92c2c10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.97656 0.546875 1.19727 ... 3.78125 7.96875 6.375]
 
-Start offset: 0x305d460Start offset: 0x305d4600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe46dce6a0>
+data addr: 0x7ffeb9222c10
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.00689697 -0.00253296 -0.000659943 ... 0.00543213 0.00415039 0.00227356]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer5_post_attention_layernorm
+DEBUG: NAME: >>>>>>>>>>> DEBUG: num weight: 1
+encoder_layer5_wv
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: weight: <<N9nntrainer6TensorEN9nntrainer6TensorE at  at 0x7ffe45dcc6a0>
+data addr: 0x7ffeb92c3010
+ncoder_layer5_post_attention_layernorm
+DEBUG: NAME: >>>>>>>>>>> DEBUG: num weight: 1
+encoder_layer5_wv
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: weight: <<N9nntrainer6TensorEN9nntrainer6TensorE at  at 0x7ffe45dcc6a0>
+data addr: 0x7ffeb92c3010
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+ ]
+[0.00286865 0.0067749 15.9375 0.00506592 ... -0.00069046 5.78125 -0.00198364 2.45312 ... 0.000709534]
 
-<N9nntrainer6TensorE at 0x72769e7dc6a0>
-data addr: 0x7277328a1410
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[0.00352478 -0.00424194 0.00683594 ... 0.00118256 0.00497437 0.00224304]
+0.00286865 0.0067749 15.9375 0.00506592 ... -0.00069046 5.78125 -0.00198364 2.45312 ... 0.000709534]
+3.35938 5.53125 33.5]
 
-=============================
-
-Tensor Name: encoder_layer6_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x30ad4600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer6_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x30fd4600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer6_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x314d4600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727687faf6a0>
-data addr: 0x72772f418c10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[23.875 15 3.29688 ... 5.53125 13.0625 21.375]
-
-=============================
-
-Tensor Name: encoder_layer7_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x314d5000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276867ac6a0>
-data addr: 0x72772f419610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[12.1875 19.875 12.125 ... 46.75 20.25 8.5625]
-
-=============================
-
-Tensor Name: encoder_layer7_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x314d5a00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer7_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x31755a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727684fa96a0>
-data addr: 0x72772f69a010
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.10303 1.18066 0.568359 ... 1.30664 1.92969 2.16406]
-
-=============================
-
-Tensor Name: encoder_layer7_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x31755e00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer7_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x317f5e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727683fa76a0>
-data addr: 0x72772f73a410
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.19141 1.41211 0.0078125 ... 2.57031 1.86719 1.68359]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer4_ffn_up
-DEBUG: num weight: =============================
-
-Tensor Name: encoder_layer7_wv:weight
-==========
-
-0x1
-Tensor Name: encoder_layer7_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x317f6200
-=============================
-
-<N9nntrainer6TensorE at 0x7276a07e06a0>
-data addr: 0x727731ea1410
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe4cdda6a0>
+data addr: 0x7ffeb80a1410
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [0.00180817 -0.00488281 -0.000507355 ... -0.00378418 -0.00273132 0.00358582]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_ffn_gate
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe4c5d96a0>
+data addr: 0x7ffeb85a1410
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[0.0107422 -0.00268555 0.00317383 ... 0.0055542 -0.000423431 -0.00131226]
 
-Tensor Name: encoder_layer7_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer5_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe47dd06a0>
+data addr: 0x7ffeb8fa2810
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[0.0030365 -0.00288391 0.003479 ... -0.0205078 0.00714111 0.0022583]
 
-Bytes to read: 0x280000
-Start offset: 0x31896200
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer5_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe42dc66a0>
+data addr: 0x7ffeb809f610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[10.75 22.375 3.84375 ... 29.375 14.3125 2.47656]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: =============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer4_ffn_down
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe4add66a0>
+data addr: 0x7ffeb8aa1410
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[0.00352478 -0.00424194 0.00683594 ... 0.00118256 0.00497437 0.00224304]
 
-Tensor Name: encoder_layer7_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:yer7_post_attention_layernorm:gamma
-<N9nntrainer6TensorE at 0x7276907c06a0>
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer5_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe3f5bf6a0>
+data addr: 0x7ffee24e3a10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[13.9375 7.09375 3.40625 ... 3.46875 8.03125 24.25]
 
-ata addr: 0x72775c2e4e10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[Bytes to read: 0xa00
-Start offset: 0x31b16200
--0.000511169 -0.0100098 ... -0.-0.000511169 -0.0100098 ... -0.00576782 0.000846863 -0.0147095]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe3ddbc6a0>
+data addr: 0x7ffee24e4410
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[15 36.25 9.125 ... 53 21 4.8125]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727681fa36a0>
-data addr: 0x72772fa5a810
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[20.5 13.5625 1.37891 ... 5.09375 10.625 12.375]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer5_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe44dca6a0>
+data addr: 0x7ffeb9363010
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[-0.000835419 -0.00689697 0.00213623 ... -0.0098877 0.00279236 -0.00250244]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wk
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276847a86a0>
-data addr: 0x72772f69a410
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[-0.00198364 -0.00119019 0.000484467 ... 0.00439453 -0.00854492 0.00043869]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe3c5b96a0>
+data addr: 0x7ffee2764e10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.04883 1.39648 -0.789062 ... 1.18262 1.375 1.57812]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wv
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276837a66a0>
-data addr: 0x72772f73a810
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.00793457 -0.00759888 -0.0045166 ... -0.00430298 -0.00148773 -0.00021553]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe3b5b76a0>
+data addr: 0x7ffee2805210
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.46289 1.23633 0.867188 ... 1.98047 1.67578 1.57812]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe3bdb86a0>
+data addr: 0x7ffee2765210
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.00286865 -0.000347137 -0.0100098 ... -0.00012207 0.00254822 -0.010498]
 
-Tensor Name: encoder_layer7_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe3adb66a0>
+data addr: 0x7ffee2805610
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.00306702 -0.00976562 0.00102997 ... -0.00466919 0.0039978 -0.00030899]
 
-Bytes to read: 0xa00
-Start offset: 0x31b16c00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe395b36a0>
+data addr: 0x7ffee2b25610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[16.75 10.375 0.71875 ... 4.78125 7.59375 14.25]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276807a06a0>
-data addr: 0x72772fa5b210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[ata addr: 0x72772fa5b210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_attention_out
-DEBUG: num weight: 0x1
-DEBUG: weight: 8.21875 3.84375 ... 17 9 <N9nntrainer6TensorE at 0x7276]
-7ba6a0>
-data addr: 0x72775c6a5610
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-6]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe337ee6a0>
+data addr: 0x7ffee2b26010
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[6.375 11.5625 4.15625 ... 18.875 10.0625 2.48438]
 
-ata addr: 0x72775c6a5610
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[-0.00128937 0.00460815 -0.00561523 ... -0.00088501 -0.00799561 0.000915527]
-
-=============================
-
-Tensor Name: encoder_layer7_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x31b17600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer7_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x32017600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer7_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x32517600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer7_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x32a17600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72767cf996a0>
-data addr: 0x72773095bc10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[35.25 24.5 3.14062 ... 7.625 19 21.875]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276857aa6a0>
-data addr: 0x72772f41a010
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[0.00183868 0.00338745 0.00288391 ... 3.43323e-05 0.00228882 0.00216675]
-
-=============================
-
-Tensor Name: encoder_layer8_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x32a18000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72767b7966a0>
-data addr: 0x72773095c610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[10.1875 15.875 14.0625 ... 47.5 19 14.4375]
-
-=============================
-
-Tensor Name: encoder_layer8_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x32a18a00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer8_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x32c98a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727679f936a0>
-data addr: 0x727730bdd010
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[2.21094 1.48047 -0.109375 ... 1.55078 1.41016 1.74219]
-
-=============================
-
-Tensor Name: encoder_layer8_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x32c98e00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer8_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x32d38e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727678f916a0>
-data addr: 0x727730c7d410
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.99219 1.60156 0.619141 ... 1.85547 1.82422 1.58984]
-
-=============================
-
-Tensor Name: encoder_layer8_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x32d39200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer8_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x32dd9200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer8_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-gamma
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wk
-DEBUG: num weight: 0x1
-0x1:0x1:0x280 [ FP32 : NCHW ]
-
-EBUG: num weight: 0x1
-
-Bytes to read: <N9nntrainer6TensorE
-Start offset: 0x33059200
-er6TensorE
-at 0x727679792>
-data addr: 0x727730bdd410=============================
-
-: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[============================
-
-0.00479126 -0.000682831 0.00332642 ... -0.000234604 0.00164795 0.00239563]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727676f8d6a0>
-data addr: 0x727730f9d810
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[45.5 34.5 0.769531 ... 14.125 22.625 16.625]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe2ffe76a0>
+data addr: 0x7ffeb5618c10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[23.875 15 3.29688 ... 5.53125 13.0625 21.375]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer5_ffn_up
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wv
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276787906a0>
-data addr: 0x727730c7d810
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[-0.0179443 -0.00756836 0.000751495 ... <-0.00325012 N9nntrainer6TensorE at 0.00056076 0.000858307]
-
--0.0179443 -0.00756836 0.000751495 ... <-0.00325012 N9nntrainer6TensorE at 0.00056076 0.000858307]
->
-
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe41dc46a0>
+data addr: 0x7ffee15e3a10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [0.00185394 0.000471115 -0.000394821 ... 0.00156403 -0.0055542 0.000326157]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe3cdba6a0>
+data addr: 0x7ffee24e4e10
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[-0.00198364 -0.000511169 -0.0100098 ... -0.00576782 0.000846863 -0.0147095]
 
-Tensor Name: encoder_layer8_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe2e7e46a0>
+data addr: 0x7ffeb5619610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[12.1875 19.875 12.125 ... 46.75 20.25 8.5625]
 
-Bytes to read: 0xa00
-Start offset: 0x33059c00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> encoder_layer6_attention_out
+DEBUG: num weight: 1
+<N9nntrainer6TensorE at 0x7ffe2cfe16a0>
+data addr: 0x7ffeb589a010
+ncoder_layer7_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> encoder_layer6_attention_out
+DEBUG: num weight: 1
+<N9nntrainer6TensorE at 0x7ffe2cfe16a0>
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe39db46a0>
+data addr: 0x7ffeb589a010
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+FP32 : NCHW ][[1.10303 1.18066 0.568359 ... 1.30664 1.92969 2.16406]
+
+1.10303 1.18066 0.568359 ... 1.30664 1.92969 2.16406]
+-0.00128937 0.00460815 -0.00561523 ... -0.00088501 -0.00799561 0.000915527]
+
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer5_ffn_gate
-ncoder_layer8_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-> encoder_layer5_ffn_gate
-ncoder_layer8_pre_feedforward_layernormDEBUG: num weight: 0x1
-DEBUG: weight: ht: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72767578a6a0>
-data addr: 0x727730f9e210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[3.96875 6.125 2.96875 ... 14.75 7.6875 3.65625]
-
-
-<N9nntrainer6TensorE at 0x727694fc96a0>
-data addr: 0x72775b8e3a10
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe415c36a0>
+data addr: 0x7ffee1ae3a10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [0.000900269 8.96454e-05 -0.00128937 ... 8.82149e-05 0.000138283 0.0014267]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe277ee6a0>
+data addr: 0x7ffeb593a410
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.19141 1.41211 0.0078125 ... 2.57031 1.86719 1.68359]
 
-Tensor Name: encoder_layer8_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3305a600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer6_ffn_down
-DEBUG: num weight: 0x1
-> encoder_layer6_ffn_down
-=============================
-
-Tensor Name: encoder_laTensor Name: encoder_layer8_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-ensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-<N9nntrainer6TensorE at 0x7276887b06a0>
-dBytes to read: 0x500000
-0
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[ytes to read: 0x500000
-Start offset: 0x3355a600
-Start offset: 0x3355a600
-0.00302124 =============================
-
--0.00488281 0.00279236]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe27fef6a0>
+data addr: 0x7ffeb589a410
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.00198364 -0.00119019 0.000484467 ... 0.00439453 -0.00854492 0.00043869]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer5_ffn_down
-DEBUG: num weight: encoder_layer7_attention_out
-0x1
-DEBUG: weight: ht: encoder_layer7_attention_out
-DEBUG: num weight: <0x1
-DEBUG: num weight: <0x1
-N9nntrainer6TensorE at 0x7276937c66a0>
-DEBUG: weight: data addr: 0x72775bde3a10
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[<N9nntrainer6TensorE at 0x7276827a46a0>
--0.0014801data addr:  0x72772f7da810
--0.00512695 -0.00196838 ... 0.0057373 0x1:0x1:0x400:0x2800.00595093  [ FP32 : NCHW ]
-[0.0014801data addr:  0x72772f7da810
--0.00512695 -0.00196838 ... 0.0057373 0x1:0x1:0x400:0x2800.00595093  [ FP32 : NCHW ]
-0.0019989]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe3fdc06a0>
+data addr: 0x7ffee1fe3a10
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[-0.0014801 -0.00512695 -0.00196838 ... 0.0057373 0.00595093 0.0019989]
 
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe257ea6a0>
+data addr: 0x7ffeb5c5a810
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[20.5 13.5625 1.37891 ... 5.09375 10.625 12.375]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe26fed6a0>
+data addr: 0x7ffeb593a810
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.00793457 -0.00759888 -0.0045166 ... -0.00430298 -0.00148773 -0.00021553]
 
-0.00241089 Tensor Name: encoder_layer8_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe23fe76a0>
+data addr: 0x7ffeb5c5b210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[4.89062 8.21875 3.84375 ... 17 9 2.6875]
 
-ensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
--0.00234985 0.00209045]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe2d7e26a0>
+data addr: 0x7ffeb561a010
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[0.00183868 0.00338745 0.00288391 ... 3.43323e-05 0.00228882 0.00216675]
 
-BBytes to read: 0x500000
-Start offset: 0x33a5a600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer6_ffn_down
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe307e86a0>
+data addr: 0x7ffeb5118c10
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[0.00302124 0.00104523 -0.00561523 ... 0.00717163 -0.00488281 0.00279236]
 
-=============================
-
-Tensor Name: encoder_layer8_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x33f5a600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727671f836a0>
-data addr: 0x727731e9ec10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[47.25 35 1.78516 ... 11.0625 24 20]
-
-=============================
-
-Tensor Name: encoder_layer9_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x33f5b000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276707806a0>
-data addr: 0x727727488010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[8.15625 11.5 10.25 ... 43.5 15.6875 14.1875]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72767a7946a0>
-data addr: 0x72773095d010
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[0.000514984 -0.000770569 0.00698853 ... -0.00212097 0.00561523 -0.00130463]
-
-=============================
-
-Tensor Name: encoder_layer9_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x33f5ba00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer9_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x341dba00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72766ef7d6a0>
-data addr: 0x72771fb36810
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.66406 1.08643 1.36133 ... 4.73438 0.818359 0.939209]
-
-=============================
-
-Tensor Name: encoder_layer9_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x341dbe00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer9_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3427be00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72766df7b6a0>
-data addr: 0x72771fbd6c10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[=============================
-
-Tensor Name: 1.35352 ... r9_wv:weight59 2.57812 0
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-891 3.4375 3.14062]
-
-ensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-
-Bytes to read: 0xa0000
-Start offset: 0x3427c200
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe25feb6a0>
+data addr: 0x7ffeb59da810
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[0.00241089 0.000492096 0.00445557 ... -0.000389099 -0.00234985 0.00209045]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer6_ffn_up
-DEBUG: num weight: >>>>> encoder_layer6_ffn_up
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_attention_out
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: weight: DEBUG: weight: <N9nntrainer6TensorE at 0x72767778e6a0>
-data addr: 0x727730d1d810
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[0.00267029 0.00485229 -0.0143433 ... -0.012146 -0.00198364 <0.000450134]
-
-0.00267029 0.00485229 -0.0143433 ... -0.012146 -0.00198364 <0.000450134]
-N9nntrainer6TensorE at 0x72768a7b46a0>
-
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe327ec6a0>
+data addr: 0x7ffeb665bc10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [0.00479126 0.000545502 0.0037384 ... 0.000301361 -0.0016861 0.00239563]
 
-=============================
-
-Tensor Name: encoder_layer9_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x3431c200
-=============================
-
 DEBUG: NAME: >>>>>>>>>>> encoder_layer6_ffn_gate
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727689fb36a0>
-=============================
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe31feb6a0>
+data addr: 0x7ffeb4c18c10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.0039978 0.00311279 -0.00198364 ... 0.00323486 0.00543213 0.00726318]
 
-Tensor Name: encoder_layer9_post_attention_layernorm:gamma
-ape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[ensor Name: encoder_layer9_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe207e06a0>
+data addr: 0x7ffeb6b5bc10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[35.25 24.5 3.14062 ... 7.625 19 21.875]
 
-Bytes to read: 0xa00
-9 -0.00198364 ... 0.00323486 0.00543213 0.00726318]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe1efdd6a0>
+data addr: 0x7ffeb6b5c610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[10.1875 15.875 14.0625 ... 47.5 19 14.4375]
 
-ytes to read: 0xa00
-SStart offset: 0x3459c200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72766bf776a0>
-data addr: 0x72771fef7010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[52.5 43.5 0.568359 ... 17.125 27.375 13.0625]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wk
-DEBUG: num weight: 0x1
-DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wv
-DEBUG: num weight: 0x1
-AME: >>>>>>>>>>> encoder_layer9_wv
-<N9nntrainer6TensorE at 0x72766e77c6a0>
-DEBUG: num weight: 0x1
-0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-<N9nntrainer6TensorE at 0x72766d77a6a0>
-data addr: 0x72771fbd7010
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.00744629 -0.00665283 -0.00692749 ... -0.0133667 0.00190735 0.0132446 -0.00994873 ... -0.000892639 0.000598907 0.00366211]
-
-0.00744629 -0.00665283 -0.00692749 ... -0.0133667 0.00190735 0.0132446 -0.00994873 ... -0.000892639 0.000598907 0.00366211]
-0.00248718 0.00233459]
-
-
-=============================
-
-Tensor Name: encoder_layer9_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3459cc00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72766a7746a0>
-data addr: 0x72771fef7a10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[2.28125 3.15625 2.57812 ... 8.21875 4.20312 2.28125]
-
-=============================
-
-Tensor Name: encoder_layer9_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3459d600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer9_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x34a9d600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer7_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72767d79a6a0>
-data addr: 0x72772e518c10
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-===============
-
-Tensor Name: encoder_layer9_ffn_down:weight
-00:0x280 [ FP32 : NCHW ]
-[ensor Name: encoder_layer9_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
--0.00613403]
-
-ytes to read: 0x500000
-SStart offset: 0x34f9d600
-=============================
-
-Tensor Name: encoder_layer9_posTensor Name: encoder_layer9_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3549d600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727666f6d6a0>
-data addr: 0x727720df8410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[77 61.5 2.21094 ... 18.75 40 25.625]
-
-=============================
-
-Tensor Name: encoder_layer10_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3549e000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_pre_attention_layernorm
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_pre_attention_layernorm
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wq
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72766f77e6a0>
-data addr: 0x72771f8b6810
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-data addr: 0x72771f8b6810
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-<[N9nntrainer6TensorE at 0x72766576a6a0>
-data addr: 0x72771f8b6810
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-<[N9nntrainer6TensorE at 0x72766576a6a0>
-0.00552368 -0.00215149 -0.00396729 ... -0.00738525 0.000946045 -0.0055542]
-
-
-x1:0x280 [ FP32 : NCHW ]
-[6.6875 7.71875 19.125 ... 30.125 10.875 16.375]
-
-=============================
-
-Tensor Name: encoder_layer10_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x3549ea00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer10_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3571ea00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727663f676a0>
-data addr: 0x72771f8b6410
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[3.09375 2.23438 1.89062 ... 2.52344 0.390625 1.91797]
-
-=============================
-
-Tensor Name: encoder_layer10_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x3571ee00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer10_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x357bee00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727662f656a0>
-data addr: 0x72772111a210
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.60156 1.31836 0.883789 ... 1.0603 5.96875 1.27344]
-
-=============================
-
-Tensor Name: encoder_layer10_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x357bf200
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe1d7da6a0>
+data addr: 0x7ffeb6ddd010
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[2.21094 1.48047 -0.109375 ... 1.55078 1.41016 1.74219]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer7_ffn_gate
-DEBUG: num weight: 0x1
-> encoder_layer7_ffn_gate
-=============================
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe227e46a0>
+data addr: 0x7ffeb615bc10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.00198364 0.00172424 -0.00408936 ... 0.00473022 0.0014267 -0.000659943]
 
-Tensor Name: encoder_laTensor Name: encoder_layer10_attention_out:weight
-Tensor Dim: DEBUG: weight: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe1c7d86a0>
+data addr: 0x7ffeb6e7d410
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.99219 1.60156 0.619141 ... 1.85547 1.82422 1.58984]
 
-Bytes to read: 0x280000
-0x72767ef9d6a0S
-0x3585f200
-================data addr: 0x72772ff5bc10
-Shape: 0x1:0x1:0x280:data addr: 0x72772ff5bc10
-ShapeDEBUG: num weight: 0x1
-10
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[EBUG: num weight: 0x1
-DEBUG: weight: -0.00198364 0.00172424 -0.00408936 ... 0.00473022 0.0014267 -0.000659943]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe1cfd96a0>
+data addr: 0x7ffeb6ddd410
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.00479126 -0.000682831 0.00332642 ... -0.000234604 0.00164795 0.00239563]
 
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_ffn_up
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe22fe56a0>
+data addr: 0x7ffeb5c5bc10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.00242615 0.000629425 -0.00343323 ... 0.00585938 -0.000728607 -0.00193024]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe1bfd76a0>
+data addr: 0x7ffeb6e7d810
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.0179443 -0.00756836 0.000751495 ... -0.00325012 0.00056076 0.000858307]
 
-TTensor Name: encoder_layer10_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe1a7d46a0>
+data addr: 0x7ffeb719d810
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[45.5 34.5 0.769531 ... 14.125 22.625 16.625]
 
-ensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[Bytes to read: 0xa00
-Start offset: 0x35adf200
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe1dfdb6a0>
+data addr: 0x7ffeb6b5d010
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[0.000514984 -0.000770569 0.00698853 ... -0.00212097 0.00561523 -0.00130463]
 
--0.00242615 0.000629425 -0.00343323 ... 0.00585938 -0.000728607 -0.00193024]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer7_ffn_down
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe20fe16a0>
+data addr: 0x7ffeb4718c10
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[0.00491333 0.00306702 -0.00274658 ... -0.00195312 0.00558472 -0.00613403]
 
-0.00242615 0.000629425 -0.00343323 ... 0.00585938 -0.000728607 -0.00193024]
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_post_attention_layernorm
-DDEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727660f616a0>
-data addr: 0x72772143a610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[96 83.5 1.08008 ... 89.5 45.25 17.5]
+encoder_layer8_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe18fd16a0>
+data addr: 0x7ffeb719e210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[3.96875 6.125 2.96875 ... 14.75 7.6875 3.65625]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wk
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276637666a0>
-data addr: 0x72772107a210
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.0014267 0.00268555 -0.00291443 ... 0.00173187 0.00218201 0.0027771]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe1afd56a0>
+data addr: 0x7ffeb6f1d810
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[0.00267029 0.00485229 -0.0143433 ... -0.012146 -0.00198364 0.000450134]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wv
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276627646a0>
-data addr: 0x72772111a610
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[-0.0039978 -0.010437 -0.00173187 ... -0.00094223 -0.00253296 -0.000400543]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe157ca6a0>
+data addr: 0x7ffeb809ec10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[47.25 35 1.78516 ... 11.0625 24 20]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe13fc76a0>
+data addr: 0x7ffead688010
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[8.15625 11.5 10.25 ... 43.5 15.6875 14.1875]
 
-Tensor Name: encoder_layer10_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ rward_layernorm:gamma
-encoder_layer8_ffn_up
-DEBUG: num weight: 0x1
-0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe127c46a0>
+data addr: 0x7ffea5d36810
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.66406 1.08643 1.36133 ... 4.73438 0.818359 0.939209]
 
-EBUG: num weight: 0x1
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe117c26a0>
+data addr: 0x7ffea5dd6c10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.55859 2.57812 1.35352 ... 0.587891 3.4375 3.14062]
 
-Bytes to read: 0xa00
-Start offset: 0x35adfc00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe11fc36a0>
+data addr: 0x7ffea5d36c10
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.00744629 -0.00665283 -0.00692749 ... 0.00190735 -0.000892639 0.00366211]
 
-rainer6TensorE at 0x7276747886a0>
-data addr: 0x727730f9ec10
-===
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe10fc16a0>
+data addr: 0x7ffea5dd7010
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.0133667 0.0132446 -0.00994873 ... 0.000598907 0.00248718 0.00233459]
 
-data addr: 0x727730f9ec10
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[0.00454712 DEBUG: NAME: >>>>>>>>>>> -0.00634766 0.00309753 ... 0.00170135 -0.00254822 encoder_layer
-0.00454712 DEBUG: NAME: >>>>>>>>>>> -0.00634766 0.00309753 ... 0.00170135 -0.00254822 encoder_layer10_pre_feedforward_layernormtion_layernor
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe0f7be6a0>
+data addr: 0x7ffea60f7010
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[52.5 43.5 0.568359 ... 17.125 27.375 13.0625]
 
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72765f75e6a0>
-data addr: 0x72772143b010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[1.93359 2.54688 3.53125 ... 1.84766 3.70312 5.4375]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe12fc56a0>
+data addr: 0x7ffea5ab6810
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[0.00552368 -0.00215149 -0.00396729 ... -0.00738525 0.000946045 -0.0055542]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer8_ffn_gate
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727673f876a0>
-data addr: 0x72773149ec10
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer8_ffn_up
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe17fcf6a0>
+data addr: 0x7ffeb719ec10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[0.00454712 -0.00634766 0.00309753 ... 0.00170135 -0.00254822 -0.00340271]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: NAME: >>>>>>>>>>> DEBUG: weight: encoder_layer8_ffn_gate
+<N9nntrainer6TensorE at 0x7ffe0dfbb6a0>1
+data addr: 0x7ffea60f7a10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[<N9nntrainer6TensorE at 0x7ffe177ce6a0>
+[<N9nntrainer6TensorE at 0x7ffe177ce6a0>
+2.28125 3.15625 2.57812 ... 8.21875 4.20312 2.28125]
+Shape: 
+Shape: 
+1:1:640:2048 [ FP32 : NCHW ]
 [0.00162506 0.00732422 -0.00273132 ... 0.00195312 0.000207901 0.0039978]
 
-=============================
-
-Tensor Name: encoder_layer10_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x35ae0600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer10_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x35fe0600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_attention_out
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72766c7786a0>
-data addr: 0x72771fc77010
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[0.000919342 0.00291443 0.0181885 ... 0.00891113 -0.00482178 -0.00267029]
-
-
 DEBUG: NAME: >>>>>>>>>>> encoder_layer8_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276727846a0>
-data addr: 0x72773199ec10
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe15fcb6a0>
+data addr: 0x7ffeb7b9ec10
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
 [-0.0101318 0.00387573 -0.00430298 ... 0.00191498 0.000537872 -0.000835419]
 
-=============================
-
-Tensor Name: encoder_layer10_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x364e0600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer10_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x369e0600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72765bf576a0>
-data addr: 0x72772233ba10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[157 139 3.375 ... 38.5 74 40.25]
-
-=============================
-
-Tensor Name: encoder_layer11_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x369e1000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72765a7546a0>
-data addr: 0x72772233c410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[1.4668 1.74609 11 ... 3.67188 2.59375 5.40625]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276647686a0>
-data addr: 0x727720df9810
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[-0.000850677 -0.00292969 -0.000385284 ... -0.00909424 1.26362e-05 -0.00436401]
-
-=============================
-
-Tensor Name: encoder_layer11_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x369e1a00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer11_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x36c61a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727658f516a0>
-data addr: 0x7277225bce10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.23438 1.13086 1.00316 ... 0.949219 0.277344 0.410156]
-
-=============================
-
-Tensor Name: encoder_layer11_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x36c61e00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer11_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x36d01e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727657f4f6a0>
-data addr: 0x72771cb10010
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[2.25781 2.16406 -0.429688 ... 3.29688 25.625 8.0625]
-
-=============================
-
-Tensor Name: encoder_layer11_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x36d02200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer11_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x36da2200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer11_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x37022200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_post_attention_layernorm
-DEBUG: num weight: >>>>> encoder_layer11_post_attention_layernorm
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wk
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727655f4b6a0>
-data addr: 0x72771ce30410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[ata addr: 0x72771ce30410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-<N9nntrainer6TensorE at 0x7276587506a0>
-199 data addr: 0x72771e053410
-8.875 ... Shape: 0x1:0x1:0x280:0x100449  [ FP32 : NCHW ]
-[99 data addr: 0x72771e053410
-8.875 ... Shape: 0x1:0x1:0x280:0x100449  [ FP32 : NCHW ]
-56.25 31.25]
-
--0.00177002 -0.00540161 ... 0.00221252 0.000850677 0.00062561]
-
-=============================
-
-Tensor Name: encoder_layer11_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x37022c00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276547486a0>
-data addr: 0x72771ce30e10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[1.78125 2.30469 7.84375 ... 1.84375 4.07812 8.84375]
-
-
-encoder_layer11_wv
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72765774e6a0>
-data addr: 0x72771cb10410
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.0118408 0.00497437 -0.00915527 ... 0.00866699 0.00247192 0.000200272]
-
-=============================
-
-Tensor Name: encoder_layer11_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x37023600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer11_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x37523600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer10_attention_out
-=============================
-
-Tensor Name: encoder_layer11_ffn_down:weight
-ntion_out
-=============================
-
-Tensor Name: encoder_layer11_ffn_down:weight
-Tensor Dim: Shape: 0x1:Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x37a23600
-=============================
-
-<N9nntrainer6TensorE at 0x7276617626a0>
-data addr: 0x7277211ba610
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[-0.00701904 0.00069046 0.000740051 ... 0.0233154 0.00656128 -6.4373e-05]
-
-=============================
-
-Tensor Name: encoder_layer11_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x37f23600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727650f416a0>
-data addr: 0x72771dd31810
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[259 185 8.78125 ... 285 130 53.25]
-
-=============================
-
-Tensor Name: encoder_layer12_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x37f24000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72764f73e6a0>
-data addr: 0x72771dd32210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[3.07812 4.03125 30.875 ... 2.95312 6.5 18.625]
-
-=============================
-
-Tensor Name: encoder_layer12_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x37f24a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276597526a0>
-data addr: 0x72772233ce10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[-0.0115967 -0.00897217 0.00186157 ... -0.00137329 -0.0130005 -0.000354767]
-
-=============================
-
-Tensor Name: encoder_layer12_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x381a4a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72764df3b6a0>
-data addr: 0x72771dfb2c10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[-1.07812 1.27539 -0.0546875 ... 0.605469 0.476562 1.18945]
-
-=============================
-
-Tensor Name: encoder_layer12_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x381a4e00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer12_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x38244e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72764cf396a0>
-data addr: 0x72771e053010
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[-0.992188 0.754883 -0.0234375 ... 5.03125 6.375 2.55469]
-
-
-=============================
-
-Tensor Name: encoder_layer12_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x38245200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_attention_out
-DEBUG: num weight: 0x1
-> encoder_layer11_attention_out
-=============================
-
-Tensor Name: encoder_laTensor Name: encoder_layer12_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:9nntrainer6TensorE at 0x280 [ FP32 : Ndata addr: 0x72771cbb0410
-Shape: 0x1:0x1:0x400nsorE at 0x280 [ FP32 : NCHW ]
-
-ata addr: 0x72771cbb0410
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[Bytes to read: 0x280000
-Start offset: 0x382e5200
-0.0039978 0.00915527 0.00292969 ... 0.00537109 -0.00291443 0.0062561]
-
-tart offset: 0x382e5200
-==============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wk
-DEBUG: num weight: 0x1
-> encoder_layer12_wk
-=============================
-
-Tensor Name: encoder_laTensor Neight: <N9nntrainer6TensorE at 0x72764d73a6a0>
-amma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
->
-data addr: 0x72771dfb3010
-Shape: 0x1:0x1:0x280:0x100 
-ata addr: 0x72771dfb3010
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[Bytes to read: 0xa00
-Start offset: 0x38565200
-=============================
-
-97437]
-
-============================
-
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72764af356a0>
-data addr: 0x72771e373410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[331 208 7.71875 ... 469 93.5 29.375]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe0ffbf6a0>
+data addr: 0x7ffea5e77010
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[0.000919342 0.00291443 0.0181885 ... 0.00891113 -0.00482178 -0.00267029]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe0a7b46a0>
+data addr: 0x7ffea6ff8410
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[77 61.5 2.21094 ... 18.75 40 25.625]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe08fb16a0>
+data addr: 0x7ffea6ff8e10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[6.6875 7.71875 19.125 ... 30.125 10.875 16.375]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe077ae6a0>
+data addr: 0x7ffea5ab6410
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[3.09375 2.23438 1.89062 ... 2.52344 0.390625 1.91797]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe067ac6a0>
+data addr: 0x7ffea731a210
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.60156 1.31836 0.883789 ... 1.0603 5.96875 1.27344]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe06fad6a0>
+data addr: 0x7ffea727a210
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.0014267 0.00268555 -0.00291443 ... 0.00173187 0.00218201 0.0027771]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer9_ffn_up
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276697726a0>
-data addr: 0x72771fef8410
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe0cfb96a0>
+data addr: 0x7ffea60f8410
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [-0.000637054 -0.00201416 -0.00154114 ... 0.000621796 -0.000785828 0.00497437]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wv
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72764c7386a0>
-DEBUG: weight: <N9nntrainer6TensorE at 0x72764c7386a0>
-DEBUG: NAME: >>>>>>>>>>> data addr: 0x72771ca70010
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[encoder_layer9_ffn_gate
-[encoder_layer9_ffn_gate
-0.00276184 0.00891113 -0.00123596 ... 0.00159454 -0.00527954 0.00325012]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe05fab6a0>
+data addr: 0x7ffea731a610
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-0.0039978 -0.010437 -0.00173187 ... -0.00094223 -0.00253296 -0.000400543]
 
-EBUG: num weight: 0x1
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe047a86a0>
+data addr: 0x7ffea763a610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[96 83.5 1.08008 ... 89.5 45.25 17.5]
 
-DEBUG: weight: <N9nntrainer6TensorE at 0x727668f716a0>
-data addr: 0x7277203f8410
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[0.0071106 0.00231934 0.00582886 ... -0.00138855 0.000471115 -0.0020752]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe07faf6a0>
+data addr: 0x7ffea6ff9810
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[-0.000850677 -0.00292969 -0.000385284 ... -0.00909424 1.26362e-05 -0.00436401]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer9_ffn_gate
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe0c7b86a0>
+data addr: 0x7ffea65f8410
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[DEBUG: NAME: >>>>>>>>>>> encoder_layer10_pre_feedforward_layernorm
+DEBUG: num weight: 1
+0.0071106 DEBUG: weight: 0.00231934 0.00582886 ... -0.00138855 0.000471115 -0.0020752]
 
-Tensor Name: encoder_layer12_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+<N9nntrainer6TensorE at 0x7ffe02fa56a0>
+data addr: 0x7ffea763b010
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[1.93359 2.54688 3.53125 ... 1.84766 3.70312 5.4375]
 
-Bytes to read: 0xa00
-Start offset: 0x38565c00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_attention_out
+DEBUG: num weight: 1
+DEBUG: NAME: >>>>>>>>>>> DEBUG: weight: encoder_layer9_ffn_down
+DEBUG: num weight: 1
+<DEBUG: weight: sorE at 0x7ffe04fa96a0>
+data addr: 0x7ffea73ba610
+<N9nntrainer6TensorE at Shape: 0x7ffe0afb56a01:1:1024:640 [ FP32 : NCHW ]
+[ata addr: 0x7ffea73ba610
+<N9nntrainer6TensorE at Shape: 0x7ffe0afb56a01:1:[-0.00701904 0.00069046 0.000740051 ... 0.0233154 0.00656128 -6.4373e-05]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276497326a0>
-data addr: 0x72771e373e10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[1.23828 1.57422 8.5 ... 1.12158 2.51562 5.625]
-
-=============================
-
-Tensor Name: encoder_layer12_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x38566600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer12_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x38a66600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer9_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72766776e6a0>
-data addr: 0x7277208f8410
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
 [0.0045166 -0.00775146 -0.00543213 ... 0.00139618 -0.000354767 0.00161743]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdff79e6a0>
+data addr: 0x7ffea853ba10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[157 139 3.375 ... 38.5 74 40.25]
 
-Tensor Name: encoder_layer12_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdfdf9b6a0>
+data addr: 0x7ffea853c410
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[1.4668 1.74609 11 ... 3.67188 2.59375 5.40625]
 
-Bytes to read: 0x500000
-Start offset: 0x38f66600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdfc7986a0>
+data addr: 0x7ffea87bce10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.23438 1.13086 1.00316 ... 0.949219 0.277344 0.410156]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdfb7966a0>
+data addr: 0x7ffea2d10010
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[2.25781 2.16406 -0.429688 ... 3.29688 25.625 8.0625]
 
-Tensor Name: encoder_layer12_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdfbf976a0>
+data addr: 0x7ffea4253410
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[-1.32918e-05 -0.00177002 -0.00540161 ... 0.00221252 0.000850677 0.00062561]
 
-Bytes to read: 0xa00
-Start offset: 0x39466600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727645f2b6a0>
-data addr: 0x72771f274810
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[329 225 19.125 ... 401 181 70]
-
-=============================
-
-Tensor Name: encoder_layer13_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x39467000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer13_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276447286a0>
-data addr: 0x72771f275210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[2.69531 3.40625 32.25 ... 2.32031 5.5625 13.375]
-
-=============================
-
-Tensor Name: encoder_layer13_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x39467a00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer13_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x396e7a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer13_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727642f256a0>
-data addr: 0x72771f4f5c10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.50391 1.45508 0.636719 ... 1.27734 0.958252 1.42188]
-
-=============================
-
-Tensor Name: encoder_layer13_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x396e7e00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer13_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x39787e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer13_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727641f236a0>
-data addr: 0x72771f596010
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[0.876465 1.62891 -0.226562 ... 1.92188 1.88672 1.81641]
-
-=============================
-
-Tensor Name: encoder_layer13_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x39788200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer13_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x39828200
-=============================
-
-=============================
-
-Tensor Name: encoder_layer13_post_attention_layernorm:gamma
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x39aa8200
-ntrainer6TensorE at 0x7276427246a0>
-data addr: 0x72771f4f6010=============================
-
-: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[============================
-
-0.0109253 -0.00741577 -0.0180664 ... 0.00137329 0.0174561 -0.000293732]
-
-
-DEBUG: NAME: >>>>>>>>>>>encoder_layer10_ffn_gate
-DEBUG: num weight: 0x1
->>encoder_layer10_ffn_gate
-DEBUG: NAME: >>>>>>>>>>> DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wq
-DEBUG: num weight: 0x1
->>encoder_layer10_ffn_gate
-DEBUG: NAME: >>>>>>>>>>> DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wq
-encoder_layer13_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: weight: ht: 0x1
-DEBUG: weight: DEBUG: weight: <N9nntrainer6TensorE at  at 0x72764e73c6a00x72765df5b6a0>
->
-data addr: ht: DEBUG: weight: <N9nntrainer6TensorE at  at 0x72764e73c6a00x72765df5b6a0>
-data addr: 0x72771dd32c10
-<N9nntrainer6TensorE at Shape: 0x1>
-data addr: 0x727721079810
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-80:0x400 [ FP32 : NCHW ]
-[ata addr: 0x727721079810
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-]
-[ata addr: 0x727721079810
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[-0.0212402 -0.0150146 -0.00173187 ... -0.00393677 -0.00741577 -0.000751495]
-
-
-74 12.5625 ... 351 117.5 42.5]
-87 ... -0.00393677 -0.00741577 -0.000751495]
--0.00250244 0.00518799 0.0057373 ... 0.00466919 0.00175476 -0.00671387]
-
-74 12.5625 ... 351 117.5 42.5]
-
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer13_wv
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276417226a0>
-data addr: 0x72771f596410
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.0101318 0.000553131 0.00479126 ... -0.00424194 0.00982666 0.00215149]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_attention_out
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72764b7366a0>
-data addr: 0x72771e0f3410
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[-0.00726318 -0.0078125 -0.0038147 ... 0.00196838 -0.00337219 -0.000850677]
-
-=============================
-
-Tensor Name: encoder_layer13_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x39aa8c00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer13_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> <N9nntrainer6TensorE at 0x72763e71c6a0>
-data addr: 0x727725f44610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-2763e71c6a0>
-encoder_layer10_ffn_up
-data addr: 0x727725f44610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[EBUG: num weight: 0x1
-1.22852 1.625 7.9375 ... 1.06494 2.28125 4.8125]
-
-<N9nntrainer6TensorE at 0x72765e75c6a0>
-data addr: 0x72772143ba10
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_ffn_up
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe01fa36a0>
+data addr: 0x7ffea763ba10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [0.00823975 -0.00139618 -0.000284195 ... 0.00488281 -0.0010376 8.53539e-05]
 
-=============================
-
-Tensor Name: encoder_layer13_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x39aa9600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276517426a0>
-data addr: 0x72771d831810
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[-0.00421143 0.00145721 -0.000850677 ... 0.0020752 0.000119686 -0.00509644]
-
-=============================
-
-Tensor Name: encoder_layer13_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x39fa9600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdfaf956a0>
+data addr: 0x7ffea2d10410
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.0118408 0.00497437 -0.00915527 ... 0.00866699 0.00247192 0.000200272]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer10_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72765c7586a0>
-data addr: 0x727721e3ba10
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdfff9f6a0>
+data addr: 0x7ffea803ba10
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
 [-0.000272751 0.00245667 -0.00686646 ... 0.00964355 0.00891113 0.000972748]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf97926a0>
+data addr: 0x7ffea3030410
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[339 199 8.875 ... 449 56.25 31.25]
 
-Tensor Name: encoder_layer13_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer10_ffn_gate
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffe017a26a0>
+data addr: 0x7ffea7b3ba10
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.00250244 0.00518799 0.0057373 ... 0.00466919 0.00175476 -0.00671387]
 
-Bytes to read: 0x500000
-Start offset: 0x3a4a9600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdfcf996a0>
+data addr: 0x7ffea853ce10
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[-0.0115967 -0.00897217 0.00186157 ... -0.00137329 -0.0130005 -0.000354767]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf7f8f6a0>
+data addr: 0x7ffea3030e10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[1.78125 2.30469 7.84375 ... 1.84375 4.07812 8.84375]
 
-Tensor Name: encoder_layer13_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf9f936a0>
+data addr: 0x7ffea2db0410
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[-0.0039978 0.00915527 0.00292969 ... 0.00537109 -0.00291443 0.0062561]
 
-Bytes to read: 0xa00
-Start offset: 0x3a9a9600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf47886a0>
+data addr: 0x7ffea3f31810
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[259 185 8.78125 ... 285 130 53.25]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer13_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72763af156a0>
-data addr: 0x727726e45010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[337 225 22.625 ... 377 209 62.75]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf2f856a0>
+data addr: 0x7ffea3f32210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[3.07812 4.03125 30.875 ... 2.95312 6.5 18.625]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf17826a0>
+data addr: 0x7ffea41b2c10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[-1.07812 1.27539 -0.0546875 ... 0.605469 0.476562 1.18945]
 
-Tensor Name: encoder_layer14_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf07806a0>
+data addr: 0x7ffea4253010
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[-0.992188 0.754883 -0.0234375 ... 5.03125 6.375 2.55469]
 
-Bytes to read: 0xa00
-Start offset: 0x3a9aa000
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf0f816a0>
+data addr: 0x7ffea41b3010
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.00744629 0.000617981 0.0159912 ... 0.000349045 -0.0119019 -0.00497437]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276397126a0>
-data addr: 0x727726e45a10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[2.92188 3.625 42.75 ... 2.125 6.78125 29.625]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdeff7f6a0>
+data addr: 0x7ffea2c70010
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[<N9nntrainer6TensorE at 0x7ffdf678c6a0>
+[<N9nntrainer6TensorE at 0x7ffdf678c6a0>
+0.00276184 0.00891113 -0.00123596 ... 0.00159454 -0.00527954 0.00325012]
 
-=============================
+2048 [ FP32 : NCHW ]
+[0.00354004 -0.000364304 -0.000495911 ... 0.0017395 4.35114e-06 -0.00117493]
 
-Tensor Name: encoder_layer14_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf1f836a0>
+data addr: 0x7ffea3f32c10
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[-0.0212402 -0.0150146 -0.00173187 ... -0.00393677 -0.00741577 -0.000751495]
 
-Bytes to read: 0x280000
-Start offset: 0x3a9aaa00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer14_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3ac2aa00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727637f0f6a0>
-data addr: 0x7277270c6410
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.91797 -0.015625 0.277344 ... 2.59375 0.984558 0.673828]
-
-=============================
-
-Tensor Name: encoder_layer14_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x3ac2ae00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer14_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3accae00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wk_norm
-DEBUG: num weight: DEBUG: NAME: >>>>>>>>>>> 
-DEBUG: weight: encoder_layer13_attention_out
-DEBUG: num weight: der_layer13_attention_out
-<N9nntrainer6TensorE at 0x727636f0d6a0>
-data addr: 0x7277271668data addr: 0x727727166810
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[DEBUG: weight: 2.66406 0.537109 1.12891 ... 1.2373 2.75781 4.04688]
-
-<N9nntrainer6TensorE at 0x7276407206a0>
-data addr: 0x72771f636410
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-
-Tensor Name: encoder_layer14_wv:weight
-1:0x400:0x280 [ FP32 : NCHW ]
-[ensor Name: encoder_layer14_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-ensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
--0.00248718 -0.00631714 0.000785828 ... -0.00238037 -0.00389099 -0.00604248]
-
-BBytes to read: 0xa0000
-Start offset: 0x3accb200
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdee77c6a0>
+data addr: 0x7ffea4573410
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[331 208 7.71875 ... 469 93.5 29.375]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer11_ffn_up
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276537466a0>
-data addr: 0x72771ce31810
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf6f8d6a0>
+data addr: 0x7ffea3031810
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [-0.00323486 -0.00100708 -0.00141907 ... -0.000174522 0.000946045 -0.00674438]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer11_ffn_gate
-DEBUG: num weight: 0x1
-DEBUG: weight: <=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdecf796a0>
+data addr: 0x7ffea4573e10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[1.23828 1.57422 8.5 ... 1.12158 2.51562 5.625]
 
-Tensor Name: encoder_layer14_attention_out:weight
-27652f456a0>
-data addr: : encoder_layer14_attention_out:weight
-Tensor Dim: x72771d331810
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[ensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer11_ffn_down
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdf4f896a0>
+data addr: 0x7ffea3a31810
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[-0.00421143 0.00145721 -0.000850677 ... 0.0020752 0.000119686 -0.00509644]
 
-0.00354004 Bytes to read: 0x280000
-Start offset: 0x3ad6b200
- 0x280000
--0.000364304 -0.000495911 ... 0.0017395 4.35114e-06 -0.00117493]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdeef7d6a0>
+data addr: 0x7ffea42f3410
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[-0.00726318 -0.0078125 -0.0038147 ... 0.00196838 -0.00337219 -0.000850677]
 
-tart offset: 0x3ad6b200
-==============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde97726a0>
+data addr: 0x7ffea5474810
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[329 225 19.125 ... 401 181 70]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde7f6f6a0>
+data addr: 0x7ffea5475210
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[2.69531 3.40625 32.25 ... 2.32031 5.5625 13.375]
 
-Tensor Name: encoder_layer14_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde676c6a0>
+data addr: 0x7ffea56f5c10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.50391 1.45508 0.636719 ... 1.27734 0.958252 1.42188]
 
-Bytes to read: 0xa00
-Start offset: 0x3afeb200
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde576a6a0>
+data addr: 0x7ffea5796010
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[0.876465 1.62891 -0.226562 ... 1.92188 1.88672 1.81641]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727634f096a0>
-data addr: 0x727727486c10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[228 189 28.875 ... 257 215 70.5]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_wk
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde5f6b6a0>
+data addr: 0x7ffea56f6010
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.0109253 -0.00741577 -0.0180664 ... 0.00137329 0.0174561 -0.000293732]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wk
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72763770e6a0>
-data addr: 0x7277270c6810
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[-0.000934601 0.017334 -0.000343323 ... 0.0115356 0.00726318 -0.00253296]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_ffn_gate
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdeb7766a0>
+data addr: 0x7ffea4a74810
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[0.00408936 -0.00106049 -0.00753784 ... -0.0109863 -0.00259399 0.00106049]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde4f696a0>
+data addr: 0x7ffea5796410
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.0101318 0.000553131 0.00479126 ... -0.00424194 0.00982666 0.00215149]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer13_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: =============================
+DEBUG: num weight: 1
+DEBUG: NAME: >>>>>>>>>>> DEBUG: weight: encoder_layer13_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde6f6d6a0>
+data addr: 0x7ffea5475c10
+ncoder_layer13_wq
+DEBUG: num weight: 1
+DEBUG: NAME: >>>>>>>>>>> DEBUG: weight: encoder_layer13_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde6f6d6a0>
+<N9nntrainer6TensorE at 0x7ffde37666a0>
+data addr: 0x7ffea7279810
+Shape: 1:1:640:1024 [ FP32 : N ]
+ ]
+[ata addr: 0x7ffea7279810
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[0.0112915 273 0.0030365 ... 174 0.0129395 0.00762939 12.5625 ... 0.000230789]
 
-Tensor Name: encoder_layer14_pre_feedforward_layernorm:gamma
-nsorE at 0x7276437266a0>
-Tensor Name: encoder_layer14_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 275c10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[ensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+0.0112915 273 0.0030365 ... 174 0.0129395 0.00762939 12.5625 ... 0.000230789]
+351 117.5 42.5]
 
-Bytes to read: 0.00762939 0xa00
-Start offset: 0x3afebc00
- 0xa00
-0.000230789]
-
-tart offset: 0x3afebc00
-==============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276337066a0>
-data addr: 0x727727487610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[1.30078 1.52734 7.5625 ... 1.10986 1.97656 4.79688]
-
-=============================
-
-Tensor Name: encoder_layer14_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3afec600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: encoder_layer14_wv
-DEBUG: weight: encoder_layer14_wv
-<N9nntrainer6TensorE at 0x72764672c6a0>
-data addr: 0x72771ed74810
-Shape: 0x1:0x1:0x800:TensorE at 0x72764672c6a0>
-=============================
-
-Tensor Name: encoder_laTensor Name: encoder_layer14_ffn_gate:weight
-0:0x280 [ FP32 : NCHW ]
-[ensor Name: encoder_layer14_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-1195 0.00411987 -0.000392914]
-
-ytes to read: 0x500000
-00x72763670c6a00x3b4ec600
-========================================================
-
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.00424194 -0.00909424 -0.00312805 ... 0.00379944 -0.00183868 0.00218201]
-
-=============================
-
-Tensor Name: encoder_layer14_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3b9ec600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer14_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3beec600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72762feff6a0>
-data addr: 0x727727e88a10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[325 235 31.375 ... 363 283 82.5]
-
-=============================
-
-Tensor Name: encoder_layer15_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3beed000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer15_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72762e6fc6a0>
-data addr: 0x727727e89410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[4.67188 5.875 29.5 ... 4.04688 6.0625 26.25]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276387106a0>
-data addr: 0x727726e46410
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[-0.00248718 0.0373535 0.0341797 ... -0.00247192 -0.000850677 -0.00378418]
-
-=============================
-
-Tensor Name: encoder_layer15_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x3beeda00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer15_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3c16da00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer15_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72762cef96a0>
-data addr: 0x727728109e10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[2.1875 0.339844 1.875 ... 1.56641 1.53125 1.76953]
-
-=============================
-
-Tensor Name: encoder_layer15_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x3c16de00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer15_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3c20de00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> =======_layer15_wk_norm
-=====
-
-Tensor Name: encoder_layer15_wv:weight
-5_wk_norm
-DEBUG: num weight: 0x1
-yer15_wv:weight
-Tensor Dim: Shape: 0x1:Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-EBUG: weight: <N9nntrainer6TensorE at 0x72762bef76a0>
-dBytes to read: 0xa0000
-10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[ytes to read: 0xa0000
-Start offset: 0x3c20e2 0
-=============================
-
-9 1.1709 ... 1.54688 1.59375 1.16406]
-
-============================
-
-
-=============================
-
-Tensor Name: encoder_layer15_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x3c2ae200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer12_ffn_gate=============================
-=
-Tensor Name: encoder_layer15_post_attention_layernTensor Name: encoder_layer15_post_attention_layernorm:gamma
-Tensor Dim: eight: 0x1
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3c52e200
-=============================
-
-<N9nntrainer6TensorE at 0x727647f2f6a0>
-data addr: 0x72771e874810
-encoder_layer15_post_attention_layernorm
-DEBUG: num weight: 0x1
-10
-encoder_layer15_post_attention_layernorm
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[EBUG: num weight: 0x1
-DEBUG: NAME: >>>>>>>>>>> DEBUG: weight: encoder_layer15_wk
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-<N9nntrainer6TensorE at 0.00408936 6a0>
-0.00106049]
-data addr: 0x7277284ca610
-nsorE at 0.00408936 6a0>
-DEBUG: weight: -0.00106049 -0.00753784 ... -0.0109863 -0.00259399 N9nntrainer6TensorE at 0x72762c6f86a0>
-data addr: 0
-ata addr: 0x72772810a210
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
- : NCHW ]
-[ata addr: 0x72772810a210
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.00143433 ... 11.5 ... 561 1380.000118732 0.014
-
-.00143433 ... 11.5 ... 561 1380.000118732 0.014
-484 [ FP]
-
-
-=============================
-
-Tensor Name: encoder_layer15_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
->>>> encoder_layer15_wv
-DEBUG: num weight: 0xStart offset: 0x3c52ec0Start offset: 0x3c52ec00
-=============================
-
-sorE at 0x72762b6f66a0>
-data addr: 0x7277281aa610
-Shapedata addr: 0x7277281aa610
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[-8.7738e-05 -0.00927734 -0.00234985 ... -0.000694275 0.000411987 -0.00314331]
-
-encoder_layer15_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276286f06a0>
-data addr: 0x7277284cb010
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[0.992828 1.14844 4.71875 ... 0.539062 1.44727 3.64062]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer12_ffn_up
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276487306a0>
-data addr: 0x72771e374810
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdebf776a0>
+data addr: 0x7ffea4574810
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [-0.00445557 0.0154419 0.00376892 ... 0.00939941 0.00939941 0.00222778]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde1f636a0>
+data addr: 0x7ffeac144610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[1.22852 1.625 7.9375 ... 1.06494 2.28125 4.8125]
 
-Tensor Name: encoder_layer15_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde3f676a0>
+data addr: 0x7ffea5836410
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[-0.00248718 -0.00631714 0.000785828 ... -0.00238037 -0.00389099 -0.00604248]
 
-Bytes to read: 0x500000
-x1:0x280:0x800 [ FP32 : NCHW ]
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer12_ffn_down
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde9f736a0>
+data addr: 0x7ffea4f74810
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[-0.00370789 -0.00138092 0.000637054 ... 0.000881195 0.00411987 -0.000392914]
 
-Tensor Name: : 0x500000
-Start offset: 0x3ca2f600
-r15_ffn_up:weight
-Tensor Dim: : 0x3ca2f600
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdde75c6a0>
+data addr: 0x7ffead045010
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[337 225 22.625 ... 377 209 62.75]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffddcf596a0>
+data addr: 0x7ffead045a10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[2.92188 3.625 42.75 ... 2.125 6.78125 29.625]
 
-0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffddb7566a0>
+data addr: 0x7ffead2c6410
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[1.91797 -0.015625 0.277344 ... 2.59375 0.984558 0.673828]
 
-Bytes to read: 0x500000
-Start offset: 0x3c52f600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer13_ffn_down
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72763b7166a0>
-data addr: 0x727726945010
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[0.00418091 3.21865e-05 0.000713348 ... -0.000178337 0.000293732 0.00378418]
-
-encoder_layer14_attention_out
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72763570a6a0>
-data addr: 0x727727206c10
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[0.00230408 0.00215149 -0.00267029 ... -0.0140381 0.00427246 0.00698853]
-
-=============================
-
-Tensor Name: encoder_layer15_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3cf2f600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer15_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3d42f600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer15_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727624ee96a0>
-data addr: 0x727722abdc10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[343 287 34.25 ... 389 347 88.5]
-
-=============================
-
-Tensor Name: encoder_layer16_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3d430000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_pre_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276236e66a0>
-data addr: 0x727722abe610
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[4.625 5.875 48.75 ... 2.9375 7.59375 45]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer15_wq
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72762d6fa6a0>
-data addr: 0x727727e89e10
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[0.000263214 0.012146 0.000375748 ... 0.0137329 -0.00285339 0.00102997]
-
-=============================
-
-Tensor Name: encoder_layer16_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x3d430a00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer16_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3d6b0a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727621ee36a0>
-data addr: 0x727722d3f010
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[2.09375 1.3125 1.34766 ... 0.716797 1.30859 0.496094]
-
-=============================
-
-Tensor Name: encoder_layer16_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x3d6b0e00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer16_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3d750e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727620ee16a0>
-data addr: 0x727722ddf410
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[1.23145 1.58203 1.49219 ... 2.57031 1.89844 4.59375]
-
-=============================
-
-Tensor Name: encoder_layer16_wv:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x3d751200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer13_ffn_gate
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72763cf196a0>
-data addr: 0x727726445010
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[-0.00236511 0.00698853 0.000329971 ... -0.00576782 0.00543213 0.00094223]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer15_attention_out
-DEBUG: num weight: 0x1
-> encoder_layer15_attention_out
-=============================
-
-Tensor Name: encoder_laTensor Name: encoder_layer16_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-ensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-<N9nntrainer6TensorE at 0x72762a6f46a0>
-dBytes to read: 0x280000
-0
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[ytes to read: 0x280000
-Start offset: 0x3d7f1200
-=============================
-
--0.00125885]
-
-=============================
-
-Tensor Name: encoder_layer16_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3da71200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_post_attention_layernorm
-DEBUG: num weight: 0x1
-> encoder_layer16_post_attention_layernorm
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_wk
-DEBUG: num weight: 0x1
-DEBUG: weight: ht: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72761eedd6a0>
-data addr: 0x7277230ff810
-Shape: 0x1:0x1:0x1:0x280 [ FPdata addr: 0x727722d3f410
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[ata addr: 0x727722d3f410
-Shape: 0x1:0x1:0x280:0x100 [ FP32DEBUG: NAME: >>>>>>>>>>> >>>>>>  ]
-[encoder_layer13_ffn_up
-[encoder_layer13_ffn_up
-212 [160 18.875 ... 208 193 57.5]
-
-EBUG: num weight: 0x1
-
-212 [160 18.875 ... 208 193 57.5]
--0.00531006 0.00131226 0.00282288 ... 0.000961304 -0.00209045 0.00127411]
-
-EBUG: num weight: 0x1
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wk
+DEBUG: num weight: 1
+<N9nntrainer6TensorE at 0x7ffdda7546a0>
+data addr: 0x7ffead366810
+ncoder_layer14_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wk
+DEBUG: num weight: 1
+<N9nntrainer6TensorE at 0x7ffdda7546a0>
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffddaf556a0>
+data addr: 0x7ffead366810
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+Shape: [1:1:640:256 [ FP32 : NCHW ]
+[2.66406 0.537109 1.12891 ... 1.2373 2.75781 4.0468834601]
+ weig]
 
 
-<N9nntrainer6TensorE at 0x72763d71a6a0>
-data addr: 0x727725f45010
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+0.00726318 -0.00253296]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_ffn_up
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde0f616a0>
+data addr: 0x7ffeac145010
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
 [-0.00256348 0.0106812 -0.00717163 ... 0.00158691 0.00582886 0.00662231]
 
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_ffn_gate
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffde07606a0>
+data addr: 0x7ffeac645010
+Shape: 1:1:640:2048 [ FP32 : NCHW ]
+[-0.00236511 0.00698853 0.000329971 ... -0.00576782 0.00543213 0.00094223]
 
-Tensor Name: encoder_layer16_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wv
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd9f536a0>
+data addr: 0x7ffead366c10
+Shape: 1:1:640:256 [ FP32 : NCHW ]
+[0.00424194 -0.00909424 -0.00312805 ... 0.00379944 -0.00183868 0.00218201]
 
-Bytes to read: 0xa00
-Start offset: 0x3da71c00
-=============================
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_post_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd87506a0>
+data addr: 0x7ffead686c10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[228 189 28.875 ... 257 215 70.5]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_pre_feedforward_layernorm
+DEBUG: NAME: >>>>>>>>>>> encoder_layer13_ffn_down
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffddef5d6a0>
+data addr: 0x7ffeacb45010
+Shape: 1:1:2048:640 [ FP32 : NCHW ]
+[0.00418091 3.21865e-05 0.000713348 ... -0.000178337 0.000293732 0.00378418]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_wq
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffddbf576a0>
+data addr: 0x7ffead046410
+Shape: 1:1:640:1024 [ FP32 : NCHW ]
+[-0.00248718 0.0373535 0.0341797 ... -0.00247192 -0.000850677 -0.00378418]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_pre_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd6f4d6a0>
+data addr: 0x7ffead687610
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[1.30078 1.52734 7.5625 ... 1.10986 1.97656 4.79688]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_attention_out
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd8f516a0>
+data addr: 0x7ffead406c10
+Shape: 1:1:1024:640 [ FP32 : NCHW ]
+[0.00230408 0.00215149 -0.00267029 ... -0.0140381 0.00427246 0.00698853]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer14_post_feedforward_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd37466a0>
+data addr: 0x7ffeae088a10
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[325 235 31.375 ... 363 283 82.5]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_pre_attention_layernorm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd1f436a0>
+data addr: 0x7ffeae089410
+Shape: 1:1:1:640 [ FP32 : NCHW ]
+[4.67188 5.875 29.5 ... 4.04688 6.0625 26.25]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_wq_norm
+DEBUG: num weight: 1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd07406a0>
+data addr: 0x7ffeae309e10
+Shape: 1:1:1:256 [ FP32 : NCHW ]
+[2.1875 0.339844 1.875 ... 1.56641 1.53125 1.76953]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_wk_norm
+DEBUG: num weight: 1
+DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> <N9nntrainer6TensorE at 0x7ffdcf73e6a04_ffn_up
+>
+<N9nntrainer6TensorE at 0x7ffeae3aa210
+0x7ffdd5f4b6a0>
+data addr: 0x7ffeabc44610
+7ffeae3aa210
+0x7ffdd5f4b6a0>
+Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
+0x280:0x800 [ FP32 : NCHW ]
+[0.732422 1.33789 1.1709 ... 1.54688 1.59375 1.16406]
+-0.00276184 
+-0.000610352]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_wk
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72761d6da6a0>
-data addr: 0x727723100210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[0.854492 1.08691 3.32812 ... 0.492188 1.29102 2.75781]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_wv
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276206e06a0>
-data addr: 0x727722ddf810
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdcff3f6a0>
+data addr: 0x7ffeae30a210
 Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[ata addr: 0x727722ddf810
-Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-=============================
-
-Tensor Name: encoder_layer16_ffn_up:weight
-Tensor Dim: 0.0067749 Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-ensor Dim: 0.0067749 Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-0.00811768 0.0129395 ... -0.000991821 0.00418091 -0.00222778]
-
-BBytes to read: 0x500000
-Start offset: 0x3da72600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer16_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3df72600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer16_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3e472600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer16_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3e972600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727619ed36a0>
-data addr: 0x7277225bd210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[403 303 37.75 ... 449 405 96.5]
+[0.0100708 -0.00506592 0.00143433 ... -0.0159912 0.000118732 0.0146484]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer14_ffn_gate
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727631f036a0>
-data addr: 0x727727488a10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd574a6a0>
+data addr: 0x7ffead688a10
 Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
 [-0.0043335 -0.0032959 0.00292969 ... -0.000450134 -0.0111084 0.00107574]
 
-=============================
-
-Tensor Name: encoder_layer17_pre_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3e973000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_pre_attention_layernorm
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_wv
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276186d06a0>
-data addr: 0x727724500c10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[2.6875 2.76562 31.375 ... 1.75781 2.67188 18.5]
-
-=============================
-
-Tensor Name: encoder_layer17_wq:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x3e973a00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer17_wq_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3ebf3a00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wq_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727616ecd6a0>
-data addr: 0x727724781610
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[0.999586 -1.625 2.28125 ... 3.60938 4.29688 2.3125]
-
-=============================
-
-Tensor Name: encoder_layer17_wk:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0xa0000
-Start offset: 0x3ebf3e00
-=============================
-
-=============================
-
-Tensor Name: encoder_layer17_wk_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-
-Bytes to read: 0x400
-Start offset: 0x3ec93e00
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wk_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727615ecb6a0>
-data addr: 0x727724821a10
-Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
-[2.30469 1.56641 1.38672 ... 1.63672 0.587891 1.08691]
-
-=============================
-
-Tensor Name: encoder_layer17_wv:weight
-AME: >>>>>>>>>>> encoder_layer16_attention_out
-DEBUG: num weight: 0x1
-yer17_wv:weight
-Tensor Dim: eight: 0x1
-
-
-DEBUG: weight: <N9nntrainer6TensorE at 0x72761f6de6a0>
-dBytes to read: 0xa0000
-10
-Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[ytes to read: 0xa0000
-Start offset: 0x3ec94200
-=============================
-
-2097 -0.0142822 -0.000930786 ... 0.0148926 -0.000427246 -0.0129395]
-
-============================
-
-
-=============================
-
-Tensor Name: encoder_layer17_attention_out:weight
-Tensor Dim: Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x280000
-Start offset: 0x3ed34200
-=============================
-
-r_layer16_wq
-=============================
-
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276226e46a0>
-data addr: 0x727722abf010
-Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[0.00436401 -0.0027771 0.00982666 ... 0.00778198 -0.00315857 0.0019455]
-
-=============================
-
-Tensor Name: encoder_layer17_post_attention_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3efb4200
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_post_attention_layernorm
-DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wk
-DEBUG: num weight: 0x1
-iner6TensorE at 0x727613ec76a0>
-data addr: 0x727724b41edata addr: 0x727724b41e10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[EBUG: weight: <N9nntrainer6TensorE at 0x7276166cc6a0>
-data addr: 0x727724781a10
-Shape: 0
-ata addr: 0x727724781a10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdcef3d6a0>
+data addr: 0x7ffeae3aa610
 Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
-[0.000869751 -0.00408936 0.00069046 ... 0.0050354 -0DEBUG: num weight: 8936 0.00069046 ... 0.0050354 -0.00393677 -0.00537109]
-
-EBUG: num weight: 0x1
-
-<N9nntrainer6TensorE at 0x727626eed6a0>
-data addr: 0x727724000c10
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[0.00848389 0.00479126 0.00115967 ... -0.000145912 -0.0019455 -0.00515747]
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer14_ffn_up
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276327046a0>
-data addr: 0x727725a44610
-Shape: 0x1:0x1Tensor Name: encoder_layer17_pre_feedforward_layernorm:gamma
- NCHW ]
-[ensor Name: encoder_layer17_pre_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3efb4c00
-00610352]
-
-tart offset: 0x3efb4c00
-==============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_pre_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276126c46a0>
-data addr: 0x727724b42810
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[1.0062 1.02136 4.20312 ... 0.457031 1.01208 3.8125]
+[-8.7738e-05 -0.00927734 -0.00234985 ... -0.000694275 0.000411987 -0.00314331]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer14_ffn_down
-DEBUG: num weight: >>>>> encoder_layer14_ffn_down
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wv
 DEBUG: num weight: 0x1
-DEBUG: num weight: 0x1
-DEBUG: weight: ht: 0x1
-=============================
-
-Tensor Name: encoder_layer17_ffn_up:weight
-Tensor Dim: Shape: 0x1:0x1:N9nnt:ainer6TensorE at 0x800 [ FP32 : NCHW ]
-
-ensor Dim: Shape: 0x1:0x1:N9nnt:ainer6TensorE at 0x800 [ FP32 : NCHW ]
->
-data addr: 0x727724821e10
-:N9nnt:ainer6TensorE at 0x800 [ FP32 : NCHW ]
->
-<N9nntrainer6TensorE at 0x7276307006a0>
-dBytes to read: 0x1:0x500000
-x0x800:0x280 [ FP32 : NCHW FP32 : NCHW ]
-[ytes to read: 0x1:0x500000
-Start offset: 0x3efb5600
-00
-x0x800:0x280 [ FP32 : NCHW ]
-[0.00346375 : 0x3efb5600
-=============================
-
-00139618 -0.00585938 -0.00273132]
-
-============================
-
---0.000434875 0.00228882 ... 0.00418091 0.00325012 -0.00323486]
-
-=============================
-
-Tensor Name: encoder_layer17_ffn_gate:weight
-Tensor Dim: Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3f4b5600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer17_ffn_down:weight
-Tensor Dim: Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0x500000
-Start offset: 0x3f9b5600
-=============================
-
-=============================
-
-Tensor Name: encoder_layer17_post_feedforward_layernorm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3feb5600
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_post_feedforward_layernorm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72760eebd6a0>
-data addr: 0x727725a43210
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[381 345 55.75 ... 437 455 191]
-
-=============================
-
-Tensor Name: encoder_output_norm:gamma
-Tensor Dim: Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-
-Bytes to read: 0xa00
-Start offset: 0x3feb6000
-=============================
-
-DEBUG: NAME: >>>>>>>>>>> encoder_output_norm
-DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72760debb6a0>
-data addr: 0x727725a43c10
-r6TensorE at 0x72760debb6a0>
-DEBUG: NAME: >>>>>>>>>>> encoder_layer15_ffn_down
-DEBUG: num weight: 0x1
-10
-Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
-[EBUG: num weight: 0x1
-DEBUG: weight: <6.125 ainer6TensorE >
-data addr: 23.375]
-5bdc10
-
-ata addr: 23.375]
-5bdc10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd3f476a0>
+data addr: 0x7ffeadb88a10
 Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[0.0109253 -0.000564575 -0.000846863 ... -0.0101929 -0.00227356 0.00349426]
+[0.00364685 -0.000434875 0.00228882 ... 0.00418091 0.00325012 -0.00323486]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_attention_out
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_post_attention_layernorm
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276146c86a0>
-data addr: 0x7277248c1e10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdcd73a6a0>
+data addr: 0x7ffeae6ca610
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[433 289 11.5 ... 561 138 50.5]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_wq
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdd0f416a0>
+data addr: 0x7ffeae089e10
+Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
+[0.000263214 0.012146 0.000375748 ... 0.0137329 -0.00285339 0.00102997]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_pre_feedforward_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdcbf376a0>
+data addr: 0x7ffeae6cb010
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[0.992828 1.14844 4.71875 ... 0.539062 1.44727 3.64062]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_attention_out
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdcdf3b6a0>
+data addr: 0x7ffeae44a610
 Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
-[0.000235558 -0.00769043 0.0014267 ... -0.00772095 -0.00976562 -0.0130615]
+[0.00280762 -0.00224304 -0.000463486 ... 0.00689697 0.00793457 -0.00125885]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_post_feedforward_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc87306a0>
+data addr: 0x7ffea8cbdc10
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[343 287 34.25 ... 389 347 88.5]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_pre_attention_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc6f2d6a0>
+data addr: 0x7ffea8cbe610
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[4.625 5.875 48.75 ... 2.9375 7.59375 45]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_wq_norm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc572a6a0>
+data addr: 0x7ffea8f3f010
+Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
+[2.09375 1.3125 1.34766 ... 0.716797 1.30859 0.496094]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer15_ffn_up
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276276ee6a0>
-data addr: 0x7277284cba10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdcaf356a0>
+data addr: 0x7ffeae6cba10
 Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
->>>>>>>>>> encoder_layer17_wq
-DEBUG: num weight: 4cba10
-Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[EBUG: num weight: 0x1
--0.000869751 -0.00427246 DEBUG: weight:0.00271606 0.00176239 -0.00202942]
+[-0.000869751 -0.00427246 0.0126343 ... 0.00271606 0.00176239 -0.00202942]
 
-<N9nntrainer6TensorE at 0x7276176ce6a0>
-data addr: 0x727724501610
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_wk_norm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc47286a0>
+data addr: 0x7ffea8fdf410
+Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
+[1.23145 1.58203 1.49219 ... 2.57031 1.89844 4.59375]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_wq
+DEBUG: num weight: 0x1
+DEBUG: weight: DEBUG: NAME: >>>>>>>>>>> <encoder_layer16_wk
+N9nntrainer6TensorE at DEBUG: num weight:  weight: 1
+DEB>
+N9nntrainer6TensorE at 0x7ffdc4f296a0>
+data addr: 6TensorE at 0x7ffdc4f296a0>
+data addr: 0x7ffea8cbf010
 Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
-[-0.000469208 -0.0162354 -0.00247192 ... -0.00367737 0.000682831 -0.00170898]
+ : NCHW ]
+[0.00436401 -0.0027771 0.00982666 ... 0.00778198 -0.00315857 -0.00531006 0.0019455]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_ffn_up
+0.00436401 -0.0027771 0.00982666 ... 0.00778198 -0.00315857 -0.00531006 0.0019455]
+0.00131226 0.00282288 ... 0.000961304 -0.00209045 0.00127411]
+
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_ffn_gate
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72761c6d86a0>
-data addr: 0x727723100c10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdca7346a0>
+data addr: 0x7ffeaa200c10
 Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[-0.0050354 0.00201416 -0.000911713 ... 0.000169754 0.00183105 -0.00193024]
+[0.00848389 0.00479126 0.00115967 ... -0.000145912 -0.0019455 -0.00515747]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer16_ffn_down
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_wv
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72761a6d46a0>
-data addr: 0x727723b00c10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc3f276a0>
+data addr: 0x7ffea8fdf810
+Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
+[0.0067749 0.00811768 0.0129395 ... -0.000991821 0.00418091 -0.00222778]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer15_ffn_down
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc8f316a0>
+data addr: 0x7ffea87bdc10
 Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[0.00124359 0.0122681 -0.0020752 ... 0.00958252 -0.0145264 0.00366211]
+[0.0109253 -0.000564575 -0.000846863 ... -0.0101929 -0.00227356 0.00349426]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_post_attention_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc27246a0>
+data addr: 0x7ffea92ff810
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[212 160 18.875 ... 208 193 57.5]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_pre_feedforward_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc0f216a0>
+data addr: 0x7ffea9300210
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[0.854492 1.08691 3.32812 ... 0.492188 1.29102 2.75781]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_attention_out
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdc2f256a0>
+data addr: 0x7ffea907f810
+Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
+[-0.00212097 -0.0142822 -0.000930786 ... 0.0148926 -0.000427246 -0.0129395]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_post_feedforward_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdbd71a6a0>
+data addr: 0x7ffea87bd210
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[403 303 37.75 ... 449 405 96.5]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_pre_attention_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdbbf176a0>
+data addr: 0x7ffeaa700c10
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[2.6875 2.76562 31.375 ... 1.75781 2.67188 18.5]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wq_norm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdba7146a0>
+data addr: 0x7ffeaa981610
+Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
+[0.999586 -1.625 2.28125 ... 3.60938 4.29688 2.3125]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wk_norm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb97126a0>
+data addr: 0x7ffeaaa21a10
+Shape: 0x1:0x1:0x1:0x100 [ FP32 : NCHW ]
+[2.30469 1.56641 1.38672 ... 1.63672 0.587891 1.08691]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer16_ffn_gate
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72761bed76a0>
-data addr: 0x727723600c10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdbf71e6a0>
+data addr: 0x7ffea9800c10
 Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
 [0.00253296 0.0045166 -0.00285339 ... 3.83854e-05 -0.0159912 -0.00193787]
 
-DEBUG: NAME: >>>>>>>>>>> encoder_layer17_ffn_gate
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wk
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x727610ec16a0>
-data addr: 0x727725043210
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb9f136a0>
+data addr: 0x7ffeaa981a10
+Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
+[encoder_layer16_ffn_up
+DEBUG: num weight: 0x1
+DEBUG: weight: 0.000869751 -0.00408936 0.00069046 ... 0.0050354 -0.00393677 -0.00537109]
+
+0x7ffdbff1f6a0>
+data addr: 0x7ffea9300c10
 Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
-[-0.00138855 -0.00878906 -0.00823975 ... 0.000267029 0.000354767 -0.00317383]
+[-0.0050354 0.00201416 -0.000911713 ... 0.000169754 0.00183105 -0.00193024]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wv
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb8f116a0>
+data addr: 0x7ffeaaa21e10
+Shape: 0x1:0x1:0x280:0x100 [ FP32 : NCHW ]
+[0.00112915 -0.00346375 -0.00350952 ... -0.00139618 -0.00585938 -0.00273132]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_wq
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdbaf156a0>
+data addr: 0x7ffeaa701610
+Shape: 0x1:0x1:0x280:0x400 [ FP32 : NCHW ]
+[-0.000469208 -0.0162354 -0.00247192 ... -0.00367737 0.000682831 -0.00170898]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_post_attention_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb770e6a0>
+data addr: 0x7ffeaad41e10
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[215 154 27.75 ... 217 178 57.25]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer16_ffn_down
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdbdf1b6a0>
+data addr: 0x7ffea9d00c10
+Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+[0.00124359 0.0122681 -0.0020752 ... 0.00958252 -0.0145264 0.00366211]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_pre_feedforward_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb5f0b6a0>
+data addr: 0x7ffeaad42810
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[1.0062 1.02136 4.20312 ... 0.457031 1.01208 3.8125]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_attention_out
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb7f0f6a0>
+data addr: 0x7ffeaaac1e10
+Shape: 0x1:0x1:0x400:0x280 [ FP32 : NCHW ]
+[0.000235558 -0.00769043 0.0014267 ... -0.00772095 -0.00976562 -0.0130615]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_layer17_post_feedforward_layernorm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb27046a0>
+data addr: 0x7ffeabc43210
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[381 345 55.75 ... 437 455 191]
+
+DEBUG: NAME: >>>>>>>>>>> encoder_output_norm
+DEBUG: num weight: 0x1
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb17026a0>
+data addr: 0x7ffeabc43c10
+Shape: 0x1:0x1:0x1:0x280 [ FP32 : NCHW ]
+[6.125 7.40625 50 ... 3.875 6.40625 23.375]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer17_ffn_up
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7276116c26a0>
-data addr: 0x727724b43210
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb4f096a0>
+data addr: 0x7ffeaad43210
 Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
 [0.00228882 0.0038147 -0.00138092 ... 0.0015564 -0.00075531 -0.0127563]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_layer17_ffn_down
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x72760f6be6a0>
-data addr: 0x727725543210
-Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
-[-0.00369263 -0.00527954 0.000858307 ... -0.00830078 -0.00115204 -0.00221252]
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffdb2f056a0>
+data addr: 0x7ffeab743210
+DEBUG: NAME: >>>>>>>>>>> Shape: 0x1:0x1:0x800:0x280 [ FP32 : NCHW ]
+[encoder_layer17_ffn_gate
+DEBUG: num weight: 0x1
+DEBUG: weight: -0.00369263 -0.00527954 0.000858307 ... -0.00830078 -0.00115204 -0.00221252]
+
+<N9nntrainer6TensorE at 0x7ffdb47086a0>
+data addr: 0x7ffeab243210
+Shape: 0x1:0x1:0x280:0x800 [ FP32 : NCHW ]
+[-0.00138855 -0.00878906 -0.00823975 ... 0.000267029 0.000354767 -0.00317383]
 
 DEBUG: NAME: >>>>>>>>>>> encoder_embedding
 DEBUG: num weight: 0x1
-DEBUG: weight: <N9nntrainer6TensorE at 0x7277601ee6a0>
-data addr: 0x7277333e3a10
+DEBUG: weight: <N9nntrainer6TensorE at 0x7ffee63ee6a0>
+data addr: 0x7ffeb95e3a10
 Shape: 0x1:0x1:0x40000:0x280 [ FP32 : NCHW ]
 [-0.0167236 0.0275879 -0.0147705 ... -0.0390625 0.0683594 -0.19043]
 
@@ -5178,19 +2832,18 @@ Shape: 0x1:0x1:0x40000:0x280 [ FP32 : NCHW ]
 ============================================================
 [T5Gemma2Processor] Processing text only
 [T5Gemma2Processor] Tokenizing text with 0 image placeholder(s)
-[T5Gemma2Processor] Tokenized to 0x5 tokens
-[T5Gemma2Processor] First 10 input_ids: [0x1, 0x64, 0x65, 0x66, 0x67]
-[T5Gemma2Processor] Created attention mask: 0x5 tokens
+[T5Gemma2Processor] Used actual tokenizer
+[T5Gemma2Processor] Tokenized to 0x4 tokens
+[T5Gemma2Processor] Tokenized to 0x4 tokens
+[T5Gemma2Processor] First 10 input_ids: [0xf46, 0x233, 0x1fa, 0x1db6]
+[T5Gemma2Processor] Created attention mask: 0x4 tokens
 [T5Gemma2Processor] Created token_type_ids: 0 image tokens marked (BOI + 256*IMAGE + EOI per image)
 [T5Gemma2Processor] Processing complete
-  input_ids length: 0x5
+  input_ids length: 0x4
   pixel_values shape: [0, 3, 0x380, 0x380]
-  token_type_ids length: 0x5
+  token_type_ids length: 0x4
 ============================================================
 
 [T5Gemma2Transformer] Processed input:
-  input_ids length: 0x5
+  input_ids length: 0x4
   pixel_values size: 0
-[T5Gemma2Transformer] Text-only input - processing not yet implemented
-[e2e time]: 0x46a ms 
-Max Resident Set Size: 0x15985c KB

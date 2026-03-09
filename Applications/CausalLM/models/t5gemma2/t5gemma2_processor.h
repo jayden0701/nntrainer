@@ -10,8 +10,10 @@
 #define __T5GEMMA2_PROCESSOR_H__
 
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
+#include <tokenizers_cpp.h>
 
 namespace nntrainer {
 
@@ -135,6 +137,13 @@ public:
    */
   void setDebugOutput(bool enable) { debug_output_ = enable; }
 
+  /**
+   * @brief Set tokenizer for text tokenization
+   *
+   * @param tokenizer Tokenizer instance
+   */
+  void setTokenizer(std::unique_ptr<tokenizers::Tokenizer> tokenizer);
+
 private:
   // Configuration
   ImageProcessingConfig image_config_;
@@ -149,6 +158,9 @@ private:
 
   // Debug output flag
   bool debug_output_;
+
+  // Tokenizer for text tokenization
+  std::unique_ptr<tokenizers::Tokenizer> tokenizer_;
 
   // Special token names
   static const char *BOI_TOKEN;   // Beginning of image
