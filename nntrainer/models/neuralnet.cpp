@@ -825,19 +825,19 @@ void NeuralNetwork::load(const std::string &file_path,
             node->read(local_model_file, false, exec_mode, fsu_mode,
                        std::numeric_limits<size_t>::max(), true, model_file_fd);
 
-            auto num_weights = node->getNumWeights();
-            if (static_cast<unsigned int>(num_weights) != 0) {
-              std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() << "\n";
-              auto num_weights = node->getNumWeights();
-              std::cout << "DEBUG: num weight: " << num_weights << "\n";
-              for (size_t i = 0; i < num_weights; i++) {
-                auto weight =
-                  node->getWeightObject(static_cast<unsigned int>(i));
-                std::cout << "DEBUG: weight: "
-                          << static_cast<Weight>(weight).getVariable()
-                          << std::endl;
-              }
-            }
+            // auto num_weights = node->getNumWeights();
+            // if (static_cast<unsigned int>(num_weights) != 0) {
+            //   std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() << "\n";
+            //   auto num_weights = node->getNumWeights();
+            //   std::cout << "DEBUG: num weight: " << num_weights << "\n";
+            //   for (size_t i = 0; i < num_weights; i++) {
+            //     auto weight =
+            //       node->getWeightObject(static_cast<unsigned int>(i));
+            //     std::cout << "DEBUG: weight: "
+            //               << static_cast<Weight>(weight).getVariable()
+            //               << std::endl;
+            //   }
+            // }
 
           } else {
 #if defined(_WIN32)

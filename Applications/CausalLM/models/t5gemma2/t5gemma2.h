@@ -85,6 +85,12 @@ protected:
   bool checkImageInput(const std::string &input_text) override;
 
   /**
+   * @brief Load model weights from file (override parent)
+   */
+  void load_weight(const std::string &weight_path) override;
+
+private:
+  /**
    * @brief Generate next token from logits
    * @param logits Logits from model output
    * @param do_sample Whether to use sampling (true) or argmax (false)
@@ -92,7 +98,60 @@ protected:
    */
   std::vector<unsigned int> generate(float *logits, bool do_sample);
 
-private:
+  /**
+   * @brief Run encoder inference with lazy initialization
+   * @param input_data Input data pointer
+   * @param input_len Input sequence length
+   * @return Encoder output as vector
+   */
+  std::vector<float> runEncoder(float *input_data, unsigned int input_len);
+
+  /**
+   * @brief Run decoder inference with lazy initialization
+   * @param encoder_output Encoder output for cross-attention
+   * @return Generated text
+   */
+  std::string runDecoder(const std::vector<float> &encoder_output);
+
+  /**
+   * @brief Create encoder model (compile only)
+   */
+  void createEncoderModel();
+
+  /**
+   * @brief Create decoder model (compile only)
+   */
+  void createDecoderModel();
+
+  /**
+   * @brief Load encoder weights from file
+   */
+  void loadEncoderWeights(const std::string &weight_path);
+
+  /**
+   * @brief Load decoder weights from file
+   */
+  void loadDecoderWeights(const std::string &weight_path);
+
+  // Separate models for encoder and decoder (lazy initialization)
+  std::unique_ptr<ml::train::Model> encoder_model;
+  std::unique_ptr<ml::train::Model> decoder_model;
+  
+  // Compile state flags (not initialized with memory)
+  bool encoder_compiled = false;
+  bool decoder_compiled = false;
+  bool encoder_initialized = false;
+  bool decoder_initialized = false;
+  bool encoder_weights_loaded = false;
+  bool decoder_weights_loaded = false;
+  
+  // Memory tracking
+  size_t encoder_memory_size = 0;
+  size_t decoder_memory_size = 0;
+  
+  // Weight file paths (for lazy loading)
+  std::string encoder_weight_path;
+  std::string decoder_weight_path;
   // For text generation
   std::vector<int> pending_ids_; /**< Pending token IDs for decoding */
   std::vector<std::string> output_list; /**< Generated output text */

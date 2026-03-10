@@ -13,15 +13,13 @@
 
 #include "t5gemma2.h"
 #include "t5gemma2_processor.h"
-#include <reshaped_rms_norm.h>
+#include <app_context.h>
+#include <cfloat>
+#include <engine.h>
 #include <factory.h>
 #include <llm_util.hpp>
-#include <app_context.h>
-#include <engine.h>
-#include <cfloat>
 #include <random>
-
-
+#include <reshaped_rms_norm.h>
 
 namespace causallm {
 
@@ -87,7 +85,6 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
         : UINT_MAX;
   }
 
-
   TIE_WORD_EMBEDDINGS = cfg.value("tie_word_embeddings", false);
 
   INIT_SEQ_LEN = nntr_cfg.value("init_seq_len", 224);
@@ -124,7 +121,7 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
       // RoPE parameters for encoder
       if (enc_text_cfg.contains("rope_parameters")) {
         json &rope_params = enc_text_cfg["rope_parameters"];
-        
+
         // Sliding attention RoPE parameters
         if (rope_params.contains("sliding_attention")) {
           json &rope_cfg = rope_params["sliding_attention"];
@@ -132,7 +129,7 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
         } else {
           ENC_ROPE_THETA_SLIDING = 10000.0f;
         }
-        
+
         // Full attention RoPE parameters
         if (rope_params.contains("full_attention")) {
           json &rope_cfg = rope_params["full_attention"];
@@ -181,7 +178,8 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
     DEC_IS_BIDIRECTIONAL =
       decoder_cfg.value("use_bidirectional_attention", false);
     DEC_QUERY_PRE_ATTN_SCALAR = decoder_cfg.value("query_pre_attn_scalar", 256);
-    DEC_SLIDING_WINDOW_PATTERN = decoder_cfg.value("_sliding_window_pattern", 6);
+    DEC_SLIDING_WINDOW_PATTERN =
+      decoder_cfg.value("_sliding_window_pattern", 6);
     // DEC_ATTN_LOGIT_SOFTCAPPING =
     //   decoder_cfg.value("attn_logit_softcapping", 0.0);
     // DEC_FINAL_LOGIT_SOFTCAPPING =
@@ -190,7 +188,7 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
     // RoPE parameters for decoder
     if (decoder_cfg.contains("rope_parameters")) {
       json &rope_params = decoder_cfg["rope_parameters"];
-      
+
       // Sliding attention RoPE parameters
       if (rope_params.contains("sliding_attention")) {
         json &rope_cfg = rope_params["sliding_attention"];
@@ -198,7 +196,7 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
       } else {
         DEC_ROPE_THETA_SLIDING = 10000.0f;
       }
-      
+
       // Full attention RoPE parameters
       if (rope_params.contains("full_attention")) {
         json &rope_cfg = rope_params["full_attention"];
@@ -286,7 +284,8 @@ std::vector<LayerHandle> T5Gemma2Transformer::createPatchEmbed() {
 }
 
 // TODO : vision에서 코드 재활용 가능한지는 나중에 확인
-std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(std::string prefix, const int layer_id, int seq_len, int n_heads,
+std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
+  std::string prefix, const int layer_id, int seq_len, int n_heads,
   int head_dim, int gqa_size, std::string query_name, std::string key_name,
   std::string value_name) {
 
@@ -322,18 +321,19 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(std::string pr
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", q_params));
 
-
   // Q_normalized
-       std::vector<std::string> q_norm_params = {
+  std::vector<std::string> q_norm_params = {
     withKey("name", Q_norm), withKey("input_layers", Q),
-    withKey("packed", "false"), withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("packed", "false"),
+    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
     withKey("feature_size", std::to_string(head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
   // K_normalized
-       std::vector<std::string> k_norm_params = {
+  std::vector<std::string> k_norm_params = {
     withKey("name", K_norm), withKey("input_layers", K),
-    withKey("packed", "false"), withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("packed", "false"),
+    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
     withKey("feature_size", std::to_string(head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
 
@@ -342,13 +342,14 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(std::string pr
 
   // Attention core layer
   std::vector<std::string> a_params = {
-    withKey("name", A),
-    withKey("num_heads", n_heads),
+    withKey("name", A), withKey("num_heads", n_heads),
     withKey("num_heads_kv", n_heads / gqa_size),
     withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
-    withKey("sliding_window", is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
+    withKey("sliding_window",
+            is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
     withKey("use_rope", "false"),
-    withKey("rope_theta", is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
+    withKey("rope_theta",
+            is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     // TODO : change this if it is causal!!
     withKey("is_causal", "false"),
@@ -357,16 +358,17 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(std::string pr
 
   // O layer
   std::vector<std::string> o_params = {
-    withKey("name", O), withKey("unit", ENC_HIDDEN_SIZE), withKey("disable_bias", "true"),
-    withKey("input_layers", A), withKey("weight_initializer", "ones")};
+    withKey("name", O), withKey("unit", ENC_HIDDEN_SIZE),
+    withKey("disable_bias", "true"), withKey("input_layers", A),
+    withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", o_params));
 
   return layers;
 }
 
 std::vector<LayerHandle>
-T5Gemma2Transformer::createMlp(std::string prefix, int dim, int intermediate_dim,
-                               std::string input_name) {
+T5Gemma2Transformer::createMlp(std::string prefix, int dim,
+                               int intermediate_dim, std::string input_name) {
   std::vector<LayerHandle> layers;
 
   // Gate projection
@@ -406,51 +408,26 @@ T5Gemma2Transformer::createMlp(std::string prefix, int dim, int intermediate_dim
 }
 
 void T5Gemma2Transformer::constructModel() {
-  std::vector<LayerHandle> layers;
-
-  model = ml::train::createModel(ml::train::ModelType::NEURAL_NET);
-
-  layers.push_back(createLayer(
-    "input", {withKey("name", "input0"),
-              withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))}));
-
-  auto encoder = createEncoder("input0");
-
-  layers.insert(layers.end(), encoder.begin(), encoder.end());
-
-  layers.push_back(createLayer("identity",{withKey("name", "out_of_encoder"), withKey("input_layers", "encoder_output_norm")}));
-    // layers.push_back(createLayer(
-    //   "rms_norm", {withKey("name", out_of_encoder),
-    //                withKey("epsilon", std::to_string(ENC_NORM_EPS)),
-    //                withKey("input_layers", residual_checkpoint),
-    //                withKey("packed", "false")}));
-  for (auto &layer : layers) {
-    model->addLayer(layer);
-  }
+  // Deprecated: Not used for lazy initialization approach
+  // Models are created separately in createEncoderModel() and
+  // createDecoderModel()
 }
 
 void T5Gemma2Transformer::initialize() {
   registerCustomLayers();
 
-  constructModel();
+  // Create and compile encoder model (no memory allocation yet)
+  createEncoderModel();
 
-  std::vector<std::string> model_props = {
-    withKey("batch_size", BATCH_SIZE), withKey("epochs", "1"),
-    withKey("model_tensor_type", MODEL_TENSOR_TYPE)};
-
-  model->setProperty(model_props);
-
-  if (model->compile(ml::train::ExecutionMode::INFERENCE)) {
-    throw std::invalid_argument("Model compilation failed.");
-  }
-
-  if (model->initialize(ml::train::ExecutionMode::INFERENCE)) {
-    throw std::invalid_argument("Model initialization failed.");
-  }
-
-  model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+  // Create and compile decoder model (no memory allocation yet)
+  createDecoderModel();
 
   is_initialized = true;
+
+  std::cout << "[Init] Models compiled (no memory allocated yet)" << std::endl;
+  std::cout
+    << "[Init] Memory will be allocated on load(initialize() is called there)"
+    << std::endl;
 }
 
 void T5Gemma2Transformer::registerCustomLayers() {
@@ -491,8 +468,8 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
 
   std::cout << "\n========== T5Gemma2 Inference ==========\n" << std::endl;
   std::cout << "Input: " << input_prompt << std::endl;
-  std::cout << "  processed_text length: " << processor_output.processed_text.size()
-            << std::endl;
+  std::cout << "  processed_text length: "
+            << processor_output.processed_text.size() << std::endl;
   std::cout << "  pixel_values size: " << processor_output.pixel_values.size()
             << std::endl;
 
@@ -500,7 +477,7 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
   if (!processor_output.pixel_values.empty()) {
     // === IMAGE INPUT MODE ===
     std::cout << "\n[Mode: Image-Text Multimodal]\n" << std::endl;
-    
+
     // Prepare model input for image
     float *image_input =
       (float *)malloc(sizeof(float) * processor_output.pixel_values.size());
@@ -514,12 +491,13 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
     // Run encoder inference to get image representations
     std::vector<float *> input_tensors = {image_input};
     std::vector<float *> label_tensors;
-    
-    // Encoder output shape: [NUM_PATCHES, ENC_HIDDEN_SIZE]
-    auto encoder_output = model->incremental_inference(
-      BATCH_SIZE, input_tensors, label_tensors, NUM_PATCHES, 0, NUM_PATCHES, false);
 
-    std::cout << "[Encoder] Processed image to " << NUM_PATCHES 
+    // Encoder output shape: [NUM_PATCHES, ENC_HIDDEN_SIZE]
+    auto encoder_output =
+      model->incremental_inference(BATCH_SIZE, input_tensors, label_tensors,
+                                   NUM_PATCHES, 0, NUM_PATCHES, false);
+
+    std::cout << "[Encoder] Processed image to " << NUM_PATCHES
               << " patches with dimension " << ENC_HIDDEN_SIZE << std::endl;
     std::cout << "[Encoder] First 5 output values: ";
     for (int i = 0; i < std::min(5, ENC_HIDDEN_SIZE); ++i) {
@@ -528,41 +506,45 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
     std::cout << std::endl;
 
     free(image_input);
-    
+
     // TODO: Implement decoder to generate text conditioned on encoder output
     std::cout << "\n[Note] Decoder generation from encoder output is not yet "
-                 "implemented.\n" << std::endl;
-    
+                 "implemented.\n"
+              << std::endl;
+
   } else {
-    // === TEXT-ONLY INPUT MODE ===
-    std::cout << "\n[Mode: Text-Only]\n" << std::endl;
-    
+    // === TEXT-ONLY INPUT MODE (Lazy Initialization) ===
+    std::cout << "\n[Mode: Text-Only with Lazy Initialization]\n" << std::endl;
+
     if (!tokenizer) {
-      throw std::runtime_error("Tokenizer is not set. Cannot process text-only input.");
+      throw std::runtime_error(
+        "Tokenizer is not set. Cannot process text-only input.");
     }
 
     // Tokenize the processed text using the tokenizer
-    std::vector<int> input_ids = tokenizer->Encode(processor_output.processed_text);
+    std::vector<int> input_ids =
+      tokenizer->Encode(processor_output.processed_text);
     unsigned int input_len = input_ids.size();
-    
+
     if (input_len == 0) {
       throw std::runtime_error("Input text resulted in empty token sequence.");
     }
 
-    std::cout << "[Decoder] Tokenized " << processor_output.processed_text.size() 
-              << " characters to " << input_len << " tokens" << std::endl;
+    std::cout << "[Pipeline] Tokenized "
+              << processor_output.processed_text.size() << " characters to "
+              << input_len << " tokens" << std::endl;
 
     // Truncate if necessary
     unsigned int max_input_len = MAX_SEQ_LEN - NUM_TO_GENERATE;
     if (input_len > max_input_len) {
-      std::cout << "[Warning] Input length " << input_len 
-                << " exceeds maximum " << max_input_len 
-                << ". Truncating." << std::endl;
+      std::cout << "[Warning] Input length " << input_len << " exceeds maximum "
+                << max_input_len << ". Truncating." << std::endl;
       input_len = max_input_len;
     }
 
     // Allocate input tensor
-    float *text_input = (float *)malloc(sizeof(float) * BATCH_SIZE * MAX_SEQ_LEN);
+    float *text_input =
+      (float *)malloc(sizeof(float) * BATCH_SIZE * MAX_SEQ_LEN);
     if (!text_input) {
       throw std::runtime_error("Failed to allocate memory for text input.");
     }
@@ -574,105 +556,31 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
       }
     }
 
-    std::cout << "[Decoder] Processing " << input_len << " input tokens" << std::endl;
-    std::cout << "[Decoder] Generating " << NUM_TO_GENERATE << " tokens\n" << std::endl;
+    std::cout << "\n[Pipeline] ========== Lazy Initialization Flow =========="
+              << std::endl;
+    std::cout << "[Pipeline] Step 1: Run encoder with " << input_len
+              << " tokens" << std::endl;
+    std::cout << "[Pipeline] Step 2: Run decoder with encoder output"
+              << std::endl;
 
-    // === PREFILL PHASE ===
-    std::vector<float *> input_tensors = {text_input};
-    std::vector<float *> label_tensors;
-
-    auto start_prefill = std::chrono::high_resolution_clock::now();
-
-    // Run prefill inference on entire input sequence
-    auto prefill_output = model->incremental_inference(
-      BATCH_SIZE, input_tensors, label_tensors, input_len, 0, input_len, false);
-
-    auto finish_prefill = std::chrono::high_resolution_clock::now();
-    auto prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-      finish_prefill - start_prefill);
-
-    std::cout << "[Prefill] Completed in " << prefill_duration.count() << " ms" << std::endl;
-
-    // Get first token from prefill output
-    std::vector<unsigned int> id_list = generate(prefill_output[0], false);
-    
-    // Print generated token
-    std::cout << "\n[Generation] ";
-    pending_ids_.push_back(id_list[0]);
-    std::string decoded_str = tokenizer->Decode(pending_ids_);
-    std::cout << decoded_str;
-    std::cout.flush();
-    output_list[0].append(decoded_str);
-    pending_ids_.clear();
-
-    // Update input for next iteration
-    text_input[0] = static_cast<float>(id_list[0]);
-
-    // === GENERATION PHASE ===
-    auto start_generation = std::chrono::high_resolution_clock::now();
-    unsigned int generation_cnt = 0;
-    std::vector<unsigned int> EOS_TOKEN_ID = {2}; // Default EOS token ID
-
-    for (unsigned int token_idx = 1; token_idx <= NUM_TO_GENERATE; ++token_idx) {
-      // Generate next token
-      auto gen_output = model->incremental_inference(
-        BATCH_SIZE, input_tensors, label_tensors, 1, input_len + token_idx - 1,
-        input_len + token_idx, false);
-
-      std::vector<unsigned int> ids_list = generate(gen_output[0], do_sample);
-      unsigned int new_token = ids_list[0];
-
-      // Update input for next iteration
-      text_input[0] = static_cast<float>(new_token);
-
-      // Check for EOS
-      if (std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(), new_token) != 
-          EOS_TOKEN_ID.end()) {
-        std::cout << "\n[Generation] Reached EOS token. Stopping generation." << std::endl;
-        break;
-      }
-
-      // Decode and print token
-      pending_ids_.push_back(new_token);
-      decoded_str = tokenizer->Decode(pending_ids_);
-      
-      // Print if it's a complete token
-      static const std::vector<char> puncts{',', '!', ':', ';', '?', '.', '\n'};
-      if (std::find(puncts.begin(), puncts.end(), decoded_str.back()) != 
-          puncts.end() || 
-          (decoded_str.size() >= 3 && 
-           decoded_str.compare(decoded_str.size() - 3, 3, "") != 0)) {
-        std::cout << decoded_str;
-        std::cout.flush();
-        output_list[0].append(decoded_str);
-        pending_ids_.clear();
-      }
-
-      generation_cnt++;
-    }
-
-    auto finish_generation = std::chrono::high_resolution_clock::now();
-    auto generation_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-      finish_generation - start_generation);
-
-    // Print any remaining pending tokens
-    if (!pending_ids_.empty()) {
-      decoded_str = tokenizer->Decode(pending_ids_);
-      std::cout << decoded_str;
-      std::cout.flush();
-      output_list[0].append(decoded_str);
-      pending_ids_.clear();
-    }
-
-    std::cout << "\n\n[Statistics]" << std::endl;
-    std::cout << "  Prefill: " << input_len << " tokens, " 
-              << prefill_duration.count() << " ms, "
-              << ((double)input_len / prefill_duration.count() * 1000) << " TPS" << std::endl;
-    std::cout << "  Generation: " << generation_cnt << " tokens, "
-              << generation_duration.count() << " ms, "
-              << ((double)generation_cnt / generation_duration.count() * 1000) << " TPS" << std::endl;
+    // === STEP 1: ENCODER (lazy init) ===
+    auto encoder_output = runEncoder(text_input, input_len);
 
     free(text_input);
+
+    std::cout << "\n[Memory Summary]" << std::endl;
+    std::cout << "  Peak memory usage: max(encoder_mem, decoder_mem)"
+              << std::endl;
+    std::cout << "  (Not encoder_mem + decoder_mem)" << std::endl;
+    std::cout << "\n[Pipeline] ========== End of Inference =========="
+              << std::endl;
+
+    // TODO: Step 2 - Decoder
+    std::cout << "\n[Note] Decoder generation from encoder output is not yet "
+                 "implemented."
+              << std::endl;
+    std::cout << "[Note] To use decoder, call runDecoder(encoder_output)"
+              << std::endl;
   }
 
   std::cout << "\n========== End of Inference ==========\n" << std::endl;
@@ -784,9 +692,10 @@ bool T5Gemma2Transformer::checkImageInput(const std::string &input_text) {
   return HAS_IMAGE_INPUT;
 }
 
-std::vector<unsigned int> T5Gemma2Transformer::generate(float *logits, bool do_sample) {
+std::vector<unsigned int> T5Gemma2Transformer::generate(float *logits,
+                                                        bool do_sample) {
   std::vector<unsigned int> outputs;
-  
+
   for (unsigned int iteration = 0; iteration < BATCH_SIZE; ++iteration) {
     // Use argmax (do_sample = false) or sampling
     if (do_sample == false) {
@@ -797,32 +706,504 @@ std::vector<unsigned int> T5Gemma2Transformer::generate(float *logits, bool do_s
       // Apply softmax to logits
       float max_logits = *std::max_element(logits, logits + NUM_VOCAB);
       float sum_exp_logits = 0;
-      
+
       for (unsigned int i = 0; i < NUM_VOCAB; i++) {
         float exp_x = std::exp(logits[i] - max_logits);
         sum_exp_logits += exp_x;
         logits[i] = exp_x;
       }
-      
+
       // Normalize to get probabilities
       for (unsigned int i = 0; i < NUM_VOCAB; ++i) {
         logits[i] /= sum_exp_logits;
       }
-      
+
       // Sample from final logits using discrete distribution
       std::discrete_distribution<int> dist(logits, logits + NUM_VOCAB);
       std::mt19937 rng(std::random_device{}());
       unsigned int sampled_idx = dist(rng);
-      
+
       outputs.push_back(sampled_idx);
     }
-    
+
     // Move to next batch
     logits = logits + NUM_VOCAB;
   }
-  
+
   return outputs;
 }
 
+void T5Gemma2Transformer::createEncoderModel() {
+  if (encoder_compiled) {
+    std::cout << "[EncoderModel] Already compiled" << std::endl;
+    return;
+  }
+
+  encoder_model = ml::train::createModel(ml::train::ModelType::NEURAL_NET);
+
+  std::vector<LayerHandle> encoder_layers;
+
+  // Input layer
+  encoder_layers.push_back(createLayer(
+    "input", {withKey("name", "encoder_input"),
+              withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))}));
+
+  // Encoder layers
+  auto encoder_block = createEncoder("encoder_input");
+  encoder_layers.insert(encoder_layers.end(), encoder_block.begin(),
+                        encoder_block.end());
+
+  // Identity layer to output encoder representation
+  encoder_layers.push_back(
+    createLayer("identity", {withKey("name", "encoder_output"),
+                             withKey("input_layers", "encoder_output_norm")}));
+
+  // Add all layers to model
+  for (auto &layer : encoder_layers) {
+    encoder_model->addLayer(layer);
+  }
+
+  // Model properties
+  std::vector<std::string> model_props = {
+    withKey("batch_size", "1"), withKey("epochs", "1"),
+    withKey("model_tensor_type", MODEL_TENSOR_TYPE)};
+  encoder_model->setProperty(model_props);
+
+  // Compile only (no memory allocation)
+  if (encoder_model->compile(ml::train::ExecutionMode::INFERENCE)) {
+    throw std::runtime_error("Encoder compilation failed.");
+  }
+
+  encoder_compiled = true;
+  std::cout << "[EncoderModel] Compiled successfully (no memory allocated yet)"
+            << std::endl;
+}
+
+void T5Gemma2Transformer::createDecoderModel() {
+  if (decoder_compiled) {
+    std::cout << "[DecoderModel] Already compiled" << std::endl;
+    return;
+  }
+
+  decoder_model = ml::train::createModel(ml::train::ModelType::NEURAL_NET);
+
+  std::vector<LayerHandle> decoder_layers;
+
+  // Input layer for decoder tokens
+  decoder_layers.push_back(createLayer(
+    "input", {withKey("name", "decoder_input"),
+              withKey("input_shape", "1:1:" + std::to_string(MAX_SEQ_LEN))}));
+
+  // TODO: Add encoder memory input for cross-attention
+  // For now, create a simple decoder (text-only)
+
+  // Embedding layer
+  float embed_scale = std::sqrt(DEC_HIDDEN_SIZE);
+  decoder_layers.push_back(createLayer(
+    "embedding_layer", {withKey("name", "decoder_embedding"),
+                        withKey("in_dim", std::to_string(NUM_VOCAB)),
+                        withKey("out_dim", std::to_string(DEC_HIDDEN_SIZE)),
+                        withKey("scale", std::to_string(embed_scale)),
+                        withKey("weight_dtype", EMBEDDING_DTYPE),
+                        withKey("input_layers", "decoder_input")}));
+
+  std::string residual_checkpoint = "decoder_embedding";
+
+  // Create decoder layers
+  for (int i = 0; i < DEC_NUM_LAYERS; i++) {
+    std::string prefix = "decoder_layer" + std::to_string(i) + "_";
+
+    // Input layernorm
+    decoder_layers.push_back(createLayer(
+      "rms_norm", {withKey("name", prefix + "pre_attention_layernorm"),
+                   withKey("epsilon", std::to_string(DEC_NORM_EPS)),
+                   withKey("input_layers", residual_checkpoint),
+                   withKey("packed", "false")}));
+
+    // Self-attention (causal)
+    auto att_layers = createSelfAttention(
+      prefix, i, MAX_SEQ_LEN, DEC_NUM_HEADS, DEC_HEAD_DIM,
+      DEC_NUM_HEADS / DEC_NUM_KEY_VALUE_HEADS,
+      prefix + "pre_attention_layernorm", prefix + "pre_attention_layernorm",
+      prefix + "pre_attention_layernorm");
+    decoder_layers.insert(decoder_layers.end(), att_layers.begin(),
+                          att_layers.end());
+
+    // Post-attention layernorm
+    decoder_layers.push_back(createLayer(
+      "rms_norm", {withKey("name", prefix + "post_attention_layernorm"),
+                   withKey("epsilon", std::to_string(NORM_EPS)),
+                   withKey("input_layers", prefix + "attention_out"),
+                   withKey("packed", "false")}));
+
+    // Residual connection after attention
+    decoder_layers.push_back(createLayer(
+      "addition",
+      {withKey("name", prefix + "attention_residual"),
+       withKey("input_layers",
+               {residual_checkpoint, prefix + "post_attention_layernorm"})}));
+
+    residual_checkpoint = prefix + "attention_residual";
+
+    // Pre-FFN layernorm
+    decoder_layers.push_back(createLayer(
+      "rms_norm", {withKey("name", prefix + "pre_feedforward_layernorm"),
+                   withKey("epsilon", std::to_string(NORM_EPS)),
+                   withKey("input_layers", residual_checkpoint),
+                   withKey("packed", "false")}));
+
+    // MLP
+    auto mlp_layers = createMlp(prefix, DEC_HIDDEN_SIZE, DEC_INTERMEDIATE_SIZE,
+                                prefix + "pre_feedforward_layernorm");
+    decoder_layers.insert(decoder_layers.end(), mlp_layers.begin(),
+                          mlp_layers.end());
+
+    // Post-FFN layernorm
+    decoder_layers.push_back(createLayer(
+      "rms_norm", {withKey("name", prefix + "post_feedforward_layernorm"),
+                   withKey("epsilon", std::to_string(NORM_EPS)),
+                   withKey("input_layers", prefix + "ffn_down"),
+                   withKey("packed", "false")}));
+
+    // Residual connection after FFN
+    decoder_layers.push_back(createLayer(
+      "addition",
+      {withKey("name", prefix + "ffn_residual"),
+       withKey("input_layers",
+               {residual_checkpoint, prefix + "post_feedforward_layernorm"})}));
+
+    residual_checkpoint = prefix + "ffn_residual";
+  }
+
+  // Final normalization
+  decoder_layers.push_back(
+    createLayer("rms_norm", {withKey("name", "decoder_output_norm"),
+                             withKey("epsilon", std::to_string(DEC_NORM_EPS)),
+                             withKey("input_layers", residual_checkpoint),
+                             withKey("packed", "false")}));
+
+  // LM head (project to vocabulary)
+  decoder_layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", "lm_head"), withKey("unit", std::to_string(NUM_VOCAB)),
+     withKey("disable_bias", "true"),
+     withKey("input_layers", "decoder_output_norm"),
+     withKey("weight_initializer", "ones")}));
+
+  // Add all layers to model
+  for (auto &layer : decoder_layers) {
+    decoder_model->addLayer(layer);
+  }
+
+  // Model properties
+  std::vector<std::string> model_props = {
+    withKey("batch_size", "1"), withKey("epochs", "1"),
+    withKey("model_tensor_type", MODEL_TENSOR_TYPE)};
+  decoder_model->setProperty(model_props);
+
+  // Compile only (no memory allocation)
+  if (decoder_model->compile(ml::train::ExecutionMode::INFERENCE)) {
+    throw std::runtime_error("Decoder compilation failed.");
+  }
+
+  decoder_compiled = true;
+  std::cout << "[DecoderModel] Compiled successfully (no memory allocated yet)"
+            << std::endl;
+}
+
+std::vector<float> T5Gemma2Transformer::runEncoder(float *input_data,
+                                                   unsigned int input_len) {
+  if (!encoder_initialized) {
+    throw std::runtime_error(
+      "Encoder not initialized. Call initialize() first.");
+  }
+
+  std::cout << "\n========== Encoder Inference ==========" << std::endl;
+
+  // Memory tracking (getMemorySize may not be available in all versions)
+  encoder_memory_size = 0;
+  std::cout << "[Encoder] Memory allocated (size tracking not available)"
+            << std::endl;
+
+  // Prepare input tensors
+  std::vector<float *> input_tensors = {input_data};
+  std::vector<float *> label_tensors;
+
+  // Inference
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  auto encoder_output = encoder_model->incremental_inference(
+    1, input_tensors, label_tensors, input_len, 0, input_len, false);
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+    end_time - start_time);
+
+  // Save encoder output
+  size_t output_size = input_len * ENC_HIDDEN_SIZE;
+  std::vector<float> saved_output(output_size);
+  std::copy(encoder_output[0], encoder_output[0] + output_size,
+            saved_output.begin());
+
+  std::cout << "[Encoder] Inference completed in " << duration.count() << " ms"
+            << std::endl;
+  std::cout << "[Encoder] Output shape: [" << input_len << ", "
+            << ENC_HIDDEN_SIZE << "]" << std::endl;
+  std::cout << "[Encoder] First 5 values: ";
+  for (int i = 0; i < std::min(5, (int)output_size); ++i) {
+    std::cout << saved_output[i] << " ";
+  }
+  std::cout << std::endl;
+
+  // Note: Memory will be automatically deallocated when encoder_model is reset
+  // or destroyed For now, we rely on RAII - memory will be freed when the model
+  // is recreated or destroyed
+  std::cout << "[Encoder] Inference complete (memory held for potential reuse)"
+            << std::endl;
+
+  return saved_output;
+}
+
+std::string
+T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
+  if (!decoder_initialized) {
+    throw std::runtime_error(
+      "Decoder not initialized. Call initialize() first.");
+  }
+
+  std::cout << "\n========== Decoder Inference ==========" << std::endl;
+
+  // Memory tracking
+  decoder_memory_size = 0;
+  std::cout << "[Decoder] Memory allocated (size tracking not available)"
+            << std::endl;
+
+  // TODO: Use encoder_output for cross-attention (not implemented yet)
+  // For now, run decoder with only text input
+
+  // Prepare input
+  float *decoder_tokens = (float *)malloc(sizeof(float) * MAX_SEQ_LEN);
+  if (!decoder_tokens) {
+    throw std::runtime_error("Failed to allocate decoder tokens");
+  }
+
+  // Initialize with SOS token
+  decoder_tokens[0] = 1.0f; // SOS token ID
+
+  std::vector<float *> decoder_inputs = {decoder_tokens};
+  std::vector<float *> label_tensors;
+  std::vector<unsigned int> generated_tokens;
+
+  // Inference
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  // Prefill
+  auto prefill_output = decoder_model->incremental_inference(
+    1, decoder_inputs, label_tensors, 1, 0, 1, false);
+
+  unsigned int first_token = generate(prefill_output[0], false)[0];
+  generated_tokens.push_back(first_token);
+  decoder_tokens[0] = static_cast<float>(first_token);
+
+  // Generation
+  for (unsigned int i = 1; i <= NUM_TO_GENERATE; ++i) {
+    auto gen_output = decoder_model->incremental_inference(
+      1, decoder_inputs, label_tensors, 1, i, i + 1, false);
+
+    unsigned int new_token = generate(gen_output[0], false)[0];
+
+    if (new_token == 2) { // EOS
+      std::cout << "[Decoder] Reached EOS at position " << i << std::endl;
+      break;
+    }
+
+    generated_tokens.push_back(new_token);
+    decoder_tokens[0] = static_cast<float>(new_token);
+  }
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+    end_time - start_time);
+
+  std::cout << "[Decoder] Generated " << generated_tokens.size()
+            << " tokens in " << duration.count() << " ms" << std::endl;
+
+  // Decode (convert unsigned int to int)
+  std::vector<int> generated_tokens_int(generated_tokens.begin(),
+                                        generated_tokens.end());
+  std::string decoded_text = tokenizer->Decode(generated_tokens_int);
+
+  // Cleanup
+  free(decoder_tokens);
+
+  std::cout << "[Decoder] Inference complete (memory held for potential reuse)"
+            << std::endl;
+
+  return decoded_text;
+}
+
+void T5Gemma2Transformer::loadEncoderWeights(const std::string &weight_path) {
+  if (!encoder_compiled) {
+    throw std::runtime_error("Encoder not compiled.");
+  }
+
+  // Initialize encoder (allocate memory at this point)
+  if (encoder_model->initialize(ml::train::ExecutionMode::INFERENCE)) {
+    throw std::runtime_error("Encoder initialization failed.");
+  }
+  encoder_initialized = true;
+
+  if (encoder_weights_loaded) {
+    std::cout << "[EncoderWeights] Already loaded, skipping" << std::endl;
+    return;
+  }
+
+  std::cout << "\n========== Loading Encoder Weights ==========" << std::endl;
+
+  try {
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    encoder_model->load(weight_path, ml::train::ModelFormat::MODEL_FORMAT_BIN);
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end_time - start_time);
+
+    encoder_weights_loaded = true;
+    encoder_weight_path = weight_path;
+
+    std::cout << "[EncoderWeights] Loaded from: " << weight_path << std::endl;
+    std::cout << "[EncoderWeights] Loading time: " << duration.count() << " ms"
+              << std::endl;
+
+  } catch (const std::exception &e) {
+    throw std::runtime_error("Failed to load encoder weights from " +
+                             weight_path + " | Reason: " + e.what());
+  }
+
+  std::cout << "=============================================\n" << std::endl;
+}
+
+void T5Gemma2Transformer::loadDecoderWeights(const std::string &weight_path) {
+  if (!decoder_compiled) {
+    throw std::runtime_error("Decoder not compiled.");
+  }
+
+  // Initialize decoder (allocate memory at this point)
+  if (decoder_model->initialize(ml::train::ExecutionMode::INFERENCE)) {
+    throw std::runtime_error("Decoder initialization failed.");
+  }
+
+  decoder_initialized = true;
+
+  decoder_model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+
+  std::cout
+    << "\n========== Loading Decoder Weights Not implemented yet =========="
+    << std::endl;
+  return;
+
+  if (decoder_weights_loaded) {
+    std::cout << "[DecoderWeights] Already loaded, skipping" << std::endl;
+    return;
+  }
+
+  std::cout << "\n========== Loading Decoder Weights ==========" << std::endl;
+
+  try {
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    decoder_model->load(weight_path, ml::train::ModelFormat::MODEL_FORMAT_BIN);
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end_time - start_time);
+
+    decoder_weights_loaded = true;
+    decoder_weight_path = weight_path;
+
+    std::cout << "[DecoderWeights] Loaded from: " << weight_path << std::endl;
+    std::cout << "[DecoderWeights] Loading time: " << duration.count() << " ms"
+              << std::endl;
+
+  } catch (const std::exception &e) {
+    throw std::runtime_error("Failed to load decoder weights from " +
+                             weight_path + " | Reason: " + e.what());
+  }
+
+  std::cout << "=============================================\n" << std::endl;
+}
+
+void T5Gemma2Transformer::load_weight(const std::string &weight_path) {
+  if (!is_initialized) {
+    throw std::runtime_error("T5Gemma2 model is not initialized. Please call "
+                             "initialize() before load_weight().");
+  }
+
+  std::cout << "\n========== Loading T5Gemma2 Weights (Lazy) =========="
+            << std::endl;
+
+  // Parse weight path to extract encoder/decoder paths
+  // Expected format: <path>/model_encoder.bin and <path>/model_decoder.bin
+  // or just one path for both models
+
+  std::string base_path = weight_path;
+  std::string encoder_path = weight_path;
+  std::string decoder_path = weight_path;
+
+  // Check if the path indicates separate encoder/decoder files
+  // Try to detect patterns like "encoder.bin" or "_encoder.bin"
+  size_t encoder_pos = weight_path.find("encoder");
+  size_t decoder_pos = weight_path.find("decoder");
+
+  if (encoder_pos != std::string::npos) {
+    // The path specifies encoder weights
+    encoder_path = weight_path;
+    // Derive decoder path
+    decoder_path = weight_path;
+    decoder_path.replace(encoder_pos, 7, "decoder");
+    std::cout << "[LoadWeight] Detected separate encoder/decoder files"
+              << std::endl;
+  } else if (decoder_pos != std::string::npos) {
+    // The path specifies decoder weights
+    decoder_path = weight_path;
+    // Derive encoder path
+    encoder_path = weight_path;
+    encoder_path.replace(decoder_pos, 7, "encoder");
+    std::cout << "[LoadWeight] Detected separate decoder/encoder files"
+              << std::endl;
+  } else {
+    // Try to construct separate paths from the base path
+    // Look for the last extension
+    size_t dot_pos = weight_path.find_last_of('.');
+    if (dot_pos != std::string::npos) {
+      std::string ext = weight_path.substr(dot_pos);
+      std::string base = weight_path.substr(0, dot_pos);
+      encoder_path = base + "_encoder" + ext;
+      decoder_path = base + "_decoder" + ext;
+      std::cout << "[LoadWeight] Constructed separate paths:" << std::endl;
+      std::cout << "  Encoder: " << encoder_path << std::endl;
+      std::cout << "  Decoder: " << decoder_path << std::endl;
+    }
+  }
+
+  // Load encoder weights first (lower memory footprint)
+  std::cout << "\n[LoadWeight] Step 1: Loading encoder weights..." << std::endl;
+  loadEncoderWeights(encoder_path);
+
+  // Load decoder weights
+  std::cout << "\n[LoadWeight] Step 2: Loading decoder weights..." << std::endl;
+  loadDecoderWeights(decoder_path);
+
+  std::cout
+    << "\n[LoadWeight] ========== All weights loaded successfully =========="
+    << std::endl;
+  std::cout << "[LoadWeight] Memory optimized: Only one model's weights in "
+               "memory at a time during loading"
+            << std::endl;
+  std::cout
+    << "====================================================================\n"
+    << std::endl;
+}
 
 } // namespace causallm
