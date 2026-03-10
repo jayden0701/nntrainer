@@ -17,22 +17,25 @@ Tokenizer은 Transformer이 들고 있으니, 여기까지만 하고 값을 모�
 
 
 1) t5gemma2.cpp 만들어서 뼈대 만들고(가능하면 주말 codex) Processor 불러서 text(아직 text, token만 추가됨)에 tokenzier 적용하자
-- 현재 processor config가 processor에 struct로 정의되어 있는데, 이도 전체 T5 config 호출 시 부를 수 있게 변경해 보자.
 -> Transformer::setupParameters() 가 현재 걍 주석처리임. 이후 수정 필
--> T5Gemma2::setupParameters() 에서 Config 값 저장하는 거 제대로 구현 안됨. 이는 모델 만들면서 필요한 거 있으면 다 추가해 보자
+-> T5Gemma2::setupParameters() 에서 Config 값 저장하는 거 제대로 구현 안됨. Encoder쪽은 완료. Decoder수정필요
 
 init()까지 되려면 
 
 -> PR에 commit
 
-2) tokenize 된거 확인하면 text쪽 encoder를 미리 다 만들어 놓자
-- 현재 mha_core부터 깨짐.
-- 일단 decoder쪽을 해보자. 막상 ㄱㅊ을수도? (아닐듯)
+2) encoder 구현
+- 현재 RoPE 관련 에러인걸로 추측
+
+3) decoder 구현
+- config값 받아와야 함
+- 일단은 1개 그래프에서 받아오는 구조로 ㄱㄱ
+
+4) Enc - Dec 구조 고도화 (순서대로 ㄱㄱ)
+- 방식1 : 그래프 1개, 
 
 
-
-
-3) 작동 순서 구현
+5) 작동 순서 구현
 - run()에서 처음에 encoder넣고 decoder부르고...이런게 아직 안짜짐
 - run()이 걍 CLINE으로 짜짐. 추가적으로 확인해봐야 함.
 

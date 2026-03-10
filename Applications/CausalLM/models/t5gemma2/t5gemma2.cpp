@@ -347,6 +347,7 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(std::string pr
     withKey("num_heads_kv", n_heads / gqa_size),
     withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
     withKey("sliding_window", is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
+    withKey("use_rope", "false"),
     withKey("rope_theta", is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     // TODO : change this if it is causal!!
@@ -417,6 +418,12 @@ void T5Gemma2Transformer::constructModel() {
 
   layers.insert(layers.end(), encoder.begin(), encoder.end());
 
+  layers.push_back(createLayer("identity",{withKey("name", "out_of_encoder"), withKey("input_layers", "encoder_output_norm")}));
+    // layers.push_back(createLayer(
+    //   "rms_norm", {withKey("name", out_of_encoder),
+    //                withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    //                withKey("input_layers", residual_checkpoint),
+    //                withKey("packed", "false")}));
   for (auto &layer : layers) {
     model->addLayer(layer);
   }
