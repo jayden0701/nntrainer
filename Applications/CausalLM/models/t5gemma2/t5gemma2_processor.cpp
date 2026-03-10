@@ -81,15 +81,13 @@ T5Gemma2Processor::process(const std::string &text,
   std::string processed_text = text;
 
   if (images.empty() && !text.empty()) {
-    // case 1) Text only processing
+    // case 1) Text only processing - return text as-is
     if (debug_output_) {
       std::cout << "[T5Gemma2Processor] Processing text only" << std::endl;
     }
-    output.input_ids = tokenize(processed_text, 0);
+    output.processed_text = processed_text;
   } else if (!images.empty()) {
     // case 2) Images only or mixed processing
-
-    int image_placeholder_count = images.size();
 
     if (text.empty()) {
       // create BOI_TOKEN for image holding
@@ -113,21 +111,12 @@ T5Gemma2Processor::process(const std::string &text,
                 << processed_text << "..." << std::endl;
     }
 
-    output.input_ids = tokenize(processed_text, image_placeholder_count);
-  }
-
-  // Create attention mask
-  output.attention_mask = createAttentionMask(output.input_ids);
-
-  // Create token type IDs if requested
-  if (text_config_.return_mm_token_type_ids) {
-    output.token_type_ids =
-      createTokenTypeIds(output.input_ids, image_token_id_);
+    output.processed_text = processed_text;
   }
 
   if (debug_output_) {
     std::cout << "[T5Gemma2Processor] Processing complete" << std::endl;
-    std::cout << "  input_ids length: " << output.input_ids.size() << std::endl;
+    std::cout << "  processed_text length: " << output.processed_text.size() << std::endl;
     std::cout << "  pixel_values shape: ["
               << (output.pixel_values.empty()
                     ? 0
@@ -136,8 +125,6 @@ T5Gemma2Processor::process(const std::string &text,
                          image_config_.image_size))
               << ", 3, " << image_config_.image_size << ", "
               << image_config_.image_size << "]" << std::endl;
-    std::cout << "  token_type_ids length: " << output.token_type_ids.size()
-              << std::endl;
     std::cout << std::string(60, '=') << "\n" << std::endl;
   }
 
@@ -212,14 +199,6 @@ void T5Gemma2Processor::setTextConfig(const TextProcessingConfig &config) {
   }
 }
 
-void T5Gemma2Processor::setTokenizer(
-  std::unique_ptr<tokenizers::Tokenizer> tokenizer) {
-  tokenizer_ = std::move(tokenizer);
-  if (debug_output_ && tokenizer_) {
-    std::cout << "[T5Gemma2Processor] Tokenizer set successfully" << std::endl;
-  }
-}
-
 std::vector<float>
 T5Gemma2Processor::preprocessImages(const std::vector<std::string> &images) {
   if (debug_output_) {
@@ -231,110 +210,6 @@ T5Gemma2Processor::preprocessImages(const std::vector<std::string> &images) {
   return preprocessT5Gemma2ImagesCustom(
     images, image_config_.image_size, image_config_.image_size,
     image_config_.image_mean, image_config_.image_std);
-}
-
-// TODO change to NNTrainer Tokenizer
-std::vector<int> T5Gemma2Processor::tokenize(const std::string &text,
-                                             int image_placeholder_count) {
-  if (debug_output_) {
-    std::cout << "[T5Gemma2Processor] Tokenizing text with "
-              << image_placeholder_count << " image placeholder(s)"
-              << std::endl;
-  }
-  std::vector<int> encodings;
-
-  // Use tokenizer if available
-  if (tokenizer_) {
-    // Encode text using the actual tokenizer
-    encodings = tokenizer_->Encode(text);
-
-    if (debug_output_) {
-      std::cout << "[T5Gemma2Processor] Used actual tokenizer" << std::endl;
-      std::cout << "[T5Gemma2Processor] Tokenized to " << encodings.size()
-                << " tokens" << std::endl;
-    }
-  } else {
-    throw std::runtime_error("No tokenizer found");
-  }
-
-  if (debug_output_) {
-    std::cout << "[T5Gemma2Processor] Tokenized to " << encodings.size()
-              << " tokens" << std::endl;
-    std::cout << "[T5Gemma2Processor] First 10 input_ids: [";
-    for (size_t i = 0; i < 10 && i < encodings.size(); ++i) {
-      std::cout << encodings[i];
-      if (i < 9 && i < encodings.size() - 1) {
-        std::cout << ", ";
-      }
-    }
-    std::cout << "]" << std::endl;
-  }
-
-  return encodings;
-}
-
-std::vector<int>
-T5Gemma2Processor::createAttentionMask(const std::vector<int> &input_ids) {
-  // Attention mask is 1 for all valid tokens
-  // For now, all tokens are considered valid (no padding)
-  std::vector<int> attention_mask(input_ids.size(), 1);
-
-  // TODO: If padding is enabled, we should change attention mask algorithm to
-  // mark padding tokens as 0. The attention mask should differentiate between
-  // actual tokens (1) and padding tokens (0).
-
-  if (debug_output_) {
-    std::cout << "[T5Gemma2Processor] Created attention mask: "
-              << attention_mask.size() << " tokens" << std::endl;
-  }
-
-  return attention_mask;
-}
-
-std::vector<int>
-T5Gemma2Processor::createTokenTypeIds(const std::vector<int> &input_ids,
-                                      int image_token_id) {
-  // Token type IDs: 0 for text, 1 for image tokens
-  // For each image: BOI_TOKEN + 256 IMAGE_TOKENs + EOI_TOKEN = 258 tokens
-  // marked as 1
-  // \n\n tokens are marked as 0 (text)
-  std::vector<int> token_type_ids(input_ids.size(), 0);
-
-  int boi_token_id = special_tokens_[BOI_TOKEN];
-  int eoi_token_id = special_tokens_[EOI_TOKEN];
-
-  int image_section_count = 0;
-  bool in_image_section = false;
-
-  for (size_t i = 0; i < input_ids.size(); ++i) {
-    int token_id = input_ids[i];
-
-    if (token_id == boi_token_id) {
-      // Start of image section: mark BOI as 1
-      token_type_ids[i] = 1;
-      in_image_section = true;
-      image_section_count++;
-    } else if (token_id == eoi_token_id) {
-      // End of image section: mark EOI as 1
-      token_type_ids[i] = 1;
-      in_image_section = false;
-    } else if (token_id == image_token_id && in_image_section) {
-      // Image soft token: mark as 1
-      token_type_ids[i] = 1;
-    }
-    // All other tokens remain 0 (including \n\n tokens)
-  }
-
-  if (debug_output_) {
-    // Count tokens marked as 1
-    int marked_count =
-      std::count(token_type_ids.begin(), token_type_ids.end(), 1);
-    std::cout << "[T5Gemma2Processor] Created token_type_ids: " << marked_count
-              << " image tokens marked (BOI + 256*IMAGE + EOI per image)"
-              << std::endl;
-  }
-
-  return token_type_ids;
 }
 
 std::string

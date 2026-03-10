@@ -26,11 +26,14 @@ init()까지 되려면
 -> PR에 commit
 
 2) tokenize 된거 확인하면 text쪽 encoder를 미리 다 만들어 놓자
--> RMS norm epsilon값 맞춰야 함
--> 차원 다 맞춰야 함
--> encoder구조는 완료. 차원 맞추자.
+- 현재 mha_core부터 깨짐.
+- 일단 decoder쪽을 해보자. 막상 ㄱㅊ을수도? (아닐듯)
 
 
-3) 
+
+
+3) 작동 순서 구현
+- run()에서 처음에 encoder넣고 decoder부르고...이런게 아직 안짜짐
+- run()이 걍 CLINE으로 짜짐. 추가적으로 확인해봐야 함.
 
 

@@ -10,10 +10,8 @@
 #define __T5GEMMA2_PROCESSOR_H__
 
 #include <map>
-#include <memory>
 #include <string>
 #include <vector>
-#include <tokenizers_cpp.h>
 
 namespace nntrainer {
 
@@ -22,10 +20,10 @@ namespace nntrainer {
  */
 struct T5Gemma2ProcessorOutput {
   std::vector<float>
-    pixel_values;             // Image tensor (batch, channels, height, width)
-  std::vector<int> input_ids; // Tokenized text input
-  std::vector<int> attention_mask; // Attention mask
-  std::vector<int> token_type_ids; // Token type IDs (0 for text, 1 for image)
+    pixel_values;                    // Image tensor (batch, channels, height, width)
+  std::string processed_text;       // Preprocessed text (with image placeholders expanded)
+  std::vector<int> attention_mask;  // Attention mask
+  std::vector<int> token_type_ids;  // Token type IDs (0 for text, 1 for image)
 
   T5Gemma2ProcessorOutput() = default;
 };
@@ -137,13 +135,6 @@ public:
    */
   void setDebugOutput(bool enable) { debug_output_ = enable; }
 
-  /**
-   * @brief Set tokenizer for text tokenization
-   *
-   * @param tokenizer Tokenizer instance
-   */
-  void setTokenizer(std::unique_ptr<tokenizers::Tokenizer> tokenizer);
-
 private:
   // Configuration
   ImageProcessingConfig image_config_;
@@ -158,9 +149,6 @@ private:
 
   // Debug output flag
   bool debug_output_;
-
-  // Tokenizer for text tokenization
-  std::unique_ptr<tokenizers::Tokenizer> tokenizer_;
 
   // Special token names
   static const char *BOI_TOKEN;   // Beginning of image
@@ -180,16 +168,6 @@ private:
    * height, width)
    */
   std::vector<float> preprocessImages(const std::vector<std::string> &images);
-
-  /**
-   * @brief Tokenize text
-   *
-   * @param text Input text
-   * @param image_placeholder_count Number of image tokens to insert
-   * @return std::vector<int> Tokenized text
-   */
-  std::vector<int> tokenize(const std::string &text,
-                            int image_placeholder_count);
 
   /**
    * @brief Create attention mask

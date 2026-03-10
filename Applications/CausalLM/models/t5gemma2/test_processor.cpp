@@ -51,20 +51,20 @@ void saveToFile(const std::vector<float> &data, const std::string &filename) {
 void printProcessorOutput(const T5Gemma2ProcessorOutput &output, const std::string &name) {
   std::cout << "\n" << name << ":" << std::endl;
   std::cout << "  pixel_values size: " << output.pixel_values.size() << std::endl;
-  std::cout << "  input_ids size: " << output.input_ids.size() << std::endl;
+  // std::cout << "  input_ids size: " << output.input_ids.size() << std::endl;
   std::cout << "  attention_mask size: " << output.attention_mask.size() << std::endl;
   std::cout << "  token_type_ids size: " << output.token_type_ids.size() << std::endl;
   
-  if (!output.input_ids.empty()) {
-    std::cout << "  First 20 input_ids: [";
-    for (size_t i = 0; i < 20 && i < output.input_ids.size(); ++i) {
-      std::cout << output.input_ids[i];
-      if (i < 19 && i < output.input_ids.size() - 1) {
-        std::cout << ", ";
-      }
-    }
-    std::cout << "]" << std::endl;
-  }
+  // if (!output.input_ids.empty()) {
+  //   std::cout << "  First 20 input_ids: [";
+  //   for (size_t i = 0; i < 20 && i < output.input_ids.size(); ++i) {
+  //     std::cout << output.input_ids[i];
+  //     if (i < 19 && i < output.input_ids.size() - 1) {
+  //       std::cout << ", ";
+  //     }
+  //   }
+  //   std::cout << "]" << std::endl;
+  // }
   
   if (!output.token_type_ids.empty()) {
     std::cout << "  First 20 token_type_ids: [";

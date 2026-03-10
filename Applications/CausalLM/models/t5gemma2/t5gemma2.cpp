@@ -18,6 +18,8 @@
 #include <llm_util.hpp>
 #include <app_context.h>
 #include <engine.h>
+#include <cfloat>
+#include <random>
 
 
 
@@ -480,45 +482,193 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
   // Process input prompt (extracts text and images)
   auto processor_output = processor->process(input_prompt);
 
-  std::cout << "[T5Gemma2Transformer] Processed input:" << std::endl;
-  std::cout << "  input_ids length: " << processor_output.input_ids.size()
+  std::cout << "\n========== T5Gemma2 Inference ==========\n" << std::endl;
+  std::cout << "Input: " << input_prompt << std::endl;
+  std::cout << "  processed_text length: " << processor_output.processed_text.size()
             << std::endl;
   std::cout << "  pixel_values size: " << processor_output.pixel_values.size()
             << std::endl;
 
-  // Prepare model input
-  std::vector<float *> input;
-
+  // Check if we have image input or text-only input
   if (!processor_output.pixel_values.empty()) {
-    // Image input: use pixel_values from processor
-    float *input_sample =
+    // === IMAGE INPUT MODE ===
+    std::cout << "\n[Mode: Image-Text Multimodal]\n" << std::endl;
+    
+    // Prepare model input for image
+    float *image_input =
       (float *)malloc(sizeof(float) * processor_output.pixel_values.size());
-    if (!input_sample) {
-      throw std::runtime_error("Failed to allocate memory for input_sample.");
+    if (!image_input) {
+      throw std::runtime_error("Failed to allocate memory for image input.");
     }
 
     std::copy(processor_output.pixel_values.begin(),
-              processor_output.pixel_values.end(), input_sample);
-    input.push_back(input_sample);
+              processor_output.pixel_values.end(), image_input);
 
-    std::vector<float *> label;
-    std::vector<float *> output = model->incremental_inference(
-      BATCH_SIZE, input, label, NUM_PATCHES, 0, NUM_PATCHES, false);
+    // Run encoder inference to get image representations
+    std::vector<float *> input_tensors = {image_input};
+    std::vector<float *> label_tensors;
+    
+    // Encoder output shape: [NUM_PATCHES, ENC_HIDDEN_SIZE]
+    auto encoder_output = model->incremental_inference(
+      BATCH_SIZE, input_tensors, label_tensors, NUM_PATCHES, 0, NUM_PATCHES, false);
 
-    std::cout << "First 10 output values: ";
-    for (int i = 0; i < std::min(10, DIM); ++i) {
-      std::cout << "[" << i << "]=" << output[0][i] << " ";
+    std::cout << "[Encoder] Processed image to " << NUM_PATCHES 
+              << " patches with dimension " << ENC_HIDDEN_SIZE << std::endl;
+    std::cout << "[Encoder] First 5 output values: ";
+    for (int i = 0; i < std::min(5, ENC_HIDDEN_SIZE); ++i) {
+      std::cout << encoder_output[0][i] << " ";
     }
     std::cout << std::endl;
 
-    free(input_sample);
-  } else {
-    // Text-only input
-
-
+    free(image_input);
     
+    // TODO: Implement decoder to generate text conditioned on encoder output
+    std::cout << "\n[Note] Decoder generation from encoder output is not yet "
+                 "implemented.\n" << std::endl;
+    
+  } else {
+    // === TEXT-ONLY INPUT MODE ===
+    std::cout << "\n[Mode: Text-Only]\n" << std::endl;
+    
+    if (!tokenizer) {
+      throw std::runtime_error("Tokenizer is not set. Cannot process text-only input.");
+    }
 
+    // Tokenize the processed text using the tokenizer
+    std::vector<int> input_ids = tokenizer->Encode(processor_output.processed_text);
+    unsigned int input_len = input_ids.size();
+    
+    if (input_len == 0) {
+      throw std::runtime_error("Input text resulted in empty token sequence.");
+    }
+
+    std::cout << "[Decoder] Tokenized " << processor_output.processed_text.size() 
+              << " characters to " << input_len << " tokens" << std::endl;
+
+    // Truncate if necessary
+    unsigned int max_input_len = MAX_SEQ_LEN - NUM_TO_GENERATE;
+    if (input_len > max_input_len) {
+      std::cout << "[Warning] Input length " << input_len 
+                << " exceeds maximum " << max_input_len 
+                << ". Truncating." << std::endl;
+      input_len = max_input_len;
+    }
+
+    // Allocate input tensor
+    float *text_input = (float *)malloc(sizeof(float) * BATCH_SIZE * MAX_SEQ_LEN);
+    if (!text_input) {
+      throw std::runtime_error("Failed to allocate memory for text input.");
+    }
+
+    // Prepare input buffer with token IDs
+    for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
+      for (unsigned int i = 0; i < input_len; ++i) {
+        text_input[b * MAX_SEQ_LEN + i] = static_cast<float>(input_ids[i]);
+      }
+    }
+
+    std::cout << "[Decoder] Processing " << input_len << " input tokens" << std::endl;
+    std::cout << "[Decoder] Generating " << NUM_TO_GENERATE << " tokens\n" << std::endl;
+
+    // === PREFILL PHASE ===
+    std::vector<float *> input_tensors = {text_input};
+    std::vector<float *> label_tensors;
+
+    auto start_prefill = std::chrono::high_resolution_clock::now();
+
+    // Run prefill inference on entire input sequence
+    auto prefill_output = model->incremental_inference(
+      BATCH_SIZE, input_tensors, label_tensors, input_len, 0, input_len, false);
+
+    auto finish_prefill = std::chrono::high_resolution_clock::now();
+    auto prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      finish_prefill - start_prefill);
+
+    std::cout << "[Prefill] Completed in " << prefill_duration.count() << " ms" << std::endl;
+
+    // Get first token from prefill output
+    std::vector<unsigned int> id_list = generate(prefill_output[0], false);
+    
+    // Print generated token
+    std::cout << "\n[Generation] ";
+    pending_ids_.push_back(id_list[0]);
+    std::string decoded_str = tokenizer->Decode(pending_ids_);
+    std::cout << decoded_str;
+    std::cout.flush();
+    output_list[0].append(decoded_str);
+    pending_ids_.clear();
+
+    // Update input for next iteration
+    text_input[0] = static_cast<float>(id_list[0]);
+
+    // === GENERATION PHASE ===
+    auto start_generation = std::chrono::high_resolution_clock::now();
+    unsigned int generation_cnt = 0;
+    std::vector<unsigned int> EOS_TOKEN_ID = {2}; // Default EOS token ID
+
+    for (unsigned int token_idx = 1; token_idx <= NUM_TO_GENERATE; ++token_idx) {
+      // Generate next token
+      auto gen_output = model->incremental_inference(
+        BATCH_SIZE, input_tensors, label_tensors, 1, input_len + token_idx - 1,
+        input_len + token_idx, false);
+
+      std::vector<unsigned int> ids_list = generate(gen_output[0], do_sample);
+      unsigned int new_token = ids_list[0];
+
+      // Update input for next iteration
+      text_input[0] = static_cast<float>(new_token);
+
+      // Check for EOS
+      if (std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(), new_token) != 
+          EOS_TOKEN_ID.end()) {
+        std::cout << "\n[Generation] Reached EOS token. Stopping generation." << std::endl;
+        break;
+      }
+
+      // Decode and print token
+      pending_ids_.push_back(new_token);
+      decoded_str = tokenizer->Decode(pending_ids_);
+      
+      // Print if it's a complete token
+      static const std::vector<char> puncts{',', '!', ':', ';', '?', '.', '\n'};
+      if (std::find(puncts.begin(), puncts.end(), decoded_str.back()) != 
+          puncts.end() || 
+          (decoded_str.size() >= 3 && 
+           decoded_str.compare(decoded_str.size() - 3, 3, "") != 0)) {
+        std::cout << decoded_str;
+        std::cout.flush();
+        output_list[0].append(decoded_str);
+        pending_ids_.clear();
+      }
+
+      generation_cnt++;
+    }
+
+    auto finish_generation = std::chrono::high_resolution_clock::now();
+    auto generation_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      finish_generation - start_generation);
+
+    // Print any remaining pending tokens
+    if (!pending_ids_.empty()) {
+      decoded_str = tokenizer->Decode(pending_ids_);
+      std::cout << decoded_str;
+      std::cout.flush();
+      output_list[0].append(decoded_str);
+      pending_ids_.clear();
+    }
+
+    std::cout << "\n\n[Statistics]" << std::endl;
+    std::cout << "  Prefill: " << input_len << " tokens, " 
+              << prefill_duration.count() << " ms, "
+              << ((double)input_len / prefill_duration.count() * 1000) << " TPS" << std::endl;
+    std::cout << "  Generation: " << generation_cnt << " tokens, "
+              << generation_duration.count() << " ms, "
+              << ((double)generation_cnt / generation_duration.count() * 1000) << " TPS" << std::endl;
+
+    free(text_input);
   }
+
+  std::cout << "\n========== End of Inference ==========\n" << std::endl;
 }
 
 std::vector<LayerHandle>
@@ -626,5 +776,46 @@ bool T5Gemma2Transformer::checkImageInput(const std::string &input_text) {
   HAS_IMAGE_INPUT = (input_text.find(BOI_TOKEN) != std::string::npos);
   return HAS_IMAGE_INPUT;
 }
+
+std::vector<unsigned int> T5Gemma2Transformer::generate(float *logits, bool do_sample) {
+  std::vector<unsigned int> outputs;
+  
+  for (unsigned int iteration = 0; iteration < BATCH_SIZE; ++iteration) {
+    // Use argmax (do_sample = false) or sampling
+    if (do_sample == false) {
+      unsigned int argmax_idx =
+        std::distance(logits, std::max_element(logits, logits + NUM_VOCAB));
+      outputs.push_back(argmax_idx);
+    } else {
+      // Apply softmax to logits
+      float max_logits = *std::max_element(logits, logits + NUM_VOCAB);
+      float sum_exp_logits = 0;
+      
+      for (unsigned int i = 0; i < NUM_VOCAB; i++) {
+        float exp_x = std::exp(logits[i] - max_logits);
+        sum_exp_logits += exp_x;
+        logits[i] = exp_x;
+      }
+      
+      // Normalize to get probabilities
+      for (unsigned int i = 0; i < NUM_VOCAB; ++i) {
+        logits[i] /= sum_exp_logits;
+      }
+      
+      // Sample from final logits using discrete distribution
+      std::discrete_distribution<int> dist(logits, logits + NUM_VOCAB);
+      std::mt19937 rng(std::random_device{}());
+      unsigned int sampled_idx = dist(rng);
+      
+      outputs.push_back(sampled_idx);
+    }
+    
+    // Move to next batch
+    logits = logits + NUM_VOCAB;
+  }
+  
+  return outputs;
+}
+
 
 } // namespace causallm

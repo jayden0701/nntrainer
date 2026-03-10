@@ -36,9 +36,6 @@ public:
 
     // Initialize processor (TODO: get parameters from config)
     processor = std::make_unique<nntrainer::T5Gemma2Processor>(256, 256000);
-    if (tokenizer) {
-      processor->setTokenizer(std::move(tokenizer));
-    }
   }
 
   virtual ~T5Gemma2Transformer() = default;
@@ -87,7 +84,19 @@ protected:
    */
   bool checkImageInput(const std::string &input_text) override;
 
+  /**
+   * @brief Generate next token from logits
+   * @param logits Logits from model output
+   * @param do_sample Whether to use sampling (true) or argmax (false)
+   * @return Generated token ID
+   */
+  std::vector<unsigned int> generate(float *logits, bool do_sample);
+
 private:
+  // For text generation
+  std::vector<int> pending_ids_; /**< Pending token IDs for decoding */
+  std::vector<std::string> output_list; /**< Generated output text */
+
   // TODO : get from config
 
   // TODO : change these to ENC_ / DEC_ / VISION_
