@@ -30,7 +30,7 @@
 #include <mem_allocator.h>
 #include <nntrainer_error.h>
 
-#ifdef ENABLE_OPENCL
+#if defined(ENABLE_OPENCL) && ENABLE_OPENCL == 1
 #include <cl_context.h>
 #endif
 

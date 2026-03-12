@@ -45,7 +45,7 @@ void Engine::add_default_object() {
   init_backend(); // initialize cpu backend
   registerContext("cpu", &app_context);
 
-#ifdef ENABLE_OPENCL
+#if defined(ENABLE_OPENCL) && ENABLE_OPENCL == 1
   auto &cl_context = nntrainer::ClContext::Global();
 
   registerContext("gpu", &cl_context);

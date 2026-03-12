@@ -322,6 +322,28 @@ public:
                         unsigned int init_seq_len, unsigned int from,
                         unsigned int to, bool output_hidden_state = false) = 0;
 
+   /**
+   * @brief     Run the incremental inference of the model
+   * @param[in] batch batch size of current input
+   * @param[in] input inputs as a list of each input data
+   * @param[in] label labels as a list of each label data
+   * @param[in] init_seq_len initial sequence length
+   * @param[in] from current working step index
+   * @param[in] to next working step index
+   * @param[in] output_hidden_state return last hidden state if true else return
+   * all hidden state
+   * @param[in] custom_to_dict per-layer `to` override map. (key: layer_name, value: custom_to)
+   *            If present, the layer uses `custom_to` instead of the global `to`.
+   * @retval list of output as float *
+   * @note The output memory must not be freed by the caller
+   */
+  virtual std::vector<float *>
+  incremental_inference(unsigned int batch, const std::vector<float *> &input,
+                        const std::vector<float *> &label,
+                        unsigned int init_seq_len, unsigned int from,
+                        unsigned int to, bool output_hidden_state,
+                        const std::unordered_map<std::string, unsigned int>* custom_to_dict) = 0;
+
   /**
    * @brief     reset input dimensions of a model
    * @param[in] dims input dimensions

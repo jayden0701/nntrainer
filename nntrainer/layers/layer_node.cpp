@@ -34,7 +34,7 @@
 #include <tracer.h>
 #include <util_func.h>
 
-#ifdef ENABLE_OPENCL
+#if defined(ENABLE_OPENCL) && ENABLE_OPENCL == 1
 #include <cl_context.h>
 #endif
 

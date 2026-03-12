@@ -28,7 +28,7 @@
 #include <memory_planner.h>
 #include <tensor_wrap_specs.h>
 
-#ifdef ENABLE_OPENCL
+#if defined(ENABLE_OPENCL) && ENABLE_OPENCL == 1
 #include <cl_context.h>
 #endif
 
