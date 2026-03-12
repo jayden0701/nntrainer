@@ -18,6 +18,8 @@ Tokenizer은 Transformer이 들고 있으니, 여기까지만 하고 값을 모�
 
 1) t5gemma2.cpp 만들어서 뼈대 만들고(가능하면 주말 codex) Processor 불러서 text(아직 text, token만 추가됨)에 tokenzier 적용하자
 -> Transformer::setupParameters() 가 현재 걍 주석처리임. 이후 수정 필
+- checkImageInput()이 있으면 안됨. 그냥 nntr_config에서 image 처리 필요한지만 적어놓고 그걸로 모델 구조 만들자
+
 
 2) encoder 구현
 - 현재 RoPE 관련 에러인걸로 추측
