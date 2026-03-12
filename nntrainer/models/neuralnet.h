@@ -239,9 +239,12 @@ public:
 
   /**
    * @brief     Incremental forward Propagation of the neural network
+   * @param[in] custom_to_dict (Optional) per-layer `to` override map. (key: layer_name, value: custom_to)
+   *            If present, the layer uses `custom_to` instead of the global `to`.
    */
   sharedConstTensors incremental_forwarding(
     unsigned int from, unsigned int to, bool training = true,
+    const std::unordered_map<std::string, unsigned int>* custom_to_dict = nullptr,
     std::function<bool(void *userdata)> stop_cb =
       [](void *user_data) { return false; },
     void *user_data = nullptr);
@@ -250,12 +253,15 @@ public:
    * @brief     Incremental forward Propagation of the neural network
    * @param[in] input List of Input Tensors taken by the neural network
    * @param[in] label List of Label Tensors for the model
+   * @param[in] custom_to_dict (Optional) per-layer `to` override map. (key: layer_name, value: custom_to)
+   *            If present, the layer uses `custom_to` instead of the global `to`.
    * @retval    List of Output Tensors
    */
   sharedConstTensors incremental_forwarding(unsigned int from, unsigned int to,
                                             sharedConstTensors input,
                                             sharedConstTensors label = {},
-                                            bool training = true);
+                                            bool training = true,
+                                            const std::unordered_map<std::string, unsigned int>* custom_to_dict = nullptr);
 
   /**
    * @brief     Backward Propagation of the neural network
@@ -375,11 +381,14 @@ public:
    * @param[in] init_seq_len initial sequence length
    * @param[in] from current working step index
    * @param[in] to next working step index
+   * @param[in] custom_to_dict (Optional) per-layer `to` override map. (key: layer_name, value: custom_to)
+   *            If present, the layer uses `custom_to` instead of the global `to`.
    * @retval shared_ptr<const Tensor>
    */
   sharedConstTensors incremental_inference(sharedConstTensors X,
                                            unsigned int init_seq_len,
-                                           unsigned int from, unsigned int to);
+                                           unsigned int from, unsigned int to,
+                                           const std::unordered_map<std::string, unsigned int>* custom_to_dict = nullptr);
 
   /**
    * @brief     Run NeuralNetwork incremental inference
@@ -388,12 +397,15 @@ public:
    * @param[in] init_seq_len initial sequence length
    * @param[in] from current working step index
    * @param[in] to next working step index
+   * @param[in] custom_to_dict (Optional) per-layer `to` override map. (key: layer_name, value: custom_to)
+   *            If present, the layer uses `custom_to` instead of the global `to`.
    * @retval shared_ptr<const Tensor>
    */
   sharedConstTensors incremental_inference(sharedConstTensors X,
                                            sharedConstTensors label,
                                            unsigned int init_seq_len,
-                                           unsigned int from, unsigned int to);
+                                           unsigned int from, unsigned int to,
+                                           const std::unordered_map<std::string, unsigned int>* custom_to_dict = nullptr);
 
   /**
    * @brief     Run the incremental inference of the model
@@ -414,6 +426,29 @@ public:
                         unsigned int init_seq_len, unsigned int from,
                         unsigned int to,
                         bool output_hidden_state = false) override;
+  
+  /**
+   * @brief     Run the incremental inference of the model
+   * @param[in] batch batch size of current input
+   * @param[in] input inputs as a list of each input data
+   * @param[in] label labels as a list of each label data
+   * @param[in] init_seq_len initial sequence length
+   * @param[in] from current working step index
+   * @param[in] to next working step index
+   * @param[in] output_hidden_state return last hidden state if true else return
+   * @param[in] custom_to_dict per-layer `to` override map. (key: layer_name, value: custom_to)
+   *            If present, the layer uses `custom_to` instead of the global `to`.
+   * all hidden state
+   * @retval list of output as float *
+   * @note The output memory must not be freed by the caller
+   */
+  std::vector<float *>
+  incremental_inference(unsigned int batch, const std::vector<float *> &input,
+                        const std::vector<float *> &label,
+                        unsigned int init_seq_len, unsigned int from,
+                        unsigned int to,
+                        bool output_hidden_state,
+                        const std::unordered_map<std::string, unsigned int>* custom_to_dict) override;
 
   /**
    * @brief     reset input dimensions of a model

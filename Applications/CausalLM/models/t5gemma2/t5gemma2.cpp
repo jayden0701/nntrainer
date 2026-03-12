@@ -1047,9 +1047,6 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
   std::cout << "[Decoder] Memory allocated (size tracking not available)"
             << std::endl;
 
-  // TODO: Use encoder_output for cross-attention (not implemented yet)
-  // For now, run decoder with only text input
-
   // Prepare input
   float *decoder_tokens =
     (float *)malloc(sizeof(float) * (NUM_TO_GENERATE + 1));
@@ -1060,7 +1057,15 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
   // Initialize with BOS token
   decoder_tokens[0] = static_cast<float>(BOS_TOKEN_ID);
 
-  std::vector<float *> decoder_inputs = {decoder_tokens};
+  // Convert encoder_output to pointer (non-const)
+  // Do this to keep original Encoded output Data const
+  std::vector<float> encoder_output_mutable(encoder_output.begin(),
+                                            encoder_output.end());
+
+  // Decoder inputs: [decoder_tokens, encoder_output]
+  // TODO : 지금은 topo sort되기 전이라 뒤집어 있지만 나중에 다시 뒤집어야 함
+  std::vector<float *> decoder_inputs = {encoder_output_mutable.data(), decoder_tokens
+                                         };
   std::vector<float *> label_tensors;
   std::vector<unsigned int> generated_tokens;
 
@@ -1081,7 +1086,9 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
     // }
 
     generated_tokens.push_back(new_token);
-    decoder_tokens[i + 1] = static_cast<float>(new_token);
+
+   
+    decoder_tokens[0] = static_cast<float>(new_token);
   }
 
   auto end_time = std::chrono::high_resolution_clock::now();

@@ -168,8 +168,10 @@ fc_layer자체의 from-to가 좀 이상하긴한데 확인해봐
 그냥 layer의 input으로 들어온 얘들의 앞에서부터 (to-from)*WIDTH 를 들고 옴
 실제 to부터 확인하는 거는 KV cache용이었다!
 
-그렇다면 이를 어떻게 응용ㅇ?
-
+(0312 운동전)
+승희님 custom from to들고옴. layer이름 검색 매커니즘 함 더 보고, 적용해서 어떻게 할지 생각해보자
+(cache는 생각x)
+승백님에게 왜 cache없어도 될거라고 생각하셨는지 물어보기
 
 
 

@@ -27,6 +27,7 @@ Tokenizer은 Transformer이 들고 있으니, 여기까지만 하고 값을 모�
 3) decoder 구현
 - weight경우 일단은 lm_head따로 쓰자 (tie-embedding nono)
 - cache없는 버전 (매번 {encoder결과값, generated tokens} 2개를 input으로 주고, encoder 결과 값도 매번 새로 계산하는 버전)
+- autoregressive할때 앞에 쌓아야 함. (뒤에 쌓는거 아님), 앞에서부터 to-from만큼 읽어오기에 ㅇㅇ
 
 4) Enc - Dec 구조 고도화 (순서대로 ㄱㄱ)
 - NUM TO GENERATE, MAX_SEQ_LEN 같은 거는 사실 encoder decoder마다 좀 달라야 함
