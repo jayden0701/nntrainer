@@ -1,5 +1,3 @@
-좀 다르긴 한데...일단 넘어갈까 그냥?
-
 * 현재 image processor을 JPG로 하면 값은 유사함. (똑같지는 않음)
 PNG는 값이 좀 다른데, 비교는 나중에 해보면 될 거 같음.
 아마 A(투명도)를 PIL에서 to_rgb하는 과정에서 문제가 되는 것 같음
@@ -150,8 +148,32 @@ RoPE를 끌 수 있겠네 생각해보니깐...끄고 한번 해보자
 
 RoPE를 끄니 : 여전히 attn이후 값은 3~4자리 정도에서 틀림. 그래도 최종 결과도 norm전후로 4자리정도에서 틀림 (ㄱㅊ은 듯)
 
-**아마 이거였던 듯 : RoPE가 sliding말고 global인 경우 rope_type이 "linear"로 다른데, (factor도 존재) 이게 반영이 안되었던 듯!
+**현재 유력후보 : RoPE가 sliding말고 global인 경우 rope_type이 "linear"로 다른데, (factor도 존재) 이게 반영이 안되었던 듯!
 
+(0310 퇴근전) decoder 구조가 아직 안잡힘. decoder의 converter을 만들었는데, 
+  [내일 출근후 할일]
+  (decoder)converted weight == pytorch 실행중 weight 인지 먼저 확인하고,
+  이후 NNTrainer에 제대로 loading되는지만 가볍게 확인하자
+  그 다음에 decoder 의 constructModel을 다시 짜고
+  merged attn구조를 만들어 보자
+
+[바로가기]
+model.encoder.text_model.norm
+
+(0311 퇴근전)
+Decoder의 cross attention의 from-to를 잘 잡기 위해 승희님의 PR을 이용하여 일단 work around를 하자
+fc_layer자체의 from-to가 좀 이상하긴한데 확인해봐
+=> 알아버렸다. 걍 맨앞에서부터 to-from개 만큼 들고 오는 거임!
+
+그냥 layer의 input으로 들어온 얘들의 앞에서부터 (to-from)*WIDTH 를 들고 옴
+실제 to부터 확인하는 거는 KV cache용이었다!
+
+그렇다면 이를 어떻게 응용ㅇ?
+
+
+
+
++k/v_proj layer의 weight sharing기능도 알아보기
 
 
 

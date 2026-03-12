@@ -518,14 +518,12 @@ void MHACoreLayer::one_batch_incremental_forwarding(
     batch * cache_value_dim.getFeatureLen() + from * cache_value_dim.width(),
     true);
 
-  query_step.print(std::cout);
+
 
   if (use_rope) {
     apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, _from, false);
   }
 
-    query_step.print(std::cout);
-    key_step.print(std::cout);
 
 
   if (use_rope) {
@@ -535,9 +533,7 @@ void MHACoreLayer::one_batch_incremental_forwarding(
     b_cache_key_step.copyData(key_step);
   }
 
-      b_cache_key_step.print(std::cout);
-      nntrainer::Tensor b_cache_key_step_fp32 = b_cache_key_step.clone(ml::train::TensorDim::DataType::FP32);
-      b_cache_key_step_fp32.print(std::cout);
+
 
 
   if (query_step.getDataType() == ml::train::TensorDim::DataType::FP32 &&
@@ -558,7 +554,6 @@ void MHACoreLayer::one_batch_incremental_forwarding(
   nntrainer::Tensor b_cached_value = cache_value.getSharedDataTensor(
     cached_value_dim, batch * cache_value_dim.getFeatureLen(), true);
 
-  b_cached_key.print(std::cout);
 
   nntrainer::Tensor out_(
     1, 1,
@@ -572,11 +567,10 @@ void MHACoreLayer::one_batch_incremental_forwarding(
   compute_kcaches(query_step, b_cached_key, out_, _from, to - from, num_heads_Q,
                   gqa_size, head_dim, pool);
 
-  out_.print(std::cout);      
+    
 
   softmax_triangle(out_, to - from, num_heads_Q, from, pool);
 
-  out_.print(std::cout);      
 
 
   compute_fp16vcache_transposed(out_, b_cached_value, attention_output_step,
@@ -892,8 +886,6 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
     std::vector<float> *cos_ = nullptr;
     std::vector<float> *sin_ = nullptr;
 
-    in.print(std::cout);
-    out.print(std::cout);
 
     for (unsigned int b = 0; b < in.batch(); b++) {
       for (unsigned int c = 0; c < in.channel(); c++) {

@@ -35,6 +35,8 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
 
   TOKEN_INDEX_EOI = cfg.value("eoi_token_index", 256000);
   TOKEN_INDEX_IMAGE = cfg.value("image_token_index", 256001);
+  EOS_TOKEN_ID = cfg.value("eos_token_id", 1);
+  BOS_TOKEN_ID = cfg.value("bos_token_id", 2);
 
   // Decoder configuration
   if (cfg.contains("decoder")) {
@@ -175,8 +177,7 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
     DEC_NORM_EPS = decoder_cfg.value("rms_norm_eps", 1e-6f);
     DEC_SLIDING_WINDOW = decoder_cfg.value("sliding_window", 512);
     DEC_IS_CAUSAL = !decoder_cfg.value("use_bidirectional_attention", false);
-    DEC_IS_BIDIRECTIONAL =
-      decoder_cfg.value("use_bidirectional_attention", false);
+
     DEC_QUERY_PRE_ATTN_SCALAR = decoder_cfg.value("query_pre_attn_scalar", 256);
     DEC_SLIDING_WINDOW_PATTERN =
       decoder_cfg.value("_sliding_window_pattern", 6);
@@ -210,24 +211,6 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
       DEC_ROPE_THETA = 1000000.0f;
     }
   }
-
-  // ========== LEGACY: Update old variables for backward compatibility
-  // ==========
-  NUM_LAYERS = DEC_NUM_LAYERS;
-  NUM_HEADS = DEC_NUM_HEADS;
-  HEAD_DIM = DEC_HEAD_DIM;
-  DIM = DEC_HIDDEN_SIZE;
-  INTERMEDIATE_SIZE = DEC_INTERMEDIATE_SIZE;
-  NUM_KEY_VALUE_HEADS = DEC_NUM_KEY_VALUE_HEADS;
-  MAX_POSITION_EMBEDDINGS = DEC_MAX_POSITION_EMBEDDINGS;
-  NORM_EPS = DEC_NORM_EPS;
-  GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
-  IS_CAUSAL = DEC_IS_CAUSAL;
-  ROPE_THETA = DEC_ROPE_THETA;
-  SLIDING_WINDOW = DEC_SLIDING_WINDOW;
-
-  // Encoder MLP hidden size (for cross-attention)
-  ENC_MLP_HIDDEN_SIZE = ENC_INTERMEDIATE_SIZE;
 
   // Image configuration
   IMG_SIZE = VISION_IMAGE_SIZE;
@@ -282,6 +265,90 @@ std::vector<LayerHandle> T5Gemma2Transformer::createPatchEmbed() {
 
   return layers;
 }
+
+std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
+  std::string prefix, const int layer_id, int seq_len, int n_heads,
+  int head_dim, int gqa_size, std::string query_name, std::string key_name,
+  std::string value_name, std::string cross_key_name, std::string cross_value_name) {
+
+  std::vector<LayerHandle> layers;
+
+  auto Q = prefix + "wq";
+  auto K = prefix + "wk";
+  auto V = prefix + "wv";
+  auto A = prefix + "attention";
+  auto O = prefix + "attention_out";
+
+  auto Q_norm = Q + "_norm";
+  auto K_norm = K + "_norm";
+
+  // V layer
+  std::vector<std::string> v_params = {
+    withKey("name", V), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"), withKey("input_layers", value_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", v_params));
+
+  // K layer
+  std::vector<std::string> k_params = {
+    withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"), withKey("input_layers", key_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", k_params));
+
+  // Q layer
+  std::vector<std::string> q_params = {
+    withKey("name", Q), withKey("unit", head_dim * n_heads),
+    withKey("disable_bias", "true"), withKey("input_layers", query_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", q_params));
+
+  // Q_normalized
+  std::vector<std::string> q_norm_params = {
+    withKey("name", Q_norm), withKey("input_layers", Q),
+    withKey("packed", "false"),
+    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
+
+  // K_normalized
+  std::vector<std::string> k_norm_params = {
+    withKey("name", K_norm), withKey("input_layers", K),
+    withKey("packed", "false"),
+    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
+
+  // Determine RoPE theta based on layer type
+  bool is_full_attention = ((layer_id + 1) % ENC_SLIDING_WINDOW_PATTERN == 0);
+
+  // Attention core layer
+  std::vector<std::string> a_params = {
+    withKey("name", A), withKey("num_heads", n_heads),
+    withKey("num_heads_kv", n_heads / gqa_size),
+    withKey("max_timestep", std::to_string(INIT_SEQ_LEN)),
+    withKey("sliding_window",
+            is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
+    withKey("use_rope", "false"),
+    withKey("rope_theta",
+            is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
+    withKey("max_new_tokens", std::to_string(0)),
+    // TODO : change this if it is causal!!
+    withKey("is_causal", "false"),
+    withKey("input_layers", {Q_norm, K_norm, V})};
+  layers.push_back(createLayer("mha_core", a_params));
+
+  // O layer
+  std::vector<std::string> o_params = {
+    withKey("name", O), withKey("unit", ENC_HIDDEN_SIZE),
+    withKey("disable_bias", "true"), withKey("input_layers", A),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", o_params));
+
+  return layers;
+}
+
+
 
 // TODO : vision에서 코드 재활용 가능한지는 나중에 확인
 std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
@@ -344,13 +411,13 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
   std::vector<std::string> a_params = {
     withKey("name", A), withKey("num_heads", n_heads),
     withKey("num_heads_kv", n_heads / gqa_size),
-    withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
+    withKey("max_timestep", std::to_string(INIT_SEQ_LEN)),
     withKey("sliding_window",
             is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
     withKey("use_rope", "false"),
     withKey("rope_theta",
             is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
-    withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
+    withKey("max_new_tokens", std::to_string(0)),
     // TODO : change this if it is causal!!
     withKey("is_causal", "false"),
     withKey("input_layers", {Q_norm, K_norm, V})};
@@ -476,7 +543,10 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
   // Check if we have image input or text-only input
   if (!processor_output.pixel_values.empty()) {
     // === IMAGE INPUT MODE ===
-    std::cout << "\n[Mode: Image-Text Multimodal]\n" << std::endl;
+    // TODO fix here
+    std::cout << "\n[Mode: Image-Text Multimodal not implemented yett]\n"
+              << std::endl;
+    return;
 
     // Prepare model input for image
     float *image_input =
@@ -575,12 +645,10 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
     std::cout << "\n[Pipeline] ========== End of Inference =========="
               << std::endl;
 
-    // TODO: Step 2 - Decoder
-    std::cout << "\n[Note] Decoder generation from encoder output is not yet "
-                 "implemented."
-              << std::endl;
-    std::cout << "[Note] To use decoder, call runDecoder(encoder_output)"
-              << std::endl;
+    // TODO : free ENCODER, and initialize decoder here
+
+    // Step 2 - Decoder
+    std::cout << runDecoder(encoder_output) << std::endl;
   }
 
   std::cout << "\n========== End of Inference ==========\n" << std::endl;
@@ -633,10 +701,6 @@ T5Gemma2Transformer::createEncoder(const std::string &input_name) {
                    withKey("input_layers", prefix + "attention_out"),
                    withKey("packed", "false")}));
 
-    // TODO : 딱 봐도 여기 input 이름이 잘 안되어 있음.
-    // 다른 거도 다 잘 연결되었는지 찾아보자 + 구조 잘 맞는지 확인
-    // 일단 pytorch보면서 구조를 한번 그려보자
-
     // Residual connection after attention
     layers.push_back(createLayer(
       "addition",
@@ -654,7 +718,7 @@ T5Gemma2Transformer::createEncoder(const std::string &input_name) {
                    withKey("packed", "false")}));
 
     // MLP (SwiGLU) - need to modify createMlp for encoder
-    auto mlp_layers = createMlp(prefix, ENC_HIDDEN_SIZE, ENC_MLP_HIDDEN_SIZE,
+    auto mlp_layers = createMlp(prefix, ENC_HIDDEN_SIZE, ENC_INTERMEDIATE_SIZE,
                                 prefix + "pre_feedforward_layernorm");
     layers.insert(layers.end(), mlp_layers.begin(), mlp_layers.end());
 
@@ -733,6 +797,7 @@ std::vector<unsigned int> T5Gemma2Transformer::generate(float *logits,
   return outputs;
 }
 
+// TODO : merge with createEncoder()
 void T5Gemma2Transformer::createEncoderModel() {
   if (encoder_compiled) {
     std::cout << "[EncoderModel] Already compiled" << std::endl;
@@ -753,7 +818,7 @@ void T5Gemma2Transformer::createEncoderModel() {
   encoder_layers.insert(encoder_layers.end(), encoder_block.begin(),
                         encoder_block.end());
 
-  // Identity layer to output encoder representation
+  // Identity layer for debugging
   encoder_layers.push_back(
     createLayer("identity", {withKey("name", "encoder_output"),
                              withKey("input_layers", "encoder_output_norm")}));
@@ -791,11 +856,15 @@ void T5Gemma2Transformer::createDecoderModel() {
 
   // Input layer for decoder tokens
   decoder_layers.push_back(createLayer(
-    "input", {withKey("name", "decoder_input"),
+    "input", {withKey("name", "decoder_token_input"),
               withKey("input_shape", "1:1:" + std::to_string(MAX_SEQ_LEN))}));
 
-  // TODO: Add encoder memory input for cross-attention
-  // For now, create a simple decoder (text-only)
+  // TODO : can we change this to actual expected encoder length? 
+  // (this could be calculated before createModel via using prompt)
+  decoder_layers.push_back(createLayer(
+    "input",
+    {withKey("name", "encoder_input"),
+     withKey("input_shape", "1:" + std::to_string(INIT_SEQ_LEN) + ":" +std::to_string(ENC_HIDDEN_SIZE))}));
 
   // Embedding layer
   float embed_scale = std::sqrt(DEC_HIDDEN_SIZE);
@@ -805,7 +874,7 @@ void T5Gemma2Transformer::createDecoderModel() {
                         withKey("out_dim", std::to_string(DEC_HIDDEN_SIZE)),
                         withKey("scale", std::to_string(embed_scale)),
                         withKey("weight_dtype", EMBEDDING_DTYPE),
-                        withKey("input_layers", "decoder_input")}));
+                        withKey("input_layers", "decoder_token_input")}));
 
   std::string residual_checkpoint = "decoder_embedding";
 
@@ -820,12 +889,12 @@ void T5Gemma2Transformer::createDecoderModel() {
                    withKey("input_layers", residual_checkpoint),
                    withKey("packed", "false")}));
 
-    // Self-attention (causal)
-    auto att_layers = createSelfAttention(
+    // merged attention (causal)
+    auto att_layers = createMergedAttention(
       prefix, i, MAX_SEQ_LEN, DEC_NUM_HEADS, DEC_HEAD_DIM,
       DEC_NUM_HEADS / DEC_NUM_KEY_VALUE_HEADS,
       prefix + "pre_attention_layernorm", prefix + "pre_attention_layernorm",
-      prefix + "pre_attention_layernorm");
+      prefix + "pre_attention_layernorm", "encoder_input", "encoder_input");
     decoder_layers.insert(decoder_layers.end(), att_layers.begin(),
                           att_layers.end());
 
@@ -982,13 +1051,14 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
   // For now, run decoder with only text input
 
   // Prepare input
-  float *decoder_tokens = (float *)malloc(sizeof(float) * MAX_SEQ_LEN);
+  float *decoder_tokens =
+    (float *)malloc(sizeof(float) * (NUM_TO_GENERATE + 1));
   if (!decoder_tokens) {
     throw std::runtime_error("Failed to allocate decoder tokens");
   }
 
-  // Initialize with SOS token
-  decoder_tokens[0] = 1.0f; // SOS token ID
+  // Initialize with BOS token
+  decoder_tokens[0] = static_cast<float>(BOS_TOKEN_ID);
 
   std::vector<float *> decoder_inputs = {decoder_tokens};
   std::vector<float *> label_tensors;
@@ -997,28 +1067,21 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
   // Inference
   auto start_time = std::chrono::high_resolution_clock::now();
 
-  // Prefill
-  auto prefill_output = decoder_model->incremental_inference(
-    1, decoder_inputs, label_tensors, 1, 0, 1, false);
-
-  unsigned int first_token = generate(prefill_output[0], false)[0];
-  generated_tokens.push_back(first_token);
-  decoder_tokens[0] = static_cast<float>(first_token);
-
-  // Generation
-  for (unsigned int i = 1; i <= NUM_TO_GENERATE; ++i) {
+  // Token Generation (no prefill)
+  for (unsigned int i = 0; i < NUM_TO_GENERATE; ++i) {
     auto gen_output = decoder_model->incremental_inference(
       1, decoder_inputs, label_tensors, 1, i, i + 1, false);
 
     unsigned int new_token = generate(gen_output[0], false)[0];
 
-    if (new_token == 2) { // EOS
-      std::cout << "[Decoder] Reached EOS at position " << i << std::endl;
-      break;
-    }
+    // TODO : EOS나 완료 관련 메커니즘 강화
+    // if (new_token == EOS_TOKEN_ID) { // EOS
+    //   std::cout << "[Decoder] Reached EOS at position " << i << std::endl;
+    //   break;
+    // }
 
     generated_tokens.push_back(new_token);
-    decoder_tokens[0] = static_cast<float>(new_token);
+    decoder_tokens[i + 1] = static_cast<float>(new_token);
   }
 
   auto end_time = std::chrono::high_resolution_clock::now();
@@ -1052,6 +1115,8 @@ void T5Gemma2Transformer::loadEncoderWeights(const std::string &weight_path) {
     throw std::runtime_error("Encoder initialization failed.");
   }
   encoder_initialized = true;
+
+  // encoder_model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 
   if (encoder_weights_loaded) {
     std::cout << "[EncoderWeights] Already loaded, skipping" << std::endl;
@@ -1098,10 +1163,10 @@ void T5Gemma2Transformer::loadDecoderWeights(const std::string &weight_path) {
 
   decoder_model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 
-  std::cout
-    << "\n========== Loading Decoder Weights Not implemented yet =========="
-    << std::endl;
-  return;
+  // std::cout
+  //   << "\n========== Loading Decoder Weights Not implemented yet =========="
+  //   << std::endl;
+  // return;
 
   if (decoder_weights_loaded) {
     std::cout << "[DecoderWeights] Already loaded, skipping" << std::endl;

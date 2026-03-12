@@ -42,6 +42,12 @@ public:
 
 public:
   std::vector<LayerHandle> createPatchEmbed();
+  
+  std::vector<LayerHandle> createMergedAttention(
+  std::string prefix, const int layer_id, int seq_len, int n_heads,
+  int head_dim, int gqa_size, std::string query_name, std::string key_name,
+  std::string value_name, std::string cross_key_name, std::string cross_value_name);
+
   std::vector<LayerHandle>
   createSelfAttention(std::string prefix, const int layer_id, int seq_len,
                       int n_heads, int head_dim, int gqa_size,
@@ -163,6 +169,9 @@ private:
   // shared configuration
   int TOKEN_INDEX_EOI;
   int TOKEN_INDEX_IMAGE;
+
+  int EOS_TOKEN_ID;
+  unsigned int BOS_TOKEN_ID;
 
   // Encoder configuration (text encoder for vision model)
   int ENC_NUM_LAYERS;

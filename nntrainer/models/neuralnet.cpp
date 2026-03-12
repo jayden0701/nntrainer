@@ -468,6 +468,7 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
             std::cout << in_data[j] << " ";
           }
           std::cout << std::endl;
+          
           // std::cout << "  Sample values (last 5): ";
           // for (int j = std::max(0, (int)input.size() - 5); j < (int)input.size(); ++j) {
           //   std::cout << in_data[j] << " ";
@@ -838,6 +839,10 @@ void NeuralNetwork::load(const std::string &file_path,
             //               << std::endl;
             //   }
             // }
+
+
+            
+
 
           } else {
 #if defined(_WIN32)
