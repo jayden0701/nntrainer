@@ -162,9 +162,9 @@ private:
   std::vector<int> pending_ids_; /**< Pending token IDs for decoding */
   std::vector<std::string> output_list; /**< Generated output text */
 
-  // TODO : get from config
+  //
+  int ACTUAL_SEQ_LEN;
 
-  // TODO : change these to ENC_ / DEC_ / VISION_
 
   // shared configuration
   int TOKEN_INDEX_EOI;

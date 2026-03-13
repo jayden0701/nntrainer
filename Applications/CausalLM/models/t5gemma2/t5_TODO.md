@@ -25,9 +25,14 @@ Tokenizer은 Transformer이 들고 있으니, 여기까지만 하고 값을 모�
 - 현재 RoPE 관련 에러인걸로 추측
 
 3) decoder 구현
-- weight경우 일단은 lm_head따로 쓰자 (tie-embedding nono)
+- weight경우 일단은 lm_head따로 쓰자 (tie-embedding nono). 나중에 맨 앞이 embedding아니라서 문제생길 수 있음.
+
 - cache없는 버전 (매번 {encoder결과값, generated tokens} 2개를 input으로 주고, encoder 결과 값도 매번 새로 계산하는 버전)
-- autoregressive할때 앞에 쌓아야 함. (뒤에 쌓는거 아님), 앞에서부터 to-from만큼 읽어오기에 ㅇㅇ
+
+- cached_fc를 만들어서, 사실 encoder쪽 embedding의 projection은 1회만 계산되고 추후 cache기반으로 pass하면 되기 때문에, 여기서 계산하고 각 layer에 뿌려주는 식으로 해보자
+(이후 구현. 일단은 걍 무지성 no cache로 구현)
+
+
 
 4) Enc - Dec 구조 고도화 (순서대로 ㄱㄱ)
 - NUM TO GENERATE, MAX_SEQ_LEN 같은 거는 사실 encoder decoder마다 좀 달라야 함
