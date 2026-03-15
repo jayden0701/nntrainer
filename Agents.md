@@ -18,11 +18,11 @@
 
 ## Validation
 - Prefer validating only the smallest relevant target first
+- Do not build/test unless specified
 - If build/test commands are needed, prefer:
   - `git submodule sync && git submodule update --init --depth 1`
-  - `meson build`
+  - `meson build -Denable-transformer=true`
   - `ninja -C build`
-  - `cd build && ninja test`
 - If a full build is too expensive, explain what was not run
 
 ## Testing
