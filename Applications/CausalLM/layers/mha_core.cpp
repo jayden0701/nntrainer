@@ -681,6 +681,8 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
   if (thetas.empty()) {
     if (rope_scaling_type == "default")
       _compute_default_parameters(head_dim, theta);
+    else if (rope_scaling_type == "linear")
+      _compute_linear_parameters(head_dim, theta);
     else if (rope_scaling_type == "yarn")
       _compute_yarn_parameters(head_dim, theta);
     else
@@ -770,6 +772,21 @@ void MHACoreLayer::_compute_default_parameters(int head_dim, float theta) {
   for (unsigned int i = 0; i < half_; ++i) {
     thetas.push_back(1.0 /
                      (std::pow(theta, (2 * i) / static_cast<float>(head_dim))));
+  }
+}
+
+void MHACoreLayer::_compute_linear_parameters(int head_dim, float theta) {
+
+  // no attention scaling
+  attention_scaling = 1.0f;
+
+  // theta_i = 1 / (factor * base^(2i/dim)), i = [0, 1, ... , dim/2-1]
+  // equivalent to applying linear scaling factor to inverse frequencies
+  const unsigned int half_ = head_dim / 2;
+  for (unsigned int i = 0; i < half_; ++i) {
+    thetas.push_back(
+      1.0f /
+      (scale * std::pow(theta, (2 * i) / static_cast<float>(head_dim))));
   }
 }
 
