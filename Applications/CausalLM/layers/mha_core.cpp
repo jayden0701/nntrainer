@@ -809,6 +809,21 @@ void MHACoreLayer::_compute_linear_parameters(int head_dim, float theta) {
   }
 }
 
+void MHACoreLayer::_compute_linear_parameters(int head_dim, float theta) {
+
+  // no attention scaling
+  attention_scaling = 1.0f;
+
+  // theta_i = 1 / (factor * base^(2i/dim)), i = [0, 1, ... , dim/2-1]
+  // equivalent to applying linear scaling factor to inverse frequencies
+  const unsigned int half_ = head_dim / 2;
+  for (unsigned int i = 0; i < half_; ++i) {
+    thetas.push_back(
+      1.0f /
+      (scale * std::pow(theta, (2 * i) / static_cast<float>(head_dim))));
+  }
+}
+
 void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {
   auto &thetas = rope_cache->thetas;
 
