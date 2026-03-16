@@ -669,16 +669,34 @@ void MHACoreLayer::one_batch_incremental_forwarding(
  */
 void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
                                     float theta, bool is_fp16) {
-  // compute the freqs only when it is the first time to call this function
+  const std::lock_guard<std::mutex> lock(rope_init_mtx);
+
+  const std::string cache_key = get_rope_cache_key(head_dim, theta);
+  if (!rope_cache || rope_cache_key != cache_key) {
+    auto it = rope_cache_pool.find(cache_key);
+    if (it == rope_cache_pool.end()) {
+      rope_cache = std::make_shared<RopeFreqCache>();
+      rope_cache_pool.emplace(cache_key, rope_cache);
+    } else {
+      rope_cache = it->second;
+    }
+    rope_cache_key = cache_key;
+  }
+
 #ifdef ENABLE_FP16
-  if (freqs_cos_fp16 != nullptr && freqs_cos_fp16->size() == seq_len)
-    return;
+  if (is_fp16) {
+    if (rope_cache->freqs_cos_fp16.size() == seq_len)
+      return;
+  } else {
+    if (rope_cache->freqs_cos.size() == seq_len)
+      return;
+  }
 #else
-  if (freqs_cos != nullptr && freqs_cos->size() == seq_len)
+  if (rope_cache->freqs_cos.size() == seq_len)
     return;
 #endif
 
-  if (thetas.empty()) {
+  if (rope_cache->thetas.empty()) {
     if (rope_scaling_type == "default")
       _compute_default_parameters(head_dim, theta);
     else if (rope_scaling_type == "linear")
@@ -689,46 +707,45 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
       NNTR_THROW_IF(true, std::invalid_argument) << "Unsupported rope type!";
   }
 
+  attention_scaling = rope_cache->attention_scaling;
+  auto &thetas = rope_cache->thetas;
+
   unsigned int half_ = head_dim / 2;
 
   if (!is_fp16) {
-    // cos / sin
-    auto cos = new std::vector<std::vector<float>>();
-    cos->assign(seq_len, std::vector<float>(head_dim, 0));
-    auto sin = new std::vector<std::vector<float>>();
-    sin->assign(seq_len, std::vector<float>(head_dim, 0));
+    auto &cos = rope_cache->freqs_cos;
+    auto &sin = rope_cache->freqs_sin;
+    cos.assign(seq_len, std::vector<float>(head_dim, 0));
+    sin.assign(seq_len, std::vector<float>(head_dim, 0));
 
     // update cos / sin frequency
     for (unsigned int i = 0; i < seq_len; ++i) {
 
 #ifdef USE_NEON
       nntrainer::calc_trigonometric_vals_dup(half_, thetas.data(),
-                                             (*cos)[i].data(), (*sin)[i].data(),
+                                             cos[i].data(), sin[i].data(),
                                              i, attention_scaling);
 #else
       for (unsigned int j = 0; j < half_; ++j) {
         float angle = i * thetas[j];
-        (*cos)[i][j] = std::cos(angle) * attention_scaling;
-        (*cos)[i][j + half_] =
+        cos[i][j] = std::cos(angle) * attention_scaling;
+        cos[i][j + half_] =
           std::cos(angle) * attention_scaling; // repeated 2 times
 
-        (*sin)[i][j] = std::sin(angle) * attention_scaling;
-        (*sin)[i][j + half_] =
+        sin[i][j] = std::sin(angle) * attention_scaling;
+        sin[i][j + half_] =
           std::sin(angle) * attention_scaling; // repeated 2 times
       }
 #endif
     }
-    freqs_cos = cos;
-    freqs_sin = sin;
   }
 
 #ifdef ENABLE_FP16
   if (is_fp16) {
-    // cos / sin for FP16
-    auto cos_fp16 = new std::vector<std::vector<_FP16>>();
-    cos_fp16->assign(seq_len, std::vector<_FP16>(head_dim, 0));
-    auto sin_fp16 = new std::vector<std::vector<_FP16>>();
-    sin_fp16->assign(seq_len, std::vector<_FP16>(head_dim, 0));
+    auto &cos_fp16 = rope_cache->freqs_cos_fp16;
+    auto &sin_fp16 = rope_cache->freqs_sin_fp16;
+    cos_fp16.assign(seq_len, std::vector<_FP16>(head_dim, 0));
+    sin_fp16.assign(seq_len, std::vector<_FP16>(head_dim, 0));
 
     std::vector<float> cos_tmp(head_dim);
     std::vector<float> sin_tmp(head_dim);
@@ -751,12 +768,10 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
       }
 #endif
       for (unsigned int j = 0; j < head_dim; ++j) {
-        (*cos_fp16)[i][j] = (_FP16)cos_tmp[j];
-        (*sin_fp16)[i][j] = (_FP16)sin_tmp[j];
+        cos_fp16[i][j] = (_FP16)cos_tmp[j];
+        sin_fp16[i][j] = (_FP16)sin_tmp[j];
       }
     }
-    freqs_cos_fp16 = cos_fp16;
-    freqs_sin_fp16 = sin_fp16;
   }
 #endif
 };
@@ -764,14 +779,33 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
 void MHACoreLayer::_compute_default_parameters(int head_dim, float theta) {
 
   // no attention scaling
-  attention_scaling = 1.0f;
+  rope_cache->attention_scaling = 1.0f;
+  auto &thetas = rope_cache->thetas;
 
   // theta_i = 10000^(-2(i-1)/dim) for i = [1, 2, ... , dim/2]
   // head_dim should be divisible by 2
   unsigned int half_ = head_dim / 2;
+  thetas.reserve(half_);
   for (unsigned int i = 0; i < half_; ++i) {
-    thetas.push_back(1.0 /
-                     (std::pow(theta, (2 * i) / static_cast<float>(head_dim))));
+    thetas.push_back(1.0f /
+                     std::pow(theta, (2 * i) / static_cast<float>(head_dim)));
+  }
+}
+
+void MHACoreLayer::_compute_linear_parameters(int head_dim, float theta) {
+
+  // no attention scaling
+  rope_cache->attention_scaling = 1.0f;
+  auto &thetas = rope_cache->thetas;
+
+  // theta_i = 1 / (factor * base^(2i/dim)), i = [0, 1, ... , dim/2-1]
+  // equivalent to applying linear scaling factor to inverse frequencies
+  const unsigned int half_ = head_dim / 2;
+  thetas.reserve(half_);
+  for (unsigned int i = 0; i < half_; ++i) {
+    thetas.push_back(
+      1.0f /
+      (scale * std::pow(theta, (2 * i) / static_cast<float>(head_dim))));
   }
 }
 
@@ -791,6 +825,7 @@ void MHACoreLayer::_compute_linear_parameters(int head_dim, float theta) {
 }
 
 void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {
+  auto &thetas = rope_cache->thetas;
 
   // Config parameters
   ///@todo partial_rotary_factor should be generalized to fully support
@@ -816,7 +851,7 @@ void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {
   // } else {
   // attention_scaling = get_mscale(factor);
   // }
-  attention_scaling = get_mscale(scale);
+  rope_cache->attention_scaling = get_mscale(scale);
 
   ///@todo attention_scaling should be generalized to fully support
   /// transformers's implementation
@@ -894,11 +929,8 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
     std::get<nntrainer::props::MaxTimestep>(mha_core_props).get();
 
   if (in.getDataType() == ml::train::TensorDim::DataType::FP32) {
-    if (freqs_cos == nullptr) {
-      const std::lock_guard<std::mutex> lock(rope_init_mtx);
-      if (freqs_cos == nullptr) {
-        precompute_freqs(head_dim, max_position_embeddings, theta, false);
-      }
+    if (!rope_cache || rope_cache->freqs_cos.empty()) {
+      precompute_freqs(head_dim, max_position_embeddings, theta, false);
     }
     std::vector<float> *cos_ = nullptr;
     std::vector<float> *sin_ = nullptr;
@@ -908,8 +940,8 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
       for (unsigned int c = 0; c < in.channel(); c++) {
         for (unsigned int h = 0; h < in.height(); h++) {
           if (from < max_timestep) {
-            cos_ = &(*freqs_cos)[from + h];
-            sin_ = &(*freqs_sin)[from + h];
+            cos_ = &(rope_cache->freqs_cos[from + h]);
+            sin_ = &(rope_cache->freqs_sin[from + h]);
           }
           float *in_ptr = in.getData<float>() +
                           b * in.channel() * in.height() * in.width() +
@@ -938,11 +970,8 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
     }
   } else if (in.getDataType() == ml::train::TensorDim::DataType::FP16) {
 #ifdef ENABLE_FP16
-    if (freqs_cos_fp16 == nullptr) {
-      const std::lock_guard<std::mutex> lock(rope_init_mtx);
-      if (freqs_cos_fp16 == nullptr) {
-        precompute_freqs(head_dim, max_position_embeddings, theta, true);
-      }
+    if (!rope_cache || rope_cache->freqs_cos_fp16.empty()) {
+      precompute_freqs(head_dim, max_position_embeddings, theta, true);
     }
     std::vector<_FP16> *cos_ = nullptr;
     std::vector<_FP16> *sin_ = nullptr;
@@ -951,8 +980,8 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
       for (unsigned int c = 0; c < in.channel(); c++) {
         for (unsigned int h = 0; h < in.height(); h++) {
           if (from < max_timestep) {
-            cos_ = &(*freqs_cos_fp16)[from + h];
-            sin_ = &(*freqs_sin_fp16)[from + h];
+            cos_ = &(rope_cache->freqs_cos_fp16[from + h]);
+            sin_ = &(rope_cache->freqs_sin_fp16[from + h]);
           }
           _FP16 *in_ptr = in.getData<_FP16>() +
                           b * in.channel() * in.height() * in.width() +
@@ -971,6 +1000,15 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
     NNTR_THROW_IF(true, std::invalid_argument) << "enable-fp16 is not set!";
 #endif
   }
+}
+
+std::string MHACoreLayer::get_rope_cache_key(int head_dim, float theta) const {
+  std::string key = rope_scaling_type + ":" + std::to_string(head_dim) + ":" +
+                    std::to_string(theta) + ":" + std::to_string(scale);
+  if (rope_scaling_type == "yarn") {
+    key += ":" + std::to_string(original_max_position_embeddings);
+  }
+  return key;
 }
 
 void MHACoreLayer::softmax_triangle(nntrainer::Tensor &qk_out, size_t row,
