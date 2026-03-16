@@ -39,7 +39,8 @@ void CachedFullyConnectedLayer::finalize(nntrainer::InitLayerContext &context) {
     std::get<nntrainer::props::WeightRegularizerConstant>(*layer_impl_props);
   auto &weight_initializer =
     std::get<nntrainer::props::WeightInitializer>(*layer_impl_props);
-  auto &weight_decay = std::get<nntrainer::props::WeightDecay>(*layer_impl_props);
+  auto &weight_decay =
+    std::get<nntrainer::props::WeightDecay>(*layer_impl_props);
   auto &bias_decay = std::get<nntrainer::props::BiasDecay>(*layer_impl_props);
   auto &bias_initializer =
     std::get<nntrainer::props::BiasInitializer>(*layer_impl_props);
@@ -47,9 +48,10 @@ void CachedFullyConnectedLayer::finalize(nntrainer::InitLayerContext &context) {
     std::get<nntrainer::props::DisableBias>(*layer_impl_props);
 
   const auto &unit = std::get<nntrainer::props::Unit>(fc_props).get();
-  const auto &lora_rank = (std::get<nntrainer::props::LoraRank>(fc_props).empty())
-                            ? 0
-                            : std::get<nntrainer::props::LoraRank>(fc_props).get();
+  const auto &lora_rank =
+    (std::get<nntrainer::props::LoraRank>(fc_props).empty())
+      ? 0
+      : std::get<nntrainer::props::LoraRank>(fc_props).get();
   lora_scaling =
     (lora_rank && !std::get<nntrainer::props::LoraAlpha>(fc_props).empty())
       ? (float)std::get<nntrainer::props::LoraAlpha>(fc_props) / lora_rank
