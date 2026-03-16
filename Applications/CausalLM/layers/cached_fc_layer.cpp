@@ -46,11 +46,13 @@ void CachedFCLayer::finalize(nntrainer::InitLayerContext &context) {
   auto &weight_regularizer_constant =
     std::get<nntrainer::props::WeightRegularizerConstant>(*layer_impl_props);
   auto weight_initializer = nntrainer::props::InitializerInfo::Enum::NONE;
-  auto &weight_decay = std::get<nntrainer::props::WeightDecay>(*layer_impl_props);
+  auto &weight_decay =
+    std::get<nntrainer::props::WeightDecay>(*layer_impl_props);
   auto &bias_decay = std::get<nntrainer::props::BiasDecay>(*layer_impl_props);
   auto &bias_initializer =
     std::get<nntrainer::props::BiasInitializer>(*layer_impl_props);
-  auto &disable_bias = std::get<nntrainer::props::DisableBias>(*layer_impl_props);
+  auto &disable_bias =
+    std::get<nntrainer::props::DisableBias>(*layer_impl_props);
 
   const auto unit = std::get<nntrainer::props::Unit>(cached_fc_props).get();
   const bool is_nchw = (context.getFormat() == nntrainer::Tformat::NCHW);
@@ -88,10 +90,9 @@ void CachedFCLayer::finalize(nntrainer::InitLayerContext &context) {
       bias_decay, "bias", true);
   }
 
-  tensor_idx[CachedFCTensors::CACHE] =
-    context.requestTensor(
-      out_dim, "projection_cache", nntrainer::Initializer::NONE, true,
-      nntrainer::TensorLifespan::MAX_LIFESPAN);
+  tensor_idx[CachedFCTensors::CACHE] = context.requestTensor(
+    out_dim, "projection_cache", nntrainer::Initializer::NONE, true,
+    nntrainer::TensorLifespan::MAX_LIFESPAN);
 }
 
 void CachedFCLayer::setProperty(const std::vector<std::string> &values) {
@@ -107,7 +108,8 @@ void CachedFCLayer::setProperty(const std::vector<std::string> &values) {
   }
 }
 
-void CachedFCLayer::runProjection(nntrainer::Tensor &input, nntrainer::Tensor &output,
+void CachedFCLayer::runProjection(nntrainer::Tensor &input,
+                                  nntrainer::Tensor &output,
                                   nntrainer::Tensor &weight,
                                   nntrainer::Tensor *bias) const {
   input.dot(weight, output, false, false);
@@ -119,8 +121,8 @@ void CachedFCLayer::runProjection(nntrainer::Tensor &input, nntrainer::Tensor &o
 CachedFCLayer::RuntimeState &
 CachedFCLayer::getRuntimeState(nntrainer::RunLayerContext &context) {
   std::lock_guard<std::mutex> guard(runtime_state_mutex);
-  auto [it, inserted] = runtime_state.try_emplace(
-    &context, RuntimeState{false, 0u});
+  auto [it, inserted] =
+    runtime_state.try_emplace(&context, RuntimeState{false, 0u});
   return it->second;
 }
 
@@ -131,15 +133,16 @@ void CachedFCLayer::resetRuntimeState(nntrainer::RunLayerContext &context) {
 
 void CachedFCLayer::copyCacheToOutput(nntrainer::RunLayerContext &context,
                                       unsigned int cached_length) {
-  nntrainer::Tensor &cache = context.getTensor(tensor_idx[CachedFCTensors::CACHE]);
+  nntrainer::Tensor &cache =
+    context.getTensor(tensor_idx[CachedFCTensors::CACHE]);
   nntrainer::Tensor &output = context.getOutput(SINGLE_INOUT_IDX);
 
   auto cache_dim = cache.getDim();
   auto output_dim = output.getDim();
 
-  cached_length = std::min(
-    cached_length,
-    static_cast<unsigned int>(std::min(cache_dim.height(), output_dim.height())));
+  cached_length =
+    std::min(cached_length, static_cast<unsigned int>(std::min(
+                              cache_dim.height(), output_dim.height())));
 
   auto copied_dim = output_dim;
   copied_dim.height(cached_length);
@@ -160,7 +163,8 @@ void CachedFCLayer::forwarding(nntrainer::RunLayerContext &context,
   auto weight = context.getWeight(weight_idx[CachedFCParams::WEIGHT]);
 
   nntrainer::Tensor *bias = nullptr;
-  if (auto &disable_bias = std::get<nntrainer::props::DisableBias>(*layer_impl_props);
+  if (auto &disable_bias =
+        std::get<nntrainer::props::DisableBias>(*layer_impl_props);
       disable_bias.empty() || disable_bias.get() == false) {
     bias = &context.getWeight(weight_idx[CachedFCParams::BIAS]);
   }
@@ -228,7 +232,8 @@ void CachedFCLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
   auto weight = context.getWeight(weight_idx[CachedFCParams::WEIGHT]);
 
   nntrainer::Tensor *bias = nullptr;
-  if (auto &disable_bias = std::get<nntrainer::props::DisableBias>(*layer_impl_props);
+  if (auto &disable_bias =
+        std::get<nntrainer::props::DisableBias>(*layer_impl_props);
       disable_bias.empty() || disable_bias.get() == false) {
     bias = &context.getWeight(weight_idx[CachedFCParams::BIAS]);
   }
