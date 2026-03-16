@@ -2,6 +2,7 @@ causallm_src += [
     meson.current_source_dir() / 'causal_lm.cpp',
     meson.current_source_dir() / 'transformer.cpp',
     meson.current_source_dir() / 'embedding.cpp',
+    meson.current_source_dir() / 'encoder_decoder.cpp',
 ]
 
 causallm_inc += include_directories('.')

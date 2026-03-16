@@ -14,16 +14,16 @@
 #ifndef __T5GEMMA2_H__
 #define __T5GEMMA2_H__
 
+#include <encoder_decoder.h>
 #include "t5gemma2_processor.h"
 #include <memory>
-#include <transformer.h>
 
 namespace causallm {
 
 /**
  * @brief T5Gemma2Transformer class
  */
-class T5Gemma2Transformer : virtual public Transformer {
+class T5Gemma2Transformer : virtual public EncoderDecoder {
 
 public:
   // TODO : divide architecture to T5Gemma2 / T5Gemma2ForConditionalGeneration
@@ -31,7 +31,7 @@ public:
     "T5Gemma2ForConditionalGeneration";
 
   T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
-    Transformer(cfg, generation_cfg, nntr_cfg, ModelType::MODEL) {
+    EncoderDecoder(cfg, generation_cfg, nntr_cfg, ModelType::MODEL) {
     setupParameters(cfg, generation_cfg, nntr_cfg);
 
     // Initialize processor (TODO: get parameters from config)
