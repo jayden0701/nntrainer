@@ -273,74 +273,121 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
 
   std::vector<LayerHandle> layers;
 
+  // === Self-Attention Projections ===
   auto Q = prefix + "wq";
   auto K = prefix + "wk";
   auto V = prefix + "wv";
-  auto A = prefix + "attention";
   auto O = prefix + "attention_out";
 
   auto Q_norm = Q + "_norm";
   auto K_norm = K + "_norm";
 
-  // V layer
-  std::vector<std::string> v_params = {
-    withKey("name", V), withKey("unit", head_dim * n_heads / gqa_size),
-    withKey("disable_bias", "true"), withKey("input_layers", value_name),
-    withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", v_params));
-
-  // K layer
-  std::vector<std::string> k_params = {
-    withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
-    withKey("disable_bias", "true"), withKey("input_layers", key_name),
-    withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", k_params));
-
-  // Q layer
+  // Query projection (decoder hidden states -> Q)
   std::vector<std::string> q_params = {
     withKey("name", Q), withKey("unit", head_dim * n_heads),
     withKey("disable_bias", "true"), withKey("input_layers", query_name),
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", q_params));
 
-  // Q_normalized
+  // Key projection (decoder hidden states -> K)
+  std::vector<std::string> k_params = {
+    withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"), withKey("input_layers", key_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", k_params));
+
+  // Value projection (decoder hidden states -> V)
+  std::vector<std::string> v_params = {
+    withKey("name", V), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"), withKey("input_layers", value_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", v_params));
+
+  // Q normalization (RMSNorm)
   std::vector<std::string> q_norm_params = {
     withKey("name", Q_norm), withKey("input_layers", Q),
     withKey("packed", "false"),
-    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
     withKey("feature_size", std::to_string(head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
-  // K_normalized
+  // K normalization (RMSNorm)
   std::vector<std::string> k_norm_params = {
     withKey("name", K_norm), withKey("input_layers", K),
     withKey("packed", "false"),
-    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
     withKey("feature_size", std::to_string(head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
 
-  // Determine RoPE theta based on layer type
-  bool is_full_attention = ((layer_id + 1) % ENC_SLIDING_WINDOW_PATTERN == 0);
+  // === Cross-Attention Projections ===
+  auto cross_K = prefix + "cross_wk";
+  auto cross_V = prefix + "cross_wv";
+  auto cross_K_norm = cross_K + "_norm";
 
-  // Attention core layer
+  // Cross Key projection (encoder hidden states -> cross_K)
+  std::vector<std::string> cross_k_params = {
+    withKey("name", cross_K), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"), withKey("input_layers", cross_key_name),
+    withKey("weight_initializer", "ones"),};
+  layers.push_back(createLayer("fully_connected", cross_k_params));
+
+  // Cross Value projection (encoder hidden states -> cross_V)
+  std::vector<std::string> cross_v_params = {
+    withKey("name", cross_V), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"), withKey("input_layers", cross_value_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", cross_v_params));
+
+  // Cross K normalization (RMSNorm)
+  std::vector<std::string> cross_k_norm_params = {
+    withKey("name", cross_K_norm), withKey("input_layers", cross_K),
+    withKey("packed", "false"),
+    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("reshaped_rms_norm", cross_k_norm_params));
+
+  // === Concatenation of Key and Value for Merged Attention ===
+  // Concat: [self_K, cross_K] along sequence dimension
+  auto concat_K = prefix + "concat_key";
+  std::vector<std::string> concat_k_params = {
+    withKey("name", concat_K),
+    withKey("input_layers", {K_norm, cross_K_norm}),
+    withKey("axis", "2")};  // Concat along sequence dimension (height)
+  layers.push_back(createLayer("concat", concat_k_params));
+
+  // Concat: [self_V, cross_V] along sequence dimension
+  auto concat_V = prefix + "concat_value";
+  std::vector<std::string> concat_v_params = {
+    withKey("name", concat_V),
+    withKey("input_layers", {V, cross_V}),
+    withKey("axis", "2")};  // Concat along sequence dimension (height)
+  layers.push_back(createLayer("concat", concat_v_params));
+
+  // === Merged Attention ===
+  auto A = prefix + "attention";
+
+  // Determine RoPE theta based on layer type
+  bool is_full_attention = ((layer_id + 1) % DEC_SLIDING_WINDOW_PATTERN == 0);
+
+  // Merged attention: Q attends to [self_K + cross_K]
   std::vector<std::string> a_params = {
-    withKey("name", A), withKey("num_heads", n_heads),
+    withKey("name", A),
+    withKey("num_heads", n_heads),
     withKey("num_heads_kv", n_heads / gqa_size),
-    withKey("max_timestep", std::to_string(INIT_SEQ_LEN)),
+    withKey("max_timestep", std::to_string(MAX_SEQ_LEN + INIT_SEQ_LEN)),  // decoder + encoder seq len
     withKey("sliding_window",
-            is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
+            is_full_attention ? UINT_MAX : DEC_SLIDING_WINDOW),
     withKey("use_rope", "false"),
     withKey("rope_theta",
-            is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
+            is_full_attention ? DEC_ROPE_THETA : DEC_ROPE_THETA_SLIDING),
     withKey("max_new_tokens", std::to_string(0)),
-    // TODO : change this if it is causal!!
-    withKey("is_causal", "false"),
-    withKey("input_layers", {Q_norm, K_norm, V})};
+    withKey("is_causal", "true"),  // Decoder is causal
+    withKey("input_layers", {Q_norm, concat_K, concat_V})};
   layers.push_back(createLayer("mha_core", a_params));
 
-  // O layer
+  // === Output Projection ===
   std::vector<std::string> o_params = {
-    withKey("name", O), withKey("unit", ENC_HIDDEN_SIZE),
+    withKey("name", O), withKey("unit", DEC_HIDDEN_SIZE),
     withKey("disable_bias", "true"), withKey("input_layers", A),
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", o_params));
@@ -595,6 +642,9 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
     std::vector<int> input_ids =
       tokenizer->Encode(processor_output.processed_text);
     unsigned int input_len = input_ids.size();
+
+
+    ACTUAL_SEQ_LEN = input_len;
 
     if (input_len == 0) {
       throw std::runtime_error("Input text resulted in empty token sequence.");
@@ -855,9 +905,13 @@ void T5Gemma2Transformer::createDecoderModel() {
   std::vector<LayerHandle> decoder_layers;
 
   // Input layer for decoder tokens
+  
+  // TODO : SEQ_LEN set to 1 for concat, could need to change for multiple input
   decoder_layers.push_back(createLayer(
     "input", {withKey("name", "decoder_token_input"),
-              withKey("input_shape", "1:1:" + std::to_string(MAX_SEQ_LEN))}));
+              withKey("input_shape", "1:1:" + std::to_string(1))}));
+
+
 
   // TODO : can we change this to actual expected encoder length? 
   // (this could be calculated before createModel via using prompt)
@@ -1047,9 +1101,6 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
   std::cout << "[Decoder] Memory allocated (size tracking not available)"
             << std::endl;
 
-  // TODO: Use encoder_output for cross-attention (not implemented yet)
-  // For now, run decoder with only text input
-
   // Prepare input
   float *decoder_tokens =
     (float *)malloc(sizeof(float) * (NUM_TO_GENERATE + 1));
@@ -1060,17 +1111,42 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
   // Initialize with BOS token
   decoder_tokens[0] = static_cast<float>(BOS_TOKEN_ID);
 
-  std::vector<float *> decoder_inputs = {decoder_tokens};
+  // Convert encoder_output to pointer (non-const)
+  // Do this to keep original Encoded output Data const
+  std::vector<float> encoder_output_mutable(encoder_output.begin(),
+                                            encoder_output.end());
+
+  // Decoder inputs: [decoder_tokens, encoder_output]
+  // TODO : 지금은 topo sort되기 전이라 뒤집어 있지만 나중에 다시 뒤집어야 함
+  std::vector<float *> decoder_inputs = {encoder_output_mutable.data(), decoder_tokens
+                                         };
   std::vector<float *> label_tensors;
   std::vector<unsigned int> generated_tokens;
 
   // Inference
   auto start_time = std::chrono::high_resolution_clock::now();
 
+
+// TMP code for custom setting from-to in some layers
+  std::unordered_map<std::string, unsigned int> custom_to_map;
+for(int i=0; i<DEC_NUM_LAYERS; ++i)
+{
+  std::string prefix = "decoder_layer" + std::to_string(i) + "_";
+  auto cross_K = prefix + "cross_wk";
+  auto cross_V = prefix + "cross_wv";
+  auto cross_K_norm = cross_K + "_norm";
+  
+  custom_to_map.insert({cross_K,ACTUAL_SEQ_LEN});
+  custom_to_map.insert({cross_V,ACTUAL_SEQ_LEN});
+  custom_to_map.insert({cross_K_norm,ACTUAL_SEQ_LEN});
+
+
+}
+          
   // Token Generation (no prefill)
   for (unsigned int i = 0; i < NUM_TO_GENERATE; ++i) {
     auto gen_output = decoder_model->incremental_inference(
-      1, decoder_inputs, label_tensors, 1, i, i + 1, false);
+      1, decoder_inputs, label_tensors, 1, i, i + 1, false, &custom_to_map);
 
     unsigned int new_token = generate(gen_output[0], false)[0];
 
@@ -1081,7 +1157,9 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
     // }
 
     generated_tokens.push_back(new_token);
-    decoder_tokens[i + 1] = static_cast<float>(new_token);
+
+   
+    decoder_tokens[0] = static_cast<float>(new_token);
   }
 
   auto end_time = std::chrono::high_resolution_clock::now();

@@ -168,13 +168,65 @@ fc_layer자체의 from-to가 좀 이상하긴한데 확인해봐
 그냥 layer의 input으로 들어온 얘들의 앞에서부터 (to-from)*WIDTH 를 들고 옴
 실제 to부터 확인하는 거는 KV cache용이었다!
 
-그렇다면 이를 어떻게 응용ㅇ?
-
-
-
-
+(0312 운동전)
+승희님 custom from to들고옴. layer이름 검색 매커니즘 함 더 보고, 적용해서 어떻게 할지 생각해보자
+(cache는 생각x)
+승백님에게 왜 cache없어도 될거라고 생각하셨는지 물어보기
 +k/v_proj layer의 weight sharing기능도 알아보기
 
+
+(0312 퇴근전)
+custom to를 썼는데, from을 바꾸지 않음
+일단 decoder측은 height를 1로 고정함(concat했을 때 붙게) 이게 맞는지는 모르겠음.
+
+이후 mha_core에서 from-to를 어떻게 해야할지(to를 custom으로 뒤로 늘려도 from은 계속 다가오고, cache관리는 어떻게하고...etc)
+고민이 되어, 내일은 승희님 버전 말고 현석님 버전으로 한번 고쳐볼 것
+
+승희님거 이름 map으로 줬는데 애초에 왜 못찾지...
+
+
+[현석님 pr 이용 버전]
+cache되는 FC_Layer을 만들거임(norm도 가능) + 현석님 restInput반영되었다 가정
+
+1) cache_type prop을 one-time / incremental 두 종류 중 선택 가능하게 하여,
+one_time이면 걍 한 번 하고, 크기 저장한 후 계속 cache 내보내기, (flag 이용하면 간단?)
+incremental이면 들어오는대로 계속 cache쌓기
+
+sliding생각하면 원형 cache? (window가 5면 5개 넘으면 맨 뒤에거 지우고 새로운거 더하고 이런식)도 생각은 해야 할듯 (사실 incremental의 경우 이거를 무조건 쓰게 하면 될 거 같은데?)
+
+2) 근데 input/output size reset이 언제더라...아무튼 잘 되었다는 가정하에 가능
+
+3) norm켜져있으면 norm하고 저장
+
+
+
+[승희님 pr 이용 버전]
+
+cache되는 FC_Layer을 만들거임(norm도 가능)
+이때, input으로는 input중 맨 앞 to-from(사실 1개)을 들고 오게 하고,
+norm켜져있으면 norm하고,
+from 위치에 해당 input의 proj를 cache하면 그게 사실상 kv cache
+대신, output의 크기가 0~to까지 전부 매번 보내줘야 함. 이는 애초에 input tensor을 지금처럼 MAX_SEQ로 잡으면 쉬울듯
+
+
+encoder용 FC_LAYER도 동일한 구조인데, 승희님의 to-from고정으로 걍 고정된 ENC_SEQ_LEN값을 임시로 넘겨준다든가 이런식으로 구현 가능
+
+이후 concat해서 넘겨주는데, mha_core입장에선 이제 이게 to + ENC_SEQ_LEN 만큼 계산해야 하 지 만?
+걍 현석님의 PR 반영된 cross attn이 잘 된다면 상관 없음.
+
+
+
+
+
+
+
+(0313 심야의 고민)
+승희님 custom to + self attn으로 검증가능한 법
+
+prefill 처럼해서 확인해보자(단계 1만 ㅇㅇ)
+
+대신 이러려면 길이가 K,V = 1+ENC_SEQ_LEN 인데 Q=1임
+Q에 0으로 padding을 하는게 가능한지 생각해보자
 
 
 
