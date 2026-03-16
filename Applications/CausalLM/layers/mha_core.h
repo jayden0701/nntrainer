@@ -32,6 +32,7 @@
 #endif
 
 #include <complex>
+#include <memory>
 
 #include <acti_func.h>
 #include <bs_thread_pool_manager.hpp>
@@ -42,6 +43,7 @@
 #include <util_simd.h>
 
 #include <utility>
+#include <unordered_map>
 
 namespace causallm {
 
@@ -149,6 +151,7 @@ public:
 /**
  * @brief RopeScalingType
  * - default
+ * - linear
  * - yarn
  */
 class RopeScalingType : public nntrainer::Property<std::string> {
@@ -376,15 +379,22 @@ private:
   float scale = 1.0f;
   unsigned int original_max_position_embeddings = 4096;
 
-  /****************** ROTARY EMBEDDING *****************/
-  /** static variable - they are all expected to be initialized once */
-  inline static std::vector<std::vector<float>> *freqs_cos = {};
-  inline static std::vector<std::vector<float>> *freqs_sin = {};
-  inline static std::vector<float> thetas;
+  struct RopeFreqCache {
+    float attention_scaling = 1.0f;
+    std::vector<float> thetas;
+    std::vector<std::vector<float>> freqs_cos;
+    std::vector<std::vector<float>> freqs_sin;
 #ifdef ENABLE_FP16
-  inline static std::vector<std::vector<_FP16>> *freqs_cos_fp16 = {};
-  inline static std::vector<std::vector<_FP16>> *freqs_sin_fp16 = {};
+    std::vector<std::vector<_FP16>> freqs_cos_fp16;
+    std::vector<std::vector<_FP16>> freqs_sin_fp16;
 #endif
+  };
+
+  /****************** ROTARY EMBEDDING *****************/
+  inline static std::unordered_map<std::string, std::shared_ptr<RopeFreqCache>>
+    rope_cache_pool;
+  std::shared_ptr<RopeFreqCache> rope_cache;
+  std::string rope_cache_key;
 
   /**
    * @brief pre_compute frequencies for Rotary Embedding.
@@ -405,6 +415,17 @@ private:
    * @brief _compute frequency parameters for default ROPE
    */
   void _compute_yarn_parameters(int head_dim, float theta);
+
+  /**
+   * @brief _compute frequency parameters for linear scaling ROPE
+   */
+  void _compute_linear_parameters(int head_dim, float theta);
+
+  /**
+   * @brief derive cache key by rope settings so each rope type/config gets
+   *        isolated precomputed frequencies.
+   */
+  std::string get_rope_cache_key(int head_dim, float theta) const;
 
   /**
    * @brief     apply rotary embedding
