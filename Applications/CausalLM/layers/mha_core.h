@@ -149,6 +149,7 @@ public:
 /**
  * @brief RopeScalingType
  * - default
+ * - linear
  * - yarn
  */
 class RopeScalingType : public nntrainer::Property<std::string> {
@@ -405,6 +406,11 @@ private:
    * @brief _compute frequency parameters for default ROPE
    */
   void _compute_yarn_parameters(int head_dim, float theta);
+
+  /**
+   * @brief _compute frequency parameters for linear scaling ROPE
+   */
+  void _compute_linear_parameters(int head_dim, float theta);
 
   /**
    * @brief     apply rotary embedding
