@@ -186,6 +186,7 @@ private:
   unsigned int ENC_SLIDING_WINDOW;
   float ENC_ROPE_THETA;
   float ENC_ROPE_THETA_SLIDING;
+  float ENC_ROPE_FACTOR;
 
   bool ENC_USE_CROSS_ATTENTION;
   bool ENC_IS_BIDIRECTIONAL;
@@ -205,7 +206,9 @@ private:
   unsigned int DEC_SLIDING_WINDOW;
   float DEC_ROPE_THETA;
   float DEC_ROPE_THETA_SLIDING;   // RoPE theta for sliding attention layers
-  float DEC_ROPE_THETA_FULL;      // RoPE theta for full attention layers
+  float DEC_ROPE_FACTOR;
+
+
   int DEC_SLIDING_WINDOW_PATTERN; // Pattern for alternating attention types
   bool DEC_IS_CAUSAL;
   bool DEC_IS_BIDIRECTIONAL;

@@ -63,7 +63,31 @@ MHACoreLayer::MHACoreLayer() :
   tensor_idx.fill(std::numeric_limits<unsigned>::max());
 }
 
-MHACoreLayer::~MHACoreLayer() {}
+MHACoreLayer::~MHACoreLayer() {
+  // Clean up type-specific caches
+  for (auto& [key, ptr] : freqs_cos_map) {
+    if (ptr != nullptr) {
+      delete ptr;
+    }
+  }
+  for (auto& [key, ptr] : freqs_sin_map) {
+    if (ptr != nullptr) {
+      delete ptr;
+    }
+  }
+#ifdef ENABLE_FP16
+  for (auto& [key, ptr] : freqs_cos_fp16_map) {
+    if (ptr != nullptr) {
+      delete ptr;
+    }
+  }
+  for (auto& [key, ptr] : freqs_sin_fp16_map) {
+    if (ptr != nullptr) {
+      delete ptr;
+    }
+  }
+#endif
+}
 
 /************************************************************** */
 
@@ -670,13 +694,42 @@ void MHACoreLayer::one_batch_incremental_forwarding(
 void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
                                     float theta, bool is_fp16) {
   // compute the freqs only when it is the first time to call this function
+  std::string cache_key = rope_scaling_type;
+  
+  std::cout << "[RoPE DEBUG] Precomputing frequencies for type: " << cache_key << std::endl;
+  
 #ifdef ENABLE_FP16
-  if (freqs_cos_fp16 != nullptr && freqs_cos_fp16->size() == seq_len)
-    return;
+  if (is_fp16) {
+    // Check if this type's FP16 cache exists
+    if (freqs_cos_fp16_map.find(cache_key) != freqs_cos_fp16_map.end() &&
+        freqs_cos_fp16_map[cache_key] != nullptr &&
+        freqs_cos_fp16_map[cache_key]->size() == seq_len) {
+      freqs_cos_fp16 = freqs_cos_fp16_map[cache_key];
+      freqs_sin_fp16 = freqs_sin_fp16_map[cache_key];
+      std::cout << "[RoPE DEBUG]   Using cached FP16 frequencies for type: " << cache_key << std::endl;
+      return;
+    }
+  } else {
 #else
-  if (freqs_cos != nullptr && freqs_cos->size() == seq_len)
-    return;
+  {
 #endif
+    // Check if this type's FP32 cache exists
+    if (freqs_cos_map.find(cache_key) != freqs_cos_map.end() &&
+        freqs_cos_map[cache_key] != nullptr &&
+        freqs_cos_map[cache_key]->size() == seq_len) {
+      freqs_cos = freqs_cos_map[cache_key];
+      freqs_sin = freqs_sin_map[cache_key];
+      std::cout << "[RoPE DEBUG]   Using cached FP32 frequencies for type: " << cache_key << std::endl;
+      return;
+    }
+  }
+
+  std::cout << "[RoPE DEBUG] Precomputing frequencies" << std::endl;
+  std::cout << "[RoPE DEBUG]   head_dim: " << head_dim << std::endl;
+  std::cout << "[RoPE DEBUG]   seq_len: " << seq_len << std::endl;
+  std::cout << "[RoPE DEBUG]   theta: " << theta << std::endl;
+  std::cout << "[RoPE DEBUG]   is_fp16: " << (is_fp16 ? "true" : "false") << std::endl;
+  std::cout << "[RoPE DEBUG]   rope_scaling_type: " << rope_scaling_type << std::endl;
 
   if (thetas.empty()) {
     if (rope_scaling_type == "default")
@@ -700,6 +753,10 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
 
     // update cos / sin frequency
     for (unsigned int i = 0; i < seq_len; ++i) {
+      // Print sample values for first few positions
+      if (i < 3) {
+        std::cout << "[RoPE DEBUG]   Position " << i << ":" << std::endl;
+      }
 
 #ifdef USE_NEON
       nntrainer::calc_trigonometric_vals_dup(half_, thetas.data(),
@@ -715,9 +772,23 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
         (*sin)[i][j] = std::sin(angle) * attention_scaling;
         (*sin)[i][j + half_] =
           std::sin(angle) * attention_scaling; // repeated 2 times
+          
+        // Print first few cos/sin values for position 0
+        if (i == 0 && j < 3) {
+          std::cout << "[RoPE DEBUG]     dim[" << j << "] angle: " << angle 
+                    << ", cos: " << (*cos)[i][j] << ", sin: " << (*sin)[i][j] << std::endl;
+        }
       }
 #endif
     }
+    
+    std::cout << "[RoPE DEBUG] Precomputed " << seq_len << " positions with cos/sin" << std::endl;
+    
+    // Store in type-specific FP32 cache
+    freqs_cos_map[cache_key] = cos;
+    freqs_sin_map[cache_key] = sin;
+    
+    // Also set the legacy pointers for backward compatibility
     freqs_cos = cos;
     freqs_sin = sin;
   }
@@ -754,7 +825,11 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
         (*cos_fp16)[i][j] = (_FP16)cos_tmp[j];
         (*sin_fp16)[i][j] = (_FP16)sin_tmp[j];
       }
-    }
+    // Store in type-specific FP16 cache
+    freqs_cos_fp16_map[cache_key] = cos_fp16;
+    freqs_sin_fp16_map[cache_key] = sin_fp16;
+    
+    // Also set the legacy pointers for backward compatibility
     freqs_cos_fp16 = cos_fp16;
     freqs_sin_fp16 = sin_fp16;
   }
@@ -769,10 +844,23 @@ void MHACoreLayer::_compute_default_parameters(int head_dim, float theta) {
   // theta_i = 10000^(-2(i-1)/dim) for i = [1, 2, ... , dim/2]
   // head_dim should be divisible by 2
   unsigned int half_ = head_dim / 2;
+  
+  std::cout << "[RoPE DEBUG] Computing DEFAULT parameters" << std::endl;
+  std::cout << "[RoPE DEBUG]   head_dim: " << head_dim << std::endl;
+  std::cout << "[RoPE DEBUG]   theta (base): " << theta << std::endl;
+  std::cout << "[RoPE DEBUG]   attention_scaling: " << attention_scaling << std::endl;
+  
   for (unsigned int i = 0; i < half_; ++i) {
-    thetas.push_back(1.0 /
-                     (std::pow(theta, (2 * i) / static_cast<float>(head_dim))));
+    float theta_val = 1.0 /
+                     (std::pow(theta, (2 * i) / static_cast<float>(head_dim)));
+    thetas.push_back(theta_val);
+    
+    // Print first few and last few theta values
+    if (i < 3 || i >= half_ - 3) {
+      std::cout << "[RoPE DEBUG]   theta[" << i << "]: " << theta_val << std::endl;
+    }
   }
+  std::cout << "[RoPE DEBUG] Total thetas computed: " << thetas.size() << std::endl;
 }
 
 void MHACoreLayer::_compute_linear_parameters(int head_dim, float theta) {
@@ -783,11 +871,25 @@ void MHACoreLayer::_compute_linear_parameters(int head_dim, float theta) {
   // theta_i = 1 / (factor * base^(2i/dim)), i = [0, 1, ... , dim/2-1]
   // equivalent to applying linear scaling factor to inverse frequencies
   const unsigned int half_ = head_dim / 2;
+  
+  std::cout << "[RoPE DEBUG] Computing LINEAR parameters" << std::endl;
+  std::cout << "[RoPE DEBUG]   head_dim: " << head_dim << std::endl;
+  std::cout << "[RoPE DEBUG]   theta (base): " << theta << std::endl;
+  std::cout << "[RoPE DEBUG]   scale (factor): " << scale << std::endl;
+  std::cout << "[RoPE DEBUG]   attention_scaling: " << attention_scaling << std::endl;
+  
   for (unsigned int i = 0; i < half_; ++i) {
-    thetas.push_back(
-      1.0f /
-      (scale * std::pow(theta, (2 * i) / static_cast<float>(head_dim))));
+    float theta_val = 1.0f /
+      (scale * std::pow(theta, (2 * i) / static_cast<float>(head_dim)));
+    thetas.push_back(theta_val);
+    
+    // Print first few and last few theta values
+    if (i < 3 || i >= half_ - 3) {
+      std::cout << "[RoPE DEBUG]   theta[" << i << "]: " << theta_val 
+                << " (unscaled: " << (1.0f / std::pow(theta, (2 * i) / static_cast<float>(head_dim))) << ")" << std::endl;
+    }
   }
+  std::cout << "[RoPE DEBUG] Total thetas computed: " << thetas.size() << std::endl;
 }
 
 void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {
@@ -800,6 +902,12 @@ void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {
   const float partial_rotary_factor = 1.0f;
   const int dim = static_cast<int>(head_dim * partial_rotary_factor);
   const float base = theta;
+  
+  std::cout << "[RoPE DEBUG] Computing YARN parameters" << std::endl;
+  std::cout << "[RoPE DEBUG]   head_dim: " << head_dim << std::endl;
+  std::cout << "[RoPE DEBUG]   theta (base): " << theta << std::endl;
+  std::cout << "[RoPE DEBUG]   scale (factor): " << scale << std::endl;
+  std::cout << "[RoPE DEBUG]   original_max_position_embeddings: " << original_max_position_embeddings << std::endl;
 
   // Handle max position embeddings
 
@@ -882,6 +990,19 @@ void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {
       inv_freq_extrapolation[i] * inv_freq_extrapolation_factor[i] +
       inv_freq_interpolation[i] * (1.0f - inv_freq_extrapolation_factor[i]);
   }
+  
+  std::cout << "[RoPE DEBUG]   attention_scaling: " << attention_scaling << std::endl;
+  std::cout << "[RoPE DEBUG]   beta_fast: " << beta_fast << std::endl;
+  std::cout << "[RoPE DEBUG]   beta_slow: " << beta_slow << std::endl;
+  std::cout << "[RoPE DEBUG]   low: " << low << ", high: " << high << std::endl;
+  
+  for (size_t i = 0; i < thetas.size(); ++i) {
+    if (i < 3 || i >= thetas.size() - 3) {
+      std::cout << "[RoPE DEBUG]   theta[" << i << "]: " << thetas[i]
+                << " (extrap_factor: " << inv_freq_extrapolation_factor[i] << ")" << std::endl;
+    }
+  }
+  std::cout << "[RoPE DEBUG] Total thetas computed: " << thetas.size() << std::endl;
 }
 
 void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
@@ -893,10 +1014,37 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
   unsigned int max_timestep =
     std::get<nntrainer::props::MaxTimestep>(mha_core_props).get();
 
+  static int apply_count = 0;
+  apply_count++;
+  
+  std::cout << "[RoPE DEBUG] apply_rotary_emb_tensor_v2 #" << apply_count << std::endl;
+  std::cout << "[RoPE DEBUG]   dim: " << dim << std::endl;
+  std::cout << "[RoPE DEBUG]   from (position): " << from << std::endl;
+  std::cout << "[RoPE DEBUG]   convert_only: " << (convert_only ? "true" : "false") << std::endl;
+  std::cout << "[RoPE DEBUG]   in shape: " << in.getDim() << std::endl;
+  std::cout << "[RoPE DEBUG]   out shape: " << out.getDim() << std::endl;
+  std::cout << "[RoPE DEBUG]   in dtype: " << (int)in.getDataType() << std::endl;
+  std::cout << "[RoPE DEBUG]   out dtype: " << (int)out.getDataType() << std::endl;
+
   if (in.getDataType() == ml::train::TensorDim::DataType::FP32) {
+    // Get cache key for current RoPE type
+    std::string cache_key = rope_scaling_type;
+    
+    // Try to get from type-specific cache
+    if (freqs_cos_map.find(cache_key) != freqs_cos_map.end() &&
+        freqs_cos_map[cache_key] != nullptr) {
+      freqs_cos = freqs_cos_map[cache_key];
+      freqs_sin = freqs_sin_map[cache_key];
+    }
+    
     if (freqs_cos == nullptr) {
       const std::lock_guard<std::mutex> lock(rope_init_mtx);
-      if (freqs_cos == nullptr) {
+      // Double-check after acquiring lock
+      if (freqs_cos_map.find(cache_key) != freqs_cos_map.end() &&
+          freqs_cos_map[cache_key] != nullptr) {
+        freqs_cos = freqs_cos_map[cache_key];
+        freqs_sin = freqs_sin_map[cache_key];
+      } else {
         precompute_freqs(head_dim, max_position_embeddings, theta, false);
       }
     }
@@ -910,10 +1058,27 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
           if (from < max_timestep) {
             cos_ = &(*freqs_cos)[from + h];
             sin_ = &(*freqs_sin)[from + h];
+            
+            // Print sample cos/sin values being used
+            if (apply_count == 1 && h == 0 && from + h < 3) {
+              std::cout << "[RoPE DEBUG]   Using cos/sin for position " << (from + h) << ":" << std::endl;
+              for (unsigned int d = 0; d < std::min(3u, static_cast<unsigned int>(half_)); ++d) {
+                std::cout << "[RoPE DEBUG]     cos[" << d << "]: " << (*cos_)[d] 
+                          << ", sin[" << d << "]: " << (*sin_)[d] << std::endl;
+              }
+            }
           }
           float *in_ptr = in.getData<float>() +
                           b * in.channel() * in.height() * in.width() +
                           c * in.height() * in.width() + h * in.width();
+          
+          // Print sample input values
+          if (apply_count == 1 && h == 0) {
+            std::cout << "[RoPE DEBUG]   Sample input values for height " << h << ":" << std::endl;
+            for (unsigned int d = 0; d < std::min(6u, static_cast<unsigned int>(in.width())); ++d) {
+              std::cout << "[RoPE DEBUG]     in_ptr[" << d << "]: " << in_ptr[d] << std::endl;
+            }
+          }
 
           if (out.getDataType() == ml::train::TensorDim::DataType::FP32) {
 
@@ -928,6 +1093,14 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
                                 b * out.channel() * out.height() * out.width() +
                                 c * out.height() * out.width() +
                                 h * out.width();
+                                
+            // Print sample output values
+            if (apply_count == 1 && h == 0) {
+              std::cout << "[RoPE DEBUG]   Sample output values for height " << h << ":" << std::endl;
+              for (unsigned int d = 0; d < std::min(6u, static_cast<unsigned int>(in.width())); ++d) {
+                std::cout << "[RoPE DEBUG]     out_ptr[" << d << "]: " << convert_scalar(out_ptr[d]) << std::endl;
+              }
+            }
 
             nntrainer::compute_rotary_emb_value(in.width(), dim, half_, in_ptr,
                                                 out_ptr, cos_->data(),
@@ -938,9 +1111,24 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
     }
   } else if (in.getDataType() == ml::train::TensorDim::DataType::FP16) {
 #ifdef ENABLE_FP16
+    // Get cache key for current RoPE type
+    std::string cache_key = rope_scaling_type;
+    
+    // Try to get from type-specific FP16 cache
+    if (freqs_cos_fp16_map.find(cache_key) != freqs_cos_fp16_map.end() &&
+        freqs_cos_fp16_map[cache_key] != nullptr) {
+      freqs_cos_fp16 = freqs_cos_fp16_map[cache_key];
+      freqs_sin_fp16 = freqs_sin_fp16_map[cache_key];
+    }
+    
     if (freqs_cos_fp16 == nullptr) {
       const std::lock_guard<std::mutex> lock(rope_init_mtx);
-      if (freqs_cos_fp16 == nullptr) {
+      // Double-check after acquiring lock
+      if (freqs_cos_fp16_map.find(cache_key) != freqs_cos_fp16_map.end() &&
+          freqs_cos_fp16_map[cache_key] != nullptr) {
+        freqs_cos_fp16 = freqs_cos_fp16_map[cache_key];
+        freqs_sin_fp16 = freqs_sin_fp16_map[cache_key];
+      } else {
         precompute_freqs(head_dim, max_position_embeddings, theta, true);
       }
     }

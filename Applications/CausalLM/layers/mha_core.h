@@ -382,9 +382,18 @@ private:
   inline static std::vector<std::vector<float>> *freqs_cos = {};
   inline static std::vector<std::vector<float>> *freqs_sin = {};
   inline static std::vector<float> thetas;
+  
+  /** Type-specific caching for different RoPE scaling types (default, linear, yarn) */
+  inline static std::map<std::string, std::vector<std::vector<float>>*> freqs_cos_map;
+  inline static std::map<std::string, std::vector<std::vector<float>>*> freqs_sin_map;
+  
 #ifdef ENABLE_FP16
   inline static std::vector<std::vector<_FP16>> *freqs_cos_fp16 = {};
   inline static std::vector<std::vector<_FP16>> *freqs_sin_fp16 = {};
+  
+  /** Type-specific caching for FP16 */
+  inline static std::map<std::string, std::vector<std::vector<_FP16>>*> freqs_cos_fp16_map;
+  inline static std::map<std::string, std::vector<std::vector<_FP16>>*> freqs_sin_fp16_map;
 #endif
 
   /**

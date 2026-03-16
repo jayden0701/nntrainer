@@ -136,6 +136,7 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
         if (rope_params.contains("full_attention")) {
           json &rope_cfg = rope_params["full_attention"];
           ENC_ROPE_THETA = rope_cfg.value("rope_theta", 1000000.0f);
+          ENC_ROPE_FACTOR= rope_cfg.value("factor", 8.0f);
         } else {
           ENC_ROPE_THETA = 1000000.0f;
         }
@@ -461,9 +462,11 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
     withKey("max_timestep", std::to_string(INIT_SEQ_LEN)),
     withKey("sliding_window",
             is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
-    withKey("use_rope", "false"),
+    withKey("use_rope", "true"),
     withKey("rope_theta",
             is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
+    withKey("rope_scaling_type", is_full_attention ? "linear" : "default"),
+    withKey("rope_scaling_factor", ENC_ROPE_FACTOR),
     withKey("max_new_tokens", std::to_string(0)),
     // TODO : change this if it is causal!!
     withKey("is_causal", "false"),
