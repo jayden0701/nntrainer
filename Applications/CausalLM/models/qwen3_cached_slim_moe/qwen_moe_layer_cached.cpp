@@ -30,6 +30,7 @@
 #include <omp.h>
 #include <qwen_moe_layer_cached.h>
 #include <stdexcept>
+#include <util_simd.h>
 
 #include <chrono>
 using std::chrono::duration_cast;
@@ -231,10 +232,9 @@ inline void CachedSlimMoELayer::compute_expert_forward(
   token_input.dot(up_proj, up_out);
 
   if (num_tokens == 1) {
-    // Apply activation (silu)
-    acti_func.run_fn(gate_out, acti_out);
-    // Element-wise multiply: silu(gate_out) * up_out
-    acti_out.multiply_i(up_out);
+    // Fused SiLU(gate_out) * up_out
+    nntrainer::swiglu(acti_out.width(), acti_out.getData<float>(),
+                      gate_out.getData<float>(), up_out.getData<float>());
   } else {
 #pragma omp parallel for schedule(static) if (num_tokens > 4)
     for (size_t i = 0; i < num_tokens; ++i) {

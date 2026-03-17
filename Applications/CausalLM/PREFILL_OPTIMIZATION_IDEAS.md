@@ -1,0 +1,263 @@
+# CausalLM Prefill Optimization Ideas
+
+This note is a **brainstorming backlog** for improving **prefill latency / throughput** in `Applications/CausalLM`.
+
+> Scope: prompt processing path before token-by-token decode dominates.
+
+## 1) Graph / schedule level ideas
+
+1. **Split execution mode explicitly into `prefill` vs `decode` graph plans** so kernel choices, threading, and memory policies are specialized per phase.
+2. **Build static shape-specialized subgraphs for common prompt lengths** (e.g., 128/256/512/1024) to avoid runtime shape branching overhead.
+3. **Use two-stage prefill scheduling**: (A) embedding+QKV projection burst, (B) attention+MLP burst; tune threads separately.
+4. **Enable layer pipelining across CPU cores** for long prompt chunks (producer-consumer between QKV and attention kernels).
+5. **Add prefill micro-batching scheduler** that merges multiple user prompts with similar lengths when interactive SLA allows.
+6. **Introduce asynchronous prefill queue** with deadline-aware admission control (short prompts prioritized).
+7. **Token length bucketing** to reduce padding waste when batched prefill is used.
+8. **Adaptive chunk size prefill**: choose chunk length based on cache size and memory bandwidth.
+9. **Pipeline parallel prefill across NUMA nodes** with per-node cache shard ownership.
+10. **Early-stop prefill for system prompt cache hit** at exact token boundary to skip duplicate compute.
+
+## 2) KV cache and memory ideas
+
+11. **KV cache page allocator** (fixed-size pages) to reduce large contiguous allocations and fragmentation.
+12. **Use huge pages for KV cache** when available to reduce TLB misses on long prompts.
+13. **Cache-friendly KV layout variants** selectable by kernel (`[head][seq][dim]` vs `[seq][head][dim]`).
+14. **On-write transposed KV format during prefill** so decode reads are contiguous without extra transform.
+15. **Layer-wise KV precision policy**: early layers FP8/FP16, deeper layers FP16/BF16 depending on quality budget.
+16. **Quantized KV cache with per-head scale** (int8/int4) only for long-context sections.
+17. **Hybrid KV residency**: keep recent tokens in DRAM and cold prefix in mapped storage with async prefetch.
+18. **Ring-buffer KV mode for sliding-window models** to avoid full copy/shift operations.
+19. **Double-buffer KV write path** to overlap compute and memcpy/store.
+20. **NUMA-aware KV placement** binding each layer's cache near its worker threads.
+
+## 3) Attention kernel ideas
+
+21. **Dedicated prefill attention kernels** optimized for `Q_len >> 1` (unlike decode kernels tuned for `Q_len=1`).
+22. **FlashAttention-style tiled softmax** for long prompt chunks to reduce memory traffic.
+23. **Fused RoPE + QK matmul prep** so rotated tensors are never materialized separately.
+24. **GQA/MQA specialization path** that avoids repeated expansion work per query head.
+25. **Block-sparse prefill attention option** for prompts with known sparse patterns.
+26. **Causal mask generation on-the-fly in kernel** instead of materializing large mask tensors.
+27. **Kernel autotuner cache** keyed by `(seq_len, head_dim, num_heads, dtype, cpu_features)`.
+28. **Vectorized softmax with compensated reduction** to improve both speed and numerical stability.
+29. **Prefetch hints / software pipelining** inside attention inner loops.
+30. **Attention compute/IO overlap**: async load next K/V tile while current tile computes.
+
+## 4) MLP and projection ideas
+
+31. **Fuse RMSNorm + matmul input cast** (especially for fp16/bf16 input paths).
+32. **Fuse gate/up projections for SwiGLU** into one packed GEMM where possible.
+33. **Prepack linear weights for prefill GEMMs** with architecture-specific blocked format.
+34. **Persistent threadpool for GEMM-heavy layers** to remove per-layer launch overhead.
+35. **Dynamic thread capping per GEMM size** to avoid oversubscription for small prompt chunks.
+36. **Weight streaming order tuned for LLC reuse** across adjacent layers.
+37. **Quantized weight dequant + matmul fusion** (int4/int8 weights) to reduce memory bandwidth pressure.
+38. **Bias/activation fusion in linear epilogue** where model architecture allows.
+
+## 5) Tokenization and input pipeline ideas
+
+39. **Parallel tokenizer path** for batched user requests.
+40. **Pinned reusable token buffers** to avoid repeated allocations for `input_ids`.
+41. **Prompt canonicalization cache** (normalized system prompt + template) to improve prefix reuse hit-rate.
+42. **Fast-path for already-tokenized inputs** in benchmark/service mode.
+43. **Streaming prefill ingestion**: begin model prefill before full user prompt tokenization completes.
+
+## 6) Prefix/prompt caching ideas
+
+44. **Prefix hash index with LRU** for reusable prompt segments (beyond static system prompt).
+45. **Hierarchical prefix cache**: exact token match first, then longest common prefix fallback.
+46. **Persistent KV snapshot format versioning** so precomputed caches survive app restarts safely.
+47. **Cross-session shared readonly prefix cache** for common instruction templates.
+48. **Partial-layer prefix cache reuse** (reuse early layers for fuzzy prefix matches where exact reuse fails).
+49. **Cache admission policy based on future reuse score** rather than first-seen insert.
+50. **Background compaction/eviction thread** to keep cache lookups predictable.
+
+## 7) MoE-specific prefill ideas
+
+51. **Expert routing warmup pass** over prompt blocks to prefetch likely experts asynchronously.
+52. **Route-consistent chunking**: chunk prompt so expert sets are stable and cache hits increase.
+53. **Expert prefill cache residency hints** (keep top-N frequently activated experts hot during prefill window).
+54. **Batch-by-route prefill for MoE** to execute same-expert tokens together when latency budget allows.
+55. **Compressed expert weight staging** with just-in-time decode into compute buffer.
+56. **Router threshold tuning per prompt length** to reduce expensive tail experts during long prefill.
+
+## 8) Runtime / system ideas
+
+57. **CPU affinity presets** (`throughput`, `latency`, `balanced`) for prefill.
+58. **OpenMP / thread backend auto-tuning** at startup with lightweight calibration.
+59. **Memory bandwidth governor integration** (where supported) to lock high-performance state during prefill.
+60. **Asynchronous disk I/O for FSU** with deeper readahead tuned for sequential prompt traversal.
+61. **IO scheduler hinting** for model-weight and cache file access patterns.
+62. **Use `madvise` / `posix_fadvise` patterns** for predictable prefill scan regions.
+63. **Background page fault pre-touching** for model segments needed in first decoder blocks.
+
+## 9) Algorithmic ideas (quality/speed trade-off knobs)
+
+64. **Prompt truncation heuristics by semantic salience** instead of naive tail truncation.
+65. **Layer dropping during prefill only** (for draft/warm start), followed by full decode from checkpoint.
+66. **Speculative prefill** with smaller draft model to propose KV approximations, then verify/correct.
+67. **Adaptive RoPE scaling shortcuts** for very long prompts if quality target permits.
+68. **Mixed precision schedule by token position** (older prompt tokens more aggressively compressed).
+69. **Selective attention heads at prefill** for low-importance segments.
+70. **Chunk-level early exit** when downstream confidence metric suggests diminishing returns.
+
+## 10) Observability and tuning ideas
+
+71. **Per-layer prefill timeline tracing** (compute, wait, memory stall, io stall).
+72. **KV cache hit/miss and reuse metrics** split by system/user prompt portions.
+73. **Prompt-length latency percentiles dashboard** to expose non-linear slow zones.
+74. **Kernel-level roofline stats** (flops utilization vs bandwidth bound) for attention/MLP.
+75. **Online autotuning with safe rollback** and persistence of best settings per device.
+76. **A/B switch framework** in config for each optimization (easy benchmarking and bisecting).
+77. **Golden quality regression suite** (perplexity / task metrics) tied to each speed optimization.
+
+## 11) Code-local opportunities in current tree
+
+78. Extend the existing **system prompt KV cache** path in `models/causal_lm.cpp` to support multi-prefix and partial-prefix reuse.
+79. Add runtime switches in `Applications/CausalLM/README.md` + model configs for separate prefill/decode thread settings.
+80. Use the documented attention internals in `layers/mha_core_documentation.md` to introduce a prefill-specialized kernel path without affecting decode fast-path.
+81. Revisit `cached_fc_layer` usage to ensure repeated prefill GEMMs avoid redundant weight layout transforms.
+82. Introduce a prefill benchmarking mode in the CausalLM app that reports TTFT decomposition (tokenize / prefill / sample).
+
+---
+
+## Prioritized “first 10 to try” (practical)
+
+1. Prefill/decode split execution plans.
+2. Flash/tiled prefill attention kernel.
+3. KV cache layout + write-once transposed format.
+4. Prefix cache generalization beyond fixed system prompt.
+5. GEMM prepack + fused SwiGLU projections.
+6. Async MoE expert prefetch during prefill.
+7. Token length bucketing + micro-batched prefill.
+8. NUMA-aware thread/cache placement.
+9. Per-layer prefill tracing to find real bottlenecks.
+10. Autotuner for kernel/thread/chunk configs with persisted best profile.
+
+These ten usually give the largest practical wins before advanced algorithmic approximations are attempted.
+
+
+## 12) llama.cpp-inspired deep-dive ideas (adapt for NNTrainer)
+
+> We could not clone `llama.cpp` in this environment due to network restriction (GitHub 403), but the ideas below are derived from well-known llama.cpp optimization patterns and should be validated against latest upstream behavior.
+
+83. **`n_batch` vs `n_ubatch` style split**: separate *logical prompt batch size* and *physical micro-batch tile size* to maximize cache locality while preserving throughput.
+84. **ubatch auto-search per device**: calibrate best micro-batch for each `(model, context, dtype)` during startup and persist profile.
+85. **Graph reuse with reserved worst-case buffers**: pre-reserve compute graph memory once and avoid repeated graph rebuilds during prompt chunks.
+86. **KV cache defragmentation policy** for long-running sessions to prevent fragmentation-induced latency spikes.
+87. **Continuous batching in server mode**: admit new requests between chunk boundaries to keep cores saturated during prefill.
+88. **Thread split policy for attention vs matmul** similar to llama.cpp backend split (`n_threads`, `n_threads_batch` style).
+89. **Backend-specific kernels registry** (x86 AVX2/AVX512, ARM NEON/SVE) selected at runtime for attention + RMSNorm.
+90. **Prompt cache key canonicalization** including BOS/template/system chunks to improve exact-match reuse.
+91. **mmap + mlock tiered strategy**: lock only hot layers for prefill-critical path and map cold layers lazily.
+92. **Prefill-first scheduler**: during TTFT-sensitive windows, deprioritize decode streams and allocate more cores to prefill.
+93. **KV cache cell metadata compaction** (sequence id / position tracking kept compact) to reduce control-plane overhead.
+94. **Speculative prompt chunking**: run upcoming chunk prepare (mask/rope/index tensors) while current chunk computes.
+95. **Mask representation minimization**: keep causal mask implicit or bit-packed, avoid full dense tensor writes.
+96. **RoPE sin/cos cache reuse** across sessions and layers when theta/head-dim identical.
+97. **Hot-path alloc-free policy**: no malloc/new in prefill inner loop; all temporaries pooled.
+98. **I/O aware model placement**: align frequently-read tensors contiguously in file to improve readahead efficiency.
+99. **Server-level admission by prompt length**: route very long prompts to dedicated worker to protect p50 TTFT.
+100. **Prefix sharing across concurrent requests**: if many users share same system prompt, bind them to shared readonly KV prefix pages.
+
+## 13) Concrete implementation roadmap (llama.cpp-style, NNTrainer-friendly)
+
+### Phase A — 2 weeks (low-risk, high ROI)
+
+1. **Add prefill chunk knobs**: `prefill_batch_tokens`, `prefill_ubatch_tokens`, `prefill_threads`.
+2. **Add alloc-free prefill guardrails**: counters for dynamic allocations during prefill.
+3. **Add TTFT breakdown metrics**: tokenize / graph-build / prefill / sampling.
+4. **Add prefix cache canonicalization** for system prompt templates.
+
+### Phase B — 3~4 weeks (kernel and memory)
+
+1. **Implement prefill-specialized attention kernel** with tiled softmax and implicit mask.
+2. **Introduce transposed-on-write KV format** and compare decode read bandwidth.
+3. **Add ubatch autotuner** with persistent JSON profile per device.
+4. **Add KV defragmentation trigger** for long-running service mode.
+
+### Phase C — 4+ weeks (service and MoE)
+
+1. **Continuous batching prefill scheduler** with deadline-aware fairness.
+2. **MoE expert async prefetch + residency hints** tuned for prefill route patterns.
+3. **Hot/cold mmap-mlock memory policy** tied to prefill telemetry.
+4. **Cross-session shared prefix pages** for common templates.
+
+## 14) Suggested benchmark matrix (must-have)
+
+- Prompt lengths: **128 / 512 / 2k / 8k / 16k**.
+- Batch scenarios: **single request**, **4 concurrent**, **continuous arrival (Poisson)**.
+- Metrics:
+  - **TTFT (p50/p90/p99)**
+  - **prefill tokens/sec**
+  - **decode tokens/sec**
+  - **peak RSS** and **KV-cache footprint**
+  - **I/O wait ratio**
+  - **quality drift** (perplexity/task probes when enabling approximation).
+- Platforms: x86 server, ARM mobile big.LITTLE, low-memory edge box.
+
+## 15) “If we can only do 5 llama.cpp-style changes first”
+
+1. `prefill_batch` / `prefill_ubatch` split + autotuning.
+2. prefill attention kernel specialization (tiled, implicit mask).
+3. alloc-free prefill loop + graph memory reservation.
+4. prefix cache canonicalization + shared prefix pages.
+5. KV layout rewrite (transposed-on-write) + defrag policy.
+
+## 16) 오늘 안에 가능한 "빠른 실행" 후보 (1-day quick wins)
+
+아래는 **당일 착수/검증 가능한 항목만** 추린 리스트입니다. 큰 커널 리라이트 없이도 측정 가능한 개선을 노립니다.
+
+### A. 코드 변경량이 작은 순서 (추천 실행순)
+
+1. **TTFT 분해 로그 추가 (tokenize / prefill / decode-step0 / sample)**
+   - 기대효과: 병목 구간을 즉시 확인해, 이후 최적화 우선순위 오류를 줄임.
+   - 난이도: ★☆☆
+   - 리스크: 거의 없음.
+
+2. **prefill/decode 스레드 분리 런타임 옵션 추가**
+   - 예: `prefill_num_threads`, `decode_num_threads`.
+   - 기대효과: 긴 프롬프트에서 prefill 스루풋 향상 가능.
+   - 난이도: ★☆☆
+   - 리스크: 기본값 회귀만 주의.
+
+3. **고정 길이 버퍼 재사용 (input ids / 임시 logits 버퍼) 점검**
+   - 목표: prefill 루프 내 동적 할당 제거.
+   - 기대효과: 지터 감소 + p99 TTFT 안정화.
+   - 난이도: ★★☆
+   - 리스크: 메모리 수명/초기화 누락.
+
+4. **시스템 프롬프트 prefix cache hit/miss 카운터 추가**
+   - 기대효과: 캐시 전략 개선의 근거 데이터 확보.
+   - 난이도: ★☆☆
+   - 리스크: 없음.
+
+5. **prefill chunk size 실험용 옵션 추가**
+   - 예: 128/256/512 토큰 단위 chunk prefill.
+   - 기대효과: 디바이스별 최적점 탐색 가능.
+   - 난이도: ★★☆
+   - 리스크: 작은 chunk에서 오버헤드 증가 가능.
+
+### B. 오늘 바로 돌릴 수 있는 실험 매트릭스
+
+- Prompt length: `128, 512, 2048`
+- Threads: `2, 4, 8`
+- Prefill chunk: `128, 256, 512`
+- 수집 지표:
+  - `TTFT`
+  - `prefill tokens/sec`
+  - `decode tokens/sec(첫 32토큰 평균)`
+
+### C. 성공 기준 (당일 목표)
+
+- 기본 설정 대비 **TTFT 8~15% 개선** 또는
+- 개선폭이 작더라도 **p99 지터 20% 이상 감소**.
+
+### D. 당일 작업 템플릿 (실무용)
+
+1. 오전: 로그/옵션 추가 + 빌드
+2. 점심 전: 3x3 매트릭스 빠른 벤치
+3. 오후: 베스트 1~2개 조합 재검증(3회 반복)
+4. 마감: 기본값은 안전하게 유지, 옵션은 off-by-default로 merge
+
+> 핵심: 오늘은 “대형 커널 개발”보다 **측정가능한 튜닝 포인트 확보**에 집중하는 것이 가장 빠르게 성과를 냅니다.

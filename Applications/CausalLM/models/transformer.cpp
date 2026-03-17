@@ -21,7 +21,9 @@
 #include <transformer.h>
 
 #include <embedding_layer.h>
+#include <geglu.h>
 #include <mha_core.h>
+#include <qkv_layer.h>
 #include <rms_norm.h>
 #include <swiglu.h>
 #include <tie_word_embedding.h>
@@ -427,10 +429,13 @@ void Transformer::registerCustomLayers() {
 
   try {
     app_context->registerFactory(nntrainer::createLayer<causallm::SwiGLULayer>);
+    app_context->registerFactory(nntrainer::createLayer<causallm::GeGLULayer>);
     app_context->registerFactory(
       nntrainer::createLayer<causallm::RMSNormLayer>);
     app_context->registerFactory(
       nntrainer::createLayer<causallm::MHACoreLayer>);
+    app_context->registerFactory(
+      nntrainer::createLayer<causallm::QKVLayer>);
     app_context->registerFactory(
       nntrainer::createLayer<causallm::TieWordEmbedding>);
     app_context->registerFactory(
