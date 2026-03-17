@@ -88,6 +88,11 @@ public:
    */
   void setProperty(const std::vector<std::string> &values) override;
 
+  void updateTensorsByInputDimensions(
+    nntrainer::RunLayerContext &context,
+    std::vector<nntrainer::TensorDim> input_dimensions) override;
+
+  static constexpr size_t SINGLE_INOUT_IDX = 0;
   static constexpr const char *type = "identity";
 };
 } // namespace nntrainer

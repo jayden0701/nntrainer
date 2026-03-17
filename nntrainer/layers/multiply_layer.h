@@ -132,6 +132,11 @@ public:
    */
   const std::string getType() const final { return MultiplyLayer::type; };
 
+    void updateTensorsByInputDimensions(
+    nntrainer::RunLayerContext &context,
+    std::vector<nntrainer::TensorDim> input_dimensions) override;
+
+
   std::tuple<props::Print, props::InPlaceProp, props::InPlaceDirectionProp>
     multiply_props;
   bool support_backwarding; /**< support backwarding */

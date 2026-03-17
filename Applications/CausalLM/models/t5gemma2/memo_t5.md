@@ -198,6 +198,12 @@ sliding생각하면 원형 cache? (window가 5면 5개 넘으면 맨 뒤에거 �
 
 3) norm켜져있으면 norm하고 저장
 
+* 음 뭔가 현석님이 개발하신 resetInput이 이전 output으로부터 propagate되는 느낌은 아니네..?
+  아닌가? 확인해보자. 아니긴한데. from-to 이용해서 잘 잡으면, layer간 input/output height차이 있어도 상관없을듯
+
+
+
+
 
 
 [승희님 pr 이용 버전]

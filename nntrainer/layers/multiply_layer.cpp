@@ -48,4 +48,22 @@ void MultiplyLayer::setProperty(const std::vector<std::string> &values) {
     throw exception::not_supported(msg);
   }
 }
+
+void MultiplyLayer::updateTensorsByInputDimensions(
+  nntrainer::RunLayerContext &context,
+  std::vector<nntrainer::TensorDim> input_dimensions) {
+
+  ml::train::TensorDim input_dim1 = context.getInput(0).getDim();
+  ml::train::TensorDim input_dim2 = context.getInput(1).getDim();
+  ml::train::TensorDim output_dim =
+    context.getOutput(SINGLE_INOUT_IDX).getDim();
+
+  input_dim1.height(input_dimensions[0].height());
+  input_dim2.height(input_dimensions[0].height());
+  output_dim.height(input_dimensions[0].height());
+
+  context.updateInput(0, input_dim1);
+  context.updateInput(1, input_dim2);
+  context.updateOutput(SINGLE_INOUT_IDX, output_dim);
+}
 } /* namespace nntrainer */

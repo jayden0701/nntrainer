@@ -81,6 +81,10 @@ public:
    */
   bool supportInPlace() const override { return acti_func.supportInPlace(); }
 
+  void updateTensorsByInputDimensions(
+    nntrainer::RunLayerContext &context,
+    std::vector<nntrainer::TensorDim> input_dimensions) override;
+
   static constexpr const char *type = "activation";
 
 private:

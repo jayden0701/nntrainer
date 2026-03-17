@@ -49,4 +49,20 @@ void IdentityLayer::setProperty(const std::vector<std::string> &values) {
   NNTR_THROW_IF(values.size(), std::invalid_argument)
     << "Identity layer has left unparsed properties";
 }
+
+
+void IdentityLayer::updateTensorsByInputDimensions(
+  nntrainer::RunLayerContext &context,
+  std::vector<nntrainer::TensorDim> input_dimensions) {
+  ml::train::TensorDim input_dim = context.getInput(SINGLE_INOUT_IDX).getDim();
+  ml::train::TensorDim output_dim =
+    context.getOutput(SINGLE_INOUT_IDX).getDim();
+
+  input_dim.height(input_dimensions[0].height());
+  output_dim.height(input_dimensions[0].height());
+
+  context.updateInput(SINGLE_INOUT_IDX, input_dim);
+  context.updateOutput(SINGLE_INOUT_IDX, output_dim);
+}
+
 } // namespace nntrainer

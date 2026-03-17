@@ -12,8 +12,7 @@ Tokenizer은 Transformer이 들고 있으니, 여기까지만 하고 값을 모�
 
 0) 모든 시나리오 (text only / image only / multiimage / text + multi image)에 대해 Processor이 TextProcessor/ImageProcessor잘하는지 확인. (확장text / processed image pixels / image mask)를 리턴해야 함.
 -> processor을 바꿔서 input_prompt를 잘 처리하게 바꿈
-
--> 이 시점에서 PR(DRAFT)만들고 Processor 만들고 올리기 (확장된 거만 올림)
+- meson.build에서 processor test부분은 제거해야 함
 
 
 1) t5gemma2.cpp 만들어서 뼈대 만들고(가능하면 주말 codex) Processor 불러서 text(아직 text, token만 추가됨)에 tokenzier 적용하자
@@ -22,7 +21,8 @@ Tokenizer은 Transformer이 들고 있으니, 여기까지만 하고 값을 모�
 
 
 2) encoder 구현
-- 현재 RoPE 관련 에러인걸로 추측
+- MAX_SEQ_LEN어떻게 잡을지 생각해보자
+- Encoder에는 KV cache를 꺼도 될 것 같음
 
 3) decoder 구현
 - weight경우 일단은 lm_head따로 쓰자 (tie-embedding nono). 나중에 맨 앞이 embedding아니라서 문제생길 수 있음.

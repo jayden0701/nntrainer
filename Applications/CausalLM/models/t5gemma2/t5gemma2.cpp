@@ -459,7 +459,7 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
   std::vector<std::string> a_params = {
     withKey("name", A), withKey("num_heads", n_heads),
     withKey("num_heads_kv", n_heads / gqa_size),
-    withKey("max_timestep", std::to_string(INIT_SEQ_LEN)),
+    withKey("max_timestep", std::to_string(MAX_SEQ_LEN)),
     withKey("sliding_window",
             is_full_attention ? UINT_MAX : ENC_SLIDING_WINDOW),
     withKey("use_rope", "true"),
@@ -467,8 +467,8 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
             is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
     withKey("rope_scaling_type", is_full_attention ? "linear" : "default"),
     withKey("rope_scaling_factor", ENC_ROPE_FACTOR),
-    withKey("max_new_tokens", std::to_string(0)),
-    // TODO : change this if it is causal!!
+    // set "max_new_tokens" to 1 for encoding mode 
+    withKey("max_new_tokens", std::to_string(1)),
     withKey("is_causal", "false"),
     withKey("input_layers", {Q_norm, K_norm, V})};
   layers.push_back(createLayer("mha_core", a_params));
@@ -1055,6 +1055,12 @@ std::vector<float> T5Gemma2Transformer::runEncoder(float *input_data,
   std::vector<float *> input_tensors = {input_data};
   std::vector<float *> label_tensors;
 
+
+  std::vector<ml::train::TensorDim> input_dims;
+  ml::train::TensorDim input_dim(1, 1, input_len, ENC_HIDDEN_SIZE);
+  input_dims.push_back(input_dim);
+  encoder_model->resetInputDimension(input_dims);
+
   // Inference
   auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -1242,7 +1248,7 @@ void T5Gemma2Transformer::loadDecoderWeights(const std::string &weight_path) {
 
   decoder_initialized = true;
 
-  decoder_model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+  // decoder_model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 
   // std::cout
   //   << "\n========== Loading Decoder Weights Not implemented yet =========="
