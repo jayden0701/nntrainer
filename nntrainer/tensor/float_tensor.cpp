@@ -1010,7 +1010,8 @@ Tensor &FloatTensor::dotQInteger(Tensor const &input, Tensor &output,
   unsigned int N = output.getDim().width();
 
 #ifndef ENABLE_OPENCL
-#ifdef ENABLE_FP16
+#if defined(ENABLE_FP16) && defined(__ARM_FEATURE_DOTPROD) &&                  \
+  defined(__ARM_FEATURE_MATMUL_INT8)
   if (input.q_scheme() == QScheme::PER_CHANNEL_AFFINE) {
     uint32_t opt_kernel_idx = (M == 1) ? 1 : 5;
     nntr_gemm_qai8dxp_qsi4cxp_packed(

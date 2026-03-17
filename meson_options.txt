@@ -67,7 +67,7 @@ option('libiomp_root', type:'string', value: './libiomp_win')
 
 # ARM architecture options
 option('arm-arch', type: 'combo',
-       choices: ['none', 'armv7l', 'armv8.2-a', 'armv9.2-a'],
+       choices: ['none', 'armv7l', 'armv8-a', 'armv8.2-a', 'armv9.2-a'],
        value: 'none',
        description: 'Target ARM architecture. "none" disables arm related features.')
 option('arm-march', type: 'string',

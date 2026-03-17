@@ -20,6 +20,8 @@
 #define __MOE_LAYER_H__
 #ifdef __cplusplus
 
+#include <mutex>
+
 #include <acti_func.h>
 #include <causallm_common_properties.h>
 #include <common_properties.h>

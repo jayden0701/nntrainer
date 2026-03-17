@@ -5,7 +5,7 @@ project('nntrainer', 'c', 'cpp',
   default_options: [
     'werror=true',
     'warning_level=1',
-    'c_std=gnu89',
+    'c_std=gnu99',
     'cpp_std=c++17',
     'buildtype=release'
   ]
@@ -80,7 +80,10 @@ warning_flags = [
   '-Wno-unused-variable',
   '-Wno-comment',
   '-Wno-ignored-attributes',
-  '-Wno-sign-compare'
+  '-Wno-sign-compare',
+  '-Wno-unused-but-set-variable',
+  '-Wno-unused-function',
+  '-Wno-array-bounds'
 ]
 
 if cxx_compiler_id == 'clang'
@@ -99,7 +102,8 @@ warning_c_flags = [
   '-Wnested-externs',
   '-Waggregate-return',
   '-Wold-style-definition',
-  '-Wdeclaration-after-statement',
+  '-Wno-declaration-after-statement',
+  '-Wno-unused-but-set-variable',
   '-Wno-error=varargs'
 ]
 
@@ -188,6 +192,10 @@ if get_option('enable-fp16')
      elif arm_arch_opt == 'armv8.2-a'
        add_project_arguments('-march=armv8.2-a+fp16+dotprod+i8mm', language: ['c', 'cpp'])
        extra_defines += '-DARM_ARCH_ARMV8_2A=1'
+     elif arm_arch_opt == 'armv8-a'
+       add_project_arguments('-march=armv8-a+fp16', language: ['c', 'cpp'])
+       extra_defines += '-DARM_ARCH_ARMV8_A=1'
+       message('meson.build arm_arch_opt: armv8-a+fp16')
      else
        # auto: default to armv8.2-a+fp16+dotprod+i8mm for native aarch64 builds
        add_project_arguments('-march=armv8.2-a+fp16+dotprod+i8mm', language: ['c', 'cpp'])

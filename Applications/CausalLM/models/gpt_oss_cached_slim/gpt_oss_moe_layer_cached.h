@@ -15,6 +15,8 @@
 #define __GPT_OSS_MOE_LAYER_CACHED_H__
 #ifdef __cplusplus
 
+#include <mutex>
+
 #include <acti_func.h>
 #include <causallm_common_properties.h>
 #include <common_properties.h>

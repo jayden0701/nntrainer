@@ -121,8 +121,6 @@ void EmbeddingLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
         throw std::invalid_argument("input word index is greater than in_dim");
       }
 
-      nntrainer::Tensor cur_weight =
-        weight.getSharedDataTensor(out_tensor_dim, out_dim * embed_idx);
       nntrainer::Tensor out_tensor =
         batchsliced_hidden.getSharedDataTensor(out_tensor_dim, out_dim * (i));
 
@@ -141,6 +139,8 @@ void EmbeddingLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
                    (18 * num_blocks_per_row) * embed_idx),
           out_tensor.getData(), out_dim);
       } else {
+        nntrainer::Tensor cur_weight =
+          weight.getSharedDataTensor(out_tensor_dim, out_dim * embed_idx);
         out_tensor.copyData(cur_weight);
       }
 
@@ -168,6 +168,21 @@ void EmbeddingLayer::exportTo(nntrainer::Exporter &exporter,
                               const ml::train::ExportMethods &method) const {
   LayerImpl::exportTo(exporter, method);
   exporter.saveResult(embedding_props, method, this);
+}
+
+void EmbeddingLayer::updateTensorsByInputDimensions(
+  nntrainer::RunLayerContext &context,
+  std::vector<nntrainer::TensorDim> input_dimensions) {
+  nntrainer::TensorDim in_dim = context.getInput(SINGLE_INOUT_IDX).getDim();
+  nntrainer::TensorDim out_dim = context.getOutput(SINGLE_INOUT_IDX).getDim();
+
+  unsigned int height = input_dimensions[0].height();
+
+  in_dim.width(height);
+  out_dim.height(height);
+
+  context.updateInput(SINGLE_INOUT_IDX, in_dim);
+  context.updateOutput(SINGLE_INOUT_IDX, out_dim);
 }
 
 #ifdef PLUGGABLE
