@@ -495,12 +495,6 @@ T5Gemma2Transformer::createMlp(std::string prefix, int dim,
      withKey("disable_bias", "true"), withKey("input_layers", input_name),
      withKey("weight_initializer", "ones")}));
 
-  // GeLU
-  layers.push_back(
-    createLayer("activation", {withKey("name", prefix + "ffn_gate_gelu"),
-                               withKey("activation", "tanh_gelu"),
-                               withKey("input_layers", prefix + "ffn_gate")}));
-
   // Up projection
   layers.push_back(createLayer(
     "fully_connected",
@@ -508,11 +502,11 @@ T5Gemma2Transformer::createMlp(std::string prefix, int dim,
      withKey("disable_bias", "true"), withKey("input_layers", input_name),
      withKey("weight_initializer", "ones")}));
 
-  // Multiply
+  // Fused GeGLU: tanh_gelu(gate) * up
   layers.push_back(createLayer(
-    "multiply", {withKey("name", prefix + "ffn_geglu"),
-                 withKey("input_layers",
-                         prefix + "ffn_gate_gelu" + "," + prefix + "ffn_up")}));
+    "geglu", {withKey("name", prefix + "ffn_geglu"),
+               withKey("input_layers",
+                       prefix + "ffn_gate" + "," + prefix + "ffn_up")}));
 
   // Down projection
   layers.push_back(createLayer(

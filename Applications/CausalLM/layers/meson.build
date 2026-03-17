@@ -3,6 +3,7 @@ causallm_layer_inc = [include_directories('.')]
 
 causallm_rms_norm_src_abs = [meson.current_source_dir() / 'rms_norm.cpp']
 causallm_swiglu_src_abs = [meson.current_source_dir() / 'swiglu.cpp']
+causallm_geglu_src_abs = [meson.current_source_dir() / 'geglu.cpp']
 causallm_tie_word_embedding_src_abs = [meson.current_source_dir() / 'tie_word_embedding.cpp']
 causallm_lmhead_src_abs = [meson.current_source_dir() / 'lm_head.cpp']
 causallm_mha_core_abs = [meson.current_source_dir()/ 'mha_core.cpp']
@@ -38,6 +39,20 @@ causallm_swiglu = shared_library(
 )
 causallm_swiglu_dep = declare_dependency(
     link_with: causallm_swiglu,
+    include_directories: causallm_layer_inc
+)
+
+
+causallm_geglu = shared_library(
+    'geglu_layer',
+    causallm_geglu_src_abs,
+    include_directories: causallm_layer_inc,
+    dependencies: [nntrainer_dep, nntrainer_ccapi_dep],
+    install: true,
+    install_dir: application_install_dir
+)
+causallm_geglu_dep = declare_dependency(
+    link_with: causallm_geglu,
     include_directories: causallm_layer_inc
 )
 

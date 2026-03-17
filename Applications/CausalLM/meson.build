@@ -19,6 +19,7 @@ causallm_layer_dependencies += [
     causallm_rms_norm_dep,
     causallm_tie_word_embedding_dep,
     causallm_swiglu_dep,
+    causallm_geglu_dep,
     causallm_mha_core_dep,
     causallm_embedding_layer_dep,
     causallm_lm_head_dep,
