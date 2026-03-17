@@ -135,3 +135,71 @@ This note is a **brainstorming backlog** for improving **prefill latency / throu
 10. Autotuner for kernel/thread/chunk configs with persisted best profile.
 
 These ten usually give the largest practical wins before advanced algorithmic approximations are attempted.
+
+
+## 12) llama.cpp-inspired deep-dive ideas (adapt for NNTrainer)
+
+> We could not clone `llama.cpp` in this environment due to network restriction (GitHub 403), but the ideas below are derived from well-known llama.cpp optimization patterns and should be validated against latest upstream behavior.
+
+83. **`n_batch` vs `n_ubatch` style split**: separate *logical prompt batch size* and *physical micro-batch tile size* to maximize cache locality while preserving throughput.
+84. **ubatch auto-search per device**: calibrate best micro-batch for each `(model, context, dtype)` during startup and persist profile.
+85. **Graph reuse with reserved worst-case buffers**: pre-reserve compute graph memory once and avoid repeated graph rebuilds during prompt chunks.
+86. **KV cache defragmentation policy** for long-running sessions to prevent fragmentation-induced latency spikes.
+87. **Continuous batching in server mode**: admit new requests between chunk boundaries to keep cores saturated during prefill.
+88. **Thread split policy for attention vs matmul** similar to llama.cpp backend split (`n_threads`, `n_threads_batch` style).
+89. **Backend-specific kernels registry** (x86 AVX2/AVX512, ARM NEON/SVE) selected at runtime for attention + RMSNorm.
+90. **Prompt cache key canonicalization** including BOS/template/system chunks to improve exact-match reuse.
+91. **mmap + mlock tiered strategy**: lock only hot layers for prefill-critical path and map cold layers lazily.
+92. **Prefill-first scheduler**: during TTFT-sensitive windows, deprioritize decode streams and allocate more cores to prefill.
+93. **KV cache cell metadata compaction** (sequence id / position tracking kept compact) to reduce control-plane overhead.
+94. **Speculative prompt chunking**: run upcoming chunk prepare (mask/rope/index tensors) while current chunk computes.
+95. **Mask representation minimization**: keep causal mask implicit or bit-packed, avoid full dense tensor writes.
+96. **RoPE sin/cos cache reuse** across sessions and layers when theta/head-dim identical.
+97. **Hot-path alloc-free policy**: no malloc/new in prefill inner loop; all temporaries pooled.
+98. **I/O aware model placement**: align frequently-read tensors contiguously in file to improve readahead efficiency.
+99. **Server-level admission by prompt length**: route very long prompts to dedicated worker to protect p50 TTFT.
+100. **Prefix sharing across concurrent requests**: if many users share same system prompt, bind them to shared readonly KV prefix pages.
+
+## 13) Concrete implementation roadmap (llama.cpp-style, NNTrainer-friendly)
+
+### Phase A — 2 weeks (low-risk, high ROI)
+
+1. **Add prefill chunk knobs**: `prefill_batch_tokens`, `prefill_ubatch_tokens`, `prefill_threads`.
+2. **Add alloc-free prefill guardrails**: counters for dynamic allocations during prefill.
+3. **Add TTFT breakdown metrics**: tokenize / graph-build / prefill / sampling.
+4. **Add prefix cache canonicalization** for system prompt templates.
+
+### Phase B — 3~4 weeks (kernel and memory)
+
+1. **Implement prefill-specialized attention kernel** with tiled softmax and implicit mask.
+2. **Introduce transposed-on-write KV format** and compare decode read bandwidth.
+3. **Add ubatch autotuner** with persistent JSON profile per device.
+4. **Add KV defragmentation trigger** for long-running service mode.
+
+### Phase C — 4+ weeks (service and MoE)
+
+1. **Continuous batching prefill scheduler** with deadline-aware fairness.
+2. **MoE expert async prefetch + residency hints** tuned for prefill route patterns.
+3. **Hot/cold mmap-mlock memory policy** tied to prefill telemetry.
+4. **Cross-session shared prefix pages** for common templates.
+
+## 14) Suggested benchmark matrix (must-have)
+
+- Prompt lengths: **128 / 512 / 2k / 8k / 16k**.
+- Batch scenarios: **single request**, **4 concurrent**, **continuous arrival (Poisson)**.
+- Metrics:
+  - **TTFT (p50/p90/p99)**
+  - **prefill tokens/sec**
+  - **decode tokens/sec**
+  - **peak RSS** and **KV-cache footprint**
+  - **I/O wait ratio**
+  - **quality drift** (perplexity/task probes when enabling approximation).
+- Platforms: x86 server, ARM mobile big.LITTLE, low-memory edge box.
+
+## 15) “If we can only do 5 llama.cpp-style changes first”
+
+1. `prefill_batch` / `prefill_ubatch` split + autotuning.
+2. prefill attention kernel specialization (tiled, implicit mask).
+3. alloc-free prefill loop + graph memory reservation.
+4. prefix cache canonicalization + shared prefix pages.
+5. KV layout rewrite (transposed-on-write) + defrag policy.
