@@ -1093,6 +1093,12 @@ std::vector<float> T5Gemma2Transformer::runEncoder(float *input_data,
   std::cout << "[Encoder] Inference complete (memory held for potential reuse)"
             << std::endl;
 
+
+              std::cout << "=================[ LLM with NNTrainer ]===================\n";
+  std::cout << "prefill: " << input_len << " tokens, "
+            << duration.count() << " ms, "
+            << ((double)input_len / duration.count() * 1000) << " TPS\n";
+
   return saved_output;
 }
 

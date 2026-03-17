@@ -466,45 +466,45 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
         }
     }
 
-      std::cout << "\n=== Layer: " << node->getName() << " ===" << std::endl;
-      std::cout << "From: " << from << ", To: " << to << std::endl;
-      std::cout << "Layer type: " << node->getType() << std::endl;
+      // std::cout << "\n=== Layer: " << node->getName() << " ===" << std::endl;
+      // std::cout << "From: " << from << ", To: " << to << std::endl;
+      // std::cout << "Layer type: " << node->getType() << std::endl;
       
-      // Print input tensors
-      auto &rc = node->getRunContext();
-      for (unsigned int i = 0; i < rc.getNumInputs(); ++i) {
-        auto &input = rc.getInput(i);
-        std::cout << "Input " << i << " shape: " << input.getDim() << std::endl;
+      // // Print input tensors
+      // auto &rc = node->getRunContext();
+      // for (unsigned int i = 0; i < rc.getNumInputs(); ++i) {
+      //   auto &input = rc.getInput(i);
+      //   std::cout << "Input " << i << " shape: " << input.getDim() << std::endl;
         
-        if (input.getDataType() == ml::train::TensorDim::DataType::FP32) {
-          const float *in_data = input.getData<float>();
-          std::cout << "  Sample values (first 10): ";
-          for (int j = 0; j < std::min(10, (int)input.size()); ++j) {
-            std::cout << in_data[j] << " ";
-          }
-          std::cout << std::endl;
+      //   if (input.getDataType() == ml::train::TensorDim::DataType::FP32) {
+      //     const float *in_data = input.getData<float>();
+      //     std::cout << "  Sample values (first 10): ";
+      //     for (int j = 0; j < std::min(10, (int)input.size()); ++j) {
+      //       std::cout << in_data[j] << " ";
+      //     }
+      //     std::cout << std::endl;
           
-          // std::cout << "  Sample values (last 5): ";
-          // for (int j = std::max(0, (int)input.size() - 5); j < (int)input.size(); ++j) {
-          //   std::cout << in_data[j] << " ";
-          // }
-          // std::cout << std::endl;
+      //     // std::cout << "  Sample values (last 5): ";
+      //     // for (int j = std::max(0, (int)input.size() - 5); j < (int)input.size(); ++j) {
+      //     //   std::cout << in_data[j] << " ";
+      //     // }
+      //     // std::cout << std::endl;
           
-          // Print statistics
+      //     // Print statistics
 
-          int start_idx = input.getDim().width() * from;
+      //     int start_idx = input.getDim().width() * from;
           
-          float in_min = in_data[start_idx], in_max = in_data[start_idx], in_sum = 0.0f;
-          for (unsigned int j = 0; j < input.getDim().width() * (to - from); ++j) {
-            in_min = std::min(in_min, in_data[j]);
-            in_max = std::max(in_max, in_data[j]);
-            in_sum += in_data[j];
-          }
-          float in_mean = in_sum / input.size();
-          std::cout << "  Stats - Min: " << in_min << ", Max: " << in_max 
-                    << ", Mean: " << in_mean << std::endl;
-        }
-      }
+      //     float in_min = in_data[start_idx], in_max = in_data[start_idx], in_sum = 0.0f;
+      //     for (unsigned int j = 0; j < input.getDim().width() * (to - from); ++j) {
+      //       in_min = std::min(in_min, in_data[j]);
+      //       in_max = std::max(in_max, in_data[j]);
+      //       in_sum += in_data[j];
+      //     }
+      //     float in_mean = in_sum / input.size();
+      //     std::cout << "  Stats - Min: " << in_min << ", Max: " << in_max 
+      //               << ", Mean: " << in_mean << std::endl;
+      //   }
+      // }
 
     auto f = std::get<0>(node->getExecutionOrder());
     if (exec_mode == ExecutionMode::TRAIN or
