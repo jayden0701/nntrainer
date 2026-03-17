@@ -59,3 +59,6 @@ $ ./tools/package_android.sh -Domp-num-threads=4 -Dthread-backend=omp
 - GPT-OSS (MoE: 20B, 120B) [[link](https://huggingface.co/openai/gpt-oss-20b)]
 
 For more details, please refer to the [Model Documentation](models/README.md).
+## Prefill Optimization Brainstorm
+
+- For a comprehensive list of ideas to improve prefill latency/throughput, see [`PREFILL_OPTIMIZATION_IDEAS.md`](PREFILL_OPTIMIZATION_IDEAS.md).
