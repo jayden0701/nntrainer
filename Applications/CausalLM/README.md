@@ -61,4 +61,4 @@ $ ./tools/package_android.sh -Domp-num-threads=4 -Dthread-backend=omp
 For more details, please refer to the [Model Documentation](models/README.md).
 ## Prefill Optimization Brainstorm
 
-- For a comprehensive list of ideas to improve prefill latency/throughput (including a llama.cpp-inspired deep-dive), see [`PREFILL_OPTIMIZATION_IDEAS.md`](PREFILL_OPTIMIZATION_IDEAS.md).
+- For a comprehensive list of ideas to improve prefill latency/throughput (including a llama.cpp-inspired deep-dive and same-day quick wins), see [`PREFILL_OPTIMIZATION_IDEAS.md`](PREFILL_OPTIMIZATION_IDEAS.md).

@@ -203,3 +203,61 @@ These ten usually give the largest practical wins before advanced algorithmic ap
 3. alloc-free prefill loop + graph memory reservation.
 4. prefix cache canonicalization + shared prefix pages.
 5. KV layout rewrite (transposed-on-write) + defrag policy.
+
+## 16) 오늘 안에 가능한 "빠른 실행" 후보 (1-day quick wins)
+
+아래는 **당일 착수/검증 가능한 항목만** 추린 리스트입니다. 큰 커널 리라이트 없이도 측정 가능한 개선을 노립니다.
+
+### A. 코드 변경량이 작은 순서 (추천 실행순)
+
+1. **TTFT 분해 로그 추가 (tokenize / prefill / decode-step0 / sample)**
+   - 기대효과: 병목 구간을 즉시 확인해, 이후 최적화 우선순위 오류를 줄임.
+   - 난이도: ★☆☆
+   - 리스크: 거의 없음.
+
+2. **prefill/decode 스레드 분리 런타임 옵션 추가**
+   - 예: `prefill_num_threads`, `decode_num_threads`.
+   - 기대효과: 긴 프롬프트에서 prefill 스루풋 향상 가능.
+   - 난이도: ★☆☆
+   - 리스크: 기본값 회귀만 주의.
+
+3. **고정 길이 버퍼 재사용 (input ids / 임시 logits 버퍼) 점검**
+   - 목표: prefill 루프 내 동적 할당 제거.
+   - 기대효과: 지터 감소 + p99 TTFT 안정화.
+   - 난이도: ★★☆
+   - 리스크: 메모리 수명/초기화 누락.
+
+4. **시스템 프롬프트 prefix cache hit/miss 카운터 추가**
+   - 기대효과: 캐시 전략 개선의 근거 데이터 확보.
+   - 난이도: ★☆☆
+   - 리스크: 없음.
+
+5. **prefill chunk size 실험용 옵션 추가**
+   - 예: 128/256/512 토큰 단위 chunk prefill.
+   - 기대효과: 디바이스별 최적점 탐색 가능.
+   - 난이도: ★★☆
+   - 리스크: 작은 chunk에서 오버헤드 증가 가능.
+
+### B. 오늘 바로 돌릴 수 있는 실험 매트릭스
+
+- Prompt length: `128, 512, 2048`
+- Threads: `2, 4, 8`
+- Prefill chunk: `128, 256, 512`
+- 수집 지표:
+  - `TTFT`
+  - `prefill tokens/sec`
+  - `decode tokens/sec(첫 32토큰 평균)`
+
+### C. 성공 기준 (당일 목표)
+
+- 기본 설정 대비 **TTFT 8~15% 개선** 또는
+- 개선폭이 작더라도 **p99 지터 20% 이상 감소**.
+
+### D. 당일 작업 템플릿 (실무용)
+
+1. 오전: 로그/옵션 추가 + 빌드
+2. 점심 전: 3x3 매트릭스 빠른 벤치
+3. 오후: 베스트 1~2개 조합 재검증(3회 반복)
+4. 마감: 기본값은 안전하게 유지, 옵션은 off-by-default로 merge
+
+> 핵심: 오늘은 “대형 커널 개발”보다 **측정가능한 튜닝 포인트 확보**에 집중하는 것이 가장 빠르게 성과를 냅니다.
