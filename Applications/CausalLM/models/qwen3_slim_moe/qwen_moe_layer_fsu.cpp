@@ -29,6 +29,7 @@
 #include <omp.h>
 #include <qwen_moe_layer_fsu.h>
 #include <stdexcept>
+#include <util_simd.h>
 
 namespace causallm {
 
@@ -287,14 +288,12 @@ inline void SlimMoELayer::compute_expert_forward(
     // Gate projection using optimized dot operation
     token_input.dot(gate_proj, gate_out);
 
-    // Apply activation (silu)
-    acti_func.run_fn(gate_out, acti_out);
-
     // Up projection using optimized dot operation
     token_input.dot(up_proj, up_out);
 
-    // Element-wise multiply: silu(gate_out) * up_out
-    acti_out.multiply_i(up_out);
+    // Fused SiLU(gate_out) * up_out
+    nntrainer::swiglu(acti_out.width(), acti_out.getData<float>(),
+                      gate_out.getData<float>(), up_out.getData<float>());
 
     // Down projection using optimized dot operation
     nntrainer::Tensor token_expert_output(token_output_dim);
@@ -352,14 +351,12 @@ inline void SlimMoELayer::compute_expert_forward_no_critical(
     // Gate projection using optimized dot operation
     token_input.dot(gate_proj, gate_out);
 
-    // Apply activation (silu)
-    acti_func.run_fn(gate_out, acti_out);
-
     // Up projection using optimized dot operation
     token_input.dot(up_proj, up_out);
 
-    // Element-wise multiply: silu(gate_out) * up_out
-    acti_out.multiply_i(up_out);
+    // Fused SiLU(gate_out) * up_out
+    nntrainer::swiglu(acti_out.width(), acti_out.getData<float>(),
+                      gate_out.getData<float>(), up_out.getData<float>());
 
     // Down projection using optimized dot operation
     nntrainer::Tensor token_expert_output(token_output_dim);
