@@ -82,7 +82,7 @@ Transformer::Transformer(json &cfg, json &generation_cfg, json &nntr_cfg,
   // Initialize the model with the provided configurations
   // This is where you would set up the model layers, parameters, etc.
   
-  //setupParameters(cfg, generation_cfg, nntr_cfg);
+  setupParameters(cfg, generation_cfg, nntr_cfg);
 
   // Skip tokenizer if specified (e.g., for vision encoder models)
   if ((nntr_cfg.contains("skip_tokenizer") &&

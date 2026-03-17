@@ -40,6 +40,8 @@
 
 namespace causallm {
 
+std::vector<std::string> ooottt;
+
 CausalLM::CausalLM(json &cfg, json &generation_cfg, json &nntr_cfg) :
   Transformer(cfg, generation_cfg, nntr_cfg, ModelType::CAUSALLM) {
   setupParameters(cfg, generation_cfg, nntr_cfg);
@@ -124,6 +126,9 @@ void CausalLM::constructModel() {
   model->addLayer(createLayer(lmhead_type, lmhead_prop));
 }
 
+
+
+
 void CausalLM::registerOutputs(
   std::unique_ptr<tokenizers::Tokenizer> &tokenizer,
   std::vector<unsigned int> ids, unsigned int pos,
@@ -147,6 +152,7 @@ void CausalLM::registerOutputs(
         std::wcout << L"" << utf8_to_wstring(decoded_str);
         std::wcout.flush();
 #else
+        ooottt.push_back(decoded_str);
         std::cout << decoded_str;
         std::cout.flush();
 #endif
@@ -512,6 +518,11 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
   }
 
   global_token_len += (generation_cnt + init_len);
+
+  for(int i=0; i< ooottt.size(); ++i)
+  {
+    std::cout << ooottt[i] << " ";
+  }
 
   auto finish_generation = std::chrono::high_resolution_clock::now();
   auto generation_duration =

@@ -1053,7 +1053,7 @@ std::vector<float> T5Gemma2Transformer::runEncoder(float *input_data,
   std::vector<ml::train::TensorDim> input_dims;
   ml::train::TensorDim input_dim(1, 1, input_len, ENC_HIDDEN_SIZE);
   input_dims.push_back(input_dim);
-  encoder_model->resetInputDimension(input_dims);
+  // encoder_model->resetInputDimension(input_dims);
 
   // Inference
   auto start_time = std::chrono::high_resolution_clock::now();
