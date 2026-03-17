@@ -215,7 +215,21 @@ encoder용 FC_LAYER도 동일한 구조인데, 승희님의 to-from고정으로 
 걍 현석님의 PR 반영된 cross attn이 잘 된다면 상관 없음.
 
 
+rope를 linear구현을 했는데, 차이가 남...
 
+1) linear 구현이 틀림
+2) RoPE 자체가 틀어짐을 만든다.
+=> 생각해보니 걍 layer0부터 Rope하면 값이 달랐음. Rope자체에 문제가 있는 것.
+...걍 기존 rope에 틀린 구현이 있는건가?
+
+(0316 퇴근전) RoPE에서 default/linear을 번갈아 써야 하는데, 현재 매커니즘은 하나의 cos/sin/theta를 만들고, 있으면 그걸 재활용
+그래서 default/linear 등 모드당 1개를 들도록 만들어야 하는데, 
+CLINE / Codex를 이용해서 각각 코딩했지만, 안됨. 
+현재 CLINE버전은 버렸고, 일단 Codex도 안되지만, Codex도 아직 print debug를 안했기에 내일 와서 하ㅣ자
+
+
+
+rope의 값 만 출력해서 비교해 보자!
 
 
 

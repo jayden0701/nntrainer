@@ -100,12 +100,27 @@ public:
 /**
  * @brief RopeTheta
  */
-class RopeTheta : public nntrainer::Property<unsigned int> {
+// class RopeTheta : public nntrainer::Property<unsigned int> {
+// public:
+//   RopeTheta(unsigned int value = 500000) { set(value); };ffffffffffffff
+//   static constexpr const char *key = "rope_theta"; /**< unique key to access */
+//   using prop_tag = nntrainer::uint_prop_tag;       /**< property type */
+// };
+
+
+// [Bugfix] RopeTheta is used as float in mha_core, but was a uint prop.
+// This causes prop parsing error when theta is written in scientific notation such as 1e6.
+// uint_prop_tag uses std::stoul, which reads numbers like 1e6 as '1' (because e is not number)
+
+// This could be a possible error in many cases...
+
+class RopeTheta : public nntrainer::Property<float> {
 public:
-  RopeTheta(unsigned int value = 500000) { set(value); };
+  RopeTheta(float value = 500000) { set(value); };
   static constexpr const char *key = "rope_theta"; /**< unique key to access */
-  using prop_tag = nntrainer::uint_prop_tag;       /**< property type */
+  using prop_tag = nntrainer::float_prop_tag;       /**< property type */
 };
+
 
 /**
  * @brief UseSink property
