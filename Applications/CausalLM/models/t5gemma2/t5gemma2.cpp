@@ -19,6 +19,7 @@
 #include <factory.h>
 #include <llm_util.hpp>
 #include <random>
+#include <fused_fc_reshaped_rms_norm.h>
 #include <reshaped_rms_norm.h>
 
 namespace causallm {
@@ -283,19 +284,23 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
   auto Q_norm = Q + "_norm";
   auto K_norm = K + "_norm";
 
-  // Query projection (decoder hidden states -> Q)
+  // Query projection + reshaped RMSNorm (decoder hidden states -> Q_norm)
   std::vector<std::string> q_params = {
-    withKey("name", Q), withKey("unit", head_dim * n_heads),
+    withKey("name", Q_norm), withKey("unit", head_dim * n_heads),
     withKey("disable_bias", "true"), withKey("input_layers", query_name),
-    withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", q_params));
+    withKey("weight_initializer", "ones"),
+    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", q_params));
 
-  // Key projection (decoder hidden states -> K)
+  // Key projection + reshaped RMSNorm (decoder hidden states -> K_norm)
   std::vector<std::string> k_params = {
-    withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("name", K_norm), withKey("unit", head_dim * n_heads / gqa_size),
     withKey("disable_bias", "true"), withKey("input_layers", key_name),
-    withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", k_params));
+    withKey("weight_initializer", "ones"),
+    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", k_params));
 
   // Value projection (decoder hidden states -> V)
   std::vector<std::string> v_params = {
@@ -304,33 +309,20 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", v_params));
 
-  // Q normalization (RMSNorm)
-  std::vector<std::string> q_norm_params = {
-    withKey("name", Q_norm), withKey("input_layers", Q),
-    withKey("packed", "false"),
-    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
-    withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
-
-  // K normalization (RMSNorm)
-  std::vector<std::string> k_norm_params = {
-    withKey("name", K_norm), withKey("input_layers", K),
-    withKey("packed", "false"),
-    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
-    withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
-
   // === Cross-Attention Projections ===
-  auto cross_K = prefix + "cross_wk";
+  auto cross_K_norm = prefix + "cross_wk_norm";
   auto cross_V = prefix + "cross_wv";
-  auto cross_K_norm = cross_K + "_norm";
 
-  // Cross Key projection (encoder hidden states -> cross_K)
+  // Cross Key projection + reshaped RMSNorm (encoder hidden states -> cross_K_norm)
   std::vector<std::string> cross_k_params = {
-    withKey("name", cross_K), withKey("unit", head_dim * n_heads / gqa_size),
-    withKey("disable_bias", "true"), withKey("input_layers", cross_key_name),
-    withKey("weight_initializer", "ones"),};
-  layers.push_back(createLayer("fully_connected", cross_k_params));
+    withKey("name", cross_K_norm),
+    withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"),
+    withKey("input_layers", cross_key_name),
+    withKey("weight_initializer", "ones"),
+    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", cross_k_params));
 
   // Cross Value projection (encoder hidden states -> cross_V)
   std::vector<std::string> cross_v_params = {
@@ -338,14 +330,6 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
     withKey("disable_bias", "true"), withKey("input_layers", cross_value_name),
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", cross_v_params));
-
-  // Cross K normalization (RMSNorm)
-  std::vector<std::string> cross_k_norm_params = {
-    withKey("name", cross_K_norm), withKey("input_layers", cross_K),
-    withKey("packed", "false"),
-    withKey("epsilon", std::to_string(DEC_NORM_EPS)),
-    withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("reshaped_rms_norm", cross_k_norm_params));
 
   // === Concatenation of Key and Value for Merged Attention ===
   // Concat: [self_K, cross_K] along sequence dimension
@@ -422,35 +406,23 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", v_params));
 
-  // K layer
+  // K projection + reshaped RMSNorm
   std::vector<std::string> k_params = {
-    withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("name", K_norm), withKey("unit", head_dim * n_heads / gqa_size),
     withKey("disable_bias", "true"), withKey("input_layers", key_name),
-    withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", k_params));
+    withKey("weight_initializer", "ones"),
+    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", k_params));
 
-  // Q layer
+  // Q projection + reshaped RMSNorm
   std::vector<std::string> q_params = {
-    withKey("name", Q), withKey("unit", head_dim * n_heads),
+    withKey("name", Q_norm), withKey("unit", head_dim * n_heads),
     withKey("disable_bias", "true"), withKey("input_layers", query_name),
-    withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", q_params));
-
-  // Q_normalized
-  std::vector<std::string> q_norm_params = {
-    withKey("name", Q_norm), withKey("input_layers", Q),
-    withKey("packed", "false"),
+    withKey("weight_initializer", "ones"),
     withKey("epsilon", std::to_string(ENC_NORM_EPS)),
     withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
-
-  // K_normalized
-  std::vector<std::string> k_norm_params = {
-    withKey("name", K_norm), withKey("input_layers", K),
-    withKey("packed", "false"),
-    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
-    withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
+  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", q_params));
 
   // Determine RoPE theta based on layer type
   bool is_full_attention = ((layer_id + 1) % ENC_SLIDING_WINDOW_PATTERN == 0);
@@ -551,6 +523,14 @@ void T5Gemma2Transformer::registerCustomLayers() {
   try {
     app_context->registerFactory(
       nntrainer::createLayer<causallm::ReshapedRMSNormLayer>);
+  } catch (std::invalid_argument &e) {
+    std::cerr << "failed to register factory, reason: " << e.what()
+              << std::endl;
+  }
+
+  try {
+    app_context->registerFactory(
+      nntrainer::createLayer<causallm::FusedFCReshapedRMSNormLayer>);
   } catch (std::invalid_argument &e) {
     std::cerr << "failed to register factory, reason: " << e.what()
               << std::endl;
@@ -1141,11 +1121,9 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
 for(int i=0; i<DEC_NUM_LAYERS; ++i)
 {
   std::string prefix = "decoder_layer" + std::to_string(i) + "_";
-  auto cross_K = prefix + "cross_wk";
+  auto cross_K_norm = prefix + "cross_wk_norm";
   auto cross_V = prefix + "cross_wv";
-  auto cross_K_norm = cross_K + "_norm";
   
-  custom_to_map.insert({cross_K,ACTUAL_SEQ_LEN});
   custom_to_map.insert({cross_V,ACTUAL_SEQ_LEN});
   custom_to_map.insert({cross_K_norm,ACTUAL_SEQ_LEN});
 
