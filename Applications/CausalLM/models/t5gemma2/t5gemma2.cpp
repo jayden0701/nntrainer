@@ -19,6 +19,7 @@
 #include <factory.h>
 #include <llm_util.hpp>
 #include <random>
+#include <fused_fc_reshaped_rms_norm.h>
 #include <reshaped_rms_norm.h>
 #include <merged_attention_cache_layer.h>
 
@@ -414,35 +415,23 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", v_params));
 
-  // K layer
+  // K projection + reshaped RMSNorm
   std::vector<std::string> k_params = {
-    withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("name", K_norm), withKey("unit", head_dim * n_heads / gqa_size),
     withKey("disable_bias", "true"), withKey("input_layers", key_name),
-    withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", k_params));
+    withKey("weight_initializer", "ones"),
+    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", k_params));
 
-  // Q layer
+  // Q projection + reshaped RMSNorm
   std::vector<std::string> q_params = {
-    withKey("name", Q), withKey("unit", head_dim * n_heads),
+    withKey("name", Q_norm), withKey("unit", head_dim * n_heads),
     withKey("disable_bias", "true"), withKey("input_layers", query_name),
-    withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", q_params));
-
-  // Q_normalized
-  std::vector<std::string> q_norm_params = {
-    withKey("name", Q_norm), withKey("input_layers", Q),
-    withKey("packed", "false"),
+    withKey("weight_initializer", "ones"),
     withKey("epsilon", std::to_string(ENC_NORM_EPS)),
     withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
-
-  // K_normalized
-  std::vector<std::string> k_norm_params = {
-    withKey("name", K_norm), withKey("input_layers", K),
-    withKey("packed", "false"),
-    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
-    withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
+  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", q_params));
 
   // Determine RoPE theta based on layer type
   bool is_full_attention = ((layer_id + 1) % ENC_SLIDING_WINDOW_PATTERN == 0);
