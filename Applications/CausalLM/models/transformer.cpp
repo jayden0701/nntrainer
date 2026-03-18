@@ -82,8 +82,8 @@ Transformer::Transformer(json &cfg, json &generation_cfg, json &nntr_cfg,
 
   // Initialize the model with the provided configurations
   // This is where you would set up the model layers, parameters, etc.
-  
-  //setupParameters(cfg, generation_cfg, nntr_cfg);
+
+  setupParameters(cfg, generation_cfg, nntr_cfg);
 
   // Skip tokenizer if specified (e.g., for vision encoder models)
   if ((nntr_cfg.contains("skip_tokenizer") &&
@@ -97,6 +97,13 @@ Transformer::Transformer(json &cfg, json &generation_cfg, json &nntr_cfg,
 
 void Transformer::setupParameters(json &cfg, json &generation_cfg,
                                   json &nntr_cfg) {
+  (void)generation_cfg;
+
+  const json *model_cfg = &cfg;
+  if (!cfg.contains("hidden_size") && cfg.contains("decoder") &&
+      cfg["decoder"].is_object()) {
+    model_cfg = &cfg["decoder"];
+  }
 
   /** Initialize nntr prameters */
   BATCH_SIZE = nntr_cfg["batch_size"].get<unsigned int>();
@@ -114,32 +121,59 @@ void Transformer::setupParameters(json &cfg, json &generation_cfg,
 
   if (cfg.contains("is_causal")) {
     IS_CAUSAL = cfg["is_causal"].get<bool>();
+  } else if (model_cfg->contains("is_causal")) {
+    IS_CAUSAL = (*model_cfg)["is_causal"].get<bool>();
   } else if (cfg.contains("use_bidirectional_attention")) {
     IS_CAUSAL = !cfg["use_bidirectional_attention"].get<bool>();
+  } else if (model_cfg->contains("use_bidirectional_attention")) {
+    IS_CAUSAL = !(*model_cfg)["use_bidirectional_attention"].get<bool>();
   }
 
   NUM_VOCAB = cfg["vocab_size"];
-  DIM = cfg["hidden_size"];
-  INTERMEDIATE_SIZE = cfg["intermediate_size"];
-  NUM_LAYERS = cfg["num_hidden_layers"];
-  NUM_HEADS = cfg["num_attention_heads"];
-  HEAD_DIM = cfg.contains("head_dim")
-               ? cfg["head_dim"].get<int>()
+  DIM = (*model_cfg)["hidden_size"];
+  INTERMEDIATE_SIZE = (*model_cfg)["intermediate_size"];
+  NUM_LAYERS = (*model_cfg)["num_hidden_layers"];
+  NUM_HEADS = (*model_cfg)["num_attention_heads"];
+  HEAD_DIM = model_cfg->contains("head_dim")
+               ? (*model_cfg)["head_dim"].get<int>()
                : DIM / NUM_HEADS; // default value is hidden_size / num_heads
-  NUM_KEY_VALUE_HEADS = cfg.contains("num_key_value_heads")
-                          ? cfg["num_key_value_heads"].get<int>()
+  NUM_KEY_VALUE_HEADS = model_cfg->contains("num_key_value_heads")
+                          ? (*model_cfg)["num_key_value_heads"].get<int>()
                           : NUM_HEADS;
   SLIDING_WINDOW =
-    cfg.contains("sliding_window") && !cfg["sliding_window"].is_null()
-      ? cfg["sliding_window"].get<unsigned int>()
+    model_cfg->contains("sliding_window") &&
+        !(*model_cfg)["sliding_window"].is_null()
+      ? (*model_cfg)["sliding_window"].get<unsigned int>()
       : UINT_MAX;
-  SLIDING_WINDOW_PATTERN = cfg.contains("sliding_window_pattern")
-                             ? cfg["sliding_window_pattern"].get<unsigned int>()
+  SLIDING_WINDOW_PATTERN = model_cfg->contains("sliding_window_pattern")
+                             ? (*model_cfg)["sliding_window_pattern"]
+                                 .get<unsigned int>()
                              : 1;
-  MAX_POSITION_EMBEDDINGS = cfg["max_position_embeddings"].get<unsigned int>();
-  ROPE_THETA = cfg["rope_theta"].get<unsigned int>();
-  TIE_WORD_EMBEDDINGS = cfg["tie_word_embeddings"].get<bool>();
-  NORM_EPS = cfg["rms_norm_eps"];
+  MAX_POSITION_EMBEDDINGS =
+    (*model_cfg)["max_position_embeddings"].get<unsigned int>();
+  if (model_cfg->contains("rope_theta")) {
+    ROPE_THETA = (*model_cfg)["rope_theta"].get<unsigned int>();
+  } else if (model_cfg->contains("rope_parameters")) {
+    auto &rope_cfg = (*model_cfg)["rope_parameters"];
+    if (rope_cfg.contains("sliding_attention") &&
+        rope_cfg["sliding_attention"].contains("rope_theta")) {
+      ROPE_THETA =
+        rope_cfg["sliding_attention"]["rope_theta"].get<unsigned int>();
+    } else if (rope_cfg.contains("full_attention") &&
+               rope_cfg["full_attention"].contains("rope_theta")) {
+      ROPE_THETA =
+        rope_cfg["full_attention"]["rope_theta"].get<unsigned int>();
+    }
+  }
+  TIE_WORD_EMBEDDINGS =
+    cfg.contains("tie_word_embeddings")
+      ? cfg["tie_word_embeddings"].get<bool>()
+      : model_cfg->value("tie_word_embeddings", false);
+  if (model_cfg->contains("rms_norm_eps")) {
+    NORM_EPS = (*model_cfg)["rms_norm_eps"].get<float>();
+  } else {
+    NORM_EPS = model_cfg->value("norm_eps", 1e-5f);
+  }
   GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
 
   return;
