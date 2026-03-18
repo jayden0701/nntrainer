@@ -14,6 +14,7 @@
  */
 
 #include <cstring>
+#include <type_traits>
 #include <vector>
 
 #include <concat_layer.h>
@@ -26,7 +27,8 @@
 #include <util_func.h>
 
 namespace nntrainer {
-ConcatLayer::ConcatLayer() : Layer(), leading_helper_dim(1) {}
+ConcatLayer::ConcatLayer() :
+  Layer(), concat_dimension(1), leading_helper_dim(1) {}
 
 static constexpr size_t SINGLE_INOUT_IDX = 0;
 
@@ -36,8 +38,7 @@ void ConcatLayer::finalize(InitLayerContext &context) {
   /// @todo this is hacky way to force concat dimension to width if channel
   /// dimension is taken, this is because recurrent realizer, return sequence
   /// exploits concat layer but have no control over where to stack/axis
-  unsigned int concat_dimension =
-    context.getInputDimensions().front().channel() > 1 ? 3 : 1;
+  concat_dimension = context.getInputDimensions().front().channel() > 1 ? 3 : 1;
   if (!concat_dimension_prop.empty())
     concat_dimension = concat_dimension_prop.get();
 
@@ -208,40 +209,106 @@ void ConcatLayer::incremental_forwarding(RunLayerContext &context,
   Tensor &output = context.getOutput(SINGLE_INOUT_IDX);
 
   const TensorDim out_dim = output.getDim();
-  output.reshape(output_reshape_helper);
-  unsigned int output_height_offset = 0;
-  unsigned int data_copy_size = output_reshape_helper.width();
+  const TensorDim::TensorType tensor_type = output.getTensorType();
+  if (concat_dimension == 3)
+    output.reshape(output_reshape_helper);
 
-  // @todo: this implementation is only works when axis is 3(width). Consider
-  // for other axes
-  unsigned int batch_channel = out_dim.batch() * out_dim.channel();
+  auto copy_incremental_step = [&](auto *type_tag, unsigned int elem_size) {
+    unsigned int output_concat_offset = 0;
 
-  for (unsigned int idx = 0; idx < context.getNumInputs(); idx++) {
-    Tensor &input = context.getInput(idx);
-    const TensorDim in_dim = input.getDim();
-    auto const &irh = input_reshape_helper[idx];
-    input.reshape(irh);
+    for (unsigned int idx = 0; idx < context.getNumInputs(); idx++) {
+      Tensor &input = context.getInput(idx);
+      const TensorDim in_dim = input.getDim();
 
-    /** loop over the dimensions before the concat dimension */
-    for (unsigned int batch = batch_channel * from; batch < batch_channel * to;
-         batch++) {
-      /** loop over the concat dimension itself */
-      for (unsigned int count = 0; count < irh.height(); count++) {
-        Tensor dest_tensor = Tensor::Map(
-          output.getAddress(batch, 0, output_height_offset + count, 0),
-          data_copy_size * sizeof(float), {1, 1, 1, data_copy_size});
-        const Tensor source_tensor = Tensor::Map(
-          input.getAddress(batch, 0, count, 0), data_copy_size * sizeof(float),
-          {1, 1, 1, data_copy_size});
-        dest_tensor.copy(source_tensor);
+      if (concat_dimension == 1) {
+        const unsigned int step_height = to - from;
+        const unsigned int step_width = step_height * in_dim.width();
+
+        for (unsigned int batch = 0; batch < out_dim.batch(); ++batch) {
+          for (unsigned int channel = 0; channel < in_dim.channel();
+               ++channel) {
+            Tensor dest_tensor = Tensor::Map<std::decay_t<decltype(*type_tag)>>(
+              output.getAddress<std::decay_t<decltype(*type_tag)>>(
+                batch, output_concat_offset + channel, from, 0),
+              step_width * elem_size, {1, 1, 1, step_width, tensor_type});
+            const Tensor source_tensor =
+              Tensor::Map<std::decay_t<decltype(*type_tag)>>(
+                input.getAddress<std::decay_t<decltype(*type_tag)>>(
+                  batch, channel, from, 0),
+                step_width * elem_size, {1, 1, 1, step_width, tensor_type});
+            dest_tensor.copy(source_tensor);
+          }
+        }
+
+        output_concat_offset += in_dim.channel();
+      } else if (concat_dimension == 2) {
+        const unsigned int step_height = to - from;
+        const unsigned int step_width = step_height * in_dim.width();
+
+        for (unsigned int batch = 0; batch < out_dim.batch(); ++batch) {
+          for (unsigned int channel = 0; channel < in_dim.channel();
+               ++channel) {
+            Tensor dest_tensor = Tensor::Map<std::decay_t<decltype(*type_tag)>>(
+              output.getAddress<std::decay_t<decltype(*type_tag)>>(
+                batch, channel, output_concat_offset + from, 0),
+              step_width * elem_size, {1, 1, 1, step_width, tensor_type});
+            const Tensor source_tensor =
+              Tensor::Map<std::decay_t<decltype(*type_tag)>>(
+                input.getAddress<std::decay_t<decltype(*type_tag)>>(
+                  batch, channel, from, 0),
+                step_width * elem_size, {1, 1, 1, step_width, tensor_type});
+            dest_tensor.copy(source_tensor);
+          }
+        }
+
+        output_concat_offset += in_dim.height();
+      } else if (concat_dimension == 3) {
+        const auto &irh = input_reshape_helper[idx];
+        const unsigned int data_copy_size = irh.width();
+        const unsigned int batch_channel = out_dim.batch() * out_dim.channel();
+
+        input.reshape(irh);
+        for (unsigned int batch = batch_channel * from;
+             batch < batch_channel * to; batch++) {
+          for (unsigned int count = 0; count < irh.height(); count++) {
+            Tensor dest_tensor = Tensor::Map<std::decay_t<decltype(*type_tag)>>(
+              output.getAddress<std::decay_t<decltype(*type_tag)>>(
+                batch, 0, output_concat_offset + count, 0),
+              data_copy_size * elem_size,
+              {1, 1, 1, data_copy_size, tensor_type});
+            const Tensor source_tensor =
+              Tensor::Map<std::decay_t<decltype(*type_tag)>>(
+                input.getAddress<std::decay_t<decltype(*type_tag)>>(batch, 0,
+                                                                    count, 0),
+                data_copy_size * elem_size,
+                {1, 1, 1, data_copy_size, tensor_type});
+            dest_tensor.copy(source_tensor);
+          }
+        }
+        input.reshape(in_dim);
+        output_concat_offset += irh.height();
+      } else {
+        throw std::invalid_argument(
+          "ConcatLayer incremental_forwarding supports axis 1, 2, and 3 only");
       }
     }
+  };
 
-    input.reshape(in_dim);
-    output_height_offset += irh.height();
+  if (out_dim.getDataType() == TensorDim::DataType::FP32) {
+    copy_incremental_step(output.getData<float>(), sizeof(float));
+  } else if (out_dim.getDataType() == TensorDim::DataType::FP16) {
+#ifdef ENABLE_FP16
+    copy_incremental_step(output.getData<_FP16>(), sizeof(_FP16));
+#else
+    throw std::invalid_argument("Error: enable-fp16 is not enabled");
+#endif
+  } else {
+    throw std::invalid_argument(
+      "ConcatLayer incremental_forwarding supports fp32/fp16 only");
   }
 
-  output.reshape(out_dim);
+  if (concat_dimension == 3)
+    output.reshape(out_dim);
 }
 
 void ConcatLayer::calcDerivative(RunLayerContext &context) {

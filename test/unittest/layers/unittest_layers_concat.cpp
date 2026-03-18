@@ -41,6 +41,25 @@ auto concat_dim1 = LayerGoldenTestParamType(
 GTEST_PARAMETER_TEST(Concat, LayerGoldenTest,
                      ::testing::Values(concat_dim3, concat_dim2, concat_dim1));
 
+auto concat_dim3_inc = LayerGoldenTestParamType(
+  nntrainer::createLayer<nntrainer::ConcatLayer>, {"axis=3"},
+  "2:3:3:2, 2:3:3:3", "concat_dim3.nnlayergolden",
+  LayerGoldenTestParamOptions::USE_INC_FORWARD, "nchw", "fp32", "fp32");
+
+auto concat_dim2_inc = LayerGoldenTestParamType(
+  nntrainer::createLayer<nntrainer::ConcatLayer>, {"axis=2"},
+  "2:3:2:3, 2:3:3:3", "concat_dim2.nnlayergolden",
+  LayerGoldenTestParamOptions::USE_INC_FORWARD, "nchw", "fp32", "fp32");
+
+auto concat_dim1_inc = LayerGoldenTestParamType(
+  nntrainer::createLayer<nntrainer::ConcatLayer>, {"axis=1"},
+  "2:2:3:3, 2:3:3:3", "concat_dim1.nnlayergolden",
+  LayerGoldenTestParamOptions::USE_INC_FORWARD, "nchw", "fp32", "fp32");
+
+GTEST_PARAMETER_TEST(Concat, LayerGoldenTestIncForward,
+                     ::testing::Values(concat_dim3_inc, concat_dim2_inc,
+                                       concat_dim1_inc));
+
 #ifdef ENABLE_FP16
 auto concat_dim3_w16a16 = LayerGoldenTestParamType(
   nntrainer::createLayer<nntrainer::ConcatLayer>, {"axis=3"},
