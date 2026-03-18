@@ -28,6 +28,7 @@ causallm_layer_dependencies += [
     causallm_fused_fc_reshaped_rms_norm_dep,
     causallm_embedding_pooling_layer_dep,
     causallm_embedding_normalize_layer_dep,
+    causallm_merged_attention_cache_layer_dep,
 ]
 
 subdir('models')
