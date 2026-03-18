@@ -20,6 +20,7 @@
 #include <llm_util.hpp>
 #include <random>
 #include <reshaped_rms_norm.h>
+#include <merged_attention_cache_layer.h>
 
 namespace causallm {
 
@@ -347,22 +348,13 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
     withKey("feature_size", std::to_string(head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", cross_k_norm_params));
 
-  // === Concatenation of Key and Value for Merged Attention ===
-  // Concat: [self_K, cross_K] along sequence dimension
-  auto concat_K = prefix + "concat_key";
-  std::vector<std::string> concat_k_params = {
-    withKey("name", concat_K),
-    withKey("input_layers", {K_norm, cross_K_norm}),
-    withKey("axis", "2")};  // Concat along sequence dimension (height)
-  layers.push_back(createLayer("concat", concat_k_params));
-
-  // Concat: [self_V, cross_V] along sequence dimension
-  auto concat_V = prefix + "concat_value";
-  std::vector<std::string> concat_v_params = {
-    withKey("name", concat_V),
-    withKey("input_layers", {V, cross_V}),
-    withKey("axis", "2")};  // Concat along sequence dimension (height)
-  layers.push_back(createLayer("concat", concat_v_params));
+  // === KV Cache + Merge for T5Gemma2 merged attention ===
+  auto merged_cache = prefix + "merged_kv_cache";
+  std::vector<std::string> merged_cache_params = {
+    withKey("name", merged_cache),
+    withKey("input_layers", {cross_K_norm, cross_V, K_norm, V}),
+    withKey("max_decoder_cache_len", std::to_string(MAX_SEQ_LEN))};
+  layers.push_back(createLayer("merged_attention_cache", merged_cache_params));
 
   // === Merged Attention ===
   auto A = prefix + "attention";
@@ -383,7 +375,7 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
             is_full_attention ? DEC_ROPE_THETA : DEC_ROPE_THETA_SLIDING),
     withKey("max_new_tokens", std::to_string(0)),
     withKey("is_causal", "true"),  // Decoder is causal
-    withKey("input_layers", {Q_norm, concat_K, concat_V})};
+    withKey("input_layers", {Q_norm, merged_cache + "(0)", merged_cache + "(1)"})};
   layers.push_back(createLayer("mha_core", a_params));
 
   // === Output Projection ===
@@ -551,6 +543,14 @@ void T5Gemma2Transformer::registerCustomLayers() {
   try {
     app_context->registerFactory(
       nntrainer::createLayer<causallm::ReshapedRMSNormLayer>);
+  } catch (std::invalid_argument &e) {
+    std::cerr << "failed to register factory, reason: " << e.what()
+              << std::endl;
+  }
+
+  try {
+    app_context->registerFactory(
+      nntrainer::createLayer<causallm::MergedAttentionCacheLayer>);
   } catch (std::invalid_argument &e) {
     std::cerr << "failed to register factory, reason: " << e.what()
               << std::endl;
