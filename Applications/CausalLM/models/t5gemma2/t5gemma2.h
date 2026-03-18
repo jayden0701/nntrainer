@@ -30,13 +30,7 @@ public:
   static constexpr const char *architectures =
     "T5Gemma2ForConditionalGeneration";
 
-  T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
-    Transformer(cfg, generation_cfg, nntr_cfg, ModelType::MODEL) {
-    setupParameters(cfg, generation_cfg, nntr_cfg);
-
-    // Initialize processor (TODO: get parameters from config)
-    processor = std::make_unique<nntrainer::T5Gemma2Processor>(256, 256000);
-  }
+  T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg);
 
   virtual ~T5Gemma2Transformer() = default;
 

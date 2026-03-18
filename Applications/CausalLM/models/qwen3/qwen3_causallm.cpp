@@ -43,37 +43,19 @@ std::vector<LayerHandle> Qwen3Transformer::createAttention(
   auto A = "layer" + std::to_string(layer_id) + "_attention";
   auto O = "layer" + std::to_string(layer_id) + "_attention_out";
 
-  // Fused QKV projection when query/key/value source is same tensor.
-  if (query_name == key_name && key_name == value_name) {
-    std::vector<std::string> qkv_params = {
-      withKey("name", {Q, K, V}),
-      withKey("q_unit", head_dim * n_heads),
-      withKey("k_unit", head_dim * n_heads / GQA_SIZE),
-      withKey("v_unit", head_dim * n_heads / GQA_SIZE),
-      withKey("disable_bias", "true"),
-      withKey("input_layers", query_name),
-      withKey("weight_initializer", "ones")};
-    layers.push_back(createLayer("qkv_layer", qkv_params));
-  } else {
-    // Fallback: separate projections for non-shared inputs.
-    std::vector<std::string> v_params = {
-      withKey("name", V), withKey("unit", head_dim * n_heads / GQA_SIZE),
-      withKey("disable_bias", "true"), withKey("input_layers", value_name),
-      withKey("weight_initializer", "ones")};
-    layers.push_back(createLayer("fully_connected", v_params));
+  // V layer
+  std::vector<std::string> v_params = {
+    withKey("name", V), withKey("unit", head_dim * n_heads / GQA_SIZE),
+    withKey("disable_bias", "true"), withKey("input_layers", value_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", v_params));
 
-    std::vector<std::string> k_params = {
-      withKey("name", K), withKey("unit", head_dim * n_heads / GQA_SIZE),
-      withKey("disable_bias", "true"), withKey("input_layers", key_name),
-      withKey("weight_initializer", "ones")};
-    layers.push_back(createLayer("fully_connected", k_params));
-
-    std::vector<std::string> q_params = {
-      withKey("name", Q), withKey("unit", head_dim * n_heads),
-      withKey("disable_bias", "true"), withKey("input_layers", query_name),
-      withKey("weight_initializer", "ones")};
-    layers.push_back(createLayer("fully_connected", q_params));
-  }
+  // K layer
+  std::vector<std::string> k_params = {
+    withKey("name", K), withKey("unit", head_dim * n_heads / GQA_SIZE),
+    withKey("disable_bias", "true"), withKey("input_layers", key_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", k_params));
 
   // K-reshaped-norm layer
   // k_norm(k_proj.view(hidden_shape))
@@ -82,6 +64,13 @@ std::vector<LayerHandle> Qwen3Transformer::createAttention(
     withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
     withKey("feature_size", std::to_string(head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
+
+  // Q layer
+  std::vector<std::string> q_params = {
+    withKey("name", Q), withKey("unit", head_dim * n_heads),
+    withKey("disable_bias", "true"), withKey("input_layers", query_name),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", q_params));
 
   // Q-reshaped-norm layer
   // q_norm(q_proj.view(hidden_shape))

@@ -19,7 +19,6 @@
 #include <factory.h>
 #include <llm_util.hpp>
 #include <random>
-#include <fused_fc_reshaped_rms_norm.h>
 #include <reshaped_rms_norm.h>
 #include <merged_attention_cache_layer.h>
 
@@ -447,23 +446,35 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", v_params));
 
-  // K projection + reshaped RMSNorm
+   // K layer
   std::vector<std::string> k_params = {
-    withKey("name", K_norm), withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
     withKey("disable_bias", "true"), withKey("input_layers", key_name),
-    withKey("weight_initializer", "ones"),
-    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
-    withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", k_params));
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", k_params));
 
-  // Q projection + reshaped RMSNorm
+  // Q layer
   std::vector<std::string> q_params = {
-    withKey("name", Q_norm), withKey("unit", head_dim * n_heads),
+    withKey("name", Q), withKey("unit", head_dim * n_heads),
     withKey("disable_bias", "true"), withKey("input_layers", query_name),
-    withKey("weight_initializer", "ones"),
+    withKey("weight_initializer", "ones")};
+  layers.push_back(createLayer("fully_connected", q_params));
+
+  // Q_normalized
+  std::vector<std::string> q_norm_params = {
+    withKey("name", Q_norm), withKey("input_layers", Q),
+    withKey("packed", "false"),
     withKey("epsilon", std::to_string(ENC_NORM_EPS)),
     withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("fused_fc_reshaped_rms_norm", q_params));
+  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
+
+  // K_normalized
+  std::vector<std::string> k_norm_params = {
+    withKey("name", K_norm), withKey("input_layers", K),
+    withKey("packed", "false"),
+    withKey("epsilon", std::to_string(ENC_NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
 
   // Determine RoPE theta based on layer type
   bool is_full_attention = ((layer_id + 1) % ENC_SLIDING_WINDOW_PATTERN == 0);
@@ -1156,27 +1167,11 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
   // Inference
   auto start_time = std::chrono::high_resolution_clock::now();
 
-
-// TMP code for custom setting from-to in some layers
-  std::unordered_map<std::string, unsigned int> custom_to_map;
-for(int i=0; i<DEC_NUM_LAYERS; ++i)
-{
-  std::string prefix = "decoder_layer" + std::to_string(i) + "_";
-  auto cross_K = prefix + "cross_wk";
-  auto cross_V = prefix + "cross_wv";
-  auto cross_K_norm = cross_K + "_norm";
-  
-  custom_to_map.insert({cross_K,ACTUAL_SEQ_LEN});
-  custom_to_map.insert({cross_V,ACTUAL_SEQ_LEN});
-  custom_to_map.insert({cross_K_norm,ACTUAL_SEQ_LEN});
-
-
-}
           
   // Token Generation (no prefill)
   for (unsigned int i = 0; i < NUM_TO_GENERATE; ++i) {
     auto gen_output = decoder_model->incremental_inference(
-      1, decoder_inputs, label_tensors, 1, i, i + 1, false, &custom_to_map);
+      1, decoder_inputs, label_tensors, 1, i, i + 1, false);
 
     unsigned int new_token = generate(gen_output[0], false)[0];
 
@@ -1269,7 +1264,7 @@ void T5Gemma2Transformer::loadDecoderWeights(const std::string &weight_path) {
 
   decoder_initialized = true;
 
-  // decoder_model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
+  decoder_model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 
   // std::cout
   //   << "\n========== Loading Decoder Weights Not implemented yet =========="

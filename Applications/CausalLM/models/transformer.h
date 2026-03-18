@@ -74,6 +74,12 @@ public:
   Transformer(json &cfg, json &generation_cfg, json &nntr_cfg,
               ModelType model_type = ModelType::MODEL);
 
+    /**
+   * @brief Empty constructor for Transformer. 
+   * @brief Child Class Needs to implement all features of the original Transformer constructor
+   */
+  Transformer(){}
+
   /**
    * @brief Destroy the Transformer object
    */
@@ -101,9 +107,9 @@ public:
                    const WSTR system_prompt = "", const WSTR tail_prompt = "");
 
   /**
-   * @brief Check if the model has image input. False by default. 
-   * For multi-modal models, override this function with 
-   * it's own image input checker. 
+   * @brief Check if the model has image input. False by default.
+   * For multi-modal models, override this function with
+   * it's own image input checker.
    * @param input_text the input for model (for checking if it contains image)
    * @return true if the model has image input, false otherwise
    */
