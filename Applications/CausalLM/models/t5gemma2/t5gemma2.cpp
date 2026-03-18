@@ -23,6 +23,38 @@
 
 namespace causallm {
 
+  std::string LoadBytessFromFile(const std::string &path) {
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file.is_open()) {
+    throw std::runtime_error("Failed to open file: " + path);
+  }
+  std::streamsize size = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  std::string buffer(size, ' ');
+  if (!file.read(&buffer[0], size)) {
+    throw std::runtime_error("Failed to read file: " + path);
+  }
+  return buffer;
+}
+
+  T5Gemma2Transformer::T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
+    Transformer() {
+    setupParameters(cfg, generation_cfg, nntr_cfg);
+
+    // Initialize processor (TODO: get parameters from config)
+    processor = std::make_unique<nntrainer::T5Gemma2Processor>(256, 256000);
+
+    // Skip tokenizer if specified (e.g., for vision encoder models)
+  if ((nntr_cfg.contains("skip_tokenizer") &&
+       nntr_cfg["skip_tokenizer"].get<bool>())) {
+    tokenizer = nullptr; // No tokenizer for this model
+  } else {
+    tokenizer = tokenizers::Tokenizer::FromBlobJSON(
+      LoadBytessFromFile(nntr_cfg["tokenizer_file"]));
+  }
+  }
+
 void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
                                           json &nntr_cfg) {
   BATCH_SIZE = nntr_cfg.value("batch_size", 1);
