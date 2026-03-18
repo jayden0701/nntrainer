@@ -103,7 +103,7 @@ public:
   static constexpr const char *type = "concat";
 
 private:
-  unsigned int concat_dimension; /**< dimension used to concatenate inputs */
+  unsigned int concat_dimension;   /**< dimension used to concatenate inputs */
   unsigned int leading_helper_dim; /**< batch dimension of helper dimension not
                                 containing the actual batch */
   std::vector<TensorDim>

@@ -27,7 +27,8 @@
 #include <util_func.h>
 
 namespace nntrainer {
-ConcatLayer::ConcatLayer() : Layer(), concat_dimension(1), leading_helper_dim(1) {}
+ConcatLayer::ConcatLayer() :
+  Layer(), concat_dimension(1), leading_helper_dim(1) {}
 
 static constexpr size_t SINGLE_INOUT_IDX = 0;
 
@@ -37,8 +38,7 @@ void ConcatLayer::finalize(InitLayerContext &context) {
   /// @todo this is hacky way to force concat dimension to width if channel
   /// dimension is taken, this is because recurrent realizer, return sequence
   /// exploits concat layer but have no control over where to stack/axis
-  concat_dimension =
-    context.getInputDimensions().front().channel() > 1 ? 3 : 1;
+  concat_dimension = context.getInputDimensions().front().channel() > 1 ? 3 : 1;
   if (!concat_dimension_prop.empty())
     concat_dimension = concat_dimension_prop.get();
 
@@ -278,8 +278,8 @@ void ConcatLayer::incremental_forwarding(RunLayerContext &context,
               {1, 1, 1, data_copy_size, tensor_type});
             const Tensor source_tensor =
               Tensor::Map<std::decay_t<decltype(*type_tag)>>(
-                input.getAddress<std::decay_t<decltype(*type_tag)>>(
-                  batch, 0, count, 0),
+                input.getAddress<std::decay_t<decltype(*type_tag)>>(batch, 0,
+                                                                    count, 0),
                 data_copy_size * elem_size,
                 {1, 1, 1, data_copy_size, tensor_type});
             dest_tensor.copy(source_tensor);
