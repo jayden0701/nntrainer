@@ -415,8 +415,8 @@ public:
    * @param[in] init_seq_len initial sequence length
    * @param[in] from current working step index
    * @param[in] to next working step index
-   * @param[in] output_hidden_state return last hidden state if true else return
-   * all hidden state
+   * @param[in] output_hidden_state return full final hidden state [batch_size, 1, to-from, output_width] if true else return
+   * last time step of hidden state [batch_size, output_width]
    * @retval list of output as float *
    * @note The output memory must not be freed by the caller
    */
@@ -435,10 +435,10 @@ public:
    * @param[in] init_seq_len initial sequence length
    * @param[in] from current working step index
    * @param[in] to next working step index
-   * @param[in] output_hidden_state return last hidden state if true else return
+   * @param[in] output_hidden_state return full final hidden state [batch_size, 1, to-from, output_width] if true else return
+   * last time step of hidden state [batch_size, output_width]
    * @param[in] custom_to_dict per-layer `to` override map. (key: layer_name, value: custom_to)
    *            If present, the layer uses `custom_to` instead of the global `to`.
-   * all hidden state
    * @retval list of output as float *
    * @note The output memory must not be freed by the caller
    */

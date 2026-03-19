@@ -44,6 +44,10 @@ void InputLayer::setProperty(const std::vector<std::string> &values) {
 
 void InputLayer::forwarding(RunLayerContext &context, bool training) {
 
+    auto &input_layer = context.getInput(0);
+
+  input_layer.print(std::cout);
+
   Tensor &hidden_ = context.getOutput(SINGLE_INOUT_IDX);
   std::unique_ptr<nntrainer::Quantizer> quantizer;
   if (!context.getInPlace()) {

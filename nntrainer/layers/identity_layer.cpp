@@ -26,6 +26,12 @@ void IdentityLayer::finalize(InitLayerContext &context) {
 }
 
 void IdentityLayer::forwarding(RunLayerContext &context, bool training) {
+
+  auto &input_layer = context.getInput(0);
+
+  input_layer.print(std::cout);
+
+
   if (!context.getInPlace()) {
     for (unsigned int i = 0, sz = context.getNumInputs(); i < sz; ++i) {
       Tensor &input_ = context.getInput(i);

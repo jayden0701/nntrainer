@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Copyright (C) 2026
+ * Copyright (C) 2026 Joonseok Oh <jrock.oh@samsung.com>
  *
- * @file   geglu.h
+ * @file   geglu.cpp
  * @date   18 March 2026
  * @brief  Implementation of fused GeGLU activation layer
+ * @see		 https://github.com/nntrainer/nntrainer
+ * @author Joonseok Oh <jrock.oh@samsung.com>
+ * @bug		 No known bugs except for NYI items
+ *
  */
 
 #ifndef __GEGLU_LAYER_H__

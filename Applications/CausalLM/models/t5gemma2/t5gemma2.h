@@ -109,9 +109,10 @@ private:
   /**
    * @brief Run decoder inference with lazy initialization
    * @param encoder_output Encoder output for cross-attention
+   * @param encoder_output_seq_len Encoder output sequence length(height of tensor)
    * @return Generated text
    */
-  std::string runDecoder(const std::vector<float> &encoder_output);
+  std::string runDecoder(const std::vector<float> &encoder_output, const int encoder_output_seq_len);
 
   /**
    * @brief Create encoder model (compile only)

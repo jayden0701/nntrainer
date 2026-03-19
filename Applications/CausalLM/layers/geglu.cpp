@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
+ * Copyright (C) 2026 Joonseok Oh <jrock.oh@samsung.com>
+ *
  * @file   geglu.cpp
  * @date   18 March 2026
  * @brief  Implementation of fused GeGLU activation layer
+ * @see		 https://github.com/nntrainer/nntrainer
+ * @author Joonseok Oh <jrock.oh@samsung.com>
+ * @bug		 No known bugs except for NYI items
+ *
  */
-
 #include <cmath>
 
 #include "geglu.h"
@@ -96,9 +101,9 @@ void GeGLULayer::updateTensorsByInputDimensions(
   up_dim.height(input_dimensions[0].height());
   output_dim.height(input_dimensions[0].height());
 
-  context.updateTensor(INPUT_IDX_1, gate_dim);
-  context.updateTensor(INPUT_IDX_2, up_dim);
-  context.updateTensor(OUT_IDX, output_dim);
+  context.updateInput(INPUT_IDX_1, gate_dim);
+  context.updateInput(INPUT_IDX_2, up_dim);
+  context.updateOutput(OUT_IDX, output_dim);
 }
 
 void GeGLULayer::calcDerivative(nntrainer::RunLayerContext &context) {}

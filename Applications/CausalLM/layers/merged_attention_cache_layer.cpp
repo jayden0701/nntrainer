@@ -31,9 +31,11 @@ void MergedAttentionCacheLayer::finalize(nntrainer::InitLayerContext &context) {
   const auto &decoder_key_dim = context.getInputDimensions()[DECODER_KEY];
   const auto &decoder_value_dim = context.getInputDimensions()[DECODER_VALUE];
 
-  NNTR_THROW_IF(encoder_key_dim.width() != decoder_key_dim.width(), std::invalid_argument)
+  NNTR_THROW_IF(encoder_key_dim.width() != decoder_key_dim.width(),
+                std::invalid_argument)
     << "encoder/decoder key widths must match";
-  NNTR_THROW_IF(encoder_value_dim.width() != decoder_value_dim.width(), std::invalid_argument)
+  NNTR_THROW_IF(encoder_value_dim.width() != decoder_value_dim.width(),
+                std::invalid_argument)
     << "encoder/decoder value widths must match";
 
   const unsigned int max_decoder_cache_len =
@@ -41,11 +43,13 @@ void MergedAttentionCacheLayer::finalize(nntrainer::InitLayerContext &context) {
 
   auto merged_key_dim = encoder_key_dim;
   merged_key_dim.height(encoder_key_dim.height() + max_decoder_cache_len);
-  merged_key_dim.setTensorType({context.getFormat(), context.getActivationDataType()});
+  merged_key_dim.setTensorType(
+    {context.getFormat(), context.getActivationDataType()});
 
   auto merged_value_dim = encoder_value_dim;
   merged_value_dim.height(encoder_value_dim.height() + max_decoder_cache_len);
-  merged_value_dim.setTensorType({context.getFormat(), context.getActivationDataType()});
+  merged_value_dim.setTensorType(
+    {context.getFormat(), context.getActivationDataType()});
 
   context.setOutputDimensions({merged_key_dim, merged_value_dim});
 
@@ -53,8 +57,8 @@ void MergedAttentionCacheLayer::finalize(nntrainer::InitLayerContext &context) {
     encoder_key_dim, "encoder_key_cache", nntrainer::Initializer::NONE, true,
     nntrainer::TensorLifespan::MAX_LIFESPAN);
   tensor_idx[ENCODER_VALUE_CACHE] = context.requestTensor(
-    encoder_value_dim, "encoder_value_cache", nntrainer::Initializer::NONE, true,
-    nntrainer::TensorLifespan::MAX_LIFESPAN);
+    encoder_value_dim, "encoder_value_cache", nntrainer::Initializer::NONE,
+    true, nntrainer::TensorLifespan::MAX_LIFESPAN);
 
   auto decoder_key_cache_dim = decoder_key_dim;
   decoder_key_cache_dim.height(max_decoder_cache_len);
@@ -64,34 +68,37 @@ void MergedAttentionCacheLayer::finalize(nntrainer::InitLayerContext &context) {
 
   auto decoder_value_cache_dim = decoder_value_dim;
   decoder_value_cache_dim.height(max_decoder_cache_len);
-  tensor_idx[DECODER_VALUE_CACHE] = context.requestTensor(
-    decoder_value_cache_dim, "decoder_value_cache", nntrainer::Initializer::NONE,
-    true, nntrainer::TensorLifespan::MAX_LIFESPAN);
+  tensor_idx[DECODER_VALUE_CACHE] =
+    context.requestTensor(decoder_value_cache_dim, "decoder_value_cache",
+                          nntrainer::Initializer::NONE, true,
+                          nntrainer::TensorLifespan::MAX_LIFESPAN);
 }
 
-void MergedAttentionCacheLayer::setProperty(const std::vector<std::string> &values) {
+void MergedAttentionCacheLayer::setProperty(
+  const std::vector<std::string> &values) {
   auto remain_props = loadProperties(values, merged_attention_cache_props);
   LayerImpl::setProperty(remain_props);
 }
 
 MergedAttentionCacheLayer::RuntimeState &
-MergedAttentionCacheLayer::getRuntimeState(nntrainer::RunLayerContext &context) {
+MergedAttentionCacheLayer::getRuntimeState(
+  nntrainer::RunLayerContext &context) {
   std::lock_guard<std::mutex> guard(runtime_state_mutex);
   auto [it, inserted] =
-    runtime_state.try_emplace(&context, RuntimeState{false, 0u});
+    runtime_state.try_emplace(&context, RuntimeState{false, 0u, 0u});
   return it->second;
 }
 
-void MergedAttentionCacheLayer::resetRuntimeState(nntrainer::RunLayerContext &context) {
+void MergedAttentionCacheLayer::resetRuntimeState(
+  nntrainer::RunLayerContext &context) {
   std::lock_guard<std::mutex> guard(runtime_state_mutex);
-  runtime_state[&context] = RuntimeState{false, 0u};
+  runtime_state[&context] = RuntimeState{false, 0u, 0u};
 }
 
-void MergedAttentionCacheLayer::copyTensorByHeight(nntrainer::Tensor &src,
-                                                   nntrainer::Tensor &dst,
-                                                   unsigned int src_offset_height,
-                                                   unsigned int dst_offset_height,
-                                                   unsigned int copy_height) const {
+void MergedAttentionCacheLayer::copyTensorByHeight(
+  nntrainer::Tensor &src, nntrainer::Tensor &dst,
+  unsigned int src_offset_height, unsigned int dst_offset_height,
+  unsigned int copy_height) const {
   if (copy_height == 0) {
     return;
   }
@@ -107,14 +114,16 @@ void MergedAttentionCacheLayer::copyTensorByHeight(nntrainer::Tensor &src,
     const unsigned int dst_offset =
       b * dst_dim.getFeatureLen() + dst_offset_height * dst.width();
 
-    nntrainer::Tensor src_slice = src.getSharedDataTensor(copy_dim, src_offset, true);
-    nntrainer::Tensor dst_slice = dst.getSharedDataTensor(copy_dim, dst_offset, true);
+    nntrainer::Tensor src_slice =
+      src.getSharedDataTensor(copy_dim, src_offset, true);
+    nntrainer::Tensor dst_slice =
+      dst.getSharedDataTensor(copy_dim, dst_offset, true);
     dst_slice.copy(src_slice);
   }
 }
 
-void MergedAttentionCacheLayer::cacheEncoderIfNeeded(nntrainer::RunLayerContext &context,
-                                                     RuntimeState &state) {
+void MergedAttentionCacheLayer::cacheEncoderIfNeeded(
+  nntrainer::RunLayerContext &context, RuntimeState &state) {
   if (state.encoder_cached) {
     return;
   }
@@ -122,18 +131,22 @@ void MergedAttentionCacheLayer::cacheEncoderIfNeeded(nntrainer::RunLayerContext 
   auto &encoder_key = context.getInput(ENCODER_KEY);
   auto &encoder_value = context.getInput(ENCODER_VALUE);
   auto &encoder_key_cache = context.getTensor(tensor_idx[ENCODER_KEY_CACHE]);
-  auto &encoder_value_cache = context.getTensor(tensor_idx[ENCODER_VALUE_CACHE]);
+  auto &encoder_value_cache =
+    context.getTensor(tensor_idx[ENCODER_VALUE_CACHE]);
 
-  copyTensorByHeight(encoder_key, encoder_key_cache, 0, 0, encoder_key.getDim().height());
+  copyTensorByHeight(encoder_key, encoder_key_cache, 0, 0,
+                     encoder_key.getDim().height());
   copyTensorByHeight(encoder_value, encoder_value_cache, 0, 0,
                      encoder_value.getDim().height());
   state.encoder_cached = true;
+
+  // initial height is encoder_seq_len + 1
+  state.encoder_cached_length = encoder_key.getDim().height() - 1;
 }
 
-void MergedAttentionCacheLayer::appendDecoderChunk(nntrainer::RunLayerContext &context,
-                                                   RuntimeState &state,
-                                                   unsigned int from,
-                                                   unsigned int to) {
+void MergedAttentionCacheLayer::appendDecoderChunk(
+  nntrainer::RunLayerContext &context, RuntimeState &state, unsigned int from,
+  unsigned int to) {
   NNTR_THROW_IF(to < from, std::invalid_argument)
     << "merged_attention_cache expects to >= from";
 
@@ -145,12 +158,13 @@ void MergedAttentionCacheLayer::appendDecoderChunk(nntrainer::RunLayerContext &c
   auto &decoder_key = context.getInput(DECODER_KEY);
   auto &decoder_value = context.getInput(DECODER_VALUE);
   auto &decoder_key_cache = context.getTensor(tensor_idx[DECODER_KEY_CACHE]);
-  auto &decoder_value_cache = context.getTensor(tensor_idx[DECODER_VALUE_CACHE]);
+  auto &decoder_value_cache =
+    context.getTensor(tensor_idx[DECODER_VALUE_CACHE]);
 
   const unsigned int input_height = decoder_key.getDim().height();
   const unsigned int src_offset_height = input_height >= to ? from : 0;
-  const unsigned int available_steps =
-    std::min(requested_steps, input_height - std::min(src_offset_height, input_height));
+  const unsigned int available_steps = std::min(
+    requested_steps, input_height - std::min(src_offset_height, input_height));
 
   if (available_steps == 0) {
     return;
@@ -172,31 +186,53 @@ void MergedAttentionCacheLayer::appendDecoderChunk(nntrainer::RunLayerContext &c
   state.decoder_cached_length += available_steps;
 }
 
-void MergedAttentionCacheLayer::writeMergedOutputs(nntrainer::RunLayerContext &context,
-                                                   const RuntimeState &state) {
+void MergedAttentionCacheLayer::writeMergedOutputs(
+  nntrainer::RunLayerContext &context, const RuntimeState &state) {
   auto &encoder_key_cache = context.getTensor(tensor_idx[ENCODER_KEY_CACHE]);
-  auto &encoder_value_cache = context.getTensor(tensor_idx[ENCODER_VALUE_CACHE]);
+  auto &encoder_value_cache =
+    context.getTensor(tensor_idx[ENCODER_VALUE_CACHE]);
   auto &decoder_key_cache = context.getTensor(tensor_idx[DECODER_KEY_CACHE]);
-  auto &decoder_value_cache = context.getTensor(tensor_idx[DECODER_VALUE_CACHE]);
+  auto &decoder_value_cache =
+    context.getTensor(tensor_idx[DECODER_VALUE_CACHE]);
   auto &merged_key = context.getOutput(MERGED_KEY);
   auto &merged_value = context.getOutput(MERGED_VALUE);
 
   const unsigned int encoder_height =
-    state.encoder_cached ? encoder_key_cache.getDim().height() : 0u;
+    state.encoder_cached ? state.encoder_cached_length : 0u;
 
-  copyTensorByHeight(encoder_key_cache, merged_key, 0, 0, encoder_height);
-  copyTensorByHeight(decoder_key_cache, merged_key, 0, encoder_height,
+  // concat {K/V, crossed_K/V}
+
+  copyTensorByHeight(decoder_key_cache, merged_key, 0, 0,
                      state.decoder_cached_length);
 
-  copyTensorByHeight(encoder_value_cache, merged_value, 0, 0, encoder_height);
-  copyTensorByHeight(decoder_value_cache, merged_value, 0, encoder_height,
+  copyTensorByHeight(encoder_key_cache, merged_key, 0,
+                     state.decoder_cached_length, encoder_height);
+
+  copyTensorByHeight(decoder_value_cache, merged_value, 0, 0,
                      state.decoder_cached_length);
+  copyTensorByHeight(encoder_value_cache, merged_value, 0,
+                     state.decoder_cached_length, encoder_height);
+
+  auto &encoder_key = context.getInput(ENCODER_KEY);
+  auto &encoder_value = context.getInput(ENCODER_VALUE);
+
+  auto &decoder_key = context.getInput(DECODER_KEY);
+  auto &decoder_value = context.getInput(DECODER_VALUE);
+
+  encoder_key.print(std::cout);
+  encoder_value.print(std::cout);
+
+  decoder_key.print(std::cout);
+  decoder_value.print(std::cout);
+
+  merged_key.print(std::cout);
+  merged_value.print(std::cout);
 }
 
 void MergedAttentionCacheLayer::forwarding(nntrainer::RunLayerContext &context,
                                            bool training) {
   auto &state = getRuntimeState(context);
-  state = RuntimeState{false, 0u};
+  state = RuntimeState{false, 0u, 0u};
   cacheEncoderIfNeeded(context, state);
   appendDecoderChunk(context, state, 0,
                      context.getInput(DECODER_KEY).getDim().height());
@@ -207,8 +243,10 @@ void MergedAttentionCacheLayer::incremental_forwarding(
   nntrainer::RunLayerContext &context, unsigned int from, unsigned int to,
   bool training) {
   auto &state = getRuntimeState(context);
+
+  // First time accessing this layer
   if (from == 0) {
-    state = RuntimeState{false, 0u};
+    state = RuntimeState{false, 0u, 0u};
   }
 
   cacheEncoderIfNeeded(context, state);
@@ -216,19 +254,20 @@ void MergedAttentionCacheLayer::incremental_forwarding(
   writeMergedOutputs(context, state);
 }
 
-void MergedAttentionCacheLayer::calcDerivative(nntrainer::RunLayerContext &context) {
+void MergedAttentionCacheLayer::calcDerivative(
+  nntrainer::RunLayerContext &context) {
   throw nntrainer::exception::not_supported(
     "calcDerivative for MergedAttentionCacheLayer is not supported");
 }
 
-void MergedAttentionCacheLayer::calcGradient(nntrainer::RunLayerContext &context) {
+void MergedAttentionCacheLayer::calcGradient(
+  nntrainer::RunLayerContext &context) {
   throw nntrainer::exception::not_supported(
     "calcGradient for MergedAttentionCacheLayer is not supported");
 }
 
 void MergedAttentionCacheLayer::exportTo(
-  nntrainer::Exporter &exporter,
-  const ml::train::ExportMethods &method) const {
+  nntrainer::Exporter &exporter, const ml::train::ExportMethods &method) const {
   LayerImpl::exportTo(exporter, method);
   exporter.saveResult(merged_attention_cache_props, method, this);
 }
@@ -241,38 +280,43 @@ void MergedAttentionCacheLayer::updateTensorsByInputDimensions(
   auto decoder_key_dim = context.getInput(DECODER_KEY).getDim();
   auto decoder_value_dim = context.getInput(DECODER_VALUE).getDim();
 
-  encoder_key_dim.height(input_dimensions[ENCODER_KEY].height());
-  encoder_value_dim.height(input_dimensions[ENCODER_VALUE].height());
-  decoder_key_dim.height(input_dimensions[DECODER_KEY].height());
-  decoder_value_dim.height(input_dimensions[DECODER_VALUE].height());
+  encoder_key_dim.height(input_dimensions[0].height());
+  encoder_value_dim.height(input_dimensions[0].height());
+  decoder_key_dim.height(input_dimensions[0].height());
+  decoder_value_dim.height(input_dimensions[0].height());
 
   context.updateInput(ENCODER_KEY, encoder_key_dim);
   context.updateInput(ENCODER_VALUE, encoder_value_dim);
   context.updateInput(DECODER_KEY, decoder_key_dim);
   context.updateInput(DECODER_VALUE, decoder_value_dim);
 
-  context.updateTensor(tensor_idx[ENCODER_KEY_CACHE], encoder_key_dim);
-  context.updateTensor(tensor_idx[ENCODER_VALUE_CACHE], encoder_value_dim);
+  // TODO : I think cache(tensor) should not be updated
 
-  auto decoder_key_cache_dim = context.getTensor(tensor_idx[DECODER_KEY_CACHE]).getDim();
-  decoder_key_cache_dim.width(decoder_key_dim.width());
-  context.updateTensor(tensor_idx[DECODER_KEY_CACHE], decoder_key_cache_dim);
+  // context.updateTensor(tensor_idx[ENCODER_KEY_CACHE], encoder_key_dim);
+  // context.updateTensor(tensor_idx[ENCODER_VALUE_CACHE], encoder_value_dim);
 
-  auto decoder_value_cache_dim = context.getTensor(tensor_idx[DECODER_VALUE_CACHE]).getDim();
-  decoder_value_cache_dim.width(decoder_value_dim.width());
-  context.updateTensor(tensor_idx[DECODER_VALUE_CACHE], decoder_value_cache_dim);
+  // auto decoder_key_cache_dim =
+  // context.getTensor(tensor_idx[DECODER_KEY_CACHE]).getDim();
+  // decoder_key_cache_dim.width(decoder_key_dim.width());
+  // context.updateTensor(tensor_idx[DECODER_KEY_CACHE], decoder_key_cache_dim);
+
+  // auto decoder_value_cache_dim =
+  // context.getTensor(tensor_idx[DECODER_VALUE_CACHE]).getDim();
+  // decoder_value_cache_dim.width(decoder_value_dim.width());
+  // context.updateTensor(tensor_idx[DECODER_VALUE_CACHE],
+  // decoder_value_cache_dim);
 
   auto merged_key_dim = context.getOutput(MERGED_KEY).getDim();
-  merged_key_dim.width(encoder_key_dim.width());
-  merged_key_dim.height(encoder_key_dim.height() + decoder_key_cache_dim.height());
+  // merged_key_dim.width(encoder_key_dim.width());
+  merged_key_dim.height(input_dimensions[0].height());
   context.updateOutput(MERGED_KEY, merged_key_dim);
 
   auto merged_value_dim = context.getOutput(MERGED_VALUE).getDim();
-  merged_value_dim.width(encoder_value_dim.width());
-  merged_value_dim.height(encoder_value_dim.height() + decoder_value_cache_dim.height());
+  // merged_value_dim.width(encoder_value_dim.width());
+  merged_value_dim.height(input_dimensions[0].height());
   context.updateOutput(MERGED_VALUE, merged_value_dim);
 
-  resetRuntimeState(context);
+  // resetRuntimeState(context);
 }
 
 #ifdef PLUGGABLE

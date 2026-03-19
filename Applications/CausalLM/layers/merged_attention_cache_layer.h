@@ -90,6 +90,7 @@ private:
 
   struct RuntimeState {
     bool encoder_cached;
+    unsigned int encoder_cached_length;
     unsigned int decoder_cached_length;
   };
 

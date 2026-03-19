@@ -18,13 +18,13 @@
 #include <engine.h>
 #include <factory.h>
 #include <llm_util.hpp>
+#include <merged_attention_cache_layer.h>
 #include <random>
 #include <reshaped_rms_norm.h>
-#include <merged_attention_cache_layer.h>
 
 namespace causallm {
 
-  std::string LoadBytessFromFile(const std::string &path) {
+std::string LoadBytessFromFile(const std::string &path) {
   std::ifstream file(path, std::ios::binary | std::ios::ate);
   if (!file.is_open()) {
     throw std::runtime_error("Failed to open file: " + path);
@@ -39,14 +39,15 @@ namespace causallm {
   return buffer;
 }
 
-  T5Gemma2Transformer::T5Gemma2Transformer(json &cfg, json &generation_cfg, json &nntr_cfg) :
-    Transformer() {
-    setupParameters(cfg, generation_cfg, nntr_cfg);
+T5Gemma2Transformer::T5Gemma2Transformer(json &cfg, json &generation_cfg,
+                                         json &nntr_cfg) :
+  Transformer() {
+  setupParameters(cfg, generation_cfg, nntr_cfg);
 
-    // Initialize processor (TODO: get parameters from config)
-    processor = std::make_unique<nntrainer::T5Gemma2Processor>(256, 256000);
+  // Initialize processor (TODO: get parameters from config)
+  processor = std::make_unique<nntrainer::T5Gemma2Processor>(256, 256000);
 
-    // Skip tokenizer if specified (e.g., for vision encoder models)
+  // Skip tokenizer if specified (e.g., for vision encoder models)
   if ((nntr_cfg.contains("skip_tokenizer") &&
        nntr_cfg["skip_tokenizer"].get<bool>())) {
     tokenizer = nullptr; // No tokenizer for this model
@@ -54,7 +55,7 @@ namespace causallm {
     tokenizer = tokenizers::Tokenizer::FromBlobJSON(
       LoadBytessFromFile(nntr_cfg["tokenizer_file"]));
   }
-  }
+}
 
 void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
                                           json &nntr_cfg) {
@@ -169,7 +170,7 @@ void T5Gemma2Transformer::setupParameters(json &cfg, json &generation_cfg,
         if (rope_params.contains("full_attention")) {
           json &rope_cfg = rope_params["full_attention"];
           ENC_ROPE_THETA = rope_cfg.value("rope_theta", 1000000.0f);
-          ENC_ROPE_FACTOR= rope_cfg.value("factor", 8.0f);
+          ENC_ROPE_FACTOR = rope_cfg.value("factor", 8.0f);
         } else {
           ENC_ROPE_THETA = 1000000.0f;
         }
@@ -303,7 +304,8 @@ std::vector<LayerHandle> T5Gemma2Transformer::createPatchEmbed() {
 std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
   std::string prefix, const int layer_id, int seq_len, int n_heads,
   int head_dim, int gqa_size, std::string query_name, std::string key_name,
-  std::string value_name, std::string cross_key_name, std::string cross_value_name) {
+  std::string value_name, std::string cross_key_name,
+  std::string cross_value_name) {
 
   std::vector<LayerHandle> layers;
 
@@ -360,9 +362,12 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
 
   // Cross Key projection (encoder hidden states -> cross_K)
   std::vector<std::string> cross_k_params = {
-    withKey("name", cross_K), withKey("unit", head_dim * n_heads / gqa_size),
-    withKey("disable_bias", "true"), withKey("input_layers", cross_key_name),
-    withKey("weight_initializer", "ones"),};
+    withKey("name", cross_K),
+    withKey("unit", head_dim * n_heads / gqa_size),
+    withKey("disable_bias", "true"),
+    withKey("input_layers", cross_key_name),
+    withKey("weight_initializer", "ones"),
+  };
   layers.push_back(createLayer("fully_connected", cross_k_params));
 
   // Cross Value projection (encoder hidden states -> cross_V)
@@ -399,15 +404,18 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
     withKey("name", A),
     withKey("num_heads", n_heads),
     withKey("num_heads_kv", n_heads / gqa_size),
-    withKey("max_timestep", std::to_string(MAX_SEQ_LEN + INIT_SEQ_LEN)),  // decoder + encoder seq len
+    withKey(
+      "max_timestep",
+      std::to_string(MAX_SEQ_LEN + INIT_SEQ_LEN)), // decoder + encoder seq len
     withKey("sliding_window",
             is_full_attention ? UINT_MAX : DEC_SLIDING_WINDOW),
     withKey("use_rope", "false"),
     withKey("rope_theta",
             is_full_attention ? DEC_ROPE_THETA : DEC_ROPE_THETA_SLIDING),
     withKey("max_new_tokens", std::to_string(0)),
-    withKey("is_causal", "true"),  // Decoder is causal
-    withKey("input_layers", {Q_norm, merged_cache + "(0)", merged_cache + "(1)"})};
+    withKey("is_causal", "true"), // Decoder is causal
+    withKey("input_layers",
+            {Q_norm, merged_cache + "(0)", merged_cache + "(1)"})};
   layers.push_back(createLayer("mha_core", a_params));
 
   // === Output Projection ===
@@ -419,8 +427,6 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
 
   return layers;
 }
-
-
 
 // TODO : vision에서 코드 재활용 가능한지는 나중에 확인
 std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
@@ -446,7 +452,7 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
     withKey("weight_initializer", "ones")};
   layers.push_back(createLayer("fully_connected", v_params));
 
-   // K layer
+  // K layer
   std::vector<std::string> k_params = {
     withKey("name", K), withKey("unit", head_dim * n_heads / gqa_size),
     withKey("disable_bias", "true"), withKey("input_layers", key_name),
@@ -491,9 +497,8 @@ std::vector<LayerHandle> T5Gemma2Transformer::createSelfAttention(
             is_full_attention ? ENC_ROPE_THETA : ENC_ROPE_THETA_SLIDING),
     withKey("rope_scaling_type", is_full_attention ? "linear" : "default"),
     withKey("rope_scaling_factor", ENC_ROPE_FACTOR),
-    // set "max_new_tokens" to 1 for encoding mode 
-    withKey("max_new_tokens", std::to_string(1)),
-    withKey("is_causal", "false"),
+    // set "max_new_tokens" to 1 for encoding mode
+    withKey("max_new_tokens", std::to_string(1)), withKey("is_causal", "false"),
     withKey("input_layers", {Q_norm, K_norm, V})};
   layers.push_back(createLayer("mha_core", a_params));
 
@@ -528,9 +533,9 @@ T5Gemma2Transformer::createMlp(std::string prefix, int dim,
 
   // Fused GeGLU: tanh_gelu(gate) * up
   layers.push_back(createLayer(
-    "geglu", {withKey("name", prefix + "ffn_geglu"),
-               withKey("input_layers",
-                       prefix + "ffn_gate" + "," + prefix + "ffn_up")}));
+    "geglu",
+    {withKey("name", prefix + "ffn_geglu"),
+     withKey("input_layers", prefix + "ffn_gate" + "," + prefix + "ffn_up")}));
 
   // Down projection
   layers.push_back(createLayer(
@@ -672,7 +677,6 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
       tokenizer->Encode(processor_output.processed_text);
     unsigned int input_len = input_ids.size();
 
-
     ACTUAL_SEQ_LEN = input_len;
 
     if (input_len == 0) {
@@ -727,7 +731,7 @@ void T5Gemma2Transformer::run(const WSTR prompt, bool do_sample,
     // TODO : free ENCODER, and initialize decoder here
 
     // Step 2 - Decoder
-    std::cout << runDecoder(encoder_output) << std::endl;
+    std::cout << runDecoder(encoder_output, input_len) << std::endl;
   }
 
   std::cout << "\n========== End of Inference ==========\n" << std::endl;
@@ -934,20 +938,16 @@ void T5Gemma2Transformer::createDecoderModel() {
   std::vector<LayerHandle> decoder_layers;
 
   // Input layer for decoder tokens
-  
+
   // TODO : SEQ_LEN set to 1 for concat, could need to change for multiple input
+  decoder_layers.push_back(
+    createLayer("input", {withKey("name", "decoder_token_input"),
+                          withKey("input_shape", "1:1:" + std::to_string(1))}));
+
   decoder_layers.push_back(createLayer(
-    "input", {withKey("name", "decoder_token_input"),
-              withKey("input_shape", "1:1:" + std::to_string(1))}));
-
-
-
-  // TODO : can we change this to actual expected encoder length? 
-  // (this could be calculated before createModel via using prompt)
-  decoder_layers.push_back(createLayer(
-    "input",
-    {withKey("name", "encoder_input"),
-     withKey("input_shape", "1:" + std::to_string(INIT_SEQ_LEN) + ":" +std::to_string(ENC_HIDDEN_SIZE))}));
+    "input", {withKey("name", "encoder_input"),
+              withKey("input_shape", "1:" + std::to_string(INIT_SEQ_LEN) + ":" +
+                                       std::to_string(ENC_HIDDEN_SIZE))}));
 
   // Embedding layer
   float embed_scale = std::sqrt(DEC_HIDDEN_SIZE);
@@ -1081,17 +1081,16 @@ std::vector<float> T5Gemma2Transformer::runEncoder(float *input_data,
   std::vector<float *> input_tensors = {input_data};
   std::vector<float *> label_tensors;
 
-
   std::vector<ml::train::TensorDim> input_dims;
   ml::train::TensorDim input_dim(1, 1, input_len, ENC_HIDDEN_SIZE);
   input_dims.push_back(input_dim);
-  // encoder_model->resetInputDimension(input_dims);
+  encoder_model->resetInputDimension(input_dims);
 
   // Inference
   auto start_time = std::chrono::high_resolution_clock::now();
 
   auto encoder_output = encoder_model->incremental_inference(
-    1, input_tensors, label_tensors, input_len, 0, input_len, false);
+    1, input_tensors, label_tensors, input_len, 0, input_len, true);
 
   auto end_time = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1102,6 +1101,11 @@ std::vector<float> T5Gemma2Transformer::runEncoder(float *input_data,
   std::vector<float> saved_output(output_size);
   std::copy(encoder_output[0], encoder_output[0] + output_size,
             saved_output.begin());
+
+  for (int i = 0; i < saved_output.size(); ++i) {
+    std::cout << saved_output[i] << " ";
+  }
+  std::cout << std::endl;
 
   std::cout << "[Encoder] Inference completed in " << duration.count() << " ms"
             << std::endl;
@@ -1119,17 +1123,17 @@ std::vector<float> T5Gemma2Transformer::runEncoder(float *input_data,
   std::cout << "[Encoder] Inference complete (memory held for potential reuse)"
             << std::endl;
 
-
-              std::cout << "=================[ LLM with NNTrainer ]===================\n";
-  std::cout << "prefill: " << input_len << " tokens, "
-            << duration.count() << " ms, "
-            << ((double)input_len / duration.count() * 1000) << " TPS\n";
+  std::cout << "=================[ LLM with NNTrainer ]===================\n";
+  std::cout << "prefill: " << input_len << " tokens, " << duration.count()
+            << " ms, " << ((double)input_len / duration.count() * 1000)
+            << " TPS\n";
 
   return saved_output;
 }
 
 std::string
-T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
+T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output,
+                                const int encoder_output_seq_len) {
   if (!decoder_initialized) {
     throw std::runtime_error(
       "Decoder not initialized. Call initialize() first.");
@@ -1159,19 +1163,43 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
 
   // Decoder inputs: [decoder_tokens, encoder_output]
   // TODO : 지금은 topo sort되기 전이라 뒤집어 있지만 나중에 다시 뒤집어야 함
-  std::vector<float *> decoder_inputs = {encoder_output_mutable.data(), decoder_tokens
-                                         };
+  std::vector<float *> decoder_inputs = {encoder_output_mutable.data(),
+                                         decoder_tokens};
   std::vector<float *> label_tensors;
   std::vector<unsigned int> generated_tokens;
 
   // Inference
   auto start_time = std::chrono::high_resolution_clock::now();
 
-          
   // Token Generation (no prefill)
   for (unsigned int i = 0; i < NUM_TO_GENERATE; ++i) {
+
+    // reset every time to (to + enc_output_len).
+    // It is because the max height needed by the model is
+    // output of merged Key/Value, which is (to + enc_output_len)
+
+    std::vector<ml::train::TensorDim> input_dims;
+    ml::train::TensorDim input_dim(1, 1, (i + 1) + encoder_output_seq_len,
+                                   ENC_HIDDEN_SIZE);
+    input_dims.push_back(input_dim);
+
+    decoder_model->resetInputDimension(input_dims);
+
+    std::unordered_map<std::string, unsigned int> custom_to_map = {};
+
+    for (int j = 0; j < DEC_NUM_LAYERS; ++j) {
+      std::string prefix = "decoder_layer" + std::to_string(j) + "_";
+      auto wv = prefix + "cross_wv";
+      auto wk = prefix + "cross_wk";
+      auto wk_norm = wk + "_norm";
+
+      custom_to_map[wv] = encoder_output_seq_len;
+      custom_to_map[wk] = encoder_output_seq_len;
+      custom_to_map[wk_norm] = encoder_output_seq_len;
+    }
+
     auto gen_output = decoder_model->incremental_inference(
-      1, decoder_inputs, label_tensors, 1, i, i + 1, false);
+      1, decoder_inputs, label_tensors, 1, i, i + 1, false, &custom_to_map);
 
     unsigned int new_token = generate(gen_output[0], false)[0];
 
@@ -1183,7 +1211,6 @@ T5Gemma2Transformer::runDecoder(const std::vector<float> &encoder_output) {
 
     generated_tokens.push_back(new_token);
 
-   
     decoder_tokens[0] = static_cast<float>(new_token);
   }
 

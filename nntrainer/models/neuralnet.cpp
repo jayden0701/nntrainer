@@ -438,7 +438,7 @@ sharedConstTensors NeuralNetwork::forwarding(sharedConstTensors input,
 
 sharedConstTensors NeuralNetwork::incremental_forwarding(
   unsigned int from, unsigned int to, bool training,
-  const std::unordered_map<std::string, unsigned int>* custom_to_dict,
+  const std::unordered_map<std::string, unsigned int> *custom_to_dict,
   std::function<bool(void *userdata)> stop_cb, void *userdata) {
 
   unsigned int lookahead = std::get<props::FsuLookahead>(model_flex_props);
@@ -450,69 +450,76 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
     }
   }
   std::function<void(std::shared_ptr<LayerNode>, bool)> forwarding_op =
-    [this, from, to, stop_cb, fsu_mode,
-     lookahead, custom_to_dict](std::shared_ptr<LayerNode> node, bool training) -> void {
+    [this, from, to, stop_cb, fsu_mode, lookahead,
+     custom_to_dict](std::shared_ptr<LayerNode> node, bool training) -> void {
     PROFILE_MEM_ANNOTATE("Forwarding for layer: " + node->getName());
 
-    unsigned int target_to = to; 
-    
+    unsigned int target_to = to;
+
+    // for (const auto& [key, value] : *custom_to_dict) {
+    //     std::cout << key << " " << value << std::endl;
+    // }
+
     if (custom_to_dict != nullptr) {
-        std::string layer_name = node->getName();
-        for (const auto& pair : *custom_to_dict) {
-            if (layer_name.find(pair.first) != std::string::npos) {
-                target_to = pair.second; 
-                break; 
-            }
-        }
-    }
-
-      std::cout << "\n=== Layer: " << node->getName() << " ===" << std::endl;
-      std::cout << "From: " << from << ", To: " << to << std::endl;
-      std::cout << "Layer type: " << node->getType() << std::endl;
-      
-      // Print input tensors
-      auto &rc = node->getRunContext();
-      for (unsigned int i = 0; i < rc.getNumInputs(); ++i) {
-        auto &input = rc.getInput(i);
-        std::cout << "Input " << i << " shape: " << input.getDim() << std::endl;
-        
-        if (input.getDataType() == ml::train::TensorDim::DataType::FP32) {
-          const float *in_data = input.getData<float>();
-          std::cout << "  Sample values (first 10): ";
-          for (int j = 0; j < std::min(10, (int)input.size()); ++j) {
-            std::cout << in_data[j] << " ";
-          }
-          std::cout << std::endl;
-          
-          // std::cout << "  Sample values (last 5): ";
-          // for (int j = std::max(0, (int)input.size() - 5); j < (int)input.size(); ++j) {
-          //   std::cout << in_data[j] << " ";
-          // }
-          // std::cout << std::endl;
-          
-          // Print statistics
-
-          int start_idx = input.getDim().width() * from;
-          
-          float in_min = in_data[start_idx], in_max = in_data[start_idx], in_sum = 0.0f;
-          for (unsigned int j = 0; j < input.getDim().width() * (to - from); ++j) {
-            in_min = std::min(in_min, in_data[j]);
-            in_max = std::max(in_max, in_data[j]);
-            in_sum += in_data[j];
-          }
-          float in_mean = in_sum / input.size();
-          std::cout << "  Stats - Min: " << in_min << ", Max: " << in_max 
-                    << ", Mean: " << in_mean << std::endl;
+      std::string layer_name = node->getName();
+      for (const auto &pair : *custom_to_dict) {
+        if (layer_name.find(pair.first) != std::string::npos) {
+          target_to = pair.second;
+          break;
         }
       }
+    }
+
+    // std::cout << "\n=== Layer: " << node->getName() << " ===" << std::endl;
+    // std::cout << "From: " << from << ", To: " << to << std::endl;
+    // std::cout << "Layer type: " << node->getType() << std::endl;
+
+    // // Print input tensors
+    // auto &rc = node->getRunContext();
+    // for (unsigned int i = 0; i < rc.getNumInputs(); ++i) {
+    //   auto &input = rc.getInput(i);
+    //   std::cout << "Input " << i << " shape: " << input.getDim() <<
+    //   std::endl;
+
+    //   if (input.getDataType() == ml::train::TensorDim::DataType::FP32) {
+    //     const float *in_data = input.getData<float>();
+    //     std::cout << "  Sample values (first 10): ";
+    //     for (int j = 0; j < std::min(10, (int)input.size()); ++j) {
+    //       std::cout << in_data[j] << " ";
+    //     }
+    //     std::cout << std::endl;
+
+    //     // std::cout << "  Sample values (last 5): ";
+    //     // for (int j = std::max(0, (int)input.size() - 5); j <
+    //     (int)input.size(); ++j) {
+    //     //   std::cout << in_data[j] << " ";
+    //     // }
+    //     // std::cout << std::endl;
+
+    //     // Print statistics
+
+    //     int start_idx = input.getDim().width() * from;
+
+    //     float in_min = in_data[start_idx], in_max = in_data[start_idx],
+    //     in_sum = 0.0f; for (unsigned int j = 0; j < input.getDim().width() *
+    //     (to - from); ++j) {
+    //       in_min = std::min(in_min, in_data[j]);
+    //       in_max = std::max(in_max, in_data[j]);
+    //       in_sum += in_data[j];
+    //     }
+    //     float in_mean = in_sum / input.size();
+    //     std::cout << "  Stats - Min: " << in_min << ", Max: " << in_max
+    //               << ", Mean: " << in_mean << std::endl;
+    //   }
+    // }
 
     auto f = std::get<0>(node->getExecutionOrder());
     if (exec_mode == ExecutionMode::TRAIN or
         (exec_mode == ExecutionMode::INFERENCE and !fsu_mode)) {
       model_graph.flushCacheExcept(f);
-      
-      node->incremental_forwarding(from, target_to, training); 
-      
+
+      node->incremental_forwarding(from, target_to, training);
+
     } else {
       model_graph.checkLoadComplete(f);
       node->incremental_forwarding(from, target_to, training);
@@ -525,11 +532,10 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
                                             stop_cb, userdata);
 }
 
-sharedConstTensors
-NeuralNetwork::incremental_forwarding(unsigned int from, unsigned int to,
-                                      sharedConstTensors input,
-                                      sharedConstTensors label, bool training, 
-                                      const std::unordered_map<std::string, unsigned int>* custom_to_dict) {
+sharedConstTensors NeuralNetwork::incremental_forwarding(
+  unsigned int from, unsigned int to, sharedConstTensors input,
+  sharedConstTensors label, bool training,
+  const std::unordered_map<std::string, unsigned int> *custom_to_dict) {
   auto current_batch = model_graph.getBatchSize();
   NNTR_THROW_IF(input[0]->batch() != current_batch ||
                   (!label.empty() && label[0]->batch() != current_batch),
@@ -540,8 +546,8 @@ NeuralNetwork::incremental_forwarding(unsigned int from, unsigned int to,
     << " target_batch: " << current_batch;
 
   model_graph.setInputsLabels(input, label);
-  
-  return incremental_forwarding(from, to, training, custom_to_dict); 
+
+  return incremental_forwarding(from, to, training, custom_to_dict);
 }
 
 /**
@@ -797,13 +803,15 @@ void NeuralNetwork::load(const std::string &file_path,
         weight->getVariableRef().setFileOffset(start_from - size);
         file_offset.emplace_back(std::make_pair(start_from - size, size));
       } else {
-        /// If the weight is already seen, we still need to set the offset for this
-        /// tensor instance to point to the correct location. Ideally, shared
-        /// tensors share the memory so this might be redundant for `read`, but
-        /// ensures consistency. However, since they share memory, `Tensor::read`
-        /// on the first instance populates the memory for all. The critical fix
-        /// is NOT incrementing `start_from` again.
-        // weight->getVariableRef().setFileOffset( ... ); // No-op: shared tensors rely on the underlying memory being filled by the first owner.
+        /// If the weight is already seen, we still need to set the offset for
+        /// this tensor instance to point to the correct location. Ideally,
+        /// shared tensors share the memory so this might be redundant for
+        /// `read`, but ensures consistency. However, since they share memory,
+        /// `Tensor::read` on the first instance populates the memory for all.
+        /// The critical fix is NOT incrementing `start_from` again.
+        // weight->getVariableRef().setFileOffset( ... ); // No-op: shared
+        // tensors rely on the underlying memory being filled by the first
+        // owner.
       }
     }
   }
@@ -851,10 +859,10 @@ void NeuralNetwork::load(const std::string &file_path,
 
             // auto num_weights = node->getNumWeights();
             // if (static_cast<unsigned int>(num_weights) != 0) {
-            //   std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() << "\n";
-            //   auto num_weights = node->getNumWeights();
-            //   std::cout << "DEBUG: num weight: " << num_weights << "\n";
-            //   for (size_t i = 0; i < num_weights; i++) {
+            //   std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() <<
+            //   "\n"; auto num_weights = node->getNumWeights(); std::cout <<
+            //   "DEBUG: num weight: " << num_weights << "\n"; for (size_t i =
+            //   0; i < num_weights; i++) {
             //     auto weight =
             //       node->getWeightObject(static_cast<unsigned int>(i));
             //     std::cout << "DEBUG: weight: "
@@ -862,10 +870,6 @@ void NeuralNetwork::load(const std::string &file_path,
             //               << std::endl;
             //   }
             // }
-
-
-            
-
 
           } else {
 #if defined(_WIN32)
@@ -1201,18 +1205,17 @@ NeuralNetwork::inference(unsigned int batch_size,
   return output;
 }
 
-sharedConstTensors
-NeuralNetwork::incremental_inference(sharedConstTensors X,
-                                     unsigned int init_seq_len,
-                                     unsigned int from, unsigned int to,
-  const std::unordered_map<std::string, unsigned int>* custom_to_dict) {
+sharedConstTensors NeuralNetwork::incremental_inference(
+  sharedConstTensors X, unsigned int init_seq_len, unsigned int from,
+  unsigned int to,
+  const std::unordered_map<std::string, unsigned int> *custom_to_dict) {
   return incremental_inference(X, {}, init_seq_len, from, to, custom_to_dict);
 }
 
 sharedConstTensors NeuralNetwork::incremental_inference(
   sharedConstTensors X, sharedConstTensors label, unsigned int init_seq_len,
   unsigned int from, unsigned int to,
-  const std::unordered_map<std::string, unsigned int>* custom_to_dict) {
+  const std::unordered_map<std::string, unsigned int> *custom_to_dict) {
   if (model_graph.getBatchSize() != X[0]->batch()) {
     model_graph.setBatchSize(X[0]->batch());
   }
@@ -1236,6 +1239,7 @@ sharedConstTensors NeuralNetwork::incremental_inference(
   /** Clear the set inputs and labels */
   model_graph.setInputsLabels({}, {});
 
+
   return out;
 }
 
@@ -1253,10 +1257,6 @@ std::vector<float *> NeuralNetwork::incremental_inference(
 
   for (unsigned int idx = 0; idx < in_dim.size(); idx++) {
     in_dim[idx].batch(batch_size);
-        auto d = in_dim[idx];
-
-    auto in_dim = getInputDimension();
-
     input_tensors.emplace_back(MAKE_SHARED_TENSOR(Tensor::Map(
       input[idx], in_dim[idx].getDataLen() * sizeof(float), in_dim[idx], 0)));
   }
@@ -1343,7 +1343,7 @@ std::vector<float *> NeuralNetwork::incremental_inference(
   unsigned int batch_size, const std::vector<float *> &input,
   const std::vector<float *> &label, unsigned int init_seq_len,
   unsigned int from, unsigned int to, bool output_hidden_state,
-  const std::unordered_map<std::string, unsigned int>* custom_to_dict) {
+  const std::unordered_map<std::string, unsigned int> *custom_to_dict) {
 
   // auto start_in_neuralnet = std::chrono::high_resolution_clock::now();
 
@@ -1354,7 +1354,7 @@ std::vector<float *> NeuralNetwork::incremental_inference(
 
   for (unsigned int idx = 0; idx < in_dim.size(); idx++) {
     in_dim[idx].batch(batch_size);
-        auto d = in_dim[idx];
+    auto d = in_dim[idx];
 
     auto in_dim = getInputDimension();
 
@@ -1373,11 +1373,11 @@ std::vector<float *> NeuralNetwork::incremental_inference(
         Tensor::Map(label[idx], label_dim[idx].getDataLen() * sizeof(float),
                     label_dim[idx], 0)));
     }
-    output_tensors = incremental_inference(input_tensors, label_tensors,
-                                           init_seq_len, from, to, custom_to_dict);
+    output_tensors = incremental_inference(
+      input_tensors, label_tensors, init_seq_len, from, to, custom_to_dict);
   } else {
-    output_tensors =
-      incremental_inference(input_tensors, init_seq_len, from, to, custom_to_dict);
+    output_tensors = incremental_inference(input_tensors, init_seq_len, from,
+                                           to, custom_to_dict);
   }
   // auto end_increment = std::chrono::high_resolution_clock::now();
   std::vector<float *> output;
