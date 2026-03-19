@@ -454,16 +454,34 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
      lookahead, custom_to_dict](std::shared_ptr<LayerNode> node, bool training) -> void {
     PROFILE_MEM_ANNOTATE("Forwarding for layer: " + node->getName());
 
-    unsigned int target_to = to; 
-    
+    unsigned int target_from = from;
+    unsigned int target_to = to;
+
     if (custom_to_dict != nullptr) {
-        std::string layer_name = node->getName();
-        for (const auto& pair : *custom_to_dict) {
-            if (layer_name.find(pair.first) != std::string::npos) {
-                target_to = pair.second; 
-                break; 
-            }
+      std::string layer_name = node->getName();
+      for (const auto &pair : *custom_to_dict) {
+        if (pair.first.size() > 5 &&
+            pair.first.compare(pair.first.size() - 5, 5, "@from") == 0) {
+          std::string target_layer_name =
+            pair.first.substr(0, pair.first.size() - 5);
+          if (layer_name.find(target_layer_name) != std::string::npos) {
+            target_from = pair.second;
+            break;
+          }
         }
+      }
+
+      for (const auto &pair : *custom_to_dict) {
+        if (pair.first.size() > 5 &&
+            pair.first.compare(pair.first.size() - 5, 5, "@from") == 0) {
+          continue;
+        }
+
+        if (layer_name.find(pair.first) != std::string::npos) {
+          target_to = pair.second;
+          break;
+        }
+      }
     }
 
       // std::cout << "\n=== Layer: " << node->getName() << " ===" << std::endl;
@@ -511,11 +529,11 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
         (exec_mode == ExecutionMode::INFERENCE and !fsu_mode)) {
       model_graph.flushCacheExcept(f);
       
-      node->incremental_forwarding(from, target_to, training); 
+      node->incremental_forwarding(target_from, target_to, training);
       
     } else {
       model_graph.checkLoadComplete(f);
-      node->incremental_forwarding(from, target_to, training);
+      node->incremental_forwarding(target_from, target_to, training);
       model_graph.inActive(f);
       model_graph.LoadTensors(f + lookahead);
     }

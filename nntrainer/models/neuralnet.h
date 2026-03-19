@@ -241,6 +241,8 @@ public:
    * @brief     Incremental forward Propagation of the neural network
    * @param[in] custom_to_dict (Optional) per-layer `to` override map. (key: layer_name, value: custom_to)
    *            If present, the layer uses `custom_to` instead of the global `to`.
+   *            Keys suffixed with `@from` override the layer-local `from`
+   *            value while keeping the existing API shape.
    */
   sharedConstTensors incremental_forwarding(
     unsigned int from, unsigned int to, bool training = true,
@@ -255,6 +257,8 @@ public:
    * @param[in] label List of Label Tensors for the model
    * @param[in] custom_to_dict (Optional) per-layer `to` override map. (key: layer_name, value: custom_to)
    *            If present, the layer uses `custom_to` instead of the global `to`.
+   *            Keys suffixed with `@from` override the layer-local `from`
+   *            value while keeping the existing API shape.
    * @retval    List of Output Tensors
    */
   sharedConstTensors incremental_forwarding(unsigned int from, unsigned int to,
@@ -383,6 +387,8 @@ public:
    * @param[in] to next working step index
    * @param[in] custom_to_dict (Optional) per-layer `to` override map. (key: layer_name, value: custom_to)
    *            If present, the layer uses `custom_to` instead of the global `to`.
+   *            Keys suffixed with `@from` override the layer-local `from`
+   *            value while keeping the existing API shape.
    * @retval shared_ptr<const Tensor>
    */
   sharedConstTensors incremental_inference(sharedConstTensors X,
@@ -399,6 +405,8 @@ public:
    * @param[in] to next working step index
    * @param[in] custom_to_dict (Optional) per-layer `to` override map. (key: layer_name, value: custom_to)
    *            If present, the layer uses `custom_to` instead of the global `to`.
+   *            Keys suffixed with `@from` override the layer-local `from`
+   *            value while keeping the existing API shape.
    * @retval shared_ptr<const Tensor>
    */
   sharedConstTensors incremental_inference(sharedConstTensors X,
@@ -438,6 +446,8 @@ public:
    * @param[in] output_hidden_state return last hidden state if true else return
    * @param[in] custom_to_dict per-layer `to` override map. (key: layer_name, value: custom_to)
    *            If present, the layer uses `custom_to` instead of the global `to`.
+   *            Keys suffixed with `@from` override the layer-local `from`
+   *            value while keeping the existing API shape.
    * all hidden state
    * @retval list of output as float *
    * @note The output memory must not be freed by the caller

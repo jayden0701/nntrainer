@@ -1137,6 +1137,9 @@ for(int i=0; i<DEC_NUM_LAYERS; ++i)
   custom_to_map.insert({cross_K,ACTUAL_SEQ_LEN});
   custom_to_map.insert({cross_V,ACTUAL_SEQ_LEN});
   custom_to_map.insert({cross_K_norm,ACTUAL_SEQ_LEN});
+  custom_to_map.insert({cross_K + "@from", 0});
+  custom_to_map.insert({cross_V + "@from", 0});
+  custom_to_map.insert({cross_K_norm + "@from", 0});
 
 
 }
