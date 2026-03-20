@@ -96,7 +96,8 @@ private:
 
   RuntimeState &getRuntimeState(nntrainer::RunLayerContext &context);
   void resetRuntimeState(nntrainer::RunLayerContext &context);
-  void cacheEncoderIfNeeded(nntrainer::RunLayerContext &context, RuntimeState &state);
+  void cacheEncoderIfNeeded(nntrainer::RunLayerContext &context, RuntimeState &state, unsigned int from,
+  unsigned int to);
   void appendDecoderChunk(nntrainer::RunLayerContext &context, RuntimeState &state,
                           unsigned int from, unsigned int to);
   void writeMergedOutputs(nntrainer::RunLayerContext &context, const RuntimeState &state);

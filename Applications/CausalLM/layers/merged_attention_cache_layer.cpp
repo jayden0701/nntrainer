@@ -53,24 +53,25 @@ void MergedAttentionCacheLayer::finalize(nntrainer::InitLayerContext &context) {
 
   context.setOutputDimensions({merged_key_dim, merged_value_dim});
 
+
   tensor_idx[ENCODER_KEY_CACHE] = context.requestTensor(
-    encoder_key_dim, "encoder_key_cache", nntrainer::Initializer::NONE, true,
+    encoder_key_dim, "encoder_key_cache", nntrainer::Initializer::NONE, false,
     nntrainer::TensorLifespan::MAX_LIFESPAN);
   tensor_idx[ENCODER_VALUE_CACHE] = context.requestTensor(
     encoder_value_dim, "encoder_value_cache", nntrainer::Initializer::NONE,
-    true, nntrainer::TensorLifespan::MAX_LIFESPAN);
+    false, nntrainer::TensorLifespan::MAX_LIFESPAN);
 
   auto decoder_key_cache_dim = decoder_key_dim;
   decoder_key_cache_dim.height(max_decoder_cache_len);
   tensor_idx[DECODER_KEY_CACHE] = context.requestTensor(
     decoder_key_cache_dim, "decoder_key_cache", nntrainer::Initializer::NONE,
-    true, nntrainer::TensorLifespan::MAX_LIFESPAN);
+    false, nntrainer::TensorLifespan::MAX_LIFESPAN);
 
   auto decoder_value_cache_dim = decoder_value_dim;
   decoder_value_cache_dim.height(max_decoder_cache_len);
   tensor_idx[DECODER_VALUE_CACHE] =
     context.requestTensor(decoder_value_cache_dim, "decoder_value_cache",
-                          nntrainer::Initializer::NONE, true,
+                          nntrainer::Initializer::NONE, false,
                           nntrainer::TensorLifespan::MAX_LIFESPAN);
 }
 
@@ -123,7 +124,8 @@ void MergedAttentionCacheLayer::copyTensorByHeight(
 }
 
 void MergedAttentionCacheLayer::cacheEncoderIfNeeded(
-  nntrainer::RunLayerContext &context, RuntimeState &state) {
+  nntrainer::RunLayerContext &context, RuntimeState &state, unsigned int from = 0,
+  unsigned int to = 1) {
   if (state.encoder_cached) {
     return;
   }
@@ -140,8 +142,8 @@ void MergedAttentionCacheLayer::cacheEncoderIfNeeded(
                      encoder_value.getDim().height());
   state.encoder_cached = true;
 
-  // initial height is encoder_seq_len + 1
-  state.encoder_cached_length = encoder_key.getDim().height() - 1;
+  // initial height is encoder_seq_len + (to - from)
+  state.encoder_cached_length = encoder_key.getDim().height() - (to - from);
 }
 
 void MergedAttentionCacheLayer::appendDecoderChunk(
@@ -162,28 +164,26 @@ void MergedAttentionCacheLayer::appendDecoderChunk(
     context.getTensor(tensor_idx[DECODER_VALUE_CACHE]);
 
   const unsigned int input_height = decoder_key.getDim().height();
-  const unsigned int src_offset_height = input_height >= to ? from : 0;
-  const unsigned int available_steps = std::min(
-    requested_steps, input_height - std::min(src_offset_height, input_height));
+  // decoder side key/value is always from 0
+  // change this if from - to mechanism changes
+  const unsigned int src_offset_height = 0;
 
-  if (available_steps == 0) {
-    return;
-  }
 
-  NNTR_THROW_IF(state.decoder_cached_length + available_steps >
+
+  NNTR_THROW_IF(state.decoder_cached_length + requested_steps >
                   decoder_key_cache.getDim().height(),
                 std::invalid_argument)
     << "decoder key cache capacity exceeded";
-  NNTR_THROW_IF(state.decoder_cached_length + available_steps >
+  NNTR_THROW_IF(state.decoder_cached_length + requested_steps >
                   decoder_value_cache.getDim().height(),
                 std::invalid_argument)
     << "decoder value cache capacity exceeded";
 
   copyTensorByHeight(decoder_key, decoder_key_cache, src_offset_height,
-                     state.decoder_cached_length, available_steps);
+                     state.decoder_cached_length, requested_steps);
   copyTensorByHeight(decoder_value, decoder_value_cache, src_offset_height,
-                     state.decoder_cached_length, available_steps);
-  state.decoder_cached_length += available_steps;
+                     state.decoder_cached_length, requested_steps);
+  state.decoder_cached_length += requested_steps;
 }
 
 void MergedAttentionCacheLayer::writeMergedOutputs(
@@ -213,6 +213,13 @@ void MergedAttentionCacheLayer::writeMergedOutputs(
   copyTensorByHeight(encoder_value_cache, merged_value, 0,
                      state.decoder_cached_length, encoder_height);
 
+
+  std::string d1 = "decoder_layer0";
+  size_t found = context.getName().find(d1);
+  if (found == std::string::npos) {
+    return;
+  }
+
   auto &encoder_key = context.getInput(ENCODER_KEY);
   auto &encoder_value = context.getInput(ENCODER_VALUE);
 
@@ -224,6 +231,15 @@ void MergedAttentionCacheLayer::writeMergedOutputs(
 
   decoder_key.print(std::cout);
   decoder_value.print(std::cout);
+
+  std::cout << "----------------------------from here cache-------------------" << std::endl;
+
+  encoder_key_cache.print(std::cout);
+  encoder_value_cache.print(std::cout);
+
+  decoder_key_cache.print(std::cout);
+  decoder_value_cache.print(std::cout);
+
 
   merged_key.print(std::cout);
   merged_value.print(std::cout);
@@ -249,7 +265,13 @@ void MergedAttentionCacheLayer::incremental_forwarding(
     state = RuntimeState{false, 0u, 0u};
   }
 
-  cacheEncoderIfNeeded(context, state);
+  std::string d1 = "decoder_layer0";
+  size_t found = context.getName().find(d1);
+  if (found != std::string::npos) {
+    std::cout << "tmtm" << std::endl;
+  }
+
+  cacheEncoderIfNeeded(context, state, from, to);
   appendDecoderChunk(context, state, from, to);
   writeMergedOutputs(context, state);
 }

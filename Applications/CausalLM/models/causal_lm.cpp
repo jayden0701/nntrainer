@@ -519,10 +519,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
   global_token_len += (generation_cnt + init_len);
 
-  for(int i=0; i< ooottt.size(); ++i)
-  {
-    std::cout << ooottt[i] << " ";
-  }
+
 
   auto finish_generation = std::chrono::high_resolution_clock::now();
   auto generation_duration =

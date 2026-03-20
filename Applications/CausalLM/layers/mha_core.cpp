@@ -554,6 +554,11 @@ void MHACoreLayer::one_batch_incremental_forwarding(
   nntrainer::Tensor b_cached_value = cache_value.getSharedDataTensor(
     cached_value_dim, batch * cache_value_dim.getFeatureLen(), true);
 
+      std::cout << "self_attn_debug" << std::endl;
+      std::cout << "cache_key address: " << &cache_key << std::endl;
+std::cout << "b_cached_key address: " << &b_cached_key << std::endl;
+  b_cached_key.print(std::cout);
+  cache_key.print(std::cout);
 
   nntrainer::Tensor out_(
     1, 1,
