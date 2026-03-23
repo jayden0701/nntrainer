@@ -1421,22 +1421,7 @@ void MHACoreLayer::updateTensorsByInputDimensions(
     std::get<props::MaxNewTokens>(mha_core_props).get();
   max_timestep = height + max_new_tokens;
 
-  if (is_cross_attention) {
-    const ml::train::TensorDim &query_dim =
-      input_dimensions[INOUT_INDEX::QUERY];
-    const ml::train::TensorDim &key_dim = input_dimensions[INOUT_INDEX::KEY];
-    const ml::train::TensorDim &value_dim =
-      input_dimensions[INOUT_INDEX::VALUE];
-
-    context.updateInput(INOUT_INDEX::QUERY, query_dim);
-    context.updateInput(INOUT_INDEX::KEY, key_dim);
-    context.updateInput(INOUT_INDEX::VALUE, value_dim);
-    context.updateOutput(0, query_dim);
-    return;
-  }
-
-  ml::train::TensorDim kv_dim = input_dimensions[0];
-  kv_dim.width(kv_dim.width() / (num_heads_Q / num_heads_KV));
+  // TODO : inputDimension쪽 업데이트가 많이 늦을 거 같음으로, cross attn을 어떻게 할지 생각
 
   ml::train::TensorDim q_dim = context.getInput(INOUT_INDEX::QUERY).getDim();
   q_dim.height(input_dimensions[0].height());

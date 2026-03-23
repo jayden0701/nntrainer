@@ -407,13 +407,12 @@ std::vector<LayerHandle> T5Gemma2Transformer::createMergedAttention(
     withKey(
       "max_timestep",
       std::to_string(MAX_SEQ_LEN + INIT_SEQ_LEN)), // decoder + encoder seq len
-    withKey("sliding_window",
-            is_full_attention ? UINT_MAX : DEC_SLIDING_WINDOW),
     withKey("use_rope", "false"),
     withKey("rope_theta",
             is_full_attention ? DEC_ROPE_THETA : DEC_ROPE_THETA_SLIDING),
     withKey("max_new_tokens", std::to_string(0)),
     withKey("is_causal", "true"), // Decoder is causal
+    withKey("is_cross_attention", "true"),
     withKey("input_layers",
             {Q_norm, merged_cache + "(0)", merged_cache + "(1)"})};
   layers.push_back(createLayer("mha_core", a_params));
