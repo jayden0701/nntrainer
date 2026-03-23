@@ -15,6 +15,18 @@
 #include <node_exporter.h>
 #include <tensor.h>
 
+namespace {
+
+ml::train::TensorDim::DataType getMergedCacheDataType() {
+#ifdef ENABLE_FP16
+  return ml::train::TensorDim::DataType::FP16;
+#else
+  return ml::train::TensorDim::DataType::UINT16;
+#endif
+}
+
+} // namespace
+
 namespace causallm {
 
 MergedAttentionCacheLayer::MergedAttentionCacheLayer() :
@@ -41,27 +53,34 @@ void MergedAttentionCacheLayer::finalize(nntrainer::InitLayerContext &context) {
   const unsigned int max_decoder_cache_len =
     std::get<props::MaxDecoderCacheLen>(merged_attention_cache_props).get();
 
+  const auto cache_data_type = getMergedCacheDataType();
+
   auto merged_key_dim = encoder_key_dim;
   merged_key_dim.height(encoder_key_dim.height() + max_decoder_cache_len);
-  merged_key_dim.setTensorType(
-    {context.getFormat(), context.getActivationDataType()});
+  merged_key_dim.setTensorType({context.getFormat(), cache_data_type});
 
   auto merged_value_dim = encoder_value_dim;
   merged_value_dim.height(encoder_value_dim.height() + max_decoder_cache_len);
-  merged_value_dim.setTensorType(
-    {context.getFormat(), context.getActivationDataType()});
+  merged_value_dim.setTensorType({context.getFormat(), cache_data_type});
 
   context.setOutputDimensions({merged_key_dim, merged_value_dim});
 
 
+  auto encoder_key_cache_dim = encoder_key_dim;
+  encoder_key_cache_dim.setTensorType({context.getFormat(), cache_data_type});
   tensor_idx[ENCODER_KEY_CACHE] = context.requestTensor(
-    encoder_key_dim, "encoder_key_cache", nntrainer::Initializer::NONE, false,
-    nntrainer::TensorLifespan::MAX_LIFESPAN);
-  tensor_idx[ENCODER_VALUE_CACHE] = context.requestTensor(
-    encoder_value_dim, "encoder_value_cache", nntrainer::Initializer::NONE,
+    encoder_key_cache_dim, "encoder_key_cache", nntrainer::Initializer::NONE,
     false, nntrainer::TensorLifespan::MAX_LIFESPAN);
 
+  auto encoder_value_cache_dim = encoder_value_dim;
+  encoder_value_cache_dim.setTensorType({context.getFormat(), cache_data_type});
+  tensor_idx[ENCODER_VALUE_CACHE] = context.requestTensor(
+    encoder_value_cache_dim, "encoder_value_cache",
+    nntrainer::Initializer::NONE, false,
+    nntrainer::TensorLifespan::MAX_LIFESPAN);
+
   auto decoder_key_cache_dim = decoder_key_dim;
+  decoder_key_cache_dim.setTensorType({context.getFormat(), cache_data_type});
   decoder_key_cache_dim.height(max_decoder_cache_len);
   tensor_idx[DECODER_KEY_CACHE] = context.requestTensor(
     decoder_key_cache_dim, "decoder_key_cache", nntrainer::Initializer::NONE,
@@ -69,6 +88,7 @@ void MergedAttentionCacheLayer::finalize(nntrainer::InitLayerContext &context) {
 
   auto decoder_value_cache_dim = decoder_value_dim;
   decoder_value_cache_dim.height(max_decoder_cache_len);
+  decoder_value_cache_dim.setTensorType({context.getFormat(), cache_data_type});
   tensor_idx[DECODER_VALUE_CACHE] =
     context.requestTensor(decoder_value_cache_dim, "decoder_value_cache",
                           nntrainer::Initializer::NONE, false,
@@ -106,8 +126,10 @@ void MergedAttentionCacheLayer::copyTensorByHeight(
 
   auto src_dim = src.getDim();
   auto dst_dim = dst.getDim();
-  auto copy_dim = src_dim;
-  copy_dim.height(copy_height);
+  auto src_copy_dim = src_dim;
+  src_copy_dim.height(copy_height);
+  auto dst_copy_dim = dst_dim;
+  dst_copy_dim.height(copy_height);
 
   for (unsigned int b = 0; b < src_dim.batch(); ++b) {
     const unsigned int src_offset =
@@ -116,10 +138,10 @@ void MergedAttentionCacheLayer::copyTensorByHeight(
       b * dst_dim.getFeatureLen() + dst_offset_height * dst.width();
 
     nntrainer::Tensor src_slice =
-      src.getSharedDataTensor(copy_dim, src_offset, true);
+      src.getSharedDataTensor(src_copy_dim, src_offset, true);
     nntrainer::Tensor dst_slice =
-      dst.getSharedDataTensor(copy_dim, dst_offset, true);
-    dst_slice.copy(src_slice);
+      dst.getSharedDataTensor(dst_copy_dim, dst_offset, true);
+    dst_slice.copyData(src_slice);
   }
 }
 
