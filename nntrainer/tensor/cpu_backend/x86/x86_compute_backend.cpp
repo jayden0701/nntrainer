@@ -295,6 +295,23 @@ void swiglu(const unsigned int N, float *X, float *Y, float *Z, float alpha) {
   nntrainer::avx2::swiglu(N, X, Y, Z, alpha);
 }
 
+void tanh_gelu(const unsigned int N, const float *X, float *Y) {
+  // AVX implmenetation will be implemented, now fallback instead
+  __fallback_tanh_gelu(N, X, Y);
+}
+
+void tanh_gelu_v2(const unsigned int N, const float *X, float *Y) {
+  __fallback_tanh_gelu(N, X, Y);
+}
+
+void tanh_gelu_mul(const unsigned int N, float *X, float *Y, float *Z) {
+  __fallback_tanh_gelu_mul(N, X, Y, Z);
+}
+
+void tanh_gelu_v2_mul(const unsigned int N, float *X, float *Y, float *Z) {
+  __fallback_tanh_gelu_mul(N, X, Y, Z);
+}
+
 float max_val(const unsigned int N, float *X) { return __fallback_max(N, X); }
 
 void softmax(const unsigned int N, float *X, float *Y) {

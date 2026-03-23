@@ -41,6 +41,7 @@
 #include "qwen3_embedding.h"
 #include "qwen3_moe_causallm.h"
 #include "qwen3_slim_moe_causallm.h"
+#include <models/gemma3/function.h>
 #include "timm_vit/timm_vit_transformer.h"
 #include "t5gemma2/t5gemma2.h"
 #include <sys/resource.h>
@@ -219,8 +220,8 @@ int main(int argc, char *argv[]) {
   if (argc < 2) {
     std::cerr << "Usage: " << argv[0] << " <model_path> [input_prompt]\n"
               << "  <model_path>   : Path to model directory\n"
-              << "  [input_prompt] : Optional input text (uses sample_input if "
-                 "omitted)\n";
+              << "  [input_prompt] : Optional input text (uses sample_input or "
+                 "chat_input if omitted)\n";
     return EXIT_FAILURE;
   }
 
@@ -237,13 +238,6 @@ int main(int argc, char *argv[]) {
     json generation_cfg =
       causallm::LoadJsonFile(model_path + "/generation_config.json");
     json nntr_cfg = causallm::LoadJsonFile(model_path + "/nntr_config.json");
-
-    // Determine input text
-    if (argc >= 3) {
-      input_text = argv[2];
-    } else {
-      input_text = nntr_cfg["sample_input"].get<std::string>();
-    }
 
     if (nntr_cfg.contains("system_prompt")) {
       system_head_prompt =
@@ -265,6 +259,27 @@ int main(int argc, char *argv[]) {
     if (nntr_cfg.contains("model_type")) {
       std::string model_type = nntr_cfg["model_type"].get<std::string>();
       architecture = resolve_architecture(model_type, architecture);
+    }
+
+    // Determine input text
+    if (argc >= 3) {
+      input_text = argv[2];
+    } else {
+      if (nntr_cfg.contains("chat_input")) {
+        if (architecture == "Gemma3ForCausalLM") {
+          input_text = causallm::gemma3::apply_function_gemma_template(
+            nntr_cfg["chat_input"]);
+        } else {
+          std::cerr << "[Warning] 'chat_input' is set but support for model "
+                       "architecture '"
+                    << architecture
+                    << "' is not implemented. Falling back to 'sample_input'."
+                    << std::endl;
+          input_text = nntr_cfg["sample_input"].get<std::string>();
+        }
+      } else {
+        input_text = nntr_cfg["sample_input"].get<std::string>();
+      }
     }
 
     auto model = causallm::Factory::Instance().create(architecture, cfg,

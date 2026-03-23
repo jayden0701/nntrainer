@@ -781,7 +781,9 @@ void calc_trigonometric_vals_dup(unsigned int N_half, T *angle, T *cos_,
 void swiglu(const unsigned int N, float *X, float *Y, float *Z);
 
 /**
- * @brief swiglu function with alpha : X = (Y / (1 + exp(- alpha * Y))) * Z
+ * @brief swiglu function with alpha and neon
+ *  X = (Y / (1 + exp(- alpha * Y)))
+ *        * Z with loop unrolling x4
  * @param N number of elements in X
  * @param X float* for Vector X
  * @param Y float* for Vector Y
@@ -789,6 +791,50 @@ void swiglu(const unsigned int N, float *X, float *Y, float *Z);
  * @param alpha float
  */
 void swiglu(const unsigned int N, float *X, float *Y, float *Z, float alpha);
+
+/**
+ * @brief tanh_gelu function with neon but as
+ * Y = X / (1 + exp(-pi/4*(X + 0.04
+ *      4715X^3)) with loop unrolling x4
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (input)
+ * @param Y float * for Vector Y (output)
+ */
+void tanh_gelu(const unsigned int N, const float *X, float *Y);
+
+/**
+ * @brief tanh_gelu function with neon but with polynoial approximation
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (input)
+ * @param Y float * for Vector Y (output)
+ */
+void tanh_gelu_v2(const unsigned int N, const float *X, float *Y);
+
+/**
+ * @brief tanh_gelu function with neon but as
+ * X = Y / (1 + exp(-pi/4*(Y + 0.04
+ *      4715Y^3)) * Z with loop unrolling x4
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (output)
+ * @param Y float * for Vector Y (input)
+ * @param Z float * for Vector Z (input)
+ */
+void tanh_gelu_mul(const unsigned int N, float *X, float *Y, float *Z);
+
+/**
+ * @brief tanh_gelu function with neon but as
+ * X = Y / (1 + exp(-pi/4*(Y + 0.04
+ *      4715Y^3)) * Z
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (output)
+ * @param Y float * for Vector Y (input)
+ * @param Z float * for Vector Z (input)
+ */
+void tanh_gelu_v2_mul(const unsigned int N, float *X, float *Y, float *Z);
 
 /**
  * @brief returns maximum value of the vector X
@@ -1101,8 +1147,7 @@ void ele_sub(const unsigned N, const float *X, const float *Y, float *Z,
              unsigned int o_stride = 1);
 
 /**
- * @brief     elementwise vector division with neon : Z = X / (alpha * Y) + beta
- * * Z
+ * @brief elementwise vector division with neon : Z = X / (alpha * Y) + beta * Z
  * @note ZeroDivisionError is not guaranteed in this function
  * @param[in] N  length of the vector
  * @param[in] X float * for Vector X

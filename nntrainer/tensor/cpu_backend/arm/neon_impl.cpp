@@ -946,14 +946,82 @@ void swiglu(const unsigned int N, float *X, float *Y, float *Z) {
 void swiglu(const unsigned int N, float *X, float *Y, float *Z, float alpha) {
   unsigned int i = 0;
   float32x4_t neg_alpha_vec = vmovq_n_f32(-alpha);
+  float32x4_t one = vdupq_n_f32(1.0f);
+
+  for (; N - i >= 16; i += 16) {
+    float32x4_t y0 = vld1q_f32(&Y[i]);
+    float32x4_t y1 = vld1q_f32(&Y[i + 4]);
+    float32x4_t y2 = vld1q_f32(&Y[i + 8]);
+    float32x4_t y3 = vld1q_f32(&Y[i + 12]);
+
+    float32x4_t z0 = vld1q_f32(&Z[i]);
+    float32x4_t z1 = vld1q_f32(&Z[i + 4]);
+    float32x4_t z2 = vld1q_f32(&Z[i + 8]);
+    float32x4_t z3 = vld1q_f32(&Z[i + 12]);
+
+    float32x4_t alpha_y0 = vmulq_f32(y0, neg_alpha_vec);
+    float32x4_t alpha_y1 = vmulq_f32(y1, neg_alpha_vec);
+    float32x4_t alpha_y2 = vmulq_f32(y2, neg_alpha_vec);
+    float32x4_t alpha_y3 = vmulq_f32(y3, neg_alpha_vec);
+
+    float32x4_t exp0 = exp_ps(alpha_y0);
+    float32x4_t exp1 = exp_ps(alpha_y1);
+    float32x4_t exp2 = exp_ps(alpha_y2);
+    float32x4_t exp3 = exp_ps(alpha_y3);
+
+    exp0 = vaddq_f32(exp0, one);
+    exp1 = vaddq_f32(exp1, one);
+    exp2 = vaddq_f32(exp2, one);
+    exp3 = vaddq_f32(exp3, one);
+
+    exp0 = vdivq_f32(y0, exp0);
+    exp1 = vdivq_f32(y1, exp1);
+    exp2 = vdivq_f32(y2, exp2);
+    exp3 = vdivq_f32(y3, exp3);
+
+    exp0 = vmulq_f32(exp0, z0);
+    exp1 = vmulq_f32(exp1, z1);
+    exp2 = vmulq_f32(exp2, z2);
+    exp3 = vmulq_f32(exp3, z3);
+
+    vst1q_f32(&X[i], exp0);
+    vst1q_f32(&X[i + 4], exp1);
+    vst1q_f32(&X[i + 8], exp2);
+    vst1q_f32(&X[i + 12], exp3);
+  }
+
+  for (; N - i >= 8; i += 8) {
+    float32x4_t y0 = vld1q_f32(&Y[i]);
+    float32x4_t y1 = vld1q_f32(&Y[i + 4]);
+
+    float32x4_t z0 = vld1q_f32(&Z[i]);
+    float32x4_t z1 = vld1q_f32(&Z[i + 4]);
+
+    float32x4_t alpha_y0 = vmulq_f32(y0, neg_alpha_vec);
+    float32x4_t alpha_y1 = vmulq_f32(y1, neg_alpha_vec);
+
+    float32x4_t exp0 = exp_ps(alpha_y0);
+    float32x4_t exp1 = exp_ps(alpha_y1);
+
+    exp0 = vaddq_f32(exp0, one);
+    exp1 = vaddq_f32(exp1, one);
+
+    exp0 = vdivq_f32(y0, exp0);
+    exp1 = vdivq_f32(y1, exp1);
+
+    exp0 = vmulq_f32(exp0, z0);
+    exp1 = vmulq_f32(exp1, z1);
+
+    vst1q_f32(&X[i], exp0);
+    vst1q_f32(&X[i + 4], exp1);
+  }
 
   for (; N - i >= 4; i += 4) {
     float32x4_t y0_3 = vld1q_f32(&Y[i]);
     float32x4_t z0_3 = vld1q_f32(&Z[i]);
     float32x4_t alpha_y0_3 = vmulq_f32(y0_3, neg_alpha_vec);
     float32x4_t exp0_3 = exp_ps(alpha_y0_3);
-
-    exp0_3 = vaddq_f32(exp0_3, vmovq_n_f32(1.f));
+    exp0_3 = vaddq_f32(exp0_3, one);
     exp0_3 = vdivq_f32(y0_3, exp0_3);
     exp0_3 = vmulq_f32(exp0_3, z0_3);
 
@@ -961,6 +1029,347 @@ void swiglu(const unsigned int N, float *X, float *Y, float *Z, float alpha) {
   }
   while (i < N) {
     X[i] = (Y[i] / (1.f + std::exp(-alpha * Y[i]))) * Z[i];
+    ++i;
+  }
+}
+
+void tanh_gelu(const unsigned int N, const float *X, float *Y) {
+  unsigned int i = 0;
+  float32x4_t one = vdupq_n_f32(1.0f);
+  float32x4_t const_0_044715 = vdupq_n_f32(0.044715f);
+  float32x4_t two_sqrt_two_pi = vdupq_n_f32(-1.595769121f);
+
+  for (; N - i >= 16; i += 16) {
+    float32x4_t x0 = vld1q_f32(&X[i]);
+    float32x4_t x1 = vld1q_f32(&X[i + 4]);
+    float32x4_t x2 = vld1q_f32(&X[i + 8]);
+    float32x4_t x3 = vld1q_f32(&X[i + 12]);
+
+    float32x4_t cube0 = vmulq_f32(x0, vmulq_f32(x0, x0));
+    float32x4_t cube1 = vmulq_f32(x1, vmulq_f32(x1, x1));
+    float32x4_t cube2 = vmulq_f32(x2, vmulq_f32(x2, x2));
+    float32x4_t cube3 = vmulq_f32(x3, vmulq_f32(x3, x3));
+
+    float32x4_t inner0 = vmlaq_f32(x0, const_0_044715, cube0);
+    float32x4_t inner1 = vmlaq_f32(x1, const_0_044715, cube1);
+    float32x4_t inner2 = vmlaq_f32(x2, const_0_044715, cube2);
+    float32x4_t inner3 = vmlaq_f32(x3, const_0_044715, cube3);
+
+    inner0 = vmulq_f32(two_sqrt_two_pi, inner0);
+    inner1 = vmulq_f32(two_sqrt_two_pi, inner1);
+    inner2 = vmulq_f32(two_sqrt_two_pi, inner2);
+    inner3 = vmulq_f32(two_sqrt_two_pi, inner3);
+
+    float32x4_t exp_res0 = exp_ps(inner0);
+    float32x4_t exp_res1 = exp_ps(inner1);
+    float32x4_t exp_res2 = exp_ps(inner2);
+    float32x4_t exp_res3 = exp_ps(inner3);
+
+    float32x4_t res0 = vaddq_f32(one, exp_res0);
+    float32x4_t res1 = vaddq_f32(one, exp_res1);
+    float32x4_t res2 = vaddq_f32(one, exp_res2);
+    float32x4_t res3 = vaddq_f32(one, exp_res3);
+
+    res0 = vdivq_f32(x0, res0);
+    res1 = vdivq_f32(x1, res1);
+    res2 = vdivq_f32(x2, res2);
+    res3 = vdivq_f32(x3, res3);
+
+    vst1q_f32(&Y[i], res0);
+    vst1q_f32(&Y[i + 4], res1);
+    vst1q_f32(&Y[i + 8], res2);
+    vst1q_f32(&Y[i + 12], res3);
+  }
+
+  for (; N - i >= 8; i += 8) {
+    float32x4_t x0 = vld1q_f32(&X[i]);
+    float32x4_t x1 = vld1q_f32(&X[i + 4]);
+
+    float32x4_t cube0 = vmulq_f32(x0, vmulq_f32(x0, x0));
+    float32x4_t cube1 = vmulq_f32(x1, vmulq_f32(x1, x1));
+
+    float32x4_t inner0 = vmlaq_f32(x0, const_0_044715, cube0);
+    float32x4_t inner1 = vmlaq_f32(x1, const_0_044715, cube1);
+
+    inner0 = vmulq_f32(two_sqrt_two_pi, inner0);
+    inner1 = vmulq_f32(two_sqrt_two_pi, inner1);
+
+    float32x4_t exp_res0 = exp_ps(inner0);
+    float32x4_t exp_res1 = exp_ps(inner1);
+
+    float32x4_t res0 = vaddq_f32(one, exp_res0);
+    float32x4_t res1 = vaddq_f32(one, exp_res1);
+
+    res0 = vdivq_f32(x0, res0);
+    res1 = vdivq_f32(x1, res1);
+
+    vst1q_f32(&Y[i], res0);
+    vst1q_f32(&Y[i + 4], res1);
+  }
+
+  // Handle remaining blocks need to use >=4 check
+  for (; N - i >= 4; i += 4) {
+    float32x4_t x = vld1q_f32(&X[i]);
+    float32x4_t x3 = vmulq_f32(x, vmulq_f32(x, x));
+    float32x4_t inner = vmlaq_f32(x, const_0_044715, x3);
+
+    inner = vmulq_f32(two_sqrt_two_pi, inner);
+    float32x4_t exp_res = exp_ps(inner);
+
+    float32x4_t res = vaddq_f32(one, exp_res);
+    res = vdivq_f32(x, res);
+
+    vst1q_f32(&Y[i], res);
+  }
+
+  // This part will be modified to more efficient version
+
+  while (i < N) {
+    float x = X[i];
+    Y[i] = 0.5f * x *
+           (1.0f + std::tanh(0.7978845608f * (x + 0.044715f * x * x * x)));
+    ++i;
+  }
+}
+
+#define gelu_start -4.38086284326899
+#define gelu_end 4.38086284326899
+
+#define c_gelu_p0 5.91303808E-6
+#define c_gelu_p1 5.00000000E-1
+#define c_gelu_p2 3.98865869E-1
+#define c_gelu_p4 -6.66574676E-2
+#define c_gelu_p6 1.00712610E-2
+#define c_gelu_p8 -1.19336340E-3
+#define c_gelu_p10 1.09543224E-4
+#define c_gelu_p12 -7.55788500E-6
+#define c_gelu_p14 3.73374142E-7
+#define c_gelu_p16 -1.23162678E-8
+#define c_gelu_p18 2.40940960E-10
+#define c_gelu_p20 -2.10237709E-12
+
+void tanh_gelu_v2(const unsigned int N, const float *X, float *Y) {
+  unsigned int i = 0;
+
+  // Handle remaining blocks need to use >=4 check
+  for (; N - i >= 4; i += 4) {
+    float32x4_t x = vld1q_f32(&X[i]);
+    float32x4_t x2 = vmulq_f32(x, x);
+
+    uint32x4_t x_gt = vcgtq_f32(x, vdupq_n_f32(gelu_start));
+    uint32x4_t x_ls = vcleq_f32(x, vdupq_n_f32(gelu_end));
+    uint32x4_t x_gt2 = vcgtq_f32(x, vdupq_n_f32(gelu_end));
+
+    float32x4_t y = vmulq_f32(x2, vdupq_n_f32(c_gelu_p20));
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p18));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p16));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p14));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p12));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p10));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p8));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p6));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p4));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p2));
+    y = vmulq_f32(x2, y);
+
+    float32x4_t z = vmulq_f32(x, vdupq_n_f32(c_gelu_p1));
+    z = vaddq_f32(z, vdupq_n_f32(c_gelu_p0));
+
+    y = vaddq_f32(y, z);
+
+    y = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(y), x_gt));
+    y = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(y), x_ls));
+    x = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(x), x_gt2));
+
+    y = vaddq_f32(y, x);
+    vst1q_f32(&Y[i], y);
+  }
+
+  while (i < N) {
+    float x = X[i];
+    Y[i] = 0.5f * x *
+           (1.0f + std::tanh(0.7978845608f * (x + 0.044715f * x * x * x)));
+    ++i;
+  }
+}
+
+void tanh_gelu_mul(const unsigned int N, float *X, float *Y, float *Z) {
+  unsigned int i = 0;
+  float32x4_t one = vdupq_n_f32(1.0f);
+  float32x4_t const_0_044715 = vdupq_n_f32(0.044715f);
+  float32x4_t two_sqrt_two_pi = vdupq_n_f32(-1.595769121f);
+
+  for (; N - i >= 16; i += 16) {
+    float32x4_t y0 = vld1q_f32(&Y[i]);
+    float32x4_t y1 = vld1q_f32(&Y[i + 4]);
+    float32x4_t y2 = vld1q_f32(&Y[i + 8]);
+    float32x4_t y3 = vld1q_f32(&Y[i + 12]);
+
+    float32x4_t z0 = vld1q_f32(&Z[i]);
+    float32x4_t z1 = vld1q_f32(&Z[i + 4]);
+    float32x4_t z2 = vld1q_f32(&Z[i + 8]);
+    float32x4_t z3 = vld1q_f32(&Z[i + 12]);
+
+    float32x4_t cube0 = vmulq_f32(y0, vmulq_f32(y0, y0));
+    float32x4_t cube1 = vmulq_f32(y1, vmulq_f32(y1, y1));
+    float32x4_t cube2 = vmulq_f32(y2, vmulq_f32(y2, y2));
+    float32x4_t cube3 = vmulq_f32(y3, vmulq_f32(y3, y3));
+
+    float32x4_t inner0 = vmlaq_f32(y0, const_0_044715, cube0);
+    float32x4_t inner1 = vmlaq_f32(y1, const_0_044715, cube1);
+    float32x4_t inner2 = vmlaq_f32(y2, const_0_044715, cube2);
+    float32x4_t inner3 = vmlaq_f32(y3, const_0_044715, cube3);
+
+    inner0 = vmulq_f32(two_sqrt_two_pi, inner0);
+    inner1 = vmulq_f32(two_sqrt_two_pi, inner1);
+    inner2 = vmulq_f32(two_sqrt_two_pi, inner2);
+    inner3 = vmulq_f32(two_sqrt_two_pi, inner3);
+
+    float32x4_t exp_res0 = exp_ps(inner0);
+    float32x4_t exp_res1 = exp_ps(inner1);
+    float32x4_t exp_res2 = exp_ps(inner2);
+    float32x4_t exp_res3 = exp_ps(inner3);
+
+    float32x4_t res0 = vaddq_f32(one, exp_res0);
+    float32x4_t res1 = vaddq_f32(one, exp_res1);
+    float32x4_t res2 = vaddq_f32(one, exp_res2);
+    float32x4_t res3 = vaddq_f32(one, exp_res3);
+
+    res0 = vdivq_f32(y0, res0);
+    res1 = vdivq_f32(y1, res1);
+    res2 = vdivq_f32(y2, res2);
+    res3 = vdivq_f32(y3, res3);
+
+    res0 = vmulq_f32(z0, res0);
+    res1 = vmulq_f32(z1, res1);
+    res2 = vmulq_f32(z2, res2);
+    res3 = vmulq_f32(z3, res3);
+
+    vst1q_f32(&X[i], res0);
+    vst1q_f32(&X[i + 4], res1);
+    vst1q_f32(&X[i + 8], res2);
+    vst1q_f32(&X[i + 12], res3);
+  }
+
+  for (; N - i >= 8; i += 8) {
+    float32x4_t y0 = vld1q_f32(&Y[i]);
+    float32x4_t y1 = vld1q_f32(&Y[i + 4]);
+    float32x4_t z0 = vld1q_f32(&Z[i]);
+    float32x4_t z1 = vld1q_f32(&Z[i + 4]);
+
+    float32x4_t cube0 = vmulq_f32(y0, vmulq_f32(y0, y0));
+    float32x4_t cube1 = vmulq_f32(y1, vmulq_f32(y1, y1));
+
+    float32x4_t inner0 = vmlaq_f32(y0, const_0_044715, cube0);
+    float32x4_t inner1 = vmlaq_f32(y1, const_0_044715, cube1);
+
+    inner0 = vmulq_f32(two_sqrt_two_pi, inner0);
+    inner1 = vmulq_f32(two_sqrt_two_pi, inner1);
+
+    float32x4_t exp_res0 = exp_ps(inner0);
+    float32x4_t exp_res1 = exp_ps(inner1);
+
+    float32x4_t res0 = vaddq_f32(one, exp_res0);
+    float32x4_t res1 = vaddq_f32(one, exp_res1);
+
+    res0 = vdivq_f32(y0, res0);
+    res1 = vdivq_f32(y1, res1);
+
+    res0 = vmulq_f32(z0, res0);
+    res1 = vmulq_f32(z1, res1);
+
+    vst1q_f32(&X[i], res0);
+    vst1q_f32(&X[i + 4], res1);
+  }
+
+  // Handle remaining blocks need to use >=4 check
+  for (; N - i >= 4; i += 4) {
+    float32x4_t y = vld1q_f32(&Y[i]);
+    float32x4_t z = vld1q_f32(&Z[i]);
+    float32x4_t y3 = vmulq_f32(y, vmulq_f32(y, y));
+    float32x4_t inner = vmlaq_f32(y, const_0_044715, y3);
+
+    inner = vmulq_f32(two_sqrt_two_pi, inner);
+    float32x4_t exp_res = exp_ps(inner);
+
+    float32x4_t res = vaddq_f32(one, exp_res);
+    res = vdivq_f32(y, res);
+    res = vmulq_f32(z, res);
+
+    vst1q_f32(&X[i], res);
+  }
+
+  // This part will be modified to more efficient version
+
+  while (i < N) {
+    float y = Y[i];
+    float z = Z[i];
+    X[i] = 0.5f * y *
+           (1.0f + std::tanh(0.7978845608f * (y + 0.044715f * y * y * y))) * z;
+    ++i;
+  }
+}
+
+void tanh_gelu_v2_mul(const unsigned int N, float *X, float *Y, float *Z) {
+  unsigned int i = 0;
+
+  // Handle remaining blocks need to use >=4 check
+  for (; N - i >= 4; i += 4) {
+    float32x4_t x = vld1q_f32(&Y[i]); // Changed from X to Y
+    float32x4_t z2 = vld1q_f32(&Z[i]);
+    float32x4_t x2 = vmulq_f32(x, x);
+
+    uint32x4_t x_gt = vcgtq_f32(x, vdupq_n_f32(gelu_start));
+    uint32x4_t x_ls = vcleq_f32(x, vdupq_n_f32(gelu_end));
+    uint32x4_t x_gt2 = vcgtq_f32(x, vdupq_n_f32(gelu_end));
+
+    float32x4_t y = vmulq_f32(x2, vdupq_n_f32(c_gelu_p20));
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p18));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p16));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p14));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p12));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p10));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p8));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p6));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p4));
+    y = vmulq_f32(x2, y);
+    y = vaddq_f32(y, vdupq_n_f32(c_gelu_p2));
+    y = vmulq_f32(x2, y);
+
+    float32x4_t z = vmulq_f32(x, vdupq_n_f32(c_gelu_p1));
+    z = vaddq_f32(z, vdupq_n_f32(c_gelu_p0));
+
+    y = vaddq_f32(y, z);
+
+    y = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(y), x_gt));
+    y = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(y), x_ls));
+    x = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(x), x_gt2));
+
+    y = vaddq_f32(y, x);
+    y = vmulq_f32(y, z2);
+
+    vst1q_f32(&X[i], y); // Changed from Y to X
+  }
+
+  while (i < N) {
+    float x = X[i];
+    Y[i] = 0.5f * x *
+           (1.0f + std::tanh(0.7978845608f * (x + 0.044715f * x * x * x)));
     ++i;
   }
 }

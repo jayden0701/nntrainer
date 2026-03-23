@@ -153,6 +153,13 @@ public:
   using prop_tag = nntrainer::bool_prop_tag;      /**< property type */
 };
 
+class IsCrossAttention : public nntrainer::Property<bool> {
+public:
+  IsCrossAttention(bool value = false) { set(value); };
+  static constexpr const char *key = "is_cross_attention";
+  using prop_tag = nntrainer::bool_prop_tag;
+};
+
 /**
  * @brief UseRoPE property
  */
@@ -252,7 +259,7 @@ public:
   WIN_EXPORT void forwarding(nntrainer::RunLayerContext &context,
                              bool training) override;
 
-  void one_batch_incremental_forwarding(
+  void one_batch_slf_incremental_forwarding(
     const unsigned int batch, const unsigned int _from, const unsigned int from,
     const unsigned int to, nntrainer::Tensor &query_step,
     nntrainer::Tensor &key_step, nntrainer::Tensor &value_step,
@@ -262,7 +269,7 @@ public:
     ml::train::TensorDim &cache_value_dim,
     ml::train::TensorDim &cache_value_step_dim);
 
-  void one_batch_incremental_forwarding(
+  void one_batch_slf_incremental_forwarding(
     const unsigned int batch, const unsigned int _from, const unsigned int from,
     const unsigned int to, nntrainer::Tensor &query_step,
     nntrainer::Tensor &key_step, nntrainer::Tensor &value_step,
@@ -271,6 +278,11 @@ public:
     ml::train::TensorDim &cache_key_step_dim,
     ml::train::TensorDim &cache_value_dim,
     ml::train::TensorDim &cache_value_step_dim, nntrainer::Tensor &sink_step);
+
+  void one_batch_crs_incremental_forwarding(
+    nntrainer::Tensor &query_step, nntrainer::Tensor &key_step,
+    nntrainer::Tensor &value_step, nntrainer::Tensor &attention_output_step);
+
   /**
    * @copydoc Layer::calcDerivative(RunLayerContext &context)
    */
@@ -336,7 +348,7 @@ private:
     props::SlidingWindow, props::MaxNewTokens, props::RopeTheta,
     props::MaxPositionEmbeddings, props::UseSink, props::RopeScalingType,
     props::RopeScalingFactor, props::RopeScalingMaxPositionEmbeddings,
-    props::AttnLogitSoftcapping, props::IsCausal, props::UseRoPE>
+    props::AttnLogitSoftcapping, props::IsCausal, props::IsCrossAttention, props::UseRoPE>
     mha_core_props; /**< mha_core layer properties */
 
   /** softmax activation operation */
@@ -355,6 +367,7 @@ private:
   bool use_sink = false;
   float attn_logit_softcapping = 0.0f;
   bool is_causal;
+  bool is_cross_attention = false;
   bool use_rope;
 
   enum INOUT_INDEX {
@@ -460,10 +473,10 @@ private:
                bool process_all);
 
   void compute_kcaches(nntrainer::Tensor &in, nntrainer::Tensor &cache,
-                       nntrainer::Tensor &out, unsigned int from,
-                       size_t sequence_len, unsigned int num_heads,
-                       unsigned int group_size, unsigned int head_dim,
-                       BS::thread_pool<> &pool);
+                       nntrainer::Tensor &out, unsigned int from, size_t q_len,
+                       unsigned int num_heads, unsigned int group_size,
+                       unsigned int head_dim, BS::thread_pool<> &pool,
+                       size_t kv_len = 0);
 
   void softmax_triangle(nntrainer::Tensor &qk_out, size_t row, size_t num_heads,
                         unsigned int from, BS::thread_pool<> &pool);
@@ -472,17 +485,10 @@ private:
                         unsigned int from, BS::thread_pool<> &pool,
                         nntrainer::Tensor &sink_step);
 
-  void compute_vcaches(nntrainer::Tensor &in, nntrainer::Tensor &vcache,
-                       nntrainer::Tensor &out, unsigned int from,
-                       size_t sequence_len, unsigned int num_heads,
-                       unsigned int group_size, unsigned int head_dim);
-
-  void compute_fp16vcache_transposed(nntrainer::Tensor &in,
-                                     nntrainer::Tensor &vcache,
-                                     nntrainer::Tensor &output, int from,
-                                     int num_cache_head, int gqa_size,
-                                     int head_dim, int to,
-                                     BS::thread_pool<> &pool);
+  void compute_fp16vcache_transposed(
+    nntrainer::Tensor &in, nntrainer::Tensor &vcache, nntrainer::Tensor &output,
+    int from, int num_cache_head, int gqa_size, int head_dim, int to,
+    BS::thread_pool<> &pool, size_t kv_len = 0);
 
   /************** END OF  ROTARY EMBEDDING *************/
 

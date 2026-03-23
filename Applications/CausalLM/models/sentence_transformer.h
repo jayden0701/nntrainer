@@ -2,17 +2,17 @@
 /**
  * Copyright (C) 2025 Eunju Yang <ej.yang@samsung.com>
  *
- * @file    embedding.h
+ * @file    sentence_transformer.h
  * @date    02 Jan 2026
  * @see     https://github.com/nntrainer/nntrainer
  * @author  Eunju Yang <ej.yang@samsung.com>
  * @bug     No known bugs except for NYI items
- * @note    This embedding.h constructs a class for Embedding model
+ * @note    This embedding.h constructs a class for SentenceTransformer model
  * which can be a parent of models with embedding (encoder) structure.
  */
 
-#ifndef __EMBEDDING_TRANSFORMER_H__
-#define __EMBEDDING_TRANSFORMER_H__
+#ifndef __SENTENCE_TRANSFORMER_H__
+#define __SENTENCE_TRANSFORMER_H__
 
 #pragma once
 
@@ -22,26 +22,26 @@
 namespace causallm {
 
 /**
- * @brief Embedding Class
+ * @brief SentenceTransformer Class
  */
-WIN_EXPORT class Embedding : virtual public Transformer {
+WIN_EXPORT class SentenceTransformer : virtual public Transformer {
 
 public:
   /**
-   * @brief Construct a new Embedding object
+   * @brief Construct a new SentenceTransformer object
    * @param cfg Configuration for the model (config.json)
    * @param generation_cfg Configuration for the generation (generation.json)
    * @param nntr_cfg Configuration for nntrainer (nntr_config.json)
    */
-  Embedding(json &cfg, json &generation_cfg, json &nntr_cfg);
+  SentenceTransformer(json &cfg, json &generation_cfg, json &nntr_cfg);
 
   /**
-   * @brief Destroy the Embedding object
+   * @brief Destroy the SentenceTransformer object
    */
-  virtual ~Embedding() {}
+  virtual ~SentenceTransformer() {}
 
   /**
-   * @brief run the Embedding model
+   * @brief run the SentenceTransformer model
    */
   void run(const WSTR prompt, bool do_sample = false,
            const WSTR system_prompt = "", const WSTR tail_prmopt = "") override;
@@ -51,14 +51,14 @@ public:
    * @param prompt User prompt
    * @param system_prompt System prompt
    * @param tail_prompt Tail prompt
-   * @return Embedding output from the model
+   * @return SentenceTransformer output from the model
    */
   std::vector<float *> encode(const WSTR prompt, const WSTR system_prompt = "",
                               const WSTR tail_prompt = "");
 
 protected:
   /**
-   * @brief Setup the parameters for the Embedding model
+   * @brief Setup the parameters for the SentenceTransformer model
    */
   void setupParameters(json &cfg, json &generation_dfg,
                        json &nntr_cfg) override;

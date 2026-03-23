@@ -17,11 +17,11 @@ namespace causallm {
 void EmbeddingGemma::setupParameters(json &cfg, json &generation_cfg,
                                      json &nntr_cfg) {
   Gemma3Transformer::setupParameters(cfg, generation_cfg, nntr_cfg);
-  Embedding::setupParameters(cfg, generation_cfg, nntr_cfg);
+  SentenceTransformer::setupParameters(cfg, generation_cfg, nntr_cfg);
 }
 
 void EmbeddingGemma::registerCustomLayers() {
-  Embedding::registerCustomLayers();
+  SentenceTransformer::registerCustomLayers();
   Gemma3Transformer::registerCustomLayers();
 }
 

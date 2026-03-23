@@ -604,7 +604,7 @@ void calc_trigonometric_vals_dup(unsigned int N_half, T *angle, T *cos_,
                                  T *sin_, unsigned int from = 0,
                                  float attention_scaling = 1.0f);
 /**
- * @brief swiglu function with neon : X = (Y / (1 + exp( -Y ))) * Z
+ * @brief swiglu function : X = (Y / (1 + exp( -Y ))) * Z
  *
  * @param N number of elements in X
  * @param X float * for Vector X
@@ -622,6 +622,52 @@ void swiglu(const unsigned int N, float *X, float *Y, float *Z);
  * @param alpha float
  */
 void swiglu(const unsigned int N, float *X, float *Y, float *Z, float alpha);
+
+/**
+ * @brief tanh_gelu function
+ * Y = 0.5 * X * (1 + tanh(sqrt(2/pi) * (X
+ *     + 0.044715 * X^3)))
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (input)
+ * @param Y float * for Vector Y (output)
+ */
+void tanh_gelu(const unsigned int N, const float *X, float *Y);
+
+/**
+ * @brief tanh_gelu function
+ * Y = 0.5 * X * (1 + tanh(sqrt(2/pi) * (X
+ *    + 0.044715 * X^3)))
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (input)
+ * @param Y float * for Vector Y (output)
+ */
+void tanh_gelu_v2(const unsigned int N, const float *X, float *Y);
+
+/**
+ * @brief tanh_gelu function with neon but as
+ * X = Y / (1 + exp(-pi/4*(Y
+ *      + 0.044715Y^3)) * Z
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (output)
+ * @param Y float * for Vector Y (input)
+ * @param Z float * for Vector Z (input)
+ */
+void tanh_gelu_mul(const unsigned int N, float *X, float *Y, float *Z);
+
+/**
+ * @brief tanh_gelu function with neon but as
+ * X = Y / (1 + exp(-pi/4*(Y
+ *      + 0.044715Y^3)) * Z
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (output)
+ * @param Y float * for Vector Y (input)
+ * @param Z float * for Vector Z (input)
+ */
+void tanh_gelu_v2_mul(const unsigned int N, float *X, float *Y, float *Z);
 
 /**
  * @brief returns maximum value of the vector X

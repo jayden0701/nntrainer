@@ -2,37 +2,38 @@
 /**
  * Copyright (C) 2025 Eunju Yang <ej.yang@samsung.com>
  *
- * @file embedding.cpp
+ * @file sentence_transformer.cpp
  * @date 02 Jan 2026
  * @see https://github.com/nntrainer/nntrainer
  * @author Eunju Yang <ej.yang@samsung.com>
  * @bug No known bugs except for NYI items
- * @brief This file defines Embedding's basic actions
+ * @brief This file defines SentenceTransformer's basic actions
  */
 
 #include <app_context.h>
-#include <embedding.h>
 #include <embedding_normalize_layer.h>
 #include <embedding_pooling_layer.h>
 #include <engine.h>
+#include <sentence_transformer.h>
 
 #include <filesystem>
 #include <iostream>
 
 namespace causallm {
 
-Embedding::Embedding(json &cfg, json &generation_cfg, json &nntr_cfg) :
+SentenceTransformer::SentenceTransformer(json &cfg, json &generation_cfg,
+                                         json &nntr_cfg) :
   Transformer(cfg, generation_cfg, nntr_cfg, ModelType::EMBEDDING) {
   setupParameters(cfg, generation_cfg, nntr_cfg);
 }
 
-std::map<std::string, std::string> Embedding::layer_map = {
+std::map<std::string, std::string> SentenceTransformer::layer_map = {
   {"Pooling", "embedding_pooling"},
   {"Normalize", "embedding_normalize"},
   {"Dense", "fully_connected"}};
 
-void Embedding::setupParameters(json &cfg, json &generation_cfg,
-                                json &nntr_cfg) {
+void SentenceTransformer::setupParameters(json &cfg, json &generation_cfg,
+                                          json &nntr_cfg) {
   Transformer::setupParameters(cfg, generation_cfg, nntr_cfg);
 
   std::string modules_config_path = "modules.json";
@@ -97,7 +98,7 @@ void Embedding::setupParameters(json &cfg, json &generation_cfg,
   }
 }
 
-void Embedding::constructModel() {
+void SentenceTransformer::constructModel() {
   for (auto &module : modules) {
     if (!module.contains("type")) {
       continue;
@@ -120,7 +121,7 @@ void Embedding::constructModel() {
   }
 }
 
-void Embedding::addModule(const std::string &type, int idx) {
+void SentenceTransformer::addModule(const std::string &type, int idx) {
   json config;
   if (module_configs.find(idx) != module_configs.end()) {
     config = module_configs[idx];
@@ -177,8 +178,9 @@ void Embedding::addModule(const std::string &type, int idx) {
   model->addLayer(layer);
 }
 
-void Embedding::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
-                    const WSTR tail_prompt) {
+void SentenceTransformer::run(const WSTR prompt, bool do_sample,
+                              const WSTR system_prompt,
+                              const WSTR tail_prompt) {
 
   try {
     std::vector<float *> results = encode(prompt, system_prompt, tail_prompt);
@@ -202,12 +204,13 @@ void Embedding::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
   }
 }
 
-std::vector<float *> Embedding::encode(const WSTR prompt,
-                                       const WSTR system_prompt,
-                                       const WSTR tail_prompt) {
+std::vector<float *> SentenceTransformer::encode(const WSTR prompt,
+                                                 const WSTR system_prompt,
+                                                 const WSTR tail_prompt) {
   if (!is_initialized) {
-    throw std::runtime_error("Embedding model is not initialized. Please call "
-                             "initialize() before encode().");
+    throw std::runtime_error(
+      "SentenceTransformer model is not initialized. Please call "
+      "initialize() before encode().");
   }
 
 #if defined(_WIN32)
@@ -254,7 +257,7 @@ std::vector<float *> Embedding::encode(const WSTR prompt,
   return output;
 }
 
-std::string Embedding::getLastComponent(const std::string &type) {
+std::string SentenceTransformer::getLastComponent(const std::string &type) {
   std::string last_component = type;
   size_t last_dot_pos = type.find_last_of('.');
   if (last_dot_pos != std::string::npos) {
@@ -263,7 +266,7 @@ std::string Embedding::getLastComponent(const std::string &type) {
   return last_component;
 }
 
-void Embedding::registerCustomLayers() {
+void SentenceTransformer::registerCustomLayers() {
   Transformer::registerCustomLayers();
 
   const auto &ct_engine = nntrainer::Engine::Global();

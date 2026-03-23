@@ -50,6 +50,38 @@ void swiglu(const unsigned int N, float *X, float *Y, float *Z, float alpha) {
   nntrainer::neon::swiglu(N, X, Y, Z, alpha);
 }
 
+void tanh_gelu(const unsigned int N, const float *X, float *Y) {
+#ifdef __ARM_NEON
+  nntrainer::neon::tanh_gelu(N, X, Y);
+#else
+  __fallback_tanh_gelu(N, X, Y);
+#endif
+}
+
+void tanh_gelu_v2(const unsigned int N, const float *X, float *Y) {
+#ifdef __ARM_NEON
+  nntrainer::neon::tanh_gelu_v2(N, X, Y);
+#else
+  __fallback_tanh_gelu_v2(N, X, Y);
+#endif
+}
+
+void tanh_gelu_mul(const unsigned int N, float *X, float *Y, float *Z) {
+#ifdef __ARM_NEON
+  nntrainer::neon::tanh_gelu_mul(N, X, Y, Z);
+#else
+  __fallback_tanh_gelu_mul(N, X, Y, Z);
+#endif
+}
+
+void tanh_gelu_v2_mul(const unsigned int N, float *X, float *Y, float *Z) {
+#ifdef __ARM_NEON
+  nntrainer::neon::tanh_gelu_v2_mul(N, X, Y, Z);
+#else
+  __fallback_tanh_gelu_v2_mul(N, X, Y, Z);
+#endif
+}
+
 float max_val(const unsigned int N, float *X) {
   return nntrainer::neon::max_val(N, X);
 }

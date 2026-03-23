@@ -15,7 +15,7 @@
 namespace causallm {
 
 void Qwen3Embedding::registerCustomLayers() {
-  Embedding::registerCustomLayers();
+  SentenceTransformer::registerCustomLayers();
   Qwen3Transformer::registerCustomLayers();
 }
 

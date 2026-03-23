@@ -138,24 +138,32 @@ std::vector<LayerHandle> Gemma3Transformer::createAttention(
   auto O = "layer" + std::to_string(layer_id) + "_attention_out";
 
   // Q layer
-  std::vector<std::string> q_params = {
-    withKey("name", Q), withKey("unit", head_dim * n_heads),
-    withKey("disable_bias", "true"), withKey("input_layers", query_name),
-    withKey("weight_initializer", "ones")};
+  std::vector<std::string> q_params = {withKey("name", Q),
+                                       withKey("unit", head_dim * n_heads),
+                                       withKey("disable_bias", "true"),
+                                       withKey("input_layers", query_name),
+                                       withKey("weight_initializer", "ones"),
+                                       withKey("weight_dtype", FC_LAYER_DTYPE)};
   layers.push_back(createLayer("fully_connected", q_params));
 
   // K layer
   std::vector<std::string> k_params = {
-    withKey("name", K), withKey("unit", head_dim * n_heads / GQA_SIZE),
-    withKey("disable_bias", "true"), withKey("input_layers", key_name),
-    withKey("weight_initializer", "ones")};
+    withKey("name", K),
+    withKey("unit", head_dim * n_heads / GQA_SIZE),
+    withKey("disable_bias", "true"),
+    withKey("input_layers", key_name),
+    withKey("weight_initializer", "ones"),
+    withKey("weight_dtype", FC_LAYER_DTYPE)};
   layers.push_back(createLayer("fully_connected", k_params));
 
   // V layer
   std::vector<std::string> v_params = {
-    withKey("name", V), withKey("unit", head_dim * n_heads / GQA_SIZE),
-    withKey("disable_bias", "true"), withKey("input_layers", value_name),
-    withKey("weight_initializer", "ones")};
+    withKey("name", V),
+    withKey("unit", head_dim * n_heads / GQA_SIZE),
+    withKey("disable_bias", "true"),
+    withKey("input_layers", value_name),
+    withKey("weight_initializer", "ones"),
+    withKey("weight_dtype", FC_LAYER_DTYPE)};
   layers.push_back(createLayer("fully_connected", v_params));
 
   // q_norm
@@ -205,9 +213,12 @@ std::vector<LayerHandle> Gemma3Transformer::createAttention(
   layers.push_back(createLayer("mha_core", a_params));
 
   // O layer
-  std::vector<std::string> o_params = {
-    withKey("name", O), withKey("unit", DIM), withKey("disable_bias", "true"),
-    withKey("input_layers", A), withKey("weight_initializer", "ones")};
+  std::vector<std::string> o_params = {withKey("name", O),
+                                       withKey("unit", DIM),
+                                       withKey("disable_bias", "true"),
+                                       withKey("input_layers", A),
+                                       withKey("weight_initializer", "ones"),
+                                       withKey("weight_dtype", FC_LAYER_DTYPE)};
   layers.push_back(createLayer("fully_connected", o_params));
 
   return layers;
@@ -223,8 +234,8 @@ std::vector<LayerHandle> Gemma3Transformer::createMlp(const int layer_id,
     "fully_connected",
     {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_gate"),
      withKey("unit", hidden_dim), withKey("disable_bias", "true"),
-     withKey("input_layers", input_name),
-     withKey("weight_initializer", "ones")}));
+     withKey("input_layers", input_name), withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
   // GeLU
   layers.push_back(createLayer(
@@ -239,8 +250,8 @@ std::vector<LayerHandle> Gemma3Transformer::createMlp(const int layer_id,
     "fully_connected",
     {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_up"),
      withKey("unit", hidden_dim), withKey("disable_bias", "true"),
-     withKey("input_layers", input_name),
-     withKey("weight_initializer", "ones")}));
+     withKey("input_layers", input_name), withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
   // Multiply
   layers.push_back(createLayer(
@@ -256,7 +267,8 @@ std::vector<LayerHandle> Gemma3Transformer::createMlp(const int layer_id,
     {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_down"),
      withKey("unit", dim), withKey("disable_bias", "true"),
      withKey("input_layers", "layer" + std::to_string(layer_id) + "_ffn_geglu"),
-     withKey("weight_initializer", "ones")}));
+     withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
   return layers;
 }
