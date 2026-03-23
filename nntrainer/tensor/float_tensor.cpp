@@ -1522,6 +1522,8 @@ void FloatTensor::print(std::ostream &out) const {
     for (unsigned int k = 0; k < batch(); k++) {
       for (unsigned int l = 0; l < channel(); l++) {
         for (unsigned int i = 0; i < height(); i++) {
+          if(i > 10)
+            break;
           for (unsigned int j = 0; j < width(); j++) {
             out << std::setw(10) << std::setprecision(10)
                 << data[getIndex(k, l, i, j)] << " ";

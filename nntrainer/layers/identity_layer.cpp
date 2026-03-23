@@ -29,7 +29,7 @@ void IdentityLayer::forwarding(RunLayerContext &context, bool training) {
 
   auto &input_layer = context.getInput(0);
 
-  input_layer.print(std::cout);
+  // input_layer.print(std::cout);
 
 
   if (!context.getInPlace()) {

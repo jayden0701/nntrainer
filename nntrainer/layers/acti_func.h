@@ -50,7 +50,7 @@ public:
   /**
    * @brief     Destructor of ActiFunc
    */
-  ~ActiFunc(){};
+  ~ActiFunc() {};
 
   /**
    * @brief setActivation by preset ActivationType
@@ -472,7 +472,7 @@ public:
   }
 
   /**
-   * @brief     tanh-based gelu approximate function
+   * @brief     tanh-based gelu approximate function   
    * @param[in] t_in input tensor
    * @param[in] t_out output tensor
    */
@@ -483,7 +483,7 @@ public:
         return static_cast<T>(
           0.5 * x *
           (1 + tanhFloat<T>(
-                 static_cast<T>(sqrt(2 / M_PI) * (x + 0.044715 * pow(x, 3))))));
+                 static_cast<T>(0.7978845608f * (x + 0.044715 * x * x * x)))));
       },
       t_out);
     return t_out;

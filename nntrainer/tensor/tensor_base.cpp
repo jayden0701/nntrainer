@@ -159,9 +159,9 @@ void TensorBase::updateDimension(TensorDim dimension) {
     return;
   }
 
-  if (isAllocated())
-    throw std::invalid_argument(
-      "Cannot update tensor dimension for an allocated tensor");
+  // if (isAllocated())
+  //   throw std::invalid_argument(
+  //     "Cannot update tensor dimension for an allocated tensor");
 
   dim = dimension;
 }

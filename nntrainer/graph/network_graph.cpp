@@ -340,8 +340,8 @@ void NetworkGraph::setBatchSize(unsigned int batch_size) {
 void NetworkGraph::resetInputDimension(std::vector<TensorDim> dims) {
   auto allocated = tensor_manager->isAllocated();
 
-  if (allocated)
-    deallocateTensors();
+  // if (allocated)
+  //   deallocateTensors();
 
   for (auto iter = cbegin(); iter != cend(); iter++) {
     if ((*iter)->isFinalized()) {
@@ -349,8 +349,8 @@ void NetworkGraph::resetInputDimension(std::vector<TensorDim> dims) {
     }
   }
 
-  if (allocated)
-    allocateTensors(exec_mode);
+  // if (allocated)
+  //   allocateTensors(exec_mode);
 
   /** update input and label dimensions */
   for (unsigned int idx = 0; idx < input_list.size(); idx++)

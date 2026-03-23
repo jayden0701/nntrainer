@@ -232,75 +232,36 @@ rope를 linear구현을 했는데, 차이가 남...
 그래서 default/linear 등 모드당 1개를 들도록 만들어야 하는데, 
 CLINE / Codex를 이용해서 각각 코딩했지만, 안됨. 
 현재 CLINE버전은 버렸고, 일단 Codex도 안되지만, Codex도 아직 print debug를 안했기에 내일 와서 하ㅣ자
+-> 제작 완료
 
 
+Encoder -> Decoder 전달 시 일부만 들고 오는 오류 해결 (incremental_inference에서 false -> true)
 
-rope의 값 만 출력해서 비교해 보자!
+(0319 퇴근 전)
+GeGLU속도 증가 PR을 올리려고 분석해봤지만...그냥 형권님 최적화와 중복된 이유로 빨라진거였음 (sqrt(2/PI) 값 const, pow(x,3) 대신 x*x*x 등)
+fusing자체의 이점은 일단 느껴지지는 않음...
+layer에서 직접 값 조작하는 거 자체가 memory read/write를 줄여서 제일 빠르긴 할 것임으로, arm-neon아닐땐 여기서 돌려도 될 듯
+값 틀어질 수 도 있으니, 이전 GeGLU구현으로 revert 했음.
+
+내일오면...merged attn cache를 마자 구현해보자
+merged attn cache에서 {K, cross_K} 순으로 합쳐지도록 구현 완료
+오류 수정완료
+
+[현재오류]
+resetByInputDimesion을 하면,
+  if (allocated)
+    deallocateTensors();
+로 메모리를 재할당 하는데, 이게 cache tensor의 data주소를 바꾼다 (mha_core에서도 동일 문제)
+
+다음주 월에 현석님에게 이거 어떻게 할 건지 이야기
+
+deallocate - allocate관련을 다 끄니 일단 merged_cache_layer에 대해 결과는 나오는 거 같음.
 
 
+(0323 출근시 할 일)
+concat된 K/V를 UINT16으로 저장-output하게 한 후 승백님의 구현과 합쳐보자(git pull/merge)
+ 
+(height를 매 step마다 승백님 구현에 맞게 바꿔서 만약 승백님이 잘 구현했으면 잘 될 것)
 
 
-(0313 심야의 고민)
-승희님 custom to + self attn으로 검증가능한 법
-
-prefill 처럼해서 확인해보자(단계 1만 ㅇㅇ)
-
-대신 이러려면 길이가 K,V = 1+ENC_SEQ_LEN 인데 Q=1임
-Q에 0으로 padding을 하는게 가능한지 생각해보자
-
-
-
-
-서로 다른 layer에 서로 다른 input을 줄 수 있습니다!
-
-## DIFFERENT_INPUTS_TO_DIFFERENT_LAYERS.md 작성 완료
-
-### 핵심 답변
-
-__질문:__ model의 서로 다른 layer에 서로 다른 input을 줄 수 있어?
-
-__답변:__ 네, 가능합니다!
-
-### 방법
-
-1. __여러 Input Layer 생성:__ `constructModel()`에서 여러 Input Layer 추가
-2. __input_layers로 연결:__ 각 레이어에서 `input_layers` 파라미터로 입력 레이어 지정
-3. __incremental_inference에 여러 input 전달:__ `std::vector<float *>`로 여러 input 전달
-
-### 구조 예시
-
-```javascript
-ModelHandle:
-├── Input Layer 1 (vision_input0) → [Vision Encoder] → [vision_output]
-│
-├── Input Layer 2 (text_input0) → [Text Encoder] → [text_output]
-│
-└── Input Layer 3 (decoder_input0) → [Decoder] → [final_output]
-```
-
-### 코드 예시
-
-```cpp
-// constructModel() - 여러 Input Layer 추가
-model->addLayer(createLayer("input", {"name=vision_input0", ...}));
-model->addLayer(createLayer("input", {"name=text_input0", ...}));
-model->addLayer(createLayer("input", {"name=decoder_input0", ...}));
-
-// inference 시 - 여러 input 전달
-std::vector<float *> inputs = {
-  vision_input,  // → vision_input0
-  text_input,     // → text_input0
-  decoder_input    // → decoder_input0
-};
-auto output = model->incremental_inference(BATCH_SIZE, inputs, {}, seq_len, 0, seq_len, false);
-```
-
-### 중요: Input 순서 매핑
-
-`incremental_inference(input)`에 전달하는 input의 순서와 `constructModel()`에서 추가한 Input Layer의 순서가 일치해야 합니다!
-
-### 장점
-
-1. __유연성:__ 서로 다른 타입의 input (이미지, 텍스트 등)을 동시에 처리
-2. __효율성:__ 필요한 input만 전달하여 불필요한 연산 건너뜀기
-3. __모듈성:__ 각 input path를 독립적으로 설계
+다 되면 승백님의 cross attn을 검증해보자

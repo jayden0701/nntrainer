@@ -1,0 +1,429 @@
+/home/jayden/NNTrainer_Playground/t5gemma2/nntrainer/Applications/CausalLM/res/t5gemma2
+/home/jayden/NNTrainer_Playground/t5gemma2/nntrainer/Applications/CausalLM/res/t5gemma2/nntr_t5gemma2_encoder_fp32.bin
+[T5Gemma2Processor] Initialized
+  image_seq_length: 256
+  image_token_id: 256000
+  boi_token: <start_of_image>
+  eoi_token: <end_of_image>
+  image_token: <image_soft_token>
+  full_image_sequence: 
+
+<start_of_image><image_soft_token><image_soft_to...
+[EncoderModel] Compiled successfully (no memory allocated yet)
+[DecoderModel] Compiled successfully (no memory allocated yet)
+[Init] Models compiled (no memory allocated yet)
+[Init] Memory will be allocated on load(initialize() is called there)
+
+========== Loading T5Gemma2 Weights (Lazy) ==========
+[LoadWeight] Detected separate encoder/decoder files
+
+[LoadWeight] Step 1: Loading encoder weights...
+
+========== Loading Encoder Weights ==========
+[EncoderWeights] Loaded from: /home/jayden/NNTrainer_Playground/t5gemma2/nntrainer/Applications/CausalLM/res/t5gemma2/nntr_t5gemma2_encoder_fp32.bin
+[EncoderWeights] Loading time: 264 ms
+=============================================
+
+
+[LoadWeight] Step 2: Loading decoder weights...
+
+========== Loading Decoder Weights ==========
+[DecoderWeights] Loaded from: /home/jayden/NNTrainer_Playground/t5gemma2/nntrainer/Applications/CausalLM/res/t5gemma2/nntr_t5gemma2_decoder_fp32.bin
+[DecoderWeights] Loading time: 252 ms
+=============================================
+
+
+[LoadWeight] ========== All weights loaded successfully ==========
+[LoadWeight] Memory optimized: Only one model's weights in memory at a time during loading
+====================================================================
+
+[T5Gemma2Processor] No BOI_TOKEN found, treating as text-only input
+
+============================================================
+[T5Gemma2Processor::process]
+  Input text: In the heart of the bustling, modern city, where towering skyscrapers of glass and steel reach up to pierce the gray, cloud-filled sky, a quiet, forgotten park exists as a sanctuary of green—a tiny, vibrant oasis tucked between the noisy, unending flow of traffic on the bustling highway and the sleek, angular design of the new, luxurious apartment complex. The park features a weathered wooden bench, paint chipping, nestled under the shade of an ancient, sprawling oak tree that has likely seen more of this urban environment’s rapid evolution than any living person. Here, a diverse community finds its fleeting moments of peace; elderly residents feed pigeons that flutter in chaotic harmony, while young, energetic professionals catch a breath from their endlessly demanding, digitally intense, screen-filled working hours. As sunlight occasionally filters through the thick canopy of leaves, casting moving shadows on the worn dirt paths, one can almost hear the faint echoes of the past, whispering tales of a time when this concrete jungle was merely rolling fields and quiet, unpaved country roads, a stark, profound contrast to the high-speed, 5G-connected, AI-driven, data-driven, constantly evolving, technological, and remarkably fast-paced lifestyle that now defines the surrounding
+  Input images: 0 image(s)
+============================================================
+[T5Gemma2Processor] Processing text only
+[T5Gemma2Processor] Processing complete
+  processed_text length: 1301
+  pixel_values shape: [0, 3, 896, 896]
+============================================================
+
+
+========== T5Gemma2 Inference ==========
+
+Input: In the heart of the bustling, modern city, where towering skyscrapers of glass and steel reach up to pierce the gray, cloud-filled sky, a quiet, forgotten park exists as a sanctuary of green—a tiny, vibrant oasis tucked between the noisy, unending flow of traffic on the bustling highway and the sleek, angular design of the new, luxurious apartment complex. The park features a weathered wooden bench, paint chipping, nestled under the shade of an ancient, sprawling oak tree that has likely seen more of this urban environment’s rapid evolution than any living person. Here, a diverse community finds its fleeting moments of peace; elderly residents feed pigeons that flutter in chaotic harmony, while young, energetic professionals catch a breath from their endlessly demanding, digitally intense, screen-filled working hours. As sunlight occasionally filters through the thick canopy of leaves, casting moving shadows on the worn dirt paths, one can almost hear the faint echoes of the past, whispering tales of a time when this concrete jungle was merely rolling fields and quiet, unpaved country roads, a stark, profound contrast to the high-speed, 5G-connected, AI-driven, data-driven, constantly evolving, technological, and remarkably fast-paced lifestyle that now defines the surrounding
+  processed_text length: 1301
+  pixel_values size: 0
+
+[Mode: Text-Only with Lazy Initialization]
+
+[Pipeline] Tokenized 1301 characters to 251 tokens
+
+[Pipeline] ========== Lazy Initialization Flow ==========
+[Pipeline] Step 1: Run encoder with 251 tokens
+[Pipeline] Step 2: Run decoder with encoder output
+
+========== Encoder Inference ==========
+[Encoder] Memory allocated (size tracking not available)
+layer_name: encoder_input, 	time: 0 ms 
+layer_name: encoder_embedding, 	time: 1 ms 
+layer_name: encoder_embedding/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer0_pre_attention_layernorm, 	time: 4 ms 
+layer_name: encoder_layer0_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer0_wq_norm, 	time: 23 ms 
+layer_name: encoder_layer0_wk_norm, 	time: 3 ms 
+layer_name: encoder_layer0_wv, 	time: 2 ms 
+layer_name: encoder_layer0_attention, 	time: 265 ms 
+layer_name: encoder_layer0_attention_out, 	time: 0 ms 
+layer_name: encoder_layer0_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer0_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer0_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer0_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer0_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer0_ffn_up, 	time: 3 ms 
+layer_name: encoder_layer0_ffn_gate, 	time: 5 ms 
+layer_name: encoder_layer0_ffn_geglu, 	time: 28 ms 
+layer_name: encoder_layer0_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer0_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer0_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer0_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer1_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer1_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer1_wq_norm, 	time: 3 ms 
+layer_name: encoder_layer1_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer1_wv, 	time: 0 ms 
+layer_name: encoder_layer1_attention, 	time: 35 ms 
+layer_name: encoder_layer1_attention_out, 	time: 1 ms 
+layer_name: encoder_layer1_post_attention_layernorm, 	time: 1 ms 
+layer_name: encoder_layer1_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer1_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer1_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer1_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer1_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer1_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer1_ffn_geglu, 	time: 27 ms 
+layer_name: encoder_layer1_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer1_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer1_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer1_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer2_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer2_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer2_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer2_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer2_wv, 	time: 0 ms 
+layer_name: encoder_layer2_attention, 	time: 38 ms 
+layer_name: encoder_layer2_attention_out, 	time: 1 ms 
+layer_name: encoder_layer2_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer2_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer2_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer2_pre_feedforward_layernorm, 	time: 1 ms 
+layer_name: encoder_layer2_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer2_ffn_up, 	time: 3 ms 
+layer_name: encoder_layer2_ffn_gate, 	time: 2 ms 
+layer_name: encoder_layer2_ffn_geglu, 	time: 27 ms 
+layer_name: encoder_layer2_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer2_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer2_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer2_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer3_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer3_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer3_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer3_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer3_wv, 	time: 0 ms 
+layer_name: encoder_layer3_attention, 	time: 58 ms 
+layer_name: encoder_layer3_attention_out, 	time: 0 ms 
+layer_name: encoder_layer3_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer3_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer3_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer3_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer3_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer3_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer3_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer3_ffn_geglu, 	time: 26 ms 
+layer_name: encoder_layer3_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer3_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer3_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer3_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer4_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer4_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer4_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer4_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer4_wv, 	time: 0 ms 
+layer_name: encoder_layer4_attention, 	time: 58 ms 
+layer_name: encoder_layer4_attention_out, 	time: 0 ms 
+layer_name: encoder_layer4_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer4_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer4_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer4_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer4_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer4_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer4_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer4_ffn_geglu, 	time: 26 ms 
+layer_name: encoder_layer4_ffn_down, 	time: 2 ms 
+layer_name: encoder_layer4_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer4_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer4_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer5_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer5_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer5_wq_norm, 	time: 1 ms 
+layer_name: encoder_layer5_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer5_wv, 	time: 0 ms 
+layer_name: encoder_layer5_attention, 	time: 239 ms 
+layer_name: encoder_layer5_attention_out, 	time: 0 ms 
+layer_name: encoder_layer5_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer5_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer5_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer5_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer5_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer5_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer5_ffn_gate, 	time: 3 ms 
+layer_name: encoder_layer5_ffn_geglu, 	time: 27 ms 
+layer_name: encoder_layer5_ffn_down, 	time: 2 ms 
+layer_name: encoder_layer5_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer5_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer5_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer6_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer6_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer6_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer6_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer6_wv, 	time: 0 ms 
+layer_name: encoder_layer6_attention, 	time: 34 ms 
+layer_name: encoder_layer6_attention_out, 	time: 0 ms 
+layer_name: encoder_layer6_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer6_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer6_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer6_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer6_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer6_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer6_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer6_ffn_geglu, 	time: 31 ms 
+layer_name: encoder_layer6_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer6_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer6_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer6_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer7_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer7_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer7_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer7_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer7_wv, 	time: 0 ms 
+layer_name: encoder_layer7_attention, 	time: 48 ms 
+layer_name: encoder_layer7_attention_out, 	time: 0 ms 
+layer_name: encoder_layer7_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer7_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer7_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer7_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer7_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer7_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer7_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer7_ffn_geglu, 	time: 27 ms 
+layer_name: encoder_layer7_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer7_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer7_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer7_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer8_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer8_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer8_wq_norm, 	time: 1 ms 
+layer_name: encoder_layer8_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer8_wv, 	time: 0 ms 
+layer_name: encoder_layer8_attention, 	time: 44 ms 
+layer_name: encoder_layer8_attention_out, 	time: 1 ms 
+layer_name: encoder_layer8_post_attention_layernorm, 	time: 1 ms 
+layer_name: encoder_layer8_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer8_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer8_pre_feedforward_layernorm, 	time: 1 ms 
+layer_name: encoder_layer8_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer8_ffn_up, 	time: 2 ms 
+layer_name: encoder_layer8_ffn_gate, 	time: 2 ms 
+layer_name: encoder_layer8_ffn_geglu, 	time: 28 ms 
+layer_name: encoder_layer8_ffn_down, 	time: 31 ms 
+layer_name: encoder_layer8_post_feedforward_layernorm, 	time: 1 ms 
+layer_name: encoder_layer8_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer8_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer9_pre_attention_layernorm, 	time: 1 ms 
+layer_name: encoder_layer9_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer9_wq_norm, 	time: 3 ms 
+layer_name: encoder_layer9_wk_norm, 	time: 2 ms 
+layer_name: encoder_layer9_wv, 	time: 0 ms 
+layer_name: encoder_layer9_attention, 	time: 49 ms 
+layer_name: encoder_layer9_attention_out, 	time: 1 ms 
+layer_name: encoder_layer9_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer9_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer9_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer9_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer9_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer9_ffn_up, 	time: 2 ms 
+layer_name: encoder_layer9_ffn_gate, 	time: 2 ms 
+layer_name: encoder_layer9_ffn_geglu, 	time: 26 ms 
+layer_name: encoder_layer9_ffn_down, 	time: 2 ms 
+layer_name: encoder_layer9_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer9_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer9_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer10_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer10_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer10_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer10_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer10_wv, 	time: 0 ms 
+layer_name: encoder_layer10_attention, 	time: 54 ms 
+layer_name: encoder_layer10_attention_out, 	time: 0 ms 
+layer_name: encoder_layer10_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer10_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer10_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer10_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer10_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer10_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer10_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer10_ffn_geglu, 	time: 27 ms 
+layer_name: encoder_layer10_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer10_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer10_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer10_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer11_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer11_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer11_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer11_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer11_wv, 	time: 0 ms 
+layer_name: encoder_layer11_attention, 	time: 80 ms 
+layer_name: encoder_layer11_attention_out, 	time: 0 ms 
+layer_name: encoder_layer11_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer11_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer11_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer11_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer11_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer11_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer11_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer11_ffn_geglu, 	time: 28 ms 
+layer_name: encoder_layer11_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer11_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer11_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer11_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer12_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer12_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer12_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer12_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer12_wv, 	time: 0 ms 
+layer_name: encoder_layer12_attention, 	time: 129 ms 
+layer_name: encoder_layer12_attention_out, 	time: 0 ms 
+layer_name: encoder_layer12_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer12_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer12_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer12_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer12_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer12_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer12_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer12_ffn_geglu, 	time: 26 ms 
+layer_name: encoder_layer12_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer12_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer12_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer12_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer13_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer13_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer13_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer13_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer13_wv, 	time: 0 ms 
+layer_name: encoder_layer13_attention, 	time: 91 ms 
+layer_name: encoder_layer13_attention_out, 	time: 0 ms 
+layer_name: encoder_layer13_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer13_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer13_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer13_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer13_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer13_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer13_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer13_ffn_geglu, 	time: 25 ms 
+layer_name: encoder_layer13_ffn_down, 	time: 6 ms 
+layer_name: encoder_layer13_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer13_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer13_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer14_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer14_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer14_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer14_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer14_wv, 	time: 0 ms 
+layer_name: encoder_layer14_attention, 	time: 95 ms 
+layer_name: encoder_layer14_attention_out, 	time: 0 ms 
+layer_name: encoder_layer14_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer14_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer14_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer14_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer14_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer14_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer14_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer14_ffn_geglu, 	time: 25 ms 
+layer_name: encoder_layer14_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer14_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer14_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer14_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer15_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer15_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer15_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer15_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer15_wv, 	time: 0 ms 
+layer_name: encoder_layer15_attention, 	time: 121 ms 
+layer_name: encoder_layer15_attention_out, 	time: 0 ms 
+layer_name: encoder_layer15_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer15_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer15_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer15_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer15_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer15_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer15_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer15_ffn_geglu, 	time: 24 ms 
+layer_name: encoder_layer15_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer15_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer15_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer15_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer16_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer16_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer16_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer16_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer16_wv, 	time: 0 ms 
+layer_name: encoder_layer16_attention, 	time: 87 ms 
+layer_name: encoder_layer16_attention_out, 	time: 0 ms 
+layer_name: encoder_layer16_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer16_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer16_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer16_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer16_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer16_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer16_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer16_ffn_geglu, 	time: 22 ms 
+layer_name: encoder_layer16_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer16_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer16_ffn_residual, 	time: 0 ms 
+layer_name: encoder_layer16_ffn_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer17_pre_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer17_pre_attention_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer17_wq_norm, 	time: 2 ms 
+layer_name: encoder_layer17_wk_norm, 	time: 0 ms 
+layer_name: encoder_layer17_wv, 	time: 0 ms 
+layer_name: encoder_layer17_attention, 	time: 85 ms 
+layer_name: encoder_layer17_attention_out, 	time: 0 ms 
+layer_name: encoder_layer17_post_attention_layernorm, 	time: 0 ms 
+layer_name: encoder_layer17_attention_residual, 	time: 0 ms 
+layer_name: encoder_layer17_attention_residual/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer17_pre_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer17_pre_feedforward_layernorm/generated_out_0, 	time: 0 ms 
+layer_name: encoder_layer17_ffn_up, 	time: 1 ms 
+layer_name: encoder_layer17_ffn_gate, 	time: 1 ms 
+layer_name: encoder_layer17_ffn_geglu, 	time: 22 ms 
+layer_name: encoder_layer17_ffn_down, 	time: 1 ms 
+layer_name: encoder_layer17_post_feedforward_layernorm, 	time: 0 ms 
+layer_name: encoder_layer17_ffn_residual, 	time: 0 ms 
+layer_name: encoder_output_norm, 	time: 0 ms 
+layer_name: encoder_output, 	time: 0 ms 
+[Encoder] Inference completed in 2415 ms
+[Encoder] Output shape: [251, 640]
+[Encoder] First 5 values: -1.65987 2.34267 -0.319191 -5.97263 5.27378 
+[Encoder] Inference complete (memory held for potential reuse)
+=================[ LLM with NNTrainer ]===================
+prefill: 251 tokens, 2415 ms, 103.934 TPS
+
+[Memory Summary]
+  Peak memory usage: max(encoder_mem, decoder_mem)
+  (Not encoder_mem + decoder_mem)
+
+[Pipeline] ========== End of Inference ==========
+[e2e time]: 3939 ms 
+Max Resident Set Size: 3133716 KB
