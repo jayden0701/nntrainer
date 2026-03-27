@@ -165,7 +165,7 @@ void Transformer::initialize() {
   }
 
   is_initialized = true;
-
+  model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 #ifdef DEBUG
   model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 #endif

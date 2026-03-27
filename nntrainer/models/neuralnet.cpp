@@ -408,6 +408,40 @@ sharedConstTensors NeuralNetwork::forwarding(
   return model_graph.forwarding(training, forwarding_op, stop_cb, userdata);
 }
 
+size_t NeuralNetwork::getTotalModelBytes() const {
+  size_t total_bytes = 0;
+
+  std::cout << "Model Weight Bytes Breakdown:" << std::endl;
+  std::cout << "=========================" << std::endl;
+
+  for (auto iter = model_graph.cbegin(); iter != model_graph.cend(); iter++) {
+    auto weights = (*iter)->getRunContext().getWeights();
+    for (auto weight : weights) {
+      size_t size = weight->getVariable().getMemoryBytes();
+      auto tensor_data_type = weight->getDim().getDataType();
+
+      // Add qparam size for quantized tensors
+      if (tensor_data_type != TensorDim::DataType::FP32 &&
+          tensor_data_type != TensorDim::DataType::FP16 &&
+          tensor_data_type != TensorDim::DataType::Q6_K &&
+          tensor_data_type != TensorDim::DataType::Q4_0) {
+        // for tensor with qparam
+        size += sizeof(uint16_t);
+      }
+
+      std::cout << (*iter)->getName() << " | " << weight->getName() << " | "
+                << size << " bytes" << std::endl;
+
+      total_bytes += size;
+    }
+  }
+
+  std::cout << "=========================" << std::endl;
+  std::cout << "Total: " << total_bytes << " bytes" << std::endl;
+
+  return total_bytes;
+}
+
 /**
  * @brief     forward propagation using layers object which has layer
  */
@@ -450,6 +484,51 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
     [this, from, to, stop_cb, fsu_mode,
      lookahead](std::shared_ptr<LayerNode> node, bool training) -> void {
     PROFILE_MEM_ANNOTATE("Forwarding for layer: " + node->getName());
+
+    std::cout << "\n=== Layer: " << node->getName() << " ===" << std::endl;
+    std::cout << "From: " << from << ", To: " << to << std::endl;
+    std::cout << "Layer type: " << node->getType() << std::endl;
+
+    // Print input tensors
+    auto &rc = node->getRunContext();
+    for (unsigned int i = 0; i < rc.getNumInputs(); ++i) {
+      auto &input = rc.getInput(i);
+      std::cout << "Input " << i << " shape: " << input.getDim() << std::endl;
+      std::cout << "data addr: " << input.getData() << '\n';
+
+      if (input.getDataType() == ml::train::TensorDim::DataType::FP32) {
+        const float *in_data = input.getData<float>();
+        std::cout << "  Sample values (first 10): ";
+        for (int j = 0; j < std::min(10, (int)input.size()); ++j) {
+          std::cout << in_data[j] << " ";
+        }
+        std::cout << std::endl;
+
+        // std::cout << "  Sample values (last 5): ";
+        // for (int j = std::max(0, (int)input.size() - 5); j <
+        // (int)input.size(); ++j) {
+        //   std::cout << in_data[j] << " ";
+        // }
+        // std::cout << std::endl;
+
+        // Print statistics
+
+        int start_idx = input.getDim().width() * from;
+
+        float in_min = in_data[start_idx], in_max = in_data[start_idx],
+              in_sum = 0.0f;
+        for (unsigned int j = 0; j < input.getDim().width(); ++j) {
+          in_min = std::min(in_min, in_data[j]);
+          in_max = std::max(in_max, in_data[j]);
+          in_sum += in_data[j];
+        }
+        float in_mean = in_sum / input.size();
+        std::cout << "  Stats - Min: " << in_min << ", Max: " << in_max
+                  << ", Mean: " << in_mean << std::endl;
+      } else {
+        input.print(std::cout);
+      }
+    }
 
     auto f = std::get<0>(node->getExecutionOrder());
     if (exec_mode == ExecutionMode::TRAIN or
@@ -751,6 +830,22 @@ void NeuralNetwork::load(const std::string &file_path,
               (v.size() == 2) ? v[1] : v[0], std::ios::in | std::ios::binary);
             node->read(local_model_file, false, exec_mode, fsu_mode,
                        std::numeric_limits<size_t>::max(), true, model_file_fd);
+
+
+            auto num_weights = node->getNumWeights();
+            if (static_cast<unsigned int>(num_weights) != 0) {
+              std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() <<
+              "\n"; auto num_weights = node->getNumWeights(); std::cout <<
+              "DEBUG: num weight: " << num_weights << "\n"; for (size_t i =
+              0; i < num_weights; i++) {
+                auto weight =
+                  node->getWeightObject(static_cast<unsigned int>(i));
+                std::cout << "DEBUG: weight: "
+                          << static_cast<Weight>(weight).getVariable()
+                          << std::endl;
+              }
+            }
+
           } else {
 #if defined(_WIN32)
             // Map per-ask, then unmap immediately after: enables early release
@@ -784,7 +879,7 @@ void NeuralNetwork::load(const std::string &file_path,
             NNTR_THROW_IF((fd == -1), std::invalid_argument)
               << "Cannot open file : " << f_path;
 
-            struct stat st {};
+            struct stat st{};
             NNTR_THROW_IF((::fstat(fd, &st) == -1), std::invalid_argument)
               << "Cannot get file info (fstat): " << f_path;
 
@@ -1614,6 +1709,8 @@ void NeuralNetwork::printMetrics(std::ostream &out, unsigned int flags) {
 
 void NeuralNetwork::printPreset(std::ostream &out, unsigned int preset) {
   /** print neuralnet metrics */
+
+  std::cout << "WHY_DOES_NOT_APPEAR" << std::endl;
   printMetrics(out, preset);
   if (preset > ML_TRAIN_SUMMARY_TENSOR)
     return;
@@ -1637,6 +1734,8 @@ void NeuralNetwork::printPreset(std::ostream &out, unsigned int preset) {
   default:
     throw std::invalid_argument("given verbosity is invalid");
   }
+
+  getTotalModelBytes();
 
   print(out, flags, layer_preset);
 }

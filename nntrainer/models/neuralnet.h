@@ -105,6 +105,8 @@ public:
    */
   float getLoss() override;
 
+  size_t getTotalModelBytes() const;
+
   /**
    * @brief returns compilation state of a network
    * @retval initialized value

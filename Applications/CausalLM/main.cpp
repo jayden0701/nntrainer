@@ -130,6 +130,10 @@ std::string resolve_architecture(std::string model_type,
 }
 
 int main(int argc, char *argv[]) {
+  std::ios_base::sync_with_stdio(false);
+  std::ofstream out("/home/jayden/Flare_Playground/Gauss4/Flare/Quick.AI/debug_gauss4.txt");
+  std::streambuf *coutbuf = std::cout.rdbuf();
+  std::cout.rdbuf(out.rdbuf());
 
   auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -268,6 +272,7 @@ int main(int argc, char *argv[]) {
                                                       generation_cfg, nntr_cfg);
     model->initialize();
     model->load_weight(weight_file);
+
 
     bool do_sample = generation_cfg.value("do_sample", false);
 
