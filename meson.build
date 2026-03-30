@@ -756,6 +756,8 @@ endforeach
 # Build nntrainer
 subdir('nntrainer')
 
+subdir('perf')
+
 enable_capi = false
 enable_ccapi = false
 # Build api
