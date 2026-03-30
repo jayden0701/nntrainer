@@ -4,62 +4,62 @@
   "comparisons": [
     {
       "baseline_median": 323720.53,
-      "current_median": 315697.28,
-      "delta_pct": -2.478449544117576,
+      "current_median": 252689.88,
+      "delta_pct": -21.941966423939814,
       "id": "q4_0_gemm_nr16_nc256_k4096",
       "kernel": "nntr_gemm_q4_0_8x8_q8_0"
     },
     {
       "baseline_median": 2660496.19,
-      "current_median": 2659766.09,
-      "delta_pct": -0.02744224940987768,
+      "current_median": 2049956.44,
+      "delta_pct": -22.948341452050716,
       "id": "q4_0_gemm_nr32_nc1024_k4096",
       "kernel": "nntr_gemm_q4_0_8x8_q8_0"
     },
     {
       "baseline_median": 184434.69,
-      "current_median": 178167.16,
-      "delta_pct": -3.398238151401994,
+      "current_median": 142918.19,
+      "delta_pct": -22.510136243892077,
       "id": "q4_0_gemv_nr1_nc1024_k4096",
       "kernel": "nntr_gemv_q4_0_8x8_q8_0"
     },
     {
       "baseline_median": 43566.31,
-      "current_median": 45801.62,
-      "delta_pct": 5.130822417597463,
+      "current_median": 36135.25,
+      "delta_pct": -17.05689556907619,
       "id": "q4_0_gemv_nr1_nc256_k4096",
       "kernel": "nntr_gemv_q4_0_8x8_q8_0"
     },
     {
       "baseline_median": 396424.5,
-      "current_median": 394966.66,
-      "delta_pct": -0.367747200286568,
+      "current_median": 315836.22,
+      "delta_pct": -20.328783917240237,
       "id": "q4_K_gemm_nr16_nc256_k4096",
       "kernel": "nntr_gemm_q4_K_8x8_q8_K"
     },
     {
       "baseline_median": 3224758.28,
-      "current_median": 3235161.0,
-      "delta_pct": 0.3225891399215263,
+      "current_median": 2451982.59,
+      "delta_pct": -23.963833034952312,
       "id": "q4_K_gemm_nr32_nc1024_k4096",
       "kernel": "nntr_gemm_q4_K_8x8_q8_K"
     },
     {
       "baseline_median": 152395.19,
-      "current_median": 147064.25,
-      "delta_pct": -3.49810253197624,
+      "current_median": 107183.41,
+      "delta_pct": -29.66745866454184,
       "id": "q4_K_gemv_nr1_nc1024_k4096",
       "kernel": "nntr_gemv_q4_K_8x8_q8_K"
     },
     {
       "baseline_median": 36720.88,
-      "current_median": 37740.19,
-      "delta_pct": 2.7758321695994352,
+      "current_median": 26423.12,
+      "delta_pct": -28.0433366520628,
       "id": "q4_K_gemv_nr1_nc256_k4096",
       "kernel": "nntr_gemv_q4_K_8x8_q8_K"
     }
   ],
-  "current": "/home/jayden0701/NNTrainer_Playground/Agent_Test/nntrainer/perf/out/summary.json",
+  "current": "perf/out/rerun_summary.json",
   "current_cases": 8,
   "missing_in_baseline": [],
   "missing_in_current": []
