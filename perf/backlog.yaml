@@ -1,0 +1,38 @@
+# status: ready | running | blocked_until_profile | accepted | rejected
+# risk: low | high
+
+- id: q4_0_hotpath_split
+  function: nntr_gemm_q4_0_8x8_q8_0
+  file: nntrainer/tensor/cpu_backend/ggml_interface/nntr_ggml_impl/nntr_ggml_impl_avx.cpp
+  description: >
+    Split the exact hot nr % 16 == 0 path from the tail path so benchmark-dominant
+    shapes stay on the smallest hot loop.
+  risk: low
+  status: ready
+  owner: worker_hotpath
+  attempts: 0
+  note: ""
+
+- id: q4_0_scale_broadcast_tighten
+  function: nntr_gemm_q4_0_8x8_q8_0
+  file: nntrainer/tensor/cpu_backend/ggml_interface/nntr_ggml_impl/nntr_ggml_impl_avx.cpp
+  description: >
+    Tighten the scale-broadcast work inside the inner rp loop without changing math
+    and without growing register pressure too much.
+  risk: low
+  status: ready
+  owner: worker_scale
+  attempts: 0
+  note: ""
+
+- id: q4_0_rhs_pipeline_staging
+  function: nntr_gemm_q4_0_8x8_q8_0
+  file: nntrainer/tensor/cpu_backend/ggml_interface/nntr_ggml_impl/nntr_ggml_impl_avx.cpp
+  description: >
+    Stage the RHS decode/shuffle pipeline to reduce live-state and spills.
+    Only attempt after perf-stat evidence is collected.
+  risk: high
+  status: blocked_until_profile
+  owner: none
+  attempts: 0
+  note: "Wait until both low-risk ideas fail and perf stat data is collected."
