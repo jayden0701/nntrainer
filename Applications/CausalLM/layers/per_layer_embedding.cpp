@@ -27,7 +27,8 @@ PerLayerEmbedding::PerLayerEmbedding() :
             props::LayerId(1), props::NumLayers(1), props::FlashMode(false),
             props::CacheSize(0), props::FlashWeightPath(),
             nntrainer::props::Scale()),
-  weight_idx(std::numeric_limits<unsigned>::max()), flash_row_bytes(0) {}
+  weight_idx(std::numeric_limits<unsigned>::max()),
+  flash_row_bytes(0) {}
 
 void PerLayerEmbedding::finalize(nntrainer::InitLayerContext &context) {
   NNTR_THROW_IF(context.getNumInputs() != 1, std::invalid_argument)
@@ -42,10 +43,13 @@ void PerLayerEmbedding::finalize(nntrainer::InitLayerContext &context) {
                 std::invalid_argument)
     << "per_layer_embedding only supports FP32 token index input";
 
-  size_t vocab_size = static_cast<size_t>(std::get<nntrainer::props::InDim>(ple_props));
-  size_t ple_dim = static_cast<size_t>(std::get<nntrainer::props::OutDim>(ple_props));
+  size_t vocab_size =
+    static_cast<size_t>(std::get<nntrainer::props::InDim>(ple_props));
+  size_t ple_dim =
+    static_cast<size_t>(std::get<nntrainer::props::OutDim>(ple_props));
   size_t layer_id = static_cast<size_t>(std::get<props::LayerId>(ple_props));
-  size_t num_layers = static_cast<size_t>(std::get<props::NumLayers>(ple_props));
+  size_t num_layers =
+    static_cast<size_t>(std::get<props::NumLayers>(ple_props));
 
   NNTR_THROW_IF(vocab_size == 0 || ple_dim == 0, std::invalid_argument)
     << "in_dim and out_dim must be positive";
@@ -57,7 +61,8 @@ void PerLayerEmbedding::finalize(nntrainer::InitLayerContext &context) {
   auto &weight_regularizer_constant =
     std::get<nntrainer::props::WeightRegularizerConstant>(*layer_impl_props);
   auto weight_initializer = nntrainer::props::InitializerInfo::Enum::NONE;
-  auto &weight_decay = std::get<nntrainer::props::WeightDecay>(*layer_impl_props);
+  auto &weight_decay =
+    std::get<nntrainer::props::WeightDecay>(*layer_impl_props);
 
   nntrainer::TensorDim output_dim = input_dim;
   output_dim.height(input_dim.width());
@@ -152,7 +157,8 @@ void PerLayerEmbedding::cacheRow(size_t table_row_index, const float *row_data,
 bool PerLayerEmbedding::fetchEmbeddingRow(nntrainer::RunLayerContext &context,
                                           size_t table_row_index,
                                           float *destination) {
-  size_t out_dim = static_cast<size_t>(std::get<nntrainer::props::OutDim>(ple_props));
+  size_t out_dim =
+    static_cast<size_t>(std::get<nntrainer::props::OutDim>(ple_props));
 
   if (getCachedRow(table_row_index, destination, out_dim)) {
     return true;
@@ -177,7 +183,8 @@ bool PerLayerEmbedding::fetchEmbeddingRow(nntrainer::RunLayerContext &context,
   }
 
   nntrainer::Tensor &weight_tensor = context.getWeight(weight_idx);
-  nntrainer::TensorDim row_dim({1, 1, 1, out_dim}, weight_tensor.getTensorType());
+  nntrainer::TensorDim row_dim({1, 1, 1, out_dim},
+                               weight_tensor.getTensorType());
   nntrainer::Tensor row_view =
     weight_tensor.getSharedDataTensor(row_dim, out_dim * table_row_index);
 
@@ -187,13 +194,15 @@ bool PerLayerEmbedding::fetchEmbeddingRow(nntrainer::RunLayerContext &context,
   return true;
 }
 
-void PerLayerEmbedding::incremental_forwarding(nntrainer::RunLayerContext &context,
-                                               unsigned int from,
-                                               unsigned int to,
-                                               bool training) {
-  const size_t vocab_size = static_cast<size_t>(std::get<nntrainer::props::InDim>(ple_props));
-  const size_t out_dim = static_cast<size_t>(std::get<nntrainer::props::OutDim>(ple_props));
-  const size_t layer_id = static_cast<size_t>(std::get<props::LayerId>(ple_props));
+void PerLayerEmbedding::incremental_forwarding(
+  nntrainer::RunLayerContext &context, unsigned int from, unsigned int to,
+  bool training) {
+  const size_t vocab_size =
+    static_cast<size_t>(std::get<nntrainer::props::InDim>(ple_props));
+  const size_t out_dim =
+    static_cast<size_t>(std::get<nntrainer::props::OutDim>(ple_props));
+  const size_t layer_id =
+    static_cast<size_t>(std::get<props::LayerId>(ple_props));
   const float scale = std::get<nntrainer::props::Scale>(ple_props).empty()
                         ? 1.0f
                         : std::get<nntrainer::props::Scale>(ple_props).get();
@@ -201,14 +210,15 @@ void PerLayerEmbedding::incremental_forwarding(nntrainer::RunLayerContext &conte
   nntrainer::Tensor &output = context.getOutput(SINGLE_INOUT_IDX);
   nntrainer::Tensor &input = context.getInput(SINGLE_INOUT_IDX);
 
-  const nntrainer::TensorDim out_tensor_dim(
-    {1, 1, 1, out_dim}, output.getTensorType());
+  const nntrainer::TensorDim out_tensor_dim({1, 1, 1, out_dim},
+                                            output.getTensorType());
 
   unsigned int b_size = input.batch();
   unsigned int token_count = to - from;
 
   for (unsigned int batch = 0; batch < b_size; ++batch) {
-    float *in_data = input.getAddress<float>(batch * input.getDim().getFeatureLen());
+    float *in_data =
+      input.getAddress<float>(batch * input.getDim().getFeatureLen());
     nntrainer::Tensor batch_output = output.getBatchSlice(batch, 1);
 
 #pragma omp parallel for
@@ -243,9 +253,8 @@ void PerLayerEmbedding::calcDerivative(nntrainer::RunLayerContext &context) {
 
 void PerLayerEmbedding::calcGradient(nntrainer::RunLayerContext &context) {}
 
-void PerLayerEmbedding::exportTo(
-  nntrainer::Exporter &exporter,
-  const ml::train::ExportMethods &method) const {
+void PerLayerEmbedding::exportTo(nntrainer::Exporter &exporter,
+                                 const ml::train::ExportMethods &method) const {
   LayerImpl::exportTo(exporter, method);
   exporter.saveResult(ple_props, method, this);
 }
@@ -265,7 +274,7 @@ void destroy_per_layer_embedding(nntrainer::Layer *layer) {
 
 extern "C" {
 nntrainer::LayerPluggable ml_train_layer_pluggable{create_per_layer_embedding,
-                                                    destroy_per_layer_embedding};
+                                                   destroy_per_layer_embedding};
 }
 
 #endif
