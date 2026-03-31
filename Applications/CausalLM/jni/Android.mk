@@ -62,6 +62,7 @@ LOCAL_SRC_FILES := ../main.cpp \
     ../huggingface_tokenizer.cpp \
     ../llm_util.cpp \
     ../layers/embedding_layer.cpp \
+    ../layers/per_layer_embedding.cpp \
     ../layers/embedding_pooling_layer.cpp \
     ../layers/embedding_normalize_layer.cpp \
     ../layers/mha_core.cpp \

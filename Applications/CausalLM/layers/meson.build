@@ -7,6 +7,7 @@ causallm_tie_word_embedding_src_abs = [meson.current_source_dir() / 'tie_word_em
 causallm_lmhead_src_abs = [meson.current_source_dir() / 'lm_head.cpp']
 causallm_mha_core_abs = [meson.current_source_dir()/ 'mha_core.cpp']
 causallm_embedding_src_abs = [meson.current_source_dir() / 'embedding_layer.cpp']
+causallm_per_layer_embedding_src_abs = [meson.current_source_dir() / 'per_layer_embedding.cpp']
 causallm_reshaped_rms_norm_src_abs = [meson.current_source_dir() / 'reshaped_rms_norm.cpp']
 causallm_qkv_layer_src_abs = [meson.current_source_dir() / 'qkv_layer.cpp']
 causallm_embedding_pooling_src_abs = [meson.current_source_dir() / 'embedding_pooling_layer.cpp']
@@ -88,6 +89,19 @@ causallm_embedding_layer = shared_library(
 )
 causallm_embedding_layer_dep = declare_dependency(
     link_with: causallm_embedding_layer,
+    include_directories: causallm_layer_inc
+)
+
+causallm_per_layer_embedding_layer = shared_library(
+    'per_layer_embedding_layer',
+    causallm_per_layer_embedding_src_abs,
+    include_directories: causallm_layer_inc,
+    dependencies: [nntrainer_dep, nntrainer_ccapi_dep, openmp_dep],
+    install: true,
+    install_dir: application_install_dir
+)
+causallm_per_layer_embedding_layer_dep = declare_dependency(
+    link_with: causallm_per_layer_embedding_layer,
     include_directories: causallm_layer_inc
 )
 
