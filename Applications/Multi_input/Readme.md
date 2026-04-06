@@ -19,9 +19,7 @@
     +---------------------------------------------------+  
         |                     |                  |
     +-----------+       +-----------+       +-----------+  
-    |  input 2  |       |  input 1  |       |  input 0  |  
+    |  input 0  |       |  input 1  |       |  input 2  |  
     +-----------+       +-----------+       +-----------+   
 
 ```
-
-- **[Note]** Users should feed the multi-input in reverse order because the model is structured in a reversed manner internally. This is a known issue for us, and we plan to address it soon.

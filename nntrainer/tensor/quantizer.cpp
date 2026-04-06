@@ -8,6 +8,7 @@
  * @bug		No known bugs except for NYI items
  */
 
+#include <cpu_backend.h>
 #include <math.h>
 #include <quantizer.h>
 #include <tensor.h>
@@ -236,5 +237,165 @@ Tensor BinaryCodeBasedQuantizer::dequantize(const Tensor &input,
 QScheme BinaryCodeBasedQuantizer::qscheme() const {
   return QScheme::BINARY_CODE_BASED;
 }
+
+/**
+ * @brief GgmlQuantizer class
+ */
+std::unique_ptr<Quantizer> GgmlQuantizer::create() {
+  return std::make_unique<GgmlQuantizer>(scheme_);
+}
+
+Tensor GgmlQuantizer::quantize(const Tensor &input, Tdatatype qtype) {
+  NNTR_THROW_IF(input.getDataType() != Tdatatype::FP32, std::invalid_argument)
+    << "[GgmlQuantizer::quantize] Input tensor must be FP32.";
+
+  TensorDim dim = input.getDim();
+  unsigned int K = dim.height();
+  unsigned int N = dim.width();
+
+  Tdatatype out_dtype;
+  switch (scheme_) {
+  case QScheme::Q4_Kx8:
+    out_dtype = Tdatatype::Q4_K;
+    break;
+  case QScheme::Q6_K:
+    out_dtype = Tdatatype::Q6_K;
+    break;
+  case QScheme::Q4_0:
+    out_dtype = Tdatatype::Q4_0;
+    break;
+  default:
+    throw std::invalid_argument(
+      "[GgmlQuantizer::quantize] Unsupported QScheme.");
+  }
+
+  // For GGML quantization, we need to transpose the weight first (row-major
+  // to column-major style), then quantize per row of the transposed matrix.
+  // The quantization functions expect data as (nrow, n_per_row).
+  Tensor W_t = input.transpose("0:2:1");
+  const float *src = W_t.getData<float>();
+
+  // Create output quantized tensor
+  Tensor output({dim.batch(), dim.channel(), K, N, Tformat::NCHW, out_dtype},
+                true, nntrainer::Initializer::NONE, "", scheme_);
+
+  // Quantize into a temporary buffer first
+  size_t out_size = output.size();
+  std::vector<char> tmp(out_size);
+
+  switch (scheme_) {
+  case QScheme::Q4_Kx8:
+    quantize_q4_K(src, tmp.data(), N, K, nullptr);
+    break;
+  case QScheme::Q6_K:
+    quantize_q6_K(src, tmp.data(), N, K, nullptr);
+    break;
+  case QScheme::Q4_0:
+    quantize_q4_0(src, tmp.data(), N, K, nullptr);
+    break;
+  default:
+    break;
+  }
+
+  // For Q4_Kx8 and Q4_0, repack into the optimized layout
+  if (scheme_ == QScheme::Q4_Kx8) {
+    repack_q4_K(output.getData<uint8_t>(), tmp.data(), out_size, N, K);
+  } else if (scheme_ == QScheme::Q4_0) {
+    repack_q4_0(output.getData<uint8_t>(), tmp.data(), out_size, N, K);
+  } else {
+    // Q6_K: copy directly (no repacking needed)
+    memcpy(output.getData<uint8_t>(), tmp.data(), out_size);
+  }
+
+  return output;
+}
+
+Tensor &GgmlQuantizer::quantize(const Tensor &input, Tensor &output,
+                                float *scales, unsigned int *zero_points) {
+  NNTR_THROW_IF(input.getDataType() != Tdatatype::FP32, std::invalid_argument)
+    << "[GgmlQuantizer::quantize] Input tensor must be FP32.";
+
+  NNTR_THROW_IF(output.empty(), std::invalid_argument)
+    << "[GgmlQuantizer::quantize] Output tensor is empty.";
+
+  NNTR_THROW_IF(output.q_scheme() != scheme_, std::invalid_argument)
+    << "[GgmlQuantizer::quantize] Output tensor's quantization scheme does not "
+       "match.";
+
+  TensorDim dim = input.getDim();
+  unsigned int K = dim.height();
+  unsigned int N = dim.width();
+
+  Tensor W_t = input.transpose("0:2:1");
+  const float *src = W_t.getData<float>();
+
+  size_t out_size = output.size();
+  std::vector<char> tmp(out_size);
+
+  switch (scheme_) {
+  case QScheme::Q4_Kx8:
+    quantize_q4_K(src, tmp.data(), N, K, nullptr);
+    break;
+  case QScheme::Q6_K:
+    quantize_q6_K(src, tmp.data(), N, K, nullptr);
+    break;
+  case QScheme::Q4_0:
+    quantize_q4_0(src, tmp.data(), N, K, nullptr);
+    break;
+  default:
+    throw std::invalid_argument(
+      "[GgmlQuantizer::quantize] Unsupported QScheme.");
+  }
+
+  if (scheme_ == QScheme::Q4_Kx8) {
+    repack_q4_K(output.getData<uint8_t>(), tmp.data(), out_size, N, K);
+  } else if (scheme_ == QScheme::Q4_0) {
+    repack_q4_0(output.getData<uint8_t>(), tmp.data(), out_size, N, K);
+  } else {
+    memcpy(output.getData<uint8_t>(), tmp.data(), out_size);
+  }
+
+  return output;
+}
+
+Tensor GgmlQuantizer::dequantize(const Tensor &input, Tdatatype dtype) {
+  NNTR_THROW_IF(dtype != Tdatatype::FP32, std::invalid_argument)
+    << "[GgmlQuantizer::dequantize] Output dtype must be FP32.";
+
+  TensorDim dim = input.getDim();
+  unsigned int K = dim.height();
+  unsigned int N = dim.width();
+  unsigned int total_elems = K * N;
+
+  Tensor output(dim.batch(), dim.channel(), K, N,
+                {Tformat::NCHW, Tdatatype::FP32});
+  size_t data_size = input.size();
+  std::vector<char> tmp(input.size());
+
+  const void *src = input.getData<uint8_t>();
+
+  switch (scheme_) {
+  case QScheme::Q4_Kx8:
+    ///@todo unpack should be supported to fully support dequtize
+    // dequantize_row_q4_K(src, output.getData(), total_elems);
+    throw std::invalid_argument(
+      "[GgmlQuantizer::dequantize] Q4_Kx8 is not supported yet.");
+    break;
+  case QScheme::Q6_K:
+    dequantize_row_q6_K(src, output.getData(), total_elems);
+    break;
+  case QScheme::Q4_0:
+    unpack_q4_0(src, tmp.data(), data_size, N, K);
+    dequantize_row_q4_0(tmp.data(), output.getData(), total_elems);
+    break;
+  default:
+    throw std::invalid_argument(
+      "[GgmlQuantizer::dequantize] Unsupported QScheme.");
+  }
+
+  return output;
+}
+
+QScheme GgmlQuantizer::qscheme() const { return scheme_; }
 
 } // namespace nntrainer

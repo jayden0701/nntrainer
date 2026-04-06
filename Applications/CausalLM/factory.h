@@ -14,6 +14,7 @@
 #ifndef __CAUSALLM_FACTORY_H__
 #define __CAUSALLM_FACTORY_H__
 
+#include <ostream>
 #include <transformer.h>
 #include <unordered_map>
 
@@ -44,6 +45,12 @@ public:
       return (it->second)(cfg, generation_cfg, nntr_cfg);
     }
     return nullptr;
+  }
+
+  void printRegistered(std::ostream &os) const {
+    for (const auto &pair : creators) {
+      os << "\n\t" << pair.first;
+    }
   }
 
 private:

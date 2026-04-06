@@ -266,6 +266,13 @@ int main(int argc, char *argv[]) {
 
     auto model = causallm::Factory::Instance().create(architecture, cfg,
                                                       generation_cfg, nntr_cfg);
+    if (!model) {
+      std::cerr << "Unknown architecture: " << architecture << std::endl;
+      std::cerr << "Registered architectures:";
+      causallm::Factory::Instance().printRegistered(std::cerr);
+      std::cerr << std::endl;
+      return EXIT_FAILURE;
+    }
     model->initialize();
     model->load_weight(weight_file);
 

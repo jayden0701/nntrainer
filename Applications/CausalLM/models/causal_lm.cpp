@@ -131,7 +131,7 @@ void CausalLM::constructModel() {
 void CausalLM::registerOutputs(
   std::unique_ptr<tokenizers::Tokenizer> &tokenizer,
   std::vector<unsigned int> ids, unsigned int pos,
-  const std::vector<bool> &eos_list) {
+  const std::vector<bool> &eos_list, bool log_output) {
 
   static const std::vector<char> puncts{',', '!', ':', ';', '?'};
   for (size_t b = 0; b < ids.size(); ++b) {
@@ -147,13 +147,15 @@ void CausalLM::registerOutputs(
                  decoded_str.compare(decoded_str.size() - 3, 3, "") == 0) {
         // ends with an incomplete token, hold on
       } else {
+        if (log_output) {
 #if defined(_WIN32)
-        std::wcout << L"" << utf8_to_wstring(decoded_str);
-        std::wcout.flush();
+          std::wcout << L"" << utf8_to_wstring(decoded_str);
+          std::wcout.flush();
 #else
-        std::cout << decoded_str;
-        std::cout.flush();
+          std::cout << decoded_str;
+          std::cout.flush();
 #endif
+        }
         output_list[b].append(decoded_str);
         pending_ids_.clear();
       }
@@ -288,12 +290,15 @@ void CausalLM::registerCustomLayers() {
 }
 
 void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
-                   const WSTR tail_prompt) {
+                   const WSTR tail_prompt, bool log_output) {
 
+  auto start_total = std::chrono::high_resolution_clock::now();
   if (!is_initialized) {
     throw std::runtime_error("CausalLM model is not initialized. Please call "
                              "initialize() before run().");
   }
+
+  has_run_ = false;
 
   output_list.clear();
   for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
@@ -326,7 +331,8 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
                   !std::filesystem::exists(PRE_COMPUTED_CACHE_PATH));
 
 #if defined(_WIN32)
-  std::wcout << L"" << system_prompt << L"" << text_ << std::endl;
+  if (log_output)
+    std::wcout << L"" << system_prompt << L"" << text_ << std::endl;
   std::wstring prompt_ = prompt;
   if (!SAVE_KVCACHE)
     prompt_ += TAIL_PROMPT;
@@ -334,7 +340,8 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
   auto _input = tokenizer->Encode(converter.to_bytes(prompt_));
 #else
   // print input text
-  std::cout << system_prompt << prompt << tail_prompt << std::endl;
+  if (log_output)
+    std::cout << system_prompt << prompt << tail_prompt << std::endl;
 
   // actual prompt to be used in computation
   std::string prompt_;
@@ -419,7 +426,8 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     //  //< Precomputed cache >/<--given as input-->/<--- from json ---->//
     //
 
-    std::cout << "\n==============[KV CACHE SAVE MODE]================\n";
+    if (log_output)
+      std::cout << "\n==============[KV CACHE SAVE MODE]================\n";
     output = model->incremental_inference(BATCH_SIZE, input, label, input_len,
                                           0 + global_token_len,
                                           input_len + global_token_len, false);
@@ -427,12 +435,15 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     SYS_PROMP_LEN = input_len;
     save_kvcache(PRE_COMPUTED_CACHE_PATH, SYS_PROMP_LEN);
 
-    std::cout
-      << "kv caches are saved in " << PRE_COMPUTED_CACHE_PATH << std::endl
-      << "and the size of prompt is " << SYS_PROMP_LEN << ".\n"
-      << "You may need this prompt lenth to set the \"sys_prompt_token_size\""
-      << "\n==================================================\n"
-      << std::endl;
+    if (log_output) {
+
+      std::cout
+        << "kv caches are saved in " << PRE_COMPUTED_CACHE_PATH << std::endl
+        << "and the size of prompt is " << SYS_PROMP_LEN << ".\n"
+        << "You may need this prompt lenth to set the \"sys_prompt_token_size\""
+        << "\n==================================================\n"
+        << std::endl;
+    }
     return;
   }
 
@@ -469,8 +480,12 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     id_list = generate_multi_tokens(output[0], NUM_VOCAB, BATCH_SIZE, 1,
                                     ids_history, _len);
 
-    if (init_len < INIT_SEQ_LEN)
-      registerOutputs(tokenizer, id_list, init_len, eos_list);
+  if (init_len < INIT_SEQ_LEN)
+    registerOutputs(tokenizer, id_list, init_len, eos_list, log_output);
+
+  // output should be deallocated after use
+  for (auto &out : output) {
+    delete[] out;
   }
 
   auto finish_prefill = std::chrono::high_resolution_clock::now();
@@ -504,15 +519,22 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
         input_sample[static_cast<size_t>(b) * MAX_SEQ_LEN] =
           static_cast<float>(init_input[token_generation_idx - SYS_PROMP_LEN]);
       }
-      registerOutputs(tokenizer, ids_list, token_generation_idx, eos_list);
+      registerOutputs(tokenizer, ids_list, token_generation_idx, eos_list,
+                      log_output);
     } else {
       for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
         input_sample[static_cast<size_t>(b) * MAX_SEQ_LEN] =
           static_cast<float>(ids_list[b]);
       }
-      registerOutputs(tokenizer, ids_list, token_generation_idx, eos_list);
+      registerOutputs(tokenizer, ids_list, token_generation_idx, eos_list,
+                      log_output);
     }
     ++generation_cnt;
+
+    // output should be deallocated after use
+    for (auto out : output_interval) {
+      delete[] out;
+    }
 
     // check FINISH
     for (unsigned int j = 0; j < BATCH_SIZE; ++j) {
@@ -543,16 +565,43 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     std::chrono::duration_cast<std::chrono::milliseconds>(finish_generation -
                                                           start_generation);
 
-  std::cout << "\n\n";
-  std::cout << "=================[ LLM with NNTrainer ]===================\n";
-  std::cout << "prefill: " << init_len << " tokens, "
-            << prefill_duration.count() << " ms, "
-            << ((double)init_len / prefill_duration.count() * 1000) << " TPS\n";
-  std::cout << "generation: " << generation_cnt << " tokens, "
-            << generation_duration.count() << " ms, "
-            << ((double)generation_cnt / generation_duration.count() * 1000)
-            << " TPS\n";
-  std::cout << "==========================================================\n";
-};
+  auto finish_total = std::chrono::high_resolution_clock::now();
+  auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+    finish_total - start_total);
+  size_t peak_memory = getPeakMemoryKb();
+
+  if (log_output) {
+
+    std::cout << "\n\n";
+    std::cout << "=================[ LLM with NNTrainer ]===================\n";
+    std::cout << "prefill: " << init_len << " tokens, "
+              << prefill_duration.count() << " ms, "
+              << ((double)init_len / prefill_duration.count() * 1000)
+              << " TPS\n";
+    std::cout << "generation: " << generation_cnt << " tokens, "
+              << generation_duration.count() << " ms, "
+              << ((double)generation_cnt / generation_duration.count() * 1000)
+              << " TPS\n";
+    std::cout << "total: " << total_duration.count() << " ms\n";
+    std::cout << "peak memory: " << peak_memory << " KB\n";
+    std::cout << "==========================================================\n";
+  }
+
+  performance_metrics.prefill_tokens = init_len;
+  performance_metrics.prefill_duration_ms = prefill_duration.count();
+  performance_metrics.generation_tokens = generation_cnt;
+  performance_metrics.generation_duration_ms = generation_duration.count();
+  performance_metrics.total_duration_ms = total_duration.count();
+  performance_metrics.peak_memory_kb = peak_memory;
+
+  has_run_ = true;
+}
+
+std::string CausalLM::getOutput(int batch_idx) const {
+  if (batch_idx < 0 || batch_idx >= static_cast<int>(output_list.size())) {
+    return "";
+  }
+  return output_list[batch_idx];
+}
 
 } // namespace causallm

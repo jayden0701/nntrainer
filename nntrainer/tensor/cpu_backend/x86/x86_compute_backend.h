@@ -549,6 +549,17 @@ void tanh_gelu(const unsigned int N, const float *X, float *Y);
 void tanh_gelu_v2(const unsigned int N, const float *X, float *Y);
 
 /**
+ * @brief tanh_gelu function
+ * Y = 0.5 * X * (1 + tanh(sqrt(2/pi) * (X
+ *     + 0.044715 * X^3))) with x4 loop unrolling
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (input)
+ * @param Y float * for Vector Y (output)
+ */
+void gelu_v2(const unsigned int N, const float *X, float *Y);
+
+/**
  * @brief tanh_gelu function with neon but as
  * X = Y / (1 + exp(-pi/4*(Y
  *     + 0.044715Y^3)) * Z
@@ -1091,29 +1102,28 @@ void quantize_row_q8_K(const T *src, void *dst, int64_t k);
  * specification of target ISA format regardless of current platform.
  * For example, quantizing on x86 but saving in ARM format.
  *
- * @param W input q40
- * @param repacked_W output q40x8 (for X86) or q40x4 (for ARM)
+ * @param dst output repacked q40x8
+ * @param src input q40
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  * @param target target ISA format (AUTO uses current backend, X86 forces x86
  * format, ARM forces ARM format)
  */
-void repack_q4_0(void *W, void *repacked_W, size_t data_size,
-                 const unsigned int M, const unsigned int N,
-                 ml::train::ISA target = ml::train::ISA::AUTO);
+void repack_q4_0(void *dst, void *src, size_t data_size, const unsigned int M,
+                 const unsigned int N);
 
 /**
  * @brief repack q4K to q4Kx8
  *
- * @param W input q4K
- * @param repacked_W output q4Kx8
+ * @param dst output repacked q4Kx8
+ * @param src input q4K
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  */
-void repack_q4_K(void *W, void *repacked_W, size_t data_size,
-                 const unsigned int M, const unsigned int N);
+void repack_q4_K(void *dst, void *src, size_t data_size, const unsigned int M,
+                 const unsigned int N);
 
 /**
  * @brief unpack q40x8 to q40 - invers method: repack_q4_0

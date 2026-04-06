@@ -814,6 +814,15 @@ void tanh_gelu(const unsigned int N, const float *X, float *Y);
 void tanh_gelu_v2(const unsigned int N, const float *X, float *Y);
 
 /**
+ * @brief gelu function with neon but with polynoial approximation
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (input)
+ * @param Y float * for Vector Y (output)
+ */
+void gelu_v2(const unsigned int N, const float *X, float *Y);
+
+/**
  * @brief tanh_gelu function with neon but as
  * X = Y / (1 + exp(-pi/4*(Y + 0.04
  *      4715Y^3)) * Z with loop unrolling x4
@@ -1344,30 +1353,30 @@ template <typename T = float>
 void quantize_row_q8_K(const T *src, void *dst, int64_t k);
 
 /**
- * @brief repack q40 to q40x8
+ * @brief repack q40 to q40x4
+ * @note  repacking q40 for ARM is different from x86's
  *
- * @param W input q40
- * @param repacked_W output q40x8
+ * @param dst output repacked q40x4
+ * @param src input q40
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  * @param target target ISA for repacking (AUTO=ARM native format)
  */
-void repack_q4_0(void *W, void *repacked_W, size_t data_size,
-                 const unsigned int M, const unsigned int N,
-                 ml::train::ISA target = ml::train::ISA::AUTO);
+void repack_q4_0(void *dst, void *src, size_t data_size, const unsigned int M,
+                 const unsigned int N);
 
 /**
  * @brief repack q4K to q4Kx8
  *
- * @param W input q4K
- * @param repacked_W output q4Kx8
+ * @param dst output repacked q4Kx8
+ * @param src input q4K
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  */
-void repack_q4_K(void *W, void *repacked_W, size_t data_size,
-                 const unsigned int M, const unsigned int N);
+void repack_q4_K(void *dst, void *src, size_t data_size, const unsigned int M,
+                 const unsigned int N);
 
 /**
  * @brief unpack q40x4 to q40 - invers method: repack_q4_0
