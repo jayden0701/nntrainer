@@ -80,8 +80,8 @@ void MultiDataLoader::next(float **input, float **label, bool *last) {
   float **cur_input_tensor = input;
   const auto num_input = input_shapes.size() - 1;
   for (unsigned int i = 0; i < input_shapes.size(); ++i) {
-    fill_input(*cur_input_tensor,
-               input_shapes.at(num_input - i).getFeatureLen(), indicies[count]);
+    fill_input(*cur_input_tensor, input_shapes.at(i).getFeatureLen(),
+               indicies[count]);
     ++cur_input_tensor;
   }
 

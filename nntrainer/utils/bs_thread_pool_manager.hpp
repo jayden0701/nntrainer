@@ -41,7 +41,7 @@ public:
    * @brief Construct a new Thread Pool Manager object
    *
    */
-  ThreadPoolManager() : pool_(std::thread::hardware_concurrency()) {}
+  ThreadPoolManager() : pool_(4) {}
   /**
    * @brief Destroy the Thread Pool Manager object
    *

@@ -402,6 +402,10 @@ buildLayerDtypeMap(int num_layers, DataType fc_dtype, DataType embd_dtype,
       dtype_map[prefix + "_attention_gate_down"] = fc_dtype;
       dtype_map[prefix + "_attention_gate_up"] = fc_dtype;
 
+      // Attention Gates
+      dtype_map[prefix + "_attention_gate_down"] = fc_dtype;
+      dtype_map[prefix + "_attention_gate_up"] = fc_dtype;
+
       // FFN FC layers - Gauss4
       dtype_map[prefix + "_ffn_gate_up"] = fc_dtype;
       dtype_map[prefix + "_ffn_gate_down"] = fc_dtype;

@@ -57,7 +57,6 @@ public:
   void incremental_forwarding(RunLayerContext &context, unsigned int from,
                             unsigned int to, bool training) override;
 
-
   /**
    * @copydoc Layer::calcDerivative(RunLayerContext &context)
    */

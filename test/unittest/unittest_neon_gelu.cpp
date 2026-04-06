@@ -32,6 +32,12 @@ static inline float ref_tanh_gelu(float x) {
   return half * x * (1.0f + std::tanh(k * (x + c * x3)));
 }
 
+static inline float ref_gelu(float x) {
+  const float half = 0.5f;
+  const float c = 1 / std::sqrt(2);
+  return half * x * (1.0f + std::erf(c * x));
+}
+
 static inline float ref_tanh_gelu_mul(float x, float y) {
   const float half = 0.5f;
   const float c = 0.044715f;
@@ -71,6 +77,32 @@ TEST(ActivationNeon, TanhGeluAccuracy) {
   // Reference
   for (size_t i = 0; i < N; ++i)
     y_ref[i] = ref_tanh_gelu(x[i]);
+
+  // Tolerance, use abs_tol only now
+  const float abs_tol = 1e-5f;
+  const float rel_tol = 1e-5f;
+
+  // Test for each case
+  for (size_t i = 0; i < N; ++i) {
+    expect_close(y[i], y_ref[i], abs_tol, rel_tol);
+  }
+}
+
+TEST(ActivationNeon, Geluv2Accuracy) {
+  constexpr size_t N = 4096;
+
+  std::mt19937 rng(123);
+  std::uniform_real_distribution<float> dist(-10.0f, 10.0f);
+
+  std::vector<float> x(N), y(N), y_ref(N);
+  for (size_t i = 0; i < N; ++i)
+    x[i] = dist(rng);
+
+  nntrainer::gelu_v2(static_cast<unsigned int>(N), x.data(), y.data());
+
+  // Reference
+  for (size_t i = 0; i < N; ++i)
+    y_ref[i] = ref_gelu(x[i]);
 
   // Tolerance, use abs_tol only now
   const float abs_tol = 1e-5f;
@@ -258,6 +290,10 @@ TEST(ActivationNeonPerf, TanhGeluVsSwiGluTime) {
 
   bench("tanh_gelu_v2", [&]() {
     nntrainer::tanh_gelu_v2(static_cast<unsigned int>(N), px, pout); // 5
+  });
+
+  bench("gelu_v2", [&]() {
+    nntrainer::gelu_v2(static_cast<unsigned int>(N), px, pout); // 5
   });
 }
 

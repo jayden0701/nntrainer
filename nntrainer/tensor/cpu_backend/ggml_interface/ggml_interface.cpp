@@ -106,19 +106,19 @@ float __ggml_vec_dot_q6_K(const unsigned int K, const void *__restrict v_q6_K,
   return result;
 }
 
-void __ggml_repack_q4_0_to_q4_0_4(void *W, void *repacked_W, size_t data_size,
+void __ggml_repack_q4_0_to_q4_0_4(void *dst, void *src, size_t data_size,
                                   const unsigned int M, const unsigned int N) {
-  nntr_repack_q4_0_to_q4_0_4_bl(W, 8, repacked_W, data_size, M, N);
+  nntr_repack_q4_0_to_q4_0_4_bl(dst, 8, src, data_size, M, N);
 }
 
-void __ggml_repack_q4_0_to_q4_0_8(void *W, void *repacked_W, size_t data_size,
+void __ggml_repack_q4_0_to_q4_0_8(void *dst, void *src, size_t data_size,
                                   const unsigned int M, const unsigned int N) {
-  nntr_repack_q4_0_to_q4_0_8_bl(W, 8, repacked_W, data_size, M, N);
+  nntr_repack_q4_0_to_q4_0_8_bl(dst, 8, src, data_size, M, N);
 }
 
-void __ggml_repack_q4_K_to_q4_K_8(void *W, void *repacked_W, size_t data_size,
+void __ggml_repack_q4_K_to_q4_K_8(void *dst, void *src, size_t data_size,
                                   const unsigned int M, const unsigned int N) {
-  nntr_repack_q4_K_to_q4_K_8_bl(W, 8, repacked_W, data_size, M, N);
+  nntr_repack_q4_K_to_q4_K_8_bl(dst, 8, src, data_size, M, N);
 }
 
 } // namespace nntrainer

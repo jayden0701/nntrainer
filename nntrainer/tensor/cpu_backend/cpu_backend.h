@@ -636,7 +636,7 @@ extern void init_backend();
  * @param src q4_0 data
  * @param d_out scale data
  * @param qs_out quantized data
- * @param N number of block
+ * @param N number of ppppblock
  * @param K dim K
  */
 extern void unpack_q4_0x8_transpose16(const void *src, uint16_t *d_out,
@@ -700,6 +700,16 @@ extern void tanh_gelu(const unsigned int N, const float *X, float *Y);
  * @param Y float * for Vector Y (output)
  */
 extern void tanh_gelu_v2(const unsigned int N, const float *X, float *Y);
+
+/**
+ * @brief gelu function with neon but as
+ *
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X (input)
+ * @param Y float * for Vector Y (output)
+ */
+extern void gelu_v2(const unsigned int N, const float *X, float *Y);
 
 /**
  * @brief tanh_gelu function with neon but as
@@ -1244,28 +1254,27 @@ extern void quantize_row_q8_K(const T *src, void *dst, int64_t k);
  * specification of target ISA format regardless of current platform.
  * For example, quantizing on x86 but saving in ARM format.
  *
- * @param W input q40
- * @param repacked_W output q40x8 (for X86) or q40x4 (for ARM)
+ * @param dst output repacked data
+ * @param src input quantized data
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  * @param target target ISA format (AUTO uses current backend, X86 forces x86
  * format, ARM forces ARM format)
  */
-extern void repack_q4_0(void *W, void *repacked_W, size_t data_size,
-                        const unsigned int M, const unsigned int N,
-                        ml::train::ISA target = ml::train::ISA::AUTO);
+extern void repack_q4_0(void *dst, void *src, size_t data_size,
+                        const unsigned int M, const unsigned int N);
 
 /**
  * @brief repack q4K to q4Kx8
  *
- * @param W input q4K
- * @param repacked_W output q4Kx8
+ * @param dst output repacked data
+ * @param src input quantized data
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  */
-extern void repack_q4_K(void *W, void *repacked_W, size_t data_size,
+extern void repack_q4_K(void *dst, void *src, size_t data_size,
                         const unsigned int M, const unsigned int N);
 
 /**

@@ -273,6 +273,55 @@ TEST(nntrainer_cpu_backend_standalone, q4_0_quantization) {
   EXPECT_NEAR(max_differ, 0., eps * K * N);
 }
 
+/**
+ * @brief Test quantize -> repack -> unpack -> dequantize pipeline.
+ *
+ * Verifies that unpack_q4_0 correctly reverses the repack_q4_0 operation
+ * so that the subsequent dequantize_row_q4_0 produces the same result as
+ * direct quantize -> dequantize (without repack)
+ *
+ * NOTE: repack_q4_0 produces q4_0x4 on ARM and q4_0x8 on x86 backends.
+ *       unpack_q4_0 is the matching inverse for each backend.
+ */
+TEST(nntrainer_cpu_backend_standalone, q4_0_repack_unpack_dequantize) {
+  nntrainer::init_backend();
+
+  const unsigned int K = 768;
+  const unsigned int N = 512;
+
+  std::vector<float> weight = generate_random_vector<float>(N * K);
+
+  // --- Path A: quantize -> dequantize (reference) ---
+  int64_t q4_0_block_size = QK4_0;
+  int64_t q4_0_type_size = sizeof(block_q4_0_testonly);
+  size_t data_size =
+    (static_cast<size_t>(K) * N / q4_0_block_size) * q4_0_type_size;
+
+  std::vector<char> q4_weight(data_size);
+  nntrainer::quantize_q4_0(weight.data(), q4_weight.data(), N, K, nullptr);
+
+  std::vector<float> ref_dequantized(N * K);
+  nntrainer::dequantize_row_q4_0(q4_weight.data(), ref_dequantized.data(),
+                                 static_cast<int64_t>(K) * N);
+
+  // --- Path B: quantize -> repack -> unpack -> dequantize ---
+  std::vector<char> repacked(data_size);
+  nntrainer::repack_q4_0(repacked.data(), q4_weight.data(), data_size, N, K);
+
+  std::vector<char> unpacked(data_size);
+  nntrainer::unpack_q4_0(repacked.data(), unpacked.data(), data_size, N, K);
+
+  std::vector<float> roundtrip_dequantized(N * K);
+  nntrainer::dequantize_row_q4_0(unpacked.data(), roundtrip_dequantized.data(),
+                                 static_cast<int64_t>(K) * N);
+
+  // --- Verify: Path A == Path B (bit-exact after XOR round-trip) ---
+  for (unsigned int i = 0; i < N * K; ++i) {
+    EXPECT_EQ(ref_dequantized[i], roundtrip_dequantized[i])
+      << "Mismatch at index " << i;
+  }
+}
+
 float test_gemm_q4_0(const uint32_t M, const uint32_t K, const uint32_t N,
                      const float *weights, const float *activations,
                      std::vector<float> &ref_dst, bool print = false) {
@@ -748,6 +797,32 @@ TEST(nntrainer_cpu_backend_standalone, softmax_row_inplace) {
   }
 }
 
+TEST(nntrainer_cpu_backend_standalone, softmax_row_inplace_sink) {
+  size_t start_row = 0;
+  size_t end_row = 2;
+  size_t num_heads = 10;
+  size_t qk_out_size = num_heads * end_row;
+  std::vector<float> qk_out = {-6.880110f, -8.000502f, -8.838327f, -0.815022f,
+                               7.323523f,  -3.325828f, 2.022300f,  -7.142663f,
+                               4.161452f,  3.017770f,  -9.588310f, -8.871769f,
+                               9.398197f,  4.439975f,  6.648853f,  8.771055f,
+                               -5.753218f, -9.984425f, -6.363501f, 9.844232f};
+  std::vector<float> sink = {-2.509198f, 5.930860f, 9.014286f, -6.331305f,
+                             4.639878f,  5.593820f, 1.973170f, 1.937003f,
+                             -6.879627f, -1.083345f};
+  std::vector<float> ref_out = {
+    0.012472f, 0.000001f, 0.000000f, 0.005194f, 0.633859f, 0.000005f, 0.512170f,
+    0.000114f, 0.999957f, 0.001083f, 0.000831f, 0.000000f, 0.594816f, 0.994785f,
+    0.322840f, 0.959963f, 0.000215f, 0.000007f, 0.000027f, 0.998899f};
+
+  nntrainer::softmax_row_inplace(qk_out.data(), start_row, end_row, num_heads,
+                                 sink.data());
+
+  for (size_t i = 0; i < qk_out_size; i++) {
+    EXPECT_NEAR(ref_out[i], qk_out[i], 0.0001f);
+  }
+}
+
 TEST(nntrainer_cpu_backend_standalone, softmax_row) {
   size_t start_row = 0;
   size_t end_row = 3;
@@ -954,6 +1029,32 @@ TEST(nntrainer_cpu_backend_standalone, softmax_row_inplace_fp16) {
     0.322840, 0.959963, 0.000215, 0.000007, 0.000027, 0.998899};
 
   nntrainer::softmax_row_inplace(qk_out.data(), start_row, end_row, num_heads);
+
+  for (size_t i = 0; i < qk_out_size; i++) {
+    EXPECT_NEAR(ref_out[i], qk_out[i], 0.0005f);
+  }
+}
+
+TEST(nntrainer_cpu_backend_standalone, softmax_row_inplace_fp16_sink) {
+  size_t start_row = 0;
+  size_t end_row = 2;
+  size_t num_heads = 10;
+  size_t qk_out_size = num_heads * end_row;
+  std::vector<__fp16> qk_out = {-6.880110f, -8.000502f, -8.838327f, -0.815022f,
+                                7.323523f,  -3.325828f, 2.022300f,  -7.142663f,
+                                4.161452f,  3.017770f,  -9.588310f, -8.871769f,
+                                9.398197f,  4.439975f,  6.648853f,  8.771055f,
+                                -5.753218f, -9.984425f, -6.363501f, 9.844232f};
+  std::vector<__fp16> sink = {-2.509198f, 5.930860f, 9.014286f, -6.331305f,
+                              4.639878f,  5.593820f, 1.973170f, 1.937003f,
+                              -6.879627f, -1.083345f};
+  std::vector<__fp16> ref_out = {
+    0.012472f, 0.000001f, 0.000000f, 0.005194f, 0.633859f, 0.000005f, 0.512170f,
+    0.000114f, 0.999957f, 0.001083f, 0.000831f, 0.000000f, 0.594816f, 0.994785f,
+    0.322840f, 0.959963f, 0.000215f, 0.000007f, 0.000027f, 0.998899f};
+
+  nntrainer::softmax_row_inplace(qk_out.data(), start_row, end_row, num_heads,
+                                 sink.data());
 
   for (size_t i = 0; i < qk_out_size; i++) {
     EXPECT_NEAR(ref_out[i], qk_out[i], 0.0005f);

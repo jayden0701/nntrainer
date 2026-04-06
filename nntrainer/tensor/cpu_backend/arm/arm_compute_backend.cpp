@@ -66,6 +66,13 @@ void tanh_gelu_v2(const unsigned int N, const float *X, float *Y) {
 #endif
 }
 
+void gelu_v2(const unsigned int N, const float *X, float *Y) {
+#ifdef __ARM_NEON
+  nntrainer::neon::gelu_v2(N, X, Y);
+#endif
+  __fallback_gelu_v2(N, X, Y);
+}
+
 void tanh_gelu_mul(const unsigned int N, float *X, float *Y, float *Z) {
 #ifdef __ARM_NEON
   nntrainer::neon::tanh_gelu_mul(N, X, Y, Z);
@@ -449,26 +456,19 @@ template <> void dequantize_row_q8_K(const void *x, float *y, int64_t k) {
   __ggml_dequantize_row_q8_K(x, y, k);
 }
 
-void repack_q4_0_to_q4_0_8(void *W, void *repacked_W, size_t data_size,
+void repack_q4_0_to_q4_0_8(void *dst, void *src, size_t data_size,
                            const unsigned int M, const unsigned int N) {
-  __ggml_repack_q4_0_to_q4_0_8(W, repacked_W, data_size, M, N);
+  __ggml_repack_q4_0_to_q4_0_8(dst, src, data_size, M, N);
 }
 
-void repack_q4_0(void *W, void *repacked_W, size_t data_size,
-                 const unsigned int M, const unsigned int N,
-                 ml::train::ISA target) {
-  if (target == ml::train::ISA::AUTO || target == ml::train::ISA::ARM) {
-    // Use ARM format (q4_0x4)
-    __ggml_repack_q4_0_to_q4_0_4(W, repacked_W, data_size, M, N);
-  } else if (target == ml::train::ISA::X86) {
-    // Use x86 format (q4_0x8) for cross-platform quantization
-    __ggml_repack_q4_0_to_q4_0_8(W, repacked_W, data_size, M, N);
-  }
+void repack_q4_0(void *dst, void *src, size_t data_size, const unsigned int M,
+                 const unsigned int N) {
+  __ggml_repack_q4_0_to_q4_0_4(dst, src, data_size, M, N);
 }
 
-void repack_q4_K(void *W, void *repacked_W, size_t data_size,
-                 const unsigned int M, const unsigned int N) {
-  __ggml_repack_q4_K_to_q4_K_8(W, repacked_W, data_size, M, N);
+void repack_q4_K(void *dst, void *src, size_t data_size, const unsigned int M,
+                 const unsigned int N) {
+  __ggml_repack_q4_K_to_q4_K_8(dst, src, data_size, M, N);
 }
 
 void unpack_q4_0(const void *in_q4_0x, void *out_q4_0, size_t data_size,

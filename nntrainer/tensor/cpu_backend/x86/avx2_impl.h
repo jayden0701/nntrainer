@@ -112,6 +112,26 @@ void transpose_matrix(const unsigned int M, const unsigned int N,
 void swiglu(const unsigned int N, float *X, const float *Y, const float *Z);
 
 /**
+ * @brief swiglu function with AVX : X = (Y / (1 + exp( -Y ))) * Z
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X
+ * @param Y float * for Vector Y
+ * @param Z float * for Vector Z
+ */
+void tanh_gelu_v2(const unsigned int N, const float *X, float *Y);
+
+/**
+ * @brief swiglu function with AVX : X = (Y / (1 + exp( -Y ))) * Z
+ *
+ * @param N number of elements in X
+ * @param X float * for Vector X
+ * @param Y float * for Vector Y
+ * @param Z float * for Vector Z
+ */
+void gelu_v2(const unsigned int N, const float *X, float *Y);
+
+/**
  * @brief swiglu function with alpha and AVX : X = (Y / (1 + exp(- alpha * Y)))
  * * Z
  * @param N number of elements in X
@@ -166,7 +186,7 @@ template <typename T = float>
 void softmax_row_inplace(T *qk_out, size_t start_row, size_t end_row,
                          size_t num_heads, T *sink = nullptr);
 
-/**
+/**f
  * @brief Multihead softmax, exp(x_i) / sum(exp(x_i))
  * @param[in/out] qk_out float* input/output values
  * @param[in] start_row start row number

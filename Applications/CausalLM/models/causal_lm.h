@@ -70,7 +70,20 @@ public:
    * @brief run the CausalLM model
    */
   void run(const WSTR prompt, bool do_sample = false,
-           const WSTR system_prompt = "", const WSTR tail_prompt = "") override;
+           const WSTR system_prompt = "", const WSTR tail_prompt = "",
+           bool log_output = true) override;
+
+  /**
+   * @brief Get the generated output text
+   * @param batch_idx Index of the batch item
+   * @return Generated text string
+   */
+  std::string getOutput(int batch_idx = 0) const;
+
+  /**
+   * @brief get the status of run
+   */
+  bool hasRun() const { return has_run_; }
 
 protected:
   /**
@@ -90,7 +103,7 @@ protected:
   virtual void
   registerOutputs(std::unique_ptr<tokenizers::Tokenizer> &tokenizer,
                   std::vector<unsigned int> ids, unsigned int pos,
-                  const std::vector<bool> &eos_list);
+                  const std::vector<bool> &eos_list, bool log_output = true);
 
   /**
    * @brief save kv cache
@@ -139,6 +152,8 @@ protected:
   bool USE_KVCACHE;
   bool SKIP_PREFILL;
   unsigned int global_token_len;
+
+  bool has_run_ = false;
 
   std::mt19937 rng; /**< Random Number Gen */
 };

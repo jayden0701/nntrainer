@@ -18,6 +18,8 @@
 #include <quantizer.h>
 #include <tensor.h>
 
+#include <cpu_backend.h>
+
 /**
  * @brief Quantize to FP32 Tensor (negative test)
  */
@@ -401,6 +403,96 @@ TEST(nntrainer_Quantizer, per_tensor_affine_05_p) {
 
   ASSERT_EQ(output_s8, float_answer);
   ASSERT_EQ(output_u8, float_answer);
+}
+
+/**
+ * @brief GGMLQuantizer Q6_K quantize and dequantize
+ */
+TEST(nntrainer_Quantizer, ggml_q6k_01_p) {
+  nntrainer::init_backend();
+
+  uint32_t K = 512;
+  uint32_t N = 256;
+
+  std::vector<float> weight =
+    generate_random_vector<float>(K * N, -0.05f, 0.05f);
+
+  nntrainer::Tensor W_fp32(
+    1, 1, K, N, {nntrainer::Tformat::NCHW, nntrainer::Tdatatype::FP32});
+
+  for (uint32_t k = 0; k < K; ++k)
+    for (uint32_t n = 0; n < N; ++n)
+      W_fp32.setValue(0, 0, k, n, weight[k * N + n]);
+
+  // Create GGML Q6_K quantizer
+  std::unique_ptr<nntrainer::Quantizer> quantizer =
+    nntrainer::Quantization::createQuantizer(nntrainer::QScheme::Q6_K);
+
+  EXPECT_EQ(quantizer->qscheme(), nntrainer::QScheme::Q6_K);
+
+  // Quantize
+  nntrainer::Tensor W_q6k =
+    quantizer->quantize(W_fp32, nntrainer::Tdatatype::Q6_K);
+
+  EXPECT_EQ(W_q6k.getDataType(), nntrainer::Tdatatype::Q6_K);
+
+  // Dequantize
+  nntrainer::Tensor W_deq =
+    quantizer->dequantize(W_q6k, nntrainer::Tdatatype::FP32);
+
+  EXPECT_EQ(W_deq.getDataType(), nntrainer::Tdatatype::FP32);
+
+  // Verify quantization quality: MSE should be small
+  auto mean_squared_error =
+    mse<float, float>(W_fp32.getData(), W_deq.getData(), K * N);
+
+  const float eps = 1e-5;
+  EXPECT_NEAR(mean_squared_error, 0., eps * K * N);
+}
+
+/**
+ * @brief GGMLQuantizer Q4_0 quantize and dequantize
+ */
+TEST(nntrainer_Quantizer, ggml_q4_0_01_p) {
+  nntrainer::init_backend();
+
+  uint32_t K = 768;
+  uint32_t N = 512;
+
+  std::vector<float> weight =
+    generate_random_vector<float>(K * N, -0.05f, 0.05f);
+
+  nntrainer::Tensor W_fp32(
+    1, 1, K, N, {nntrainer::Tformat::NCHW, nntrainer::Tdatatype::FP32});
+
+  for (uint32_t k = 0; k < K; ++k)
+    for (uint32_t n = 0; n < N; ++n)
+      W_fp32.setValue(0, 0, k, n, weight[k * N + n]);
+
+  // Create GGML Q4_0 quantizer
+  std::unique_ptr<nntrainer::Quantizer> quantizer =
+    nntrainer::Quantization::createQuantizer(nntrainer::QScheme::Q4_0);
+
+  EXPECT_EQ(quantizer->qscheme(), nntrainer::QScheme::Q4_0);
+
+  // Quantize
+  nntrainer::Tensor W_q40 =
+    quantizer->quantize(W_fp32, nntrainer::Tdatatype::Q4_0);
+
+  EXPECT_EQ(W_q40.getDataType(), nntrainer::Tdatatype::Q4_0);
+
+  // Dequantize
+  nntrainer::Tensor W_deq =
+    quantizer->dequantize(W_q40, nntrainer::Tdatatype::FP32);
+
+  EXPECT_EQ(W_deq.getDataType(), nntrainer::Tdatatype::FP32);
+
+  // Verify quantization quality: MSE should be small
+  auto mean_squared_error =
+    mse<float, float>(W_fp32.getData(), W_deq.getData(), K * N);
+
+  const float eps = 1e-5;
+  EXPECT_NEAR(mean_squared_error, 0., eps * K * N);
 }
 
 int main(int argc, char **argv) {

@@ -308,37 +308,37 @@ template <typename T = float>
 void __ggml_dequantize_row_q8_K(const void *x, T *y, int64_t k);
 
 /**
- * @brief repack q40 to q40x8
+ * @brief repack q40 to q40x4
  *
- * @param W input q40
- * @param repacked_W output q40x8
+ * @param dst output repacked q40x4
+ * @param src input q40
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  */
-void __ggml_repack_q4_0_to_q4_0_4(void *W, void *repacked_W, size_t data_size,
+void __ggml_repack_q4_0_to_q4_0_4(void *dst, void *src, size_t data_size,
                                   const unsigned int M, const unsigned int N);
 /**
  * @brief repack q40 to q40x8
  *
- * @param W input q40
- * @param repacked_W output q40x8
+ * @param dst output repacked q40x8
+ * @param src input q40
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  */
-void __ggml_repack_q4_0_to_q4_0_8(void *W, void *repacked_W, size_t data_size,
+void __ggml_repack_q4_0_to_q4_0_8(void *dst, void *src, size_t data_size,
                                   const unsigned int M, const unsigned int N);
 /**
  * @brief repack q4K to q4Kx8
  *
- * @param W input q4K
- * @param repacked_W output q4Kx8
+ * @param dst output repacked q4Kx8
+ * @param src input q4K
  * @param data_size total weight size
  * @param M number of rows
  * @param N number of columns
  */
-void __ggml_repack_q4_K_to_q4_K_8(void *W, void *repacked_W, size_t data_size,
+void __ggml_repack_q4_K_to_q4_K_8(void *dst, void *src, size_t data_size,
                                   const unsigned int M, const unsigned int N);
 
 #ifdef ENABLE_FP16

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Copyright (C) 2024 Custom Layer Development
+ * Copyright (C) 2026 Joonseok Oh <jrock.oh@samsung.com>
  *
  * @file   custom_rms_reverse_norm.cpp
- * @date   09 February 2024
- * @brief  Implementation of custom ReverseRMS normalization function
- * @see    https://github.com/nnstreamer/nntrainer
- * @author Custom Developer
+ * @date   27 March 2026
+ * @brief  This is Reverse RMS Norm Layer Class
+ * @see    https://github.com/nntrainer/nntrainer
+ * @author Joonseok Oh <jrock.oh@samsung.com>
  * @bug    No known bugs except for NYI items
  *
  */

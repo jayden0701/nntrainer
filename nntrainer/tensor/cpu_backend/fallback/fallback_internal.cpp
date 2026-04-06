@@ -449,6 +449,14 @@ void __fallback_tanh_gelu_mul(const unsigned int N, float *X, float *Y,
   }
 }
 
+void __fallback_gelu_v2(const unsigned int N, const float *X, float *Y) {
+  for (unsigned int i = 0; i < N; ++i) {
+    float x = X[i];
+
+    Y[i] = 0.5f * x * (1.0f + std::erf(x * 0.7071067811f));
+  }
+}
+
 float __fallback_max(const unsigned int N, float *X) {
   std::vector<float> v(X, X + N);
   return *std::max_element(v.begin(), v.end());

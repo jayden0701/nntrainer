@@ -347,6 +347,60 @@ private:
 };
 
 /**
+ * @class GgmlQuantizer class
+ * @brief GgmlQuantizer class supports Q4_K, Q6_K, Q4_0 type.
+ */
+class GgmlQuantizer : public NonUniformQuantizer {
+public:
+  /**
+   * @brief Constructor of a GgmlQuantizer
+   * @param scheme Quantization scheme (Q4_Kx8, Q6_K, or Q4_0)
+   */
+  GgmlQuantizer(QScheme scheme = QScheme::Q4_Kx8) :
+    NonUniformQuantizer(), scheme_(scheme) {}
+
+  /**
+   * @copydoc Quantizer::create
+   */
+  std::unique_ptr<Quantizer> create() override;
+
+  /**
+   * @copydoc Quantizer::quantize(const Tensor &input,
+   * ml::train::TensorDim::DataType qtype)
+   */
+  Tensor quantize(const Tensor &input,
+                  ml::train::TensorDim::DataType qtype) override;
+
+  /**
+   * @copydoc Quantizer::quantize(const Tensor &input, Tensor &output, float
+   * *scales, unsigned int *zero_points)
+   */
+  Tensor &quantize(const Tensor &input, Tensor &output, float *scales,
+                   unsigned int *zero_points = nullptr) override;
+
+  /**
+   * @copydoc Quantizer::dequantize(const Tensor &input)
+   */
+  Tensor dequantize(const Tensor &input,
+                    ml::train::TensorDim::DataType dtype) override;
+
+  /**
+   * @copydoc Quantizer::qscheme()
+   */
+  QScheme qscheme() const override;
+
+private:
+  QScheme scheme_;
+
+  /**
+   * @copydoc Quantizer::calculateQParams(const Tensor &input,
+   * ml::train::TensorDim::DataType qtype)
+   */
+  void calculateQParams(const Tensor &input,
+                        ml::train::TensorDim::DataType qtype) override {}
+};
+
+/**
  * @brief Quantization class to create a quantizer
  *
  * @details The quantization class is a creator class to create a predefined
@@ -375,6 +429,11 @@ public:
       break;
     case QScheme::BINARY_CODE_BASED:
       return std::make_unique<BinaryCodeBasedQuantizer>();
+      break;
+    case QScheme::Q4_Kx8:
+    case QScheme::Q6_K:
+    case QScheme::Q4_0:
+      return std::make_unique<GgmlQuantizer>(qscheme);
       break;
     default:
       return Quantizer::getRegisteredQuantizer(qscheme)->create();

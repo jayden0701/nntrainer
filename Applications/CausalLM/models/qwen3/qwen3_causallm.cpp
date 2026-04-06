@@ -43,12 +43,20 @@ std::vector<LayerHandle> Qwen3Transformer::createAttention(
   auto A = "layer" + std::to_string(layer_id) + "_attention";
   auto O = "layer" + std::to_string(layer_id) + "_attention_out";
 
-  // V layer
-  std::vector<std::string> v_params = {
-    withKey("name", V), withKey("unit", head_dim * n_heads / GQA_SIZE),
-    withKey("disable_bias", "true"), withKey("input_layers", value_name),
+  // Q layer
+  std::vector<std::string> q_params = {
+    withKey("name", Q), withKey("unit", head_dim * n_heads),
+    withKey("disable_bias", "true"), withKey("input_layers", query_name),
     withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", v_params));
+  layers.push_back(createLayer("fully_connected", q_params));
+
+  // Q-reshaped-norm layer
+  // q_norm(q_proj.view(hidden_shape))
+  std::vector<std::string> q_norm_params = {
+    withKey("name", Q_norm), withKey("input_layers", Q),
+    withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
+    withKey("feature_size", std::to_string(head_dim))};
+  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
   // K layer
   std::vector<std::string> k_params = {
@@ -65,20 +73,12 @@ std::vector<LayerHandle> Qwen3Transformer::createAttention(
     withKey("feature_size", std::to_string(head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
 
-  // Q layer
-  std::vector<std::string> q_params = {
-    withKey("name", Q), withKey("unit", head_dim * n_heads),
-    withKey("disable_bias", "true"), withKey("input_layers", query_name),
+  // V layer
+  std::vector<std::string> v_params = {
+    withKey("name", V), withKey("unit", head_dim * n_heads / GQA_SIZE),
+    withKey("disable_bias", "true"), withKey("input_layers", value_name),
     withKey("weight_initializer", "ones")};
-  layers.push_back(createLayer("fully_connected", q_params));
-
-  // Q-reshaped-norm layer
-  // q_norm(q_proj.view(hidden_shape))
-  std::vector<std::string> q_norm_params = {
-    withKey("name", Q_norm), withKey("input_layers", Q),
-    withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
-    withKey("feature_size", std::to_string(head_dim))};
-  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
+  layers.push_back(createLayer("fully_connected", v_params));
 
   // Attention core layer
   std::vector<std::string> a_params = {
