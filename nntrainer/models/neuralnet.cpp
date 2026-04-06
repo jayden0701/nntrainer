@@ -430,7 +430,9 @@ size_t NeuralNetwork::getTotalModelBytes() const {
       }
 
       std::cout << (*iter)->getName() << " | " << weight->getName() << " | "
-                << size << " bytes" << std::endl;
+                << size << " bytes | " << weight->getDim() << std::endl;
+
+      
 
       total_bytes += size;
     }
@@ -489,6 +491,20 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
     std::cout << "From: " << from << ", To: " << to << std::endl;
     std::cout << "Layer type: " << node->getType() << std::endl;
 
+    // if (from == 0) {
+    //   auto num_weights = node->getNumWeights();
+    //   if (static_cast<unsigned int>(num_weights) != 0) {
+    //     std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() << "\n";
+    //     auto num_weights = node->getNumWeights();
+    //     std::cout << "DEBUG: num weight: " << num_weights << "\n";
+    //     for (size_t i = 0; i < num_weights; i++) {
+    //       auto weight = node->getWeightObject(static_cast<unsigned int>(i));
+    //       std::cout << "DEBUG: weight: "
+    //                 << static_cast<Weight>(weight).getVariable() << std::endl;
+    //     }
+    //   }
+    // }
+
     // Print input tensors
     auto &rc = node->getRunContext();
     for (unsigned int i = 0; i < rc.getNumInputs(); ++i) {
@@ -526,7 +542,7 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
         std::cout << "  Stats - Min: " << in_min << ", Max: " << in_max
                   << ", Mean: " << in_mean << std::endl;
       } else {
-        input.print(std::cout);
+        //input.print(std::cout);
       }
     }
 
@@ -852,21 +868,6 @@ void NeuralNetwork::load(const std::string &file_path,
               (v.size() == 2) ? v[1] : v[0], std::ios::in | std::ios::binary);
             node->read(local_model_file, false, exec_mode, fsu_mode,
                        std::numeric_limits<size_t>::max(), true, model_file_fd);
-
-
-            auto num_weights = node->getNumWeights();
-            if (static_cast<unsigned int>(num_weights) != 0) {
-              std::cout << "DEBUG: NAME: >>>>>>>>>>> " << node->getName() <<
-              "\n"; auto num_weights = node->getNumWeights(); std::cout <<
-              "DEBUG: num weight: " << num_weights << "\n"; for (size_t i =
-              0; i < num_weights; i++) {
-                auto weight =
-                  node->getWeightObject(static_cast<unsigned int>(i));
-                std::cout << "DEBUG: weight: "
-                          << static_cast<Weight>(weight).getVariable()
-                          << std::endl;
-              }
-            }
 
           } else {
 #if defined(_WIN32)
