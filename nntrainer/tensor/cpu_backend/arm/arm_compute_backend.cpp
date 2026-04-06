@@ -462,7 +462,8 @@ void repack_q4_0_to_q4_0_8(void *dst, void *src, size_t data_size,
 }
 
 void repack_q4_0(void *dst, void *src, size_t data_size, const unsigned int M,
-                 const unsigned int N) {
+                 const unsigned int N,
+                 ml::train::ISA target) {
   __ggml_repack_q4_0_to_q4_0_4(dst, src, data_size, M, N);
 }
 

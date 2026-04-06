@@ -480,9 +480,9 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     id_list = generate_multi_tokens(output[0], NUM_VOCAB, BATCH_SIZE, 1,
                                     ids_history, _len);
 
-  if (init_len < INIT_SEQ_LEN)
-    registerOutputs(tokenizer, id_list, init_len, eos_list, log_output);
-
+    if (init_len < INIT_SEQ_LEN)
+      registerOutputs(tokenizer, id_list, init_len, eos_list, log_output);
+  }
   // output should be deallocated after use
   for (auto &out : output) {
     delete[] out;

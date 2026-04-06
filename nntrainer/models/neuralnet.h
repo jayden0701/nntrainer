@@ -119,7 +119,6 @@ public:
    */
   bool getInitialized() const override { return initialized; }
 
-  size_t getTotalModelBytes() const;
 
   /**
    * @brief returns loadedFromConfig state of a network
