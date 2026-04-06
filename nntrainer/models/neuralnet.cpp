@@ -408,6 +408,42 @@ sharedConstTensors NeuralNetwork::forwarding(
   return model_graph.forwarding(training, forwarding_op, stop_cb, userdata);
 }
 
+size_t NeuralNetwork::getTotalModelBytes() const {
+  size_t total_bytes = 0;
+
+  std::cout << "Model Weight Bytes Breakdown:" << std::endl;
+  std::cout << "=========================" << std::endl;
+
+  for (auto iter = model_graph.cbegin(); iter != model_graph.cend(); iter++) {
+    auto weights = (*iter)->getRunContext().getWeights();
+    for (auto weight : weights) {
+      size_t size = weight->getVariable().getMemoryBytes();
+      auto tensor_data_type = weight->getDim().getDataType();
+
+      // Add qparam size for quantized tensors
+      if (tensor_data_type != TensorDim::DataType::FP32 &&
+          tensor_data_type != TensorDim::DataType::FP16 &&
+          tensor_data_type != TensorDim::DataType::Q6_K &&
+          tensor_data_type != TensorDim::DataType::Q4_0) {
+        // for tensor with qparam
+        size += sizeof(uint16_t);
+      }
+
+      std::cout << (*iter)->getName() << " | " << weight->getName() << " | "
+                << size << " bytes | " << weight->getDim() << std::endl;
+
+      
+
+      total_bytes += size;
+    }
+  }
+
+  std::cout << "=========================" << std::endl;
+  std::cout << "Total: " << total_bytes << " bytes" << std::endl;
+
+  return total_bytes;
+}
+
 /**
  * @brief     forward propagation using layers object which has layer
  */
@@ -692,6 +728,8 @@ void NeuralNetwork::load(const std::string &file_path,
                          ml::train::ModelFormat format) {
   /// @todo this switch case should be delegating the function call only. It's
   /// not delegating for now as required logics are manageable for now.
+
+  getTotalModelBytes();
 
   bool fsu_mode = std::get<props::Fsu>(model_flex_props);
 

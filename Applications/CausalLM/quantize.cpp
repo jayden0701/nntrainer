@@ -397,10 +397,24 @@ buildLayerDtypeMap(int num_layers, DataType fc_dtype, DataType embd_dtype,
       dtype_map[prefix + "_wv"] = fc_dtype;
       dtype_map[prefix + "_attention_out"] = fc_dtype;
 
+      // Attention Gates
+      dtype_map[prefix + "_attention_gate_down"] = fc_dtype;
+      dtype_map[prefix + "_attention_gate_up"] = fc_dtype;
+
       // FFN FC layers
-      dtype_map[prefix + "_ffn_up"] = fc_dtype;
-      dtype_map[prefix + "_ffn_gate"] = fc_dtype;
-      dtype_map[prefix + "_ffn_down"] = fc_dtype;
+      dtype_map[prefix + "_ffn_gate_up"] = fc_dtype;
+      dtype_map[prefix + "_ffn_gate_down"] = fc_dtype;
+      dtype_map[prefix + "_ffn_linear_up"] = fc_dtype;
+
+      dtype_map[prefix + "_ffn_output"] = fc_dtype;
+
+      // for PLE
+      if (embd_dtype != DataType::FP32 && embd_dtype != DataType::NONE) {
+        dtype_map[prefix + "_ple"] = fc_dtype;
+      }
+
+      dtype_map[prefix + "_ple_projection"] = fc_dtype;
+      dtype_map[prefix + "_ple_input_gate"] = fc_dtype;
     }
   }
 
