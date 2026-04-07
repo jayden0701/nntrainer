@@ -67,3 +67,10 @@
 - Implemented Gemma4 `use_double_wide_mlp` behavior in NNTrainer Gemma4 text MLP path.
 - Added model state for `use_double_wide_mlp` and config parsing in `setupParameters()`.
 - Updated `createMlp()` so layers in the KV-shared tail region (`num_kv_shared_layers`) use `2x intermediate_size` when `use_double_wide_mlp=true`, matching HF `Gemma4TextMLP` semantics for shared layers only.
+
+## MHA core: optional RoPE via `use_rope`
+
+- Added new `mha_core` boolean property `use_rope` (default: `true`).
+- Updated `MHACoreLayer` to read/store `use_rope` during `finalize()`.
+- When `use_rope=false`, `mha_core` now bypasses RoPE application for Q/K and also skips RoPE frequency precomputation/computation paths.
+- K/V cache writes still happen through normal tensor copy path, so cache behavior is preserved while RoPE is disabled.
