@@ -77,6 +77,17 @@ public:
   using prop_tag = nntrainer::uint_prop_tag; /**< property type */
 };
 
+
+/**
+ * @brief UseGamma property for RMSNorm scale usage.
+ */
+class UseGamma : public nntrainer::Property<bool> {
+public:
+  static constexpr const char *key = "use_gamma";
+  using prop_tag = nntrainer::bool_prop_tag;
+  UseGamma(bool value = true) { set(value); }
+};
+
 /**
  * @brief RMS_NORM_GAMMA_INIT Initialization Enumeration Information
  *

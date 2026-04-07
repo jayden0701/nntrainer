@@ -22,6 +22,7 @@
 
 #include "causal_lm.h"
 #include "gemma3_causallm.h"
+#include "gemma4_causallm.h"
 #include "gptoss_cached_slim_causallm.h"
 #include "gptoss_causallm.h"
 #include "json.hpp"
@@ -117,6 +118,11 @@ static void register_models() {
         return std::make_unique<causallm::Gemma3CausalLM>(cfg, generation_cfg,
                                                           nntr_cfg);
       });
+    causallm::Factory::Instance().registerModel(
+      "Gemma4ForCausalLM", [](json cfg, json generation_cfg, json nntr_cfg) {
+        return std::make_unique<causallm::Gemma4CausalLM>(cfg, generation_cfg,
+                                                          nntr_cfg);
+      });
 
     // Register built-in configurations
     register_builtin_model_configs();
@@ -147,7 +153,8 @@ static std::string apply_chat_template(const std::string &architecture,
     // Note: assuming model handles tokenizer specific special tokens or we
     // might need to handle them raw if tokenizer enabled
     return "<|im_start|>user\n" + input + "<|im_end|>\n<|im_start|>assistant\n";
-  } else if (architecture == "Gemma3ForCausalLM") {
+  } else if (architecture == "Gemma3ForCausalLM" ||
+             architecture == "Gemma4ForCausalLM") {
     // Gemma chat format:
     // <start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n
     return "<start_of_turn>user\n" + input +
