@@ -74,19 +74,19 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
     ATTN_LOGIT_SOFTCAPPING = cfg["attn_logit_softcapping"].get<float>();
   }
 
-  GLOBAL_HEAD_DIM = cfg.contains("global_head_dim") &&
-                      !cfg["global_head_dim"].is_null()
-                    ? cfg["global_head_dim"].get<unsigned int>()
-                    : HEAD_DIM;
+  GLOBAL_HEAD_DIM =
+    cfg.contains("global_head_dim") && !cfg["global_head_dim"].is_null()
+      ? cfg["global_head_dim"].get<unsigned int>()
+      : HEAD_DIM;
 
   NUM_GLOBAL_KEY_VALUE_HEADS =
     cfg.contains("num_global_key_value_heads") &&
-      !cfg["num_global_key_value_heads"].is_null()
+        !cfg["num_global_key_value_heads"].is_null()
       ? cfg["num_global_key_value_heads"].get<unsigned int>()
       : NUM_KEY_VALUE_HEADS;
 
-  ATTENTION_K_EQ_V = cfg.contains("attention_k_eq_v") &&
-                     cfg["attention_k_eq_v"].get<bool>();
+  ATTENTION_K_EQ_V =
+    cfg.contains("attention_k_eq_v") && cfg["attention_k_eq_v"].get<bool>();
 
   NNTR_THROW_IF(!cfg.contains("hidden_size_per_layer_input") ||
                   cfg["hidden_size_per_layer_input"].is_null() ||
@@ -98,11 +98,18 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
                   cfg["vocab_size_per_layer_input"].get<unsigned int>() == 0,
                 std::invalid_argument)
     << "[Gemma4] vocab_size_per_layer_input must be provided and > 0";
-  HIDDEN_SIZE_PER_LAYER_INPUT = cfg["hidden_size_per_layer_input"].get<unsigned int>();
-  VOCAB_SIZE_PER_LAYER_INPUT = cfg["vocab_size_per_layer_input"].get<unsigned int>();
+  HIDDEN_SIZE_PER_LAYER_INPUT =
+    cfg["hidden_size_per_layer_input"].get<unsigned int>();
+  VOCAB_SIZE_PER_LAYER_INPUT =
+    cfg["vocab_size_per_layer_input"].get<unsigned int>();
 
   FULL_ATTENTION_ROPE_THETA = ROPE_THETA;
   SLIDING_ATTENTION_ROPE_THETA = ROPE_THETA;
+
+  NUM_KV_SHARED_LAYERS = cfg.contains("num_kv_shared_layers") &&
+                             !cfg["num_kv_shared_layers"].is_null()
+                           ? cfg["num_kv_shared_layers"].get<int>()
+                           : 0;
 
   if (cfg.contains("rope_parameters") && cfg["rope_parameters"].is_object()) {
     const auto &rope_params = cfg["rope_parameters"];
@@ -117,6 +124,10 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
         rope_params["sliding_attention"]["rope_theta"].get<unsigned int>();
     }
   }
+
+  EMBEDDING_SCALE = std::sqrt(static_cast<float>(DIM));
+  EMBEDDING_PER_LAYER_SCALE =
+    std::sqrt(static_cast<float>(HIDDEN_SIZE_PER_LAYER_INPUT));
 }
 
 void Gemma4Transformer::constructModel() {
@@ -140,44 +151,44 @@ void Gemma4Transformer::constructModel() {
 
   std::string decoder_input = "embedding0";
 
-  const unsigned int per_layer_total_dim = NUM_LAYERS * HIDDEN_SIZE_PER_LAYER_INPUT;
+  const unsigned int per_layer_total_dim =
+    NUM_LAYERS * HIDDEN_SIZE_PER_LAYER_INPUT;
 
-  layers.push_back(createLayer(
-    "embedding_layer",
-    {withKey("name", "per_layer_input_embedding"),
-     withKey("in_dim", std::to_string(VOCAB_SIZE_PER_LAYER_INPUT)),
-     withKey("out_dim", std::to_string(per_layer_total_dim)),
-     withKey("weight_dtype", EMBEDDING_DTYPE),
-     withKey("input_layers", "input0")}));
+  layers.push_back(
+    createLayer("embedding_layer",
+                {withKey("name", "per_layer_input_embedding"),
+                 withKey("in_dim", std::to_string(VOCAB_SIZE_PER_LAYER_INPUT)),
+                 withKey("out_dim", std::to_string(per_layer_total_dim)),
+                 withKey("weight_dtype", EMBEDDING_DTYPE),
+                 withKey("input_layers", "input0"), withKey("scale", EMBEDDING_PER_LAYER_SCALE)}));
 
   layers.push_back(createLayer(
     "fully_connected",
     {withKey("name", "per_layer_input_projection"),
      withKey("unit", std::to_string(per_layer_total_dim)),
-     withKey("disable_bias", "true"),
-     withKey("input_layers", "embedding0"),
+     withKey("disable_bias", "true"), withKey("input_layers", "embedding0"),
      withKey("weight_initializer", "ones"),
      withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
   layers.push_back(createLayer(
     "addition",
     {withKey("name", "per_layer_input_sum"),
-     withKey("input_layers", "per_layer_input_embedding,per_layer_input_projection")}));
+     withKey("input_layers",
+             "per_layer_input_embedding,per_layer_input_projection")}));
 
   // TODO : change per_layer_input_scale to none hard coded way
   layers.push_back(createLayer(
-    "scalar_multiply",
-    {withKey("name", "per_layer_input_scale"),
-     withKey("input_layers", "per_layer_input_sum"),
-     withKey("packed", "false"),
-     withKey("multiplier", std::to_string(0.7071067)),
-    }));
+    "scalar_multiply", {
+                         withKey("name", "per_layer_input_scale"),
+                         withKey("input_layers", "per_layer_input_sum"),
+                         withKey("packed", "false"),
+                         withKey("multiplier", std::to_string(0.7071067)),
+                       }));
 
   layers.push_back(createLayer(
     "reshaped_rms_norm",
     {withKey("name", "per_layer_input_scale"),
-     withKey("input_layers", "per_layer_input_sum"),
-     withKey("packed", "false"),
+     withKey("input_layers", "per_layer_input_sum"), withKey("packed", "false"),
      withKey("epsilon", std::to_string(NORM_EPS)),
      withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT))}));
 
@@ -188,12 +199,11 @@ void Gemma4Transformer::constructModel() {
     decoder_input = "layer" + std::to_string(i) + "_decoder_output";
   }
 
-  layers.push_back(createLayer(
-    "rms_norm",
-    {withKey("name", "output_norm"),
-     withKey("epsilon", std::to_string(NORM_EPS)),
-     withKey("input_layers", decoder_input),
-     withKey("packed", "false")}));
+  layers.push_back(
+    createLayer("rms_norm", {withKey("name", "output_norm"),
+                             withKey("epsilon", std::to_string(NORM_EPS)),
+                             withKey("input_layers", decoder_input),
+                             withKey("packed", "false")}));
 
   for (auto &layer : layers) {
     model->addLayer(layer);
@@ -216,12 +226,8 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
      withKey("packed", "false")}));
 
   int shared_kv_layer_id = -1;
-  const int num_kv_shared_layers =
-    cfg.contains("num_kv_shared_layers") &&
-        !cfg["num_kv_shared_layers"].is_null()
-      ? cfg["num_kv_shared_layers"].get<int>()
-      : 0;
-  const int first_kv_shared_layer_idx = NUM_LAYERS - num_kv_shared_layers;
+
+  const int first_kv_shared_layer_idx = NUM_LAYERS - NUM_KV_SHARED_LAYERS;
   const bool is_kv_shared_layer =
     layer_id >= first_kv_shared_layer_idx && first_kv_shared_layer_idx > 0;
 
@@ -306,48 +312,55 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
      withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
      withKey("layer_index", std::to_string(layer_id))}));
 
-  layers.push_back(createLayer(
-    "fully_connected",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_gate"),
-     withKey("unit", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
-     withKey("disable_bias", "true"),
-     withKey("input_layers", decoder_output_name),
-     withKey("weight_initializer", "ones"),
-     withKey("weight_dtype", FC_LAYER_DTYPE)}));
+  layers.push_back(
+    createLayer("fully_connected",
+                {withKey("name", "layer" + std::to_string(layer_id) +
+                                   "_per_layer_input_gate"),
+                 withKey("unit", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
+                 withKey("disable_bias", "true"),
+                 withKey("input_layers", decoder_output_name),
+                 withKey("weight_initializer", "ones"),
+                 withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
   layers.push_back(createLayer(
-    "activation",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_act"),
-     withKey("activation", "tanh_gelu"),
-     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_gate")}));
+    "activation", {withKey("name", "layer" + std::to_string(layer_id) +
+                                     "_per_layer_input_act"),
+                   withKey("activation", "tanh_gelu"),
+                   withKey("input_layers", "layer" + std::to_string(layer_id) +
+                                             "_per_layer_input_gate")}));
 
   layers.push_back(createLayer(
     "multiply",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
-     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_act,layer" +
-                               std::to_string(layer_id) + "_per_layer_input")}));
+    {withKey("name",
+             "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
+     withKey("input_layers",
+             "layer" + std::to_string(layer_id) + "_per_layer_input_act,layer" +
+               std::to_string(layer_id) + "_per_layer_input")}));
 
   layers.push_back(createLayer(
     "fully_connected",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
-     withKey("unit", std::to_string(DIM)),
-     withKey("disable_bias", "true"),
-     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
+    {withKey("name",
+             "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
+     withKey("unit", std::to_string(DIM)), withKey("disable_bias", "true"),
+     withKey("input_layers",
+             "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
      withKey("weight_initializer", "ones"),
      withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
   layers.push_back(createLayer(
-    "rms_norm",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_post_per_layer_input_norm"),
-     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
-     withKey("epsilon", std::to_string(NORM_EPS)),
-     withKey("packed", "false")}));
+    "rms_norm", {withKey("name", "layer" + std::to_string(layer_id) +
+                                   "_post_per_layer_input_norm"),
+                 withKey("input_layers", "layer" + std::to_string(layer_id) +
+                                           "_per_layer_input_proj"),
+                 withKey("epsilon", std::to_string(NORM_EPS)),
+                 withKey("packed", "false")}));
 
   layers.push_back(createLayer(
     "addition",
     {withKey("name", "layer" + std::to_string(layer_id) + "_decoder_output"),
      withKey("input_layers", decoder_output_name + ",layer" +
-                               std::to_string(layer_id) + "_post_per_layer_input_norm")}));
+                               std::to_string(layer_id) +
+                               "_post_per_layer_input_norm")}));
 
   return layers;
 }
@@ -372,8 +385,9 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
   }
 
   int curr_head_dim = is_sliding ? HEAD_DIM : GLOBAL_HEAD_DIM;
-  int curr_kv_heads = (is_sliding || !ATTENTION_K_EQ_V) ? NUM_KEY_VALUE_HEADS
-                                                         : NUM_GLOBAL_KEY_VALUE_HEADS;
+  int curr_kv_heads = (is_sliding || !ATTENTION_K_EQ_V)
+                        ? NUM_KEY_VALUE_HEADS
+                        : NUM_GLOBAL_KEY_VALUE_HEADS;
 
   // Q layer [B, S, H] -> [B, S, Nq*Dh]
   std::vector<std::string> q_params = {withKey("name", Q),
@@ -441,8 +455,9 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
   }
 
   int curr_head_dim = is_sliding ? HEAD_DIM : GLOBAL_HEAD_DIM;
-  int curr_kv_heads = (is_sliding || !ATTENTION_K_EQ_V) ? NUM_KEY_VALUE_HEADS
-                                                         : NUM_GLOBAL_KEY_VALUE_HEADS;
+  int curr_kv_heads = (is_sliding || !ATTENTION_K_EQ_V)
+                        ? NUM_KEY_VALUE_HEADS
+                        : NUM_GLOBAL_KEY_VALUE_HEADS;
 
   // Q layer [B, S, H] -> [B, S, Nq*Dh]
   std::vector<std::string> q_params = {withKey("name", Q),
@@ -464,9 +479,6 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
   layers.push_back(createLayer("fully_connected", k_params));
 
   // V layer [B, S, H] -> [B, S, Nk*Dh]
-  // TODO: Gemma4 `attention_k_eq_v` shares K/V projection in full-attention
-  // layers. NNTrainer currently keeps a dedicated V projection for parity with
-  // existing MHA core path.
   std::vector<std::string> v_params = {
     withKey("name", V),
     withKey("unit", curr_head_dim * curr_kv_heads),
@@ -588,7 +600,6 @@ void Gemma4Transformer::registerCustomLayers() {
     app_context->registerFactory(
       nntrainer::createLayer<causallm::ScalarMultiplyLayer>);
 
-
   } catch (std::invalid_argument &e) {
     std::cerr << "failed to register factory, reason: " << e.what()
               << std::endl;
@@ -600,9 +611,6 @@ void Gemma4CausalLM::registerCustomLayers() {
   Gemma4Transformer::registerCustomLayers();
 }
 
-void Gemma4CausalLM::constructModel()
-{
-  Gemma4Transformer::constructModel();
-}
+void Gemma4CausalLM::constructModel() { Gemma4Transformer::constructModel(); }
 
 } // namespace causallm

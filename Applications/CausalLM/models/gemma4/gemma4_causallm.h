@@ -30,7 +30,6 @@ public:
     if (cfg.contains("layer_types")) {
       layer_types = cfg["layer_types"].get<std::vector<std::string>>();
     }
-    EMBEDDING_SCALE = std::sqrt(static_cast<float>(cfg["hidden_size"]));
 
     setupParameters(cfg, generation_cfg,
                     nntr_cfg); // call this after setting up)
@@ -54,6 +53,9 @@ protected:
 
   unsigned int HIDDEN_SIZE_PER_LAYER_INPUT = 0;
   unsigned int VOCAB_SIZE_PER_LAYER_INPUT = 0;
+  int NUM_KV_SHARED_LAYERS = 0;
+  float EMBEDDING_PER_LAYER_SCALE = 1.0f;
+  
 
 public:
   std::vector<LayerHandle> createAttention(const int layer_id, int seq_len,

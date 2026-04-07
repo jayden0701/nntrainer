@@ -1836,8 +1836,8 @@ void NeuralNetwork::print(std::ostream &out, unsigned int flags,
   }
 
   if (flags & PRINT_GRAPH_INFO) {
-    unsigned int total_col_size = 80;
-    std::vector<unsigned int> column_size = {20, 20, 20, 20};
+    unsigned int total_col_size = 120;
+    std::vector<unsigned int> column_size = {40, 20, 20, 40};
     auto print_graph_layer_info =
       [column_size](std::ostream &out, std::vector<std::string> layer_info) {
         const auto &trim_string = [](std::string str,
