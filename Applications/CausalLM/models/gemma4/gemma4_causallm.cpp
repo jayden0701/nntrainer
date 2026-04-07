@@ -110,6 +110,8 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
                              !cfg["num_kv_shared_layers"].is_null()
                            ? cfg["num_kv_shared_layers"].get<int>()
                            : 0;
+  USE_DOUBLE_WIDE_MLP = cfg.contains("use_double_wide_mlp") &&
+                        cfg["use_double_wide_mlp"].get<bool>();
 
   if (cfg.contains("rope_parameters") && cfg["rope_parameters"].is_object()) {
     const auto &rope_params = cfg["rope_parameters"];
@@ -545,13 +547,16 @@ std::vector<LayerHandle> Gemma4Transformer::createMlp(const int layer_id,
                                                       std::string input_name) {
   std::vector<LayerHandle> layers;
 
-  // TODO: Gemma4 supports per-layer double-width MLP for KV-shared tail layers.
-  // This implementation currently follows the Gemma3 MLP path.
+  const int first_kv_shared_layer_idx = NUM_LAYERS - NUM_KV_SHARED_LAYERS;
+  const bool is_kv_shared_layer =
+    layer_id >= first_kv_shared_layer_idx && first_kv_shared_layer_idx > 0;
+  const int curr_hidden_dim =
+    hidden_dim * ((USE_DOUBLE_WIDE_MLP && is_kv_shared_layer) ? 2 : 1);
 
   layers.push_back(createLayer(
     "fully_connected",
     {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_gate"),
-     withKey("unit", hidden_dim), withKey("disable_bias", "true"),
+     withKey("unit", curr_hidden_dim), withKey("disable_bias", "true"),
      withKey("input_layers", input_name), withKey("weight_initializer", "ones"),
      withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
@@ -565,7 +570,7 @@ std::vector<LayerHandle> Gemma4Transformer::createMlp(const int layer_id,
   layers.push_back(createLayer(
     "fully_connected",
     {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_up"),
-     withKey("unit", hidden_dim), withKey("disable_bias", "true"),
+     withKey("unit", curr_hidden_dim), withKey("disable_bias", "true"),
      withKey("input_layers", input_name), withKey("weight_initializer", "ones"),
      withKey("weight_dtype", FC_LAYER_DTYPE)}));
 

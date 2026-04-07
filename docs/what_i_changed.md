@@ -61,3 +61,9 @@
   - creates only the current layer Q projection + Q RMSNorm, and
   - reuses `layer{shared_kv_layer_id}_k_norm` and `layer{shared_kv_layer_id}_v_norm` as `mha_core` K/V inputs.
 - This preserves Gemma4 shared-attention behavior by graph connection to normalized K/V tensors from the source layer.
+
+## Gemma4 double-wide MLP for KV-shared tail layers
+
+- Implemented Gemma4 `use_double_wide_mlp` behavior in NNTrainer Gemma4 text MLP path.
+- Added model state for `use_double_wide_mlp` and config parsing in `setupParameters()`.
+- Updated `createMlp()` so layers in the KV-shared tail region (`num_kv_shared_layers`) use `2x intermediate_size` when `use_double_wide_mlp=true`, matching HF `Gemma4TextMLP` semantics for shared layers only.

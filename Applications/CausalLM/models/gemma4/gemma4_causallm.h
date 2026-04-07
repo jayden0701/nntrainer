@@ -54,6 +54,7 @@ protected:
   unsigned int HIDDEN_SIZE_PER_LAYER_INPUT = 0;
   unsigned int VOCAB_SIZE_PER_LAYER_INPUT = 0;
   int NUM_KV_SHARED_LAYERS = 0;
+  bool USE_DOUBLE_WIDE_MLP = false;
   float EMBEDDING_PER_LAYER_SCALE = 1.0f;
   
 
