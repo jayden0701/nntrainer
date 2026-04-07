@@ -15,6 +15,8 @@
 #include <app_context.h>
 #include <engine.h>
 #include <llm_util.hpp>
+#include <model.h>
+#include <per_layer_slice.h>
 #include <reshaped_rms_norm.h>
 
 namespace causallm {
@@ -83,6 +85,19 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
   ATTENTION_K_EQ_V = cfg.contains("attention_k_eq_v") &&
                      cfg["attention_k_eq_v"].get<bool>();
 
+  NNTR_THROW_IF(!cfg.contains("hidden_size_per_layer_input") ||
+                  cfg["hidden_size_per_layer_input"].is_null() ||
+                  cfg["hidden_size_per_layer_input"].get<unsigned int>() == 0,
+                std::invalid_argument)
+    << "[Gemma4] hidden_size_per_layer_input must be provided and > 0";
+  NNTR_THROW_IF(!cfg.contains("vocab_size_per_layer_input") ||
+                  cfg["vocab_size_per_layer_input"].is_null() ||
+                  cfg["vocab_size_per_layer_input"].get<unsigned int>() == 0,
+                std::invalid_argument)
+    << "[Gemma4] vocab_size_per_layer_input must be provided and > 0";
+  HIDDEN_SIZE_PER_LAYER_INPUT = cfg["hidden_size_per_layer_input"].get<unsigned int>();
+  VOCAB_SIZE_PER_LAYER_INPUT = cfg["vocab_size_per_layer_input"].get<unsigned int>();
+
   FULL_ATTENTION_ROPE_THETA = ROPE_THETA;
   SLIDING_ATTENTION_ROPE_THETA = ROPE_THETA;
 
@@ -101,12 +116,89 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
   }
 }
 
+void Gemma4Transformer::constructModel() {
+
+  std::vector<LayerHandle> layers;
+
+  model = ml::train::createModel(ml::train::ModelType::NEURAL_NET);
+
+  layers.push_back(createLayer(
+    "input", {withKey("name", "input0"),
+              withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))}));
+
+  const std::string embedding_type =
+    TIE_WORD_EMBEDDINGS ? "tie_word_embeddings" : "embedding_layer";
+
+  layers.push_back(createLayer(
+    embedding_type,
+    {"name=embedding0", "in_dim=" + std::to_string(NUM_VOCAB),
+     "weight_dtype=" + EMBEDDING_DTYPE, "out_dim=" + std::to_string(DIM),
+     "scale=" + std::to_string(EMBEDDING_SCALE)}));
+
+  std::string decoder_input = "embedding0";
+
+  const unsigned int per_layer_total_dim = NUM_LAYERS * HIDDEN_SIZE_PER_LAYER_INPUT;
+
+  layers.push_back(createLayer(
+    "embedding_layer",
+    {withKey("name", "per_layer_input_embedding"),
+     withKey("in_dim", std::to_string(VOCAB_SIZE_PER_LAYER_INPUT)),
+     withKey("out_dim", std::to_string(per_layer_total_dim)),
+     withKey("weight_dtype", EMBEDDING_DTYPE),
+     withKey("input_layers", "input0")}));
+
+  layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", "per_layer_input_projection"),
+     withKey("unit", std::to_string(per_layer_total_dim)),
+     withKey("disable_bias", "true"),
+     withKey("input_layers", "embedding0"),
+     withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
+
+  layers.push_back(createLayer(
+    "addition",
+    {withKey("name", "per_layer_input_sum"),
+     withKey("input_layers", "per_layer_input_embedding,per_layer_input_projection")}));
+
+  // TODO: Gemma4 applies per-layer input scaling factors (hidden_size^-0.5 and
+  // 2^-0.5). This path currently wires the branch structurally without those
+  // scalar factors.
+  layers.push_back(createLayer(
+    "reshaped_rms_norm",
+    {withKey("name", "per_layer_input_norm"),
+     withKey("input_layers", "per_layer_input_sum"),
+     withKey("packed", "false"),
+     withKey("epsilon", std::to_string(NORM_EPS)),
+     withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT))}));
+
+  for (int i = 0; i < NUM_LAYERS; ++i) {
+    std::vector<LayerHandle> transformer =
+      createTransformerDecoderBlock(i, decoder_input);
+    layers.insert(layers.end(), transformer.begin(), transformer.end());
+    decoder_input = "layer" + std::to_string(i) + "_decoder_output";
+  }
+
+  layers.push_back(createLayer(
+    "rms_norm",
+    {withKey("name", "output_norm"),
+     withKey("epsilon", std::to_string(NORM_EPS)),
+     withKey("input_layers", decoder_input),
+     withKey("packed", "false")}));
+
+  for (auto &layer : layers) {
+    model->addLayer(layer);
+  }
+}
+
 std::vector<LayerHandle>
 Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
                                                  std::string input_name) {
 
   std::vector<LayerHandle> layers;
 
+  // Gemma4TextRMSNorm scales by `weight` (initialized to ones), which matches
+  // NNTrainer `rms_norm` behavior used here.
   layers.push_back(createLayer(
     "rms_norm",
     {withKey("name", "layer" + std::to_string(layer_id) + "_attention_norm"),
@@ -154,12 +246,67 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
      withKey("epsilon", std::to_string(NORM_EPS)),
      withKey("packed", "false")}));
 
+  const std::string decoder_output_name =
+    "layer" + std::to_string(layer_id) + "_decoder_output_base";
+
   layers.push_back(createLayer(
     "addition",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_decoder_output"),
+    {withKey("name", decoder_output_name),
      withKey("input_layers", "layer" + std::to_string(layer_id) +
                                "_post_attention,layer" +
                                std::to_string(layer_id) + "post_ffn_norm")}));
+
+  // Select [B, S, hidden_size_per_layer_input] from packed per-layer input
+  // [B, S, num_layers*hidden_size_per_layer_input]
+  layers.push_back(createLayer(
+    "per_layer_slice",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input"),
+     withKey("input_layers", "per_layer_input_norm"),
+     withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
+     withKey("layer_index", std::to_string(layer_id))}));
+
+  layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_gate"),
+     withKey("unit", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
+     withKey("disable_bias", "true"),
+     withKey("input_layers", decoder_output_name),
+     withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
+
+  layers.push_back(createLayer(
+    "activation",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_act"),
+     withKey("activation", "tanh_gelu"),
+     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_gate")}));
+
+  layers.push_back(createLayer(
+    "multiply",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
+     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_act,layer" +
+                               std::to_string(layer_id) + "_per_layer_input")}));
+
+  layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
+     withKey("unit", std::to_string(DIM)),
+     withKey("disable_bias", "true"),
+     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
+     withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
+
+  layers.push_back(createLayer(
+    "rms_norm",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_post_per_layer_input_norm"),
+     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
+     withKey("epsilon", std::to_string(NORM_EPS)),
+     withKey("packed", "false")}));
+
+  layers.push_back(createLayer(
+    "addition",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_decoder_output"),
+     withKey("input_layers", decoder_output_name + ",layer" +
+                               std::to_string(layer_id) + "_post_per_layer_input_norm")}));
 
   return layers;
 }
@@ -174,6 +321,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
   auto K = "layer" + std::to_string(layer_id) + "_wk";
   auto K_norm = "layer" + std::to_string(layer_id) + "_k_norm";
   auto V = "layer" + std::to_string(layer_id) + "_wv";
+  auto V_norm = "layer" + std::to_string(layer_id) + "_v_norm";
   auto A = "layer" + std::to_string(layer_id) + "_attention";
   auto O = "layer" + std::to_string(layer_id) + "_attention_out";
 
@@ -232,11 +380,19 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("feature_size", std::to_string(curr_head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
 
+  // v_norm on per-head projection [B, S, Nk*Dh] (no learned scale)
+  std::vector<std::string> v_norm_params = {
+    withKey("name", V_norm), withKey("input_layers", V),
+    withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
+    withKey("feature_size", std::to_string(curr_head_dim))};
+  v_norm_params.push_back(withKey("use_gamma", "false"));
+  layers.push_back(createLayer("reshaped_rms_norm", v_norm_params));
+
   unsigned int window_size = is_sliding ? SLIDING_WINDOW : UINT_MAX;
   unsigned int rope_theta =
     is_sliding ? SLIDING_ATTENTION_ROPE_THETA : FULL_ATTENTION_ROPE_THETA;
 
-  // Attention core receives [Q_norm, K_norm, V]
+  // Attention core receives [Q_norm, K_norm, V_norm]
   std::vector<std::string> a_params = {
     withKey("name", A),
     withKey("num_heads", n_heads),
@@ -247,7 +403,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
     withKey("is_causal", IS_CAUSAL ? "true" : "false"),
-    withKey("input_layers", {Q_norm, K_norm, V})};
+    withKey("input_layers", {Q_norm, K_norm, V_norm})};
   layers.push_back(createLayer("mha_core", a_params));
 
   // O layer [B, S, Nq*Dh] -> [B, S, H]
@@ -317,6 +473,8 @@ void Gemma4Transformer::registerCustomLayers() {
   try {
     app_context->registerFactory(
       nntrainer::createLayer<causallm::ReshapedRMSNormLayer>);
+    app_context->registerFactory(
+      nntrainer::createLayer<causallm::PerLayerSliceLayer>);
   } catch (std::invalid_argument &e) {
     std::cerr << "failed to register factory, reason: " << e.what()
               << std::endl;
