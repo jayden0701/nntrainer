@@ -35,3 +35,11 @@
 - Implemented Gemma4 attention `v_norm` parity by extending existing `reshaped_rms_norm` with optional `use_gamma=false` and wiring it in Gemma4 attention inputs to MHA core.
 - Implemented Gemma4 per-layer input embedding path (`hidden_size_per_layer_input`) with packed per-layer embedding/projection precompute, layer-wise slice selection, and per-layer gate/projection residual block inside each decoder layer.
 - Added TODO note that exact per-layer scalar factors are not yet applied in-graph.
+
+## Follow-up: always-on per-layer input branch
+
+- Removed optional per-layer-input control flow in Gemma4 and now always constructs/applies the per-layer input branch in model graph and decoder blocks.
+- Added explicit config validation in `setupParameters()` to require:
+  - `hidden_size_per_layer_input > 0`
+  - `vocab_size_per_layer_input > 0`
+- This matches Gemma4 expectation that per-layer input is always enabled.

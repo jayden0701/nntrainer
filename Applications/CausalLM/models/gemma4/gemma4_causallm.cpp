@@ -85,13 +85,18 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
   ATTENTION_K_EQ_V = cfg.contains("attention_k_eq_v") &&
                      cfg["attention_k_eq_v"].get<bool>();
 
-  ENABLE_PER_LAYER_INPUT = cfg.contains("hidden_size_per_layer_input") &&
-                           !cfg["hidden_size_per_layer_input"].is_null() &&
-                           cfg["hidden_size_per_layer_input"].get<unsigned int>() > 0;
-  if (ENABLE_PER_LAYER_INPUT) {
-    HIDDEN_SIZE_PER_LAYER_INPUT = cfg["hidden_size_per_layer_input"].get<unsigned int>();
-    VOCAB_SIZE_PER_LAYER_INPUT = cfg["vocab_size_per_layer_input"].get<unsigned int>();
-  }
+  NNTR_THROW_IF(!cfg.contains("hidden_size_per_layer_input") ||
+                  cfg["hidden_size_per_layer_input"].is_null() ||
+                  cfg["hidden_size_per_layer_input"].get<unsigned int>() == 0,
+                std::invalid_argument)
+    << "[Gemma4] hidden_size_per_layer_input must be provided and > 0";
+  NNTR_THROW_IF(!cfg.contains("vocab_size_per_layer_input") ||
+                  cfg["vocab_size_per_layer_input"].is_null() ||
+                  cfg["vocab_size_per_layer_input"].get<unsigned int>() == 0,
+                std::invalid_argument)
+    << "[Gemma4] vocab_size_per_layer_input must be provided and > 0";
+  HIDDEN_SIZE_PER_LAYER_INPUT = cfg["hidden_size_per_layer_input"].get<unsigned int>();
+  VOCAB_SIZE_PER_LAYER_INPUT = cfg["vocab_size_per_layer_input"].get<unsigned int>();
 
   FULL_ATTENTION_ROPE_THETA = ROPE_THETA;
   SLIDING_ATTENTION_ROPE_THETA = ROPE_THETA;
@@ -132,42 +137,40 @@ void Gemma4Transformer::constructModel() {
 
   std::string decoder_input = "embedding0";
 
-  if (ENABLE_PER_LAYER_INPUT) {
-    const unsigned int per_layer_total_dim = NUM_LAYERS * HIDDEN_SIZE_PER_LAYER_INPUT;
+  const unsigned int per_layer_total_dim = NUM_LAYERS * HIDDEN_SIZE_PER_LAYER_INPUT;
 
-    layers.push_back(createLayer(
-      "embedding_layer",
-      {withKey("name", "per_layer_input_embedding"),
-       withKey("in_dim", std::to_string(VOCAB_SIZE_PER_LAYER_INPUT)),
-       withKey("out_dim", std::to_string(per_layer_total_dim)),
-       withKey("weight_dtype", EMBEDDING_DTYPE),
-       withKey("input_layers", "input0")}));
+  layers.push_back(createLayer(
+    "embedding_layer",
+    {withKey("name", "per_layer_input_embedding"),
+     withKey("in_dim", std::to_string(VOCAB_SIZE_PER_LAYER_INPUT)),
+     withKey("out_dim", std::to_string(per_layer_total_dim)),
+     withKey("weight_dtype", EMBEDDING_DTYPE),
+     withKey("input_layers", "input0")}));
 
-    layers.push_back(createLayer(
-      "fully_connected",
-      {withKey("name", "per_layer_input_projection"),
-       withKey("unit", std::to_string(per_layer_total_dim)),
-       withKey("disable_bias", "true"),
-       withKey("input_layers", "embedding0"),
-       withKey("weight_initializer", "ones"),
-       withKey("weight_dtype", FC_LAYER_DTYPE)}));
+  layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", "per_layer_input_projection"),
+     withKey("unit", std::to_string(per_layer_total_dim)),
+     withKey("disable_bias", "true"),
+     withKey("input_layers", "embedding0"),
+     withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
-    layers.push_back(createLayer(
-      "addition",
-      {withKey("name", "per_layer_input_sum"),
-       withKey("input_layers", "per_layer_input_embedding,per_layer_input_projection")}));
+  layers.push_back(createLayer(
+    "addition",
+    {withKey("name", "per_layer_input_sum"),
+     withKey("input_layers", "per_layer_input_embedding,per_layer_input_projection")}));
 
-    // TODO: Gemma4 applies per-layer input scaling factors (hidden_size^-0.5 and
-    // 2^-0.5). This path currently wires the branch structurally without those
-    // scalar factors.
-    layers.push_back(createLayer(
-      "reshaped_rms_norm",
-      {withKey("name", "per_layer_input_norm"),
-       withKey("input_layers", "per_layer_input_sum"),
-       withKey("packed", "false"),
-       withKey("epsilon", std::to_string(NORM_EPS)),
-       withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT))}));
-  }
+  // TODO: Gemma4 applies per-layer input scaling factors (hidden_size^-0.5 and
+  // 2^-0.5). This path currently wires the branch structurally without those
+  // scalar factors.
+  layers.push_back(createLayer(
+    "reshaped_rms_norm",
+    {withKey("name", "per_layer_input_norm"),
+     withKey("input_layers", "per_layer_input_sum"),
+     withKey("packed", "false"),
+     withKey("epsilon", std::to_string(NORM_EPS)),
+     withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT))}));
 
   for (int i = 0; i < NUM_LAYERS; ++i) {
     std::vector<LayerHandle> transformer =
@@ -243,9 +246,8 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
      withKey("epsilon", std::to_string(NORM_EPS)),
      withKey("packed", "false")}));
 
-  std::string decoder_output_name =
-    ENABLE_PER_LAYER_INPUT ? "layer" + std::to_string(layer_id) + "_decoder_output_base"
-                           : "layer" + std::to_string(layer_id) + "_decoder_output";
+  const std::string decoder_output_name =
+    "layer" + std::to_string(layer_id) + "_decoder_output_base";
 
   layers.push_back(createLayer(
     "addition",
@@ -254,59 +256,57 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
                                "_post_attention,layer" +
                                std::to_string(layer_id) + "post_ffn_norm")}));
 
-  if (ENABLE_PER_LAYER_INPUT) {
-    // Select [B, S, hidden_size_per_layer_input] from packed per-layer input
-    // [B, S, num_layers*hidden_size_per_layer_input]
-    layers.push_back(createLayer(
-      "per_layer_slice",
-      {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input"),
-       withKey("input_layers", "per_layer_input_norm"),
-       withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
-       withKey("layer_index", std::to_string(layer_id))}));
+  // Select [B, S, hidden_size_per_layer_input] from packed per-layer input
+  // [B, S, num_layers*hidden_size_per_layer_input]
+  layers.push_back(createLayer(
+    "per_layer_slice",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input"),
+     withKey("input_layers", "per_layer_input_norm"),
+     withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
+     withKey("layer_index", std::to_string(layer_id))}));
 
-    layers.push_back(createLayer(
-      "fully_connected",
-      {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_gate"),
-       withKey("unit", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
-       withKey("disable_bias", "true"),
-       withKey("input_layers", decoder_output_name),
-       withKey("weight_initializer", "ones"),
-       withKey("weight_dtype", FC_LAYER_DTYPE)}));
+  layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_gate"),
+     withKey("unit", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
+     withKey("disable_bias", "true"),
+     withKey("input_layers", decoder_output_name),
+     withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
-    layers.push_back(createLayer(
-      "activation",
-      {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_act"),
-       withKey("activation", "tanh_gelu"),
-       withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_gate")}));
+  layers.push_back(createLayer(
+    "activation",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_act"),
+     withKey("activation", "tanh_gelu"),
+     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_gate")}));
 
-    layers.push_back(createLayer(
-      "multiply",
-      {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
-       withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_act,layer" +
-                                 std::to_string(layer_id) + "_per_layer_input")}));
+  layers.push_back(createLayer(
+    "multiply",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
+     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_act,layer" +
+                               std::to_string(layer_id) + "_per_layer_input")}));
 
-    layers.push_back(createLayer(
-      "fully_connected",
-      {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
-       withKey("unit", std::to_string(DIM)),
-       withKey("disable_bias", "true"),
-       withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
-       withKey("weight_initializer", "ones"),
-       withKey("weight_dtype", FC_LAYER_DTYPE)}));
+  layers.push_back(createLayer(
+    "fully_connected",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
+     withKey("unit", std::to_string(DIM)),
+     withKey("disable_bias", "true"),
+     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
+     withKey("weight_initializer", "ones"),
+     withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
-    layers.push_back(createLayer(
-      "rms_norm",
-      {withKey("name", "layer" + std::to_string(layer_id) + "_post_per_layer_input_norm"),
-       withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
-       withKey("epsilon", std::to_string(NORM_EPS)),
-       withKey("packed", "false")}));
+  layers.push_back(createLayer(
+    "rms_norm",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_post_per_layer_input_norm"),
+     withKey("input_layers", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
+     withKey("epsilon", std::to_string(NORM_EPS)),
+     withKey("packed", "false")}));
 
-    layers.push_back(createLayer(
-      "addition",
-      {withKey("name", "layer" + std::to_string(layer_id) + "_decoder_output"),
-       withKey("input_layers", decoder_output_name + ",layer" +
-                                 std::to_string(layer_id) + "_post_per_layer_input_norm")}));
-  }
+  layers.push_back(createLayer(
+    "addition",
+    {withKey("name", "layer" + std::to_string(layer_id) + "_decoder_output"),
+     withKey("input_layers", decoder_output_name + ",layer" +
+                               std::to_string(layer_id) + "_post_per_layer_input_norm")}));
 
   return layers;
 }

@@ -49,7 +49,6 @@ protected:
   unsigned int FULL_ATTENTION_ROPE_THETA = 0;
   unsigned int SLIDING_ATTENTION_ROPE_THETA = 0;
 
-  bool ENABLE_PER_LAYER_INPUT = false;
   unsigned int HIDDEN_SIZE_PER_LAYER_INPUT = 0;
   unsigned int VOCAB_SIZE_PER_LAYER_INPUT = 0;
 
