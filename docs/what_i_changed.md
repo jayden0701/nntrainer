@@ -67,3 +67,10 @@
 - Implemented Gemma4 `use_double_wide_mlp` behavior in NNTrainer Gemma4 text MLP path.
 - Added model state for `use_double_wide_mlp` and config parsing in `setupParameters()`.
 - Updated `createMlp()` so layers in the KV-shared tail region (`num_kv_shared_layers`) use `2x intermediate_size` when `use_double_wide_mlp=true`, matching HF `Gemma4TextMLP` semantics for shared layers only.
+
+## Gemma4 proportional RoPE support in mha_core
+
+- Added Gemma4 rope type parsing (`rope_parameters.{full_attention,sliding_attention}.rope_type`) in `Gemma4Transformer::setupParameters()`.
+- Wired per-layer-type rope type into `mha_core` via `rope_scaling_type`.
+- Extended `mha_core` RoPE handling to accept `rope_scaling_type=proportional`.
+- Implemented proportional behavior in `mha_core` by reusing default inverse frequency computation, matching Gemma4 text semantics where proportional uses default RoPE equation with layer-specific head dimension selection done at model wiring.

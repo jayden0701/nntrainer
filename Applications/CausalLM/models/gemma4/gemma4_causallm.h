@@ -50,6 +50,8 @@ protected:
   /** Per-layer-type RoPE theta from Gemma4 rope_parameters */
   unsigned int FULL_ATTENTION_ROPE_THETA = 0;
   unsigned int SLIDING_ATTENTION_ROPE_THETA = 0;
+  std::string FULL_ATTENTION_ROPE_TYPE = "default";
+  std::string SLIDING_ATTENTION_ROPE_TYPE = "default";
 
   unsigned int HIDDEN_SIZE_PER_LAYER_INPUT = 0;
   unsigned int VOCAB_SIZE_PER_LAYER_INPUT = 0;

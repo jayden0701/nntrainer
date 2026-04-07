@@ -651,6 +651,8 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
   if (thetas.empty()) {
     if (rope_scaling_type == "default")
       _compute_default_parameters(head_dim, theta);
+    else if (rope_scaling_type == "proportional")
+      _compute_proportional_parameters(head_dim, theta);
     else if (rope_scaling_type == "yarn")
       _compute_yarn_parameters(head_dim, theta);
     else
@@ -741,6 +743,16 @@ void MHACoreLayer::_compute_default_parameters(int head_dim, float theta) {
     thetas.push_back(1.0 /
                      (std::pow(theta, (2 * i) / static_cast<float>(head_dim))));
   }
+}
+
+void MHACoreLayer::_compute_proportional_parameters(int head_dim, float theta) {
+  /**
+   * Gemma4 proportional RoPE for text attention keeps the same inverse
+   * frequency equation as default RoPE, while selecting layer-specific head
+   * dimensions at the model wiring level (e.g., global_head_dim for
+   * full_attention). MHA core therefore reuses default parameter computation.
+   */
+  _compute_default_parameters(head_dim, theta);
 }
 
 void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {

@@ -139,6 +139,7 @@ public:
 /**
  * @brief RopeScalingType
  * - default
+ * - proportional
  * - yarn
  */
 class RopeScalingType : public nntrainer::Property<std::string> {
@@ -389,6 +390,11 @@ private:
    * @brief _compute frequency parameters for default ROPE
    */
   void _compute_default_parameters(int head_dim, float theta);
+
+  /**
+   * @brief _compute frequency parameters for proportional ROPE
+   */
+  void _compute_proportional_parameters(int head_dim, float theta);
 
   /**
    * @brief _compute frequency parameters for default ROPE
