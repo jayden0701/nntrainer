@@ -22,6 +22,13 @@
 #include <base_properties.h>
 #include <causallm_common_properties.h>
 
+#include <nntrainer_error.h>
+#include <nntrainer_log.h>
+#include <node_exporter.h>
+#include <util_func.h>
+
+
+
 namespace causallm {
 
 namespace props {

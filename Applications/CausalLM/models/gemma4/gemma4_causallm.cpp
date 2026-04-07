@@ -18,6 +18,7 @@
 #include <model.h>
 #include <per_layer_slice.h>
 #include <reshaped_rms_norm.h>
+#include <scalar_multiply.h>
 
 namespace causallm {
 
@@ -161,12 +162,18 @@ void Gemma4Transformer::constructModel() {
     {withKey("name", "per_layer_input_sum"),
      withKey("input_layers", "per_layer_input_embedding,per_layer_input_projection")}));
 
-  // TODO: Gemma4 applies per-layer input scaling factors (hidden_size^-0.5 and
-  // 2^-0.5). This path currently wires the branch structurally without those
-  // scalar factors.
+  // TODO : change per_layer_input_scale to none hard coded way
+  layers.push_back(createLayer(
+    "scalar_multiply",
+    {withKey("name", "per_layer_input_scale"),
+     withKey("input_layers", "per_layer_input_sum"),
+     withKey("packed", "false"),
+     withKey("multiplier", std::to_string(0.7071067)),
+    }));
+
   layers.push_back(createLayer(
     "reshaped_rms_norm",
-    {withKey("name", "per_layer_input_norm"),
+    {withKey("name", "per_layer_input_scale"),
      withKey("input_layers", "per_layer_input_sum"),
      withKey("packed", "false"),
      withKey("epsilon", std::to_string(NORM_EPS)),
@@ -229,7 +236,7 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
 
   layers.push_back(createLayer(
     "rms_norm",
-    {withKey("name", "layer" + std::to_string(layer_id) + "pre_ffn_norm"),
+    {withKey("name", "layer" + std::to_string(layer_id) + "_pre_ffn_norm"),
      withKey("input_layers",
              "layer" + std::to_string(layer_id) + "_post_attention"),
      withKey("epsilon", std::to_string(NORM_EPS)),
@@ -237,12 +244,12 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
 
   auto ffn_layer =
     createMlp(layer_id, DIM, INTERMEDIATE_SIZE,
-              "layer" + std::to_string(layer_id) + "pre_ffn_norm");
+              "layer" + std::to_string(layer_id) + "_pre_ffn_norm");
   layers.insert(layers.end(), ffn_layer.begin(), ffn_layer.end());
 
   layers.push_back(createLayer(
     "rms_norm",
-    {withKey("name", "layer" + std::to_string(layer_id) + "post_ffn_norm"),
+    {withKey("name", "layer" + std::to_string(layer_id) + "_post_ffn_norm"),
      withKey("epsilon", std::to_string(NORM_EPS)),
      withKey("packed", "false")}));
 
@@ -254,14 +261,14 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
     {withKey("name", decoder_output_name),
      withKey("input_layers", "layer" + std::to_string(layer_id) +
                                "_post_attention,layer" +
-                               std::to_string(layer_id) + "post_ffn_norm")}));
+                               std::to_string(layer_id) + "_post_ffn_norm")}));
 
   // Select [B, S, hidden_size_per_layer_input] from packed per-layer input
   // [B, S, num_layers*hidden_size_per_layer_input]
   layers.push_back(createLayer(
     "per_layer_slice",
     {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input"),
-     withKey("input_layers", "per_layer_input_norm"),
+     withKey("input_layers", "per_layer_input_scale"),
      withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
      withKey("layer_index", std::to_string(layer_id))}));
 
@@ -475,6 +482,10 @@ void Gemma4Transformer::registerCustomLayers() {
       nntrainer::createLayer<causallm::ReshapedRMSNormLayer>);
     app_context->registerFactory(
       nntrainer::createLayer<causallm::PerLayerSliceLayer>);
+    app_context->registerFactory(
+      nntrainer::createLayer<causallm::ScalarMultiplyLayer>);
+
+
   } catch (std::invalid_argument &e) {
     std::cerr << "failed to register factory, reason: " << e.what()
               << std::endl;
@@ -484,6 +495,11 @@ void Gemma4Transformer::registerCustomLayers() {
 void Gemma4CausalLM::registerCustomLayers() {
   CausalLM::registerCustomLayers();
   Gemma4Transformer::registerCustomLayers();
+}
+
+void Gemma4CausalLM::constructModel()
+{
+  Gemma4Transformer::constructModel();
 }
 
 } // namespace causallm

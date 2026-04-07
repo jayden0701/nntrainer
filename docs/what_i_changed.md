@@ -43,3 +43,12 @@
   - `hidden_size_per_layer_input > 0`
   - `vocab_size_per_layer_input > 0`
 - This matches Gemma4 expectation that per-layer input is always enabled.
+
+## Added ScalarMultiplyLayer
+
+- Added a new custom layer `ScalarMultiplyLayer` that multiplies input tensor by a scalar value:
+  - `Applications/CausalLM/layers/scalar_multiply.h` - Header file with layer definition
+  - `Applications/CausalLM/layers/scalar_multiply.cpp` - Implementation file
+- The layer accepts a `multiplier` property (float) that is multiplied with all elements of the input tensor.
+- Updated `Applications/CausalLM/layers/meson.build` to include the new layer in the build system.
+- Usage example in config: `type=scalar_multiply | multiplier=0.5`

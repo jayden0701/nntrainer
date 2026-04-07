@@ -32,7 +32,8 @@ public:
     }
     EMBEDDING_SCALE = std::sqrt(static_cast<float>(cfg["hidden_size"]));
 
-    setupParameters(cfg, generation_cfg, nntr_cfg); // call this after setting up)
+    setupParameters(cfg, generation_cfg,
+                    nntr_cfg); // call this after setting up)
   }
 
   virtual ~Gemma4Transformer() = default;
@@ -93,8 +94,6 @@ public:
                       sanitizeGenerationConfig(generation_cfg, cfg), nntr_cfg) {
   }
 
-  
-
   virtual ~Gemma4CausalLM() = default;
 
   void setupParameters(json &cfg, json &generation_cfg,
@@ -102,6 +101,8 @@ public:
     CausalLM::setupParameters(cfg, generation_cfg, nntr_cfg);
     Gemma4Transformer::setupParameters(cfg, generation_cfg, nntr_cfg);
   }
+
+  void constructModel() override;
 
   void registerCustomLayers() override;
 };
