@@ -61,6 +61,9 @@ public:
                                            std::string query_name,
                                            std::string key_name,
                                            std::string value_name) override;
+  std::vector<LayerHandle> createSharedAttention(
+    const int layer_id, const int shared_kv_layer_id, int seq_len, int n_heads,
+    int head_dim, std::string query_name);
 
   std::vector<LayerHandle>
   createTransformerDecoderBlock(const int layer_id, std::string input_name);

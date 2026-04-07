@@ -52,3 +52,12 @@
 - The layer accepts a `multiplier` property (float) that is multiplied with all elements of the input tensor.
 - Updated `Applications/CausalLM/layers/meson.build` to include the new layer in the build system.
 - Usage example in config: `type=scalar_multiply | multiplier=0.5`
+
+## Gemma4 shared attention wiring for KV-shared layers
+
+- Added `createSharedAttention()` in Gemma4 model implementation to support KV-shared tail layers when direct KV cache sharing is unavailable in NNTrainer.
+- Updated decoder block construction to detect KV-shared layers using `num_kv_shared_layers` and map each shared layer to the last non-shared layer with the same `layer_type`.
+- For shared layers, the attention block now:
+  - creates only the current layer Q projection + Q RMSNorm, and
+  - reuses `layer{shared_kv_layer_id}_k_norm` and `layer{shared_kv_layer_id}_v_norm` as `mha_core` K/V inputs.
+- This preserves Gemma4 shared-attention behavior by graph connection to normalized K/V tensors from the source layer.

@@ -12,6 +12,8 @@
 
 #include <gemma4_causallm.h>
 
+#include <algorithm>
+
 #include <app_context.h>
 #include <engine.h>
 #include <llm_util.hpp>
@@ -213,11 +215,43 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
      withKey("epsilon", std::to_string(NORM_EPS)),
      withKey("packed", "false")}));
 
-  auto att_layer =
-    createAttention(layer_id, INIT_SEQ_LEN, NUM_HEADS, HEAD_DIM,
-                    "layer" + std::to_string(layer_id) + "_attention_norm",
-                    "layer" + std::to_string(layer_id) + "_attention_norm",
-                    "layer" + std::to_string(layer_id) + "_attention_norm");
+  int shared_kv_layer_id = -1;
+  const int num_kv_shared_layers =
+    cfg.contains("num_kv_shared_layers") &&
+        !cfg["num_kv_shared_layers"].is_null()
+      ? cfg["num_kv_shared_layers"].get<int>()
+      : 0;
+  const int first_kv_shared_layer_idx = NUM_LAYERS - num_kv_shared_layers;
+  const bool is_kv_shared_layer =
+    layer_id >= first_kv_shared_layer_idx && first_kv_shared_layer_idx > 0;
+
+  if (is_kv_shared_layer && !layer_types.empty() &&
+      first_kv_shared_layer_idx <= static_cast<int>(layer_types.size())) {
+    const auto &curr_layer_type = layer_types[layer_id];
+    const std::vector<std::string> prev_layers(
+      layer_types.begin(), layer_types.begin() + first_kv_shared_layer_idx);
+    auto rev_it =
+      std::find(prev_layers.rbegin(), prev_layers.rend(), curr_layer_type);
+    NNTR_THROW_IF(rev_it == prev_layers.rend(), std::invalid_argument)
+      << "[Gemma4] Could not find shared KV source layer for layer " << layer_id
+      << " with layer_type=" << curr_layer_type;
+    shared_kv_layer_id =
+      static_cast<int>(prev_layers.size()) - 1 -
+      static_cast<int>(std::distance(prev_layers.rbegin(), rev_it));
+  }
+
+  std::vector<LayerHandle> att_layer;
+  if (shared_kv_layer_id >= 0) {
+    att_layer = createSharedAttention(
+      layer_id, shared_kv_layer_id, INIT_SEQ_LEN, NUM_HEADS, HEAD_DIM,
+      "layer" + std::to_string(layer_id) + "_attention_norm");
+  } else {
+    att_layer =
+      createAttention(layer_id, INIT_SEQ_LEN, NUM_HEADS, HEAD_DIM,
+                      "layer" + std::to_string(layer_id) + "_attention_norm",
+                      "layer" + std::to_string(layer_id) + "_attention_norm",
+                      "layer" + std::to_string(layer_id) + "_attention_norm");
+  }
   layers.insert(layers.end(), att_layer.begin(), att_layer.end());
 
   layers.push_back(createLayer(
@@ -314,6 +348,75 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
     {withKey("name", "layer" + std::to_string(layer_id) + "_decoder_output"),
      withKey("input_layers", decoder_output_name + ",layer" +
                                std::to_string(layer_id) + "_post_per_layer_input_norm")}));
+
+  return layers;
+}
+
+std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
+  const int layer_id, const int shared_kv_layer_id, int seq_len, int n_heads,
+  int head_dim, std::string query_name) {
+  std::vector<LayerHandle> layers;
+  (void)seq_len;
+  (void)head_dim;
+
+  auto Q = "layer" + std::to_string(layer_id) + "_wq";
+  auto Q_norm = "layer" + std::to_string(layer_id) + "_q_norm";
+  auto A = "layer" + std::to_string(layer_id) + "_attention";
+  auto O = "layer" + std::to_string(layer_id) + "_attention_out";
+  auto shared_K_norm = "layer" + std::to_string(shared_kv_layer_id) + "_k_norm";
+  auto shared_V_norm = "layer" + std::to_string(shared_kv_layer_id) + "_v_norm";
+
+  bool is_sliding = true;
+  if (!layer_types.empty() && layer_id < static_cast<int>(layer_types.size())) {
+    is_sliding = layer_types[layer_id] == "sliding_attention";
+  }
+
+  int curr_head_dim = is_sliding ? HEAD_DIM : GLOBAL_HEAD_DIM;
+  int curr_kv_heads = (is_sliding || !ATTENTION_K_EQ_V) ? NUM_KEY_VALUE_HEADS
+                                                         : NUM_GLOBAL_KEY_VALUE_HEADS;
+
+  // Q layer [B, S, H] -> [B, S, Nq*Dh]
+  std::vector<std::string> q_params = {withKey("name", Q),
+                                       withKey("unit", curr_head_dim * n_heads),
+                                       withKey("disable_bias", "true"),
+                                       withKey("input_layers", query_name),
+                                       withKey("weight_initializer", "ones"),
+                                       withKey("weight_dtype", FC_LAYER_DTYPE)};
+  layers.push_back(createLayer("fully_connected", q_params));
+
+  // q_norm on per-head projection [B, S, Nq*Dh]
+  std::vector<std::string> q_norm_params = {
+    withKey("name", Q_norm), withKey("input_layers", Q),
+    withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
+    withKey("feature_size", std::to_string(curr_head_dim))};
+  layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
+
+  unsigned int window_size = is_sliding ? SLIDING_WINDOW : UINT_MAX;
+  unsigned int rope_theta =
+    is_sliding ? SLIDING_ATTENTION_ROPE_THETA : FULL_ATTENTION_ROPE_THETA;
+
+  // Shared attention core receives [Q_norm, shared_K_norm, shared_V_norm]
+  std::vector<std::string> a_params = {
+    withKey("name", A),
+    withKey("num_heads", n_heads),
+    withKey("num_heads_kv", curr_kv_heads),
+    withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
+    withKey("sliding_window", window_size),
+    withKey("rope_theta", std::to_string(rope_theta)),
+    withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
+    withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
+    withKey("is_causal", IS_CAUSAL ? "true" : "false"),
+    withKey("input_layers", {Q_norm, shared_K_norm, shared_V_norm})};
+  layers.push_back(createLayer("mha_core", a_params));
+
+  // O layer [B, S, Nq*Dh] -> [B, S, H]
+  std::vector<std::string> o_params = {withKey("name", O),
+                                       withKey("unit", DIM),
+                                       withKey("disable_bias", "true"),
+                                       withKey("input_layers", A),
+                                       withKey("weight_initializer", "ones"),
+                                       withKey("weight_dtype", FC_LAYER_DTYPE)};
+  layers.push_back(createLayer("fully_connected", o_params));
 
   return layers;
 }
