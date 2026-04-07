@@ -129,7 +129,16 @@ void Transformer::setupParameters(json &cfg, json &generation_cfg,
                              ? cfg["sliding_window_pattern"].get<unsigned int>()
                              : 1;
   MAX_POSITION_EMBEDDINGS = cfg["max_position_embeddings"].get<unsigned int>();
-  ROPE_THETA = cfg["rope_theta"].get<unsigned int>();
+
+// RoPE parameters (use sliding attention defaults)
+    if (cfg.contains("rope_parameters") &&
+        cfg["rope_parameters"].contains("sliding_attention")) {
+      json &rope_cfg = cfg["rope_parameters"]["sliding_attention"];
+      ROPE_THETA = rope_cfg.value("rope_theta", 10000);
+    } else {
+      ROPE_THETA = cfg.value("rope_theta", 10000);
+    }
+
   TIE_WORD_EMBEDDINGS = cfg["tie_word_embeddings"].get<bool>();
   NORM_EPS = cfg["rms_norm_eps"];
   GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;

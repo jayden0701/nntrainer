@@ -132,6 +132,11 @@ std::string resolve_architecture(std::string model_type,
 
 int main(int argc, char *argv[]) {
 
+  std::ios_base::sync_with_stdio(false);
+  std::ofstream out("/home/jayden/NNTrainer_Playground/gemma4/nntrainer/debug_gemma4.txt");
+  std::streambuf *coutbuf = std::cout.rdbuf();
+  std::cout.rdbuf(out.rdbuf());
+
   auto start_time = std::chrono::high_resolution_clock::now();
 
   /** Register all runnable causallm models to factory */

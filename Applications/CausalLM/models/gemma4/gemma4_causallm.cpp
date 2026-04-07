@@ -6,7 +6,7 @@
  * @date   07 Apr 2026
  * @brief  This defines a Gemma4 causal language model.
  * @see    https://github.com/nnstreamer/
- * @author OpenAI Codex
+ * @author Joonseok Oh <jrock.oh@samsung.com>
  * @bug    No known bugs except for NYI items
  */
 

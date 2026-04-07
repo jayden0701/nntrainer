@@ -5,7 +5,7 @@
  * @file   gemma4_causallm.h
  * @date   07 Apr 2026
  * @see    https://github.com/nnstreamer/nntrainer
- * @author OpenAI Codex
+ * @author Joonseok Oh <jrock.oh@samsung.com>
  * @bug    No known bugs except for NYI items
  */
 
@@ -31,6 +31,8 @@ public:
       layer_types = cfg["layer_types"].get<std::vector<std::string>>();
     }
     EMBEDDING_SCALE = std::sqrt(static_cast<float>(cfg["hidden_size"]));
+
+    setupParameters(cfg, generation_cfg, nntr_cfg); // call this after setting up)
   }
 
   virtual ~Gemma4Transformer() = default;
@@ -85,6 +87,8 @@ public:
     Gemma4Transformer(sanitizeConfig(cfg),
                       sanitizeGenerationConfig(generation_cfg, cfg), nntr_cfg) {
   }
+
+  
 
   virtual ~Gemma4CausalLM() = default;
 
