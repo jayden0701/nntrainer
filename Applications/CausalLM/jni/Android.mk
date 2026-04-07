@@ -25,7 +25,8 @@ CAUSALLM_COMMON_INCLUDES := \
     $(LOCAL_PATH)/../models/qwen3_moe \
     $(LOCAL_PATH)/../models/qwen3_slim_moe \
     $(LOCAL_PATH)/../models/qwen3_cached_slim_moe \
-    $(LOCAL_PATH)/../models/gemma3 
+    $(LOCAL_PATH)/../models/gemma3 \
+    $(LOCAL_PATH)/../models/gemma4
 
 # Prebuilt nntrainer libraries
 include $(CLEAR_VARS)
@@ -75,6 +76,7 @@ LOCAL_SRC_FILES := \
     ../layers/embedding_layer.cpp \
     ../layers/embedding_pooling_layer.cpp \
     ../layers/embedding_normalize_layer.cpp \
+    ../layers/per_layer_slice.cpp \
     ../layers/mha_core.cpp \
     ../layers/lm_head.cpp \
     ../models/qwen3_moe/qwen_moe_layer.cpp \
@@ -89,6 +91,7 @@ LOCAL_SRC_FILES := \
     ../models/gpt_oss_cached_slim/gpt_oss_moe_layer_cached.cpp \
     ../models/gemma3/gemma3_causallm.cpp \
     ../models/gemma3/embedding_gemma.cpp \
+    ../models/gemma4/gemma4_causallm.cpp \
     ../models/gemma3/function.cpp \
 
 LOCAL_SHARED_LIBRARIES := nntrainer ccapi-nntrainer
@@ -200,6 +203,7 @@ LOCAL_SRC_FILES := ../quantize.cpp \
     ../layers/embedding_layer.cpp \
     ../layers/embedding_pooling_layer.cpp \
     ../layers/embedding_normalize_layer.cpp \
+    ../layers/per_layer_slice.cpp \
     ../layers/mha_core.cpp \
     ../models/qwen3_moe/qwen_moe_layer.cpp \
     ../layers/reshaped_rms_norm.cpp \
@@ -214,6 +218,7 @@ LOCAL_SRC_FILES := ../quantize.cpp \
     ../models/gpt_oss_cached_slim/gpt_oss_moe_layer_cached.cpp \
     ../models/gemma3/gemma3_causallm.cpp \
     ../models/gemma3/embedding_gemma.cpp \
+    ../models/gemma4/gemma4_causallm.cpp \
 
 LOCAL_SHARED_LIBRARIES := nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := tokenizers_c
@@ -230,5 +235,6 @@ LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) \
     $(LOCAL_PATH)/../models/qwen3_slim_moe \
     $(LOCAL_PATH)/../models/qwen3_cached_slim_moe \
     $(LOCAL_PATH)/../models/gemma3 \
+    $(LOCAL_PATH)/../models/gemma4 \
 
 include $(BUILD_EXECUTABLE)
