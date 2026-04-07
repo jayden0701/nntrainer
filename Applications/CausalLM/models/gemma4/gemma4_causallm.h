@@ -51,6 +51,9 @@ protected:
   unsigned int FULL_ATTENTION_ROPE_THETA = 0;
   unsigned int SLIDING_ATTENTION_ROPE_THETA = 0;
 
+  unsigned int HIDDEN_SIZE_PER_LAYER_INPUT = 0;
+  unsigned int VOCAB_SIZE_PER_LAYER_INPUT = 0;
+
 public:
   std::vector<LayerHandle> createAttention(const int layer_id, int seq_len,
                                            int n_heads, int head_dim,
@@ -63,6 +66,8 @@ public:
 
   void setupParameters(json &cfg, json &generation_cfg,
                        json &nntr_cfg) override;
+
+  void constructModel() override;
 
   std::vector<LayerHandle> createMlp(const int layer_id, int dim,
                                      int hidden_dim,
