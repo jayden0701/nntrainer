@@ -54,6 +54,7 @@ protected:
 
   unsigned int HIDDEN_SIZE_PER_LAYER_INPUT = 0;
   unsigned int VOCAB_SIZE_PER_LAYER_INPUT = 0;
+  int NUM_KV_SHARED_LAYERS = 0;
 
 public:
   std::vector<LayerHandle> createAttention(const int layer_id, int seq_len,
