@@ -23,6 +23,20 @@ static constexpr size_t SINGLE_INOUT_IDX = 0;
 void ScalarMultiplyLayer::finalize(nntrainer::InitLayerContext &context) {
   std::vector<nntrainer::TensorDim> dim = context.getInputDimensions();
   context.setOutputDimensions(dim);
+
+  bool use_weight = std::get<props::UseWeight>(scalar_multiply_props).get();
+
+  if (use_weight) {
+    // Request weight for scalar value (single element)
+    nntrainer::TensorDim scalar_dim(
+      1, 1, 1, 1,
+      nntrainer::TensorDim::TensorType(context.getFormat(),
+                                       context.getWeightDataType()));
+    wt_idx[0] = context.requestWeight(
+      scalar_dim, nntrainer::props::InitializerInfo::Enum::NONE,
+      nntrainer::WeightRegularizer::NONE, 1.0f, 0.0f, "scalar_multiplier",
+      false);
+  }
 }
 
 void ScalarMultiplyLayer::forwarding(nntrainer::RunLayerContext &context,
@@ -31,7 +45,15 @@ void ScalarMultiplyLayer::forwarding(nntrainer::RunLayerContext &context,
   auto &in = context.getInput(SINGLE_INOUT_IDX);
   auto &out = context.getOutput(SINGLE_INOUT_IDX);
 
-  float multiplier = std::get<props::ScalarMultiplier>(scalar_multiply_props).get();
+  bool use_weight = std::get<props::UseWeight>(scalar_multiply_props).get();
+
+  float multiplier;
+  if (use_weight) {
+    nntrainer::Tensor &weight = context.getWeight(wt_idx[0]);
+    multiplier = weight.getValue<float>(0, 0, 0, 0);
+  } else {
+    multiplier = std::get<props::ScalarMultiplier>(scalar_multiply_props).get();
+  }
 
   in.multiply(multiplier, out);
 }
@@ -39,7 +61,16 @@ void ScalarMultiplyLayer::forwarding(nntrainer::RunLayerContext &context,
 void ScalarMultiplyLayer::incremental_forwarding(
   nntrainer::RunLayerContext &context, unsigned int from, unsigned int to,
   bool training) {
-  float multiplier = std::get<props::ScalarMultiplier>(scalar_multiply_props).get();
+
+  bool use_weight = std::get<props::UseWeight>(scalar_multiply_props).get();
+
+  float multiplier;
+  if (use_weight) {
+    nntrainer::Tensor &weight = context.getWeight(wt_idx[0]);
+    multiplier = weight.getValue<float>(0, 0, 0, 0);
+  } else {
+    multiplier = std::get<props::ScalarMultiplier>(scalar_multiply_props).get();
+  }
 
   nntrainer::Tensor &in = context.getInput(SINGLE_INOUT_IDX);
   nntrainer::Tensor &out = context.getOutput(SINGLE_INOUT_IDX);

@@ -53,6 +53,20 @@
 - Updated `Applications/CausalLM/layers/meson.build` to include the new layer in the build system.
 - Usage example in config: `type=scalar_multiply | multiplier=0.5`
 
+### ScalarMultiplyLayer use_weight property
+
+- Added `use_weight` property (bool, default: false) to `ScalarMultiplyLayer`.
+- When `use_weight=true`:
+  - The layer requests a single-element weight tensor named `scalar_multiplier` from the weight file.
+  - The multiplier value is loaded from the weight file instead of the `multiplier` property.
+- When `use_weight=false` (default):
+  - The layer uses the `multiplier` property value as before.
+- Usage example with weight file:
+  ```
+  type=scalar_multiply | use_weight=true
+  ```
+  The weight file should contain a weight tensor named `scalar_multiplier` with a single float value.
+
 ## Gemma4 shared attention wiring for KV-shared layers
 
 - Added `createSharedAttention()` in Gemma4 model implementation to support KV-shared tail layers when direct KV cache sharing is unavailable in NNTrainer.

@@ -8,7 +8,7 @@
  * @see    https://github.com/nntrainer/nntrainer
  * @author Samsung Electronics Co., Ltd.
  * @bug    No known bugs except for NYI items
- * @note   This layer multiplies input tensor by a scalar value provided as property.
+ * @note   This layer multiplies input tensor by a scalar value provided as property or weight.
  */
 
 #ifndef __SCALAR_MULTIPLY_LAYER_H__
@@ -45,10 +45,21 @@ public:
   ScalarMultiplier(float value = 1.0f) { set(value); }
 };
 
+/**
+ * @brief UseWeight property to determine whether to load scalar from weight file
+ */
+class UseWeight : public nntrainer::Property<bool> {
+public:
+  static constexpr const char *key = "use_weight"; /**< unique key to access */
+  using prop_tag = nntrainer::bool_prop_tag;       /**< property type */
+  UseWeight(bool value = false) { set(value); }
+};
+
 } // namespace props
 
 /**
  * @brief A scalar multiplication layer that multiplies input tensor by a scalar.
+ *        The scalar can be provided either as a property or loaded from a weight file.
  *
  */
 WIN_EXPORT class ScalarMultiplyLayer final : public nntrainer::Layer {
@@ -57,7 +68,7 @@ public:
    * @brief Construct a new scalar multiply layer object
    *
    */
-  WIN_EXPORT ScalarMultiplyLayer() : Layer() {}
+  WIN_EXPORT ScalarMultiplyLayer() : Layer(), wt_idx({0}) {}
 
   /**
    * @brief Destroy the scalar multiply layer object
@@ -125,7 +136,8 @@ public:
   inline static const std::string type = "scalar_multiply";
 
 private:
-  std::tuple<props::ScalarMultiplier> scalar_multiply_props;
+  std::array<unsigned int, 1> wt_idx;
+  std::tuple<props::ScalarMultiplier, props::UseWeight> scalar_multiply_props;
 };
 
 } // namespace causallm

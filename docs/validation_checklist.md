@@ -13,9 +13,7 @@
 
 ## Known gaps / TODO
 
-- [ ] Exact `attention_k_eq_v` semantics (shared K/V projection weights for full-attention layers) are not yet implemented; current path keeps separate V projection.
-- [ ] KV shared-layer cache behavior (`num_kv_shared_layers`) is not implemented.
+
 - [ ] Exact per-layer input scalar factors (`hidden_size^-0.5` and `2^-0.5`) are not yet applied in-graph.
-- [ ] MoE branch (`enable_moe_block`, router, experts) is not implemented.
 - [ ] Double-wide MLP behavior for KV-shared tail layers is not implemented.
 - [ ] Final LM-head logit softcapping (`final_logit_softcapping`) is not implemented in NNTrainer graph yet.

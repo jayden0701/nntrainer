@@ -142,6 +142,7 @@ void Gemma4Transformer::constructModel() {
     "input", {withKey("name", "input0"),
               withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))}));
 
+
   const std::string embedding_type =
     TIE_WORD_EMBEDDINGS ? "tie_word_embeddings" : "embedding_layer";
 
@@ -162,7 +163,8 @@ void Gemma4Transformer::constructModel() {
                  withKey("in_dim", std::to_string(VOCAB_SIZE_PER_LAYER_INPUT)),
                  withKey("out_dim", std::to_string(per_layer_total_dim)),
                  withKey("weight_dtype", EMBEDDING_DTYPE),
-                 withKey("input_layers", "input0"), withKey("scale", EMBEDDING_PER_LAYER_SCALE)}));
+                 withKey("input_layers", "input0"),
+                 withKey("scale", EMBEDDING_PER_LAYER_SCALE)}));
 
   layers.push_back(createLayer(
     "fully_connected",
@@ -172,13 +174,32 @@ void Gemma4Transformer::constructModel() {
      withKey("weight_initializer", "ones"),
      withKey("weight_dtype", FC_LAYER_DTYPE)}));
 
+  float ple_proj_scale = 1.0f / std::sqrt(static_cast<float>(DIM));
+  layers.push_back(createLayer(
+    "scalar_multiply", {
+                         withKey("name", "per_layer_model_proj_scale"),
+                         withKey("input_layers", "per_layer_input_projection"),
+                         withKey("packed", "false"),
+                         withKey("multiplier", std::to_string(ple_proj_scale)),
+                       }));
+
+  layers.push_back(createLayer(
+    "reshaped_rms_norm",
+    {
+      withKey("name", "per_layer_projection_norm"),
+      withKey("input_layers", "per_layer_model_proj_scale"),
+      withKey("epsilon", std::to_string(NORM_EPS)),
+      withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
+      withKey("packed", "false"),
+    }));
+
   layers.push_back(createLayer(
     "addition",
     {withKey("name", "per_layer_input_sum"),
      withKey("input_layers",
-             "per_layer_input_embedding,per_layer_input_projection")}));
+             "per_layer_input_embedding,per_layer_projection_norm")}));
 
-  // TODO : change per_layer_input_scale to none hard coded way
+  // TODO : change per_layer_input_scale to non hard-coded way
   layers.push_back(createLayer(
     "scalar_multiply", {
                          withKey("name", "per_layer_input_scale"),
@@ -187,19 +208,14 @@ void Gemma4Transformer::constructModel() {
                          withKey("multiplier", std::to_string(0.7071067)),
                        }));
 
-  layers.push_back(createLayer(
-    "reshaped_rms_norm",
-    {withKey("name", "per_layer_input_scale"),
-     withKey("input_layers", "per_layer_input_sum"), withKey("packed", "false"),
-     withKey("epsilon", std::to_string(NORM_EPS)),
-     withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT))}));
-
   for (int i = 0; i < NUM_LAYERS; ++i) {
     std::vector<LayerHandle> transformer =
       createTransformerDecoderBlock(i, decoder_input);
     layers.insert(layers.end(), transformer.begin(), transformer.end());
-    decoder_input = "layer" + std::to_string(i) + "_decoder_output";
+    decoder_input = "layer" + std::to_string(i) + "_layer_scalar";
   }
+
+  
 
   layers.push_back(
     createLayer("rms_norm", {withKey("name", "output_norm"),
@@ -363,6 +379,14 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
      withKey("input_layers", decoder_output_name + ",layer" +
                                std::to_string(layer_id) +
                                "_post_per_layer_input_norm")}));
+
+  layers.push_back(createLayer(
+    "scalar_multiply", {
+                         withKey("name", "layer" + std::to_string(layer_id) + "_layer_scalar"),
+                         withKey("input_layers", "layer" + std::to_string(layer_id) + "_decoder_output"),
+                         withKey("packed", "false"),
+                         withKey("use_weight","true"),
+                       }));
 
   return layers;
 }
@@ -616,6 +640,26 @@ void Gemma4CausalLM::registerCustomLayers() {
   Gemma4Transformer::registerCustomLayers();
 }
 
-void Gemma4CausalLM::constructModel() { Gemma4Transformer::constructModel(); }
+void Gemma4CausalLM::constructModel() {
+  Gemma4Transformer::constructModel();
+
+  // create lm_head layer (using fully_connected option)
+  const std::string lmhead_type =
+    TIE_WORD_EMBEDDINGS ? "tie_word_embeddings" : "lm_head";
+
+  // add lmhead
+  std::vector<std::string> lmhead_prop = {
+    withKey("name", "output_of_causallm"),
+    withKey("unit", NUM_VOCAB),
+    withKey("disable_bias", "true"),
+    withKey("input_layers", "output_norm"),
+    withKey("weight_dtype", LMHEAD_DTYPE),
+  };
+
+  if (TIE_WORD_EMBEDDINGS)
+    lmhead_prop.emplace_back(withKey("shared_from", "embedding0"));
+
+  model->addLayer(createLayer(lmhead_type, lmhead_prop));
+}
 
 } // namespace causallm
