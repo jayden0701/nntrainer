@@ -1507,20 +1507,19 @@ void FloatTensor::print(std::ostream &out) const {
   out << "data addr: " << data << '\n';
   out << dim;
 
-  if (len > 100) {
-    out << '[' << data[0] << ' ' << data[1] << ' ' << data[2] << " ... "
-        << data[len - 3] << ' ' << data[len - 2] << ' ' << data[len - 1] << ']'
-        << std::endl;
-    return;
-  }
+  // if (len > 100) {
+  //   out << '[' << data[0] << ' ' << data[1] << ' ' << data[2] << " ... "
+  //       << data[len - 3] << ' ' << data[len - 2] << ' ' << data[len - 1] << ']'
+  //       << std::endl;
+  //   return;
+  // }
 
   std::ios init(NULL);
   init.copyfmt(out);
-
   if (getFormat() == Tformat::NCHW) {
     for (unsigned int k = 0; k < batch(); k++) {
       for (unsigned int l = 0; l < channel(); l++) {
-        for (unsigned int i = 0; i < height(); i++) {
+        for (unsigned int i = 0; i < std::min(height(),size_t(5)); i++) {
           for (unsigned int j = 0; j < width(); j++) {
             out << std::setw(10) << std::setprecision(10)
                 << data[getIndex(k, l, i, j)] << " ";

@@ -228,12 +228,15 @@ void Gemma4Transformer::constructModel() {
              "per_layer_input_embedding,per_layer_projection_norm")}));
 
   // TODO : change per_layer_input_scale to non hard-coded way
+  
+  float per_layer_input_scale = std::sqrt(0.5f);
+
   layers.push_back(createLayer(
     "scalar_multiply", {
                          withKey("name", "per_layer_input_scale"),
                          withKey("input_layers", "per_layer_input_sum"),
                          withKey("packed", "false"),
-                         withKey("multiplier", std::to_string(0.7071067)),
+                         withKey("multiplier", std::to_string(per_layer_input_scale)),
                        }));
 
   for (int i = 0; i < NUM_LAYERS; ++i) {
@@ -463,12 +466,14 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
   // Gemma4TextAttention uses scaling=1.0 after q_norm/k_norm.
   // mha_core backend applies 1/sqrt(head_dim) to QK, so pre-scale Q by
   // sqrt(head_dim) to preserve Gemma4 semantics.
+
+  // TODO : fixed AVX kernel to not make it divide by 1/sqrt(head_dim)
   layers.push_back(createLayer(
     "scalar_multiply",
     {withKey("name", Q_scaled), withKey("input_layers", Q_norm),
      withKey("packed", "false"),
      withKey("multiplier",
-             std::to_string(std::sqrt(static_cast<float>(curr_head_dim))))}));
+             std::to_string(1))}));
 
   unsigned int window_size = is_sliding ? SLIDING_WINDOW : UINT_MAX;
   unsigned int rope_theta =
@@ -573,7 +578,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     {withKey("name", Q_scaled), withKey("input_layers", Q_norm),
      withKey("packed", "false"),
      withKey("multiplier",
-             std::to_string(std::sqrt(static_cast<float>(curr_head_dim))))}));
+             std::to_string(1))}));
 
   // k_norm on per-head projection [B, S, Nk*Dh]
   std::vector<std::string> k_norm_params = {
@@ -715,6 +720,12 @@ void Gemma4CausalLM::constructModel() {
     lmhead_prop.emplace_back(withKey("shared_from", "embedding0"));
 
   model->addLayer(createLayer(lmhead_type, lmhead_prop));
+
+
+  // add identity layer for debug
+  model->addLayer(
+    createLayer("identity", {withKey("name", "real_output"),
+                             withKey("input_layers", "output_of_causallm")}));
 
   if (FINAL_LOGIT_SOFTCAPPING > 0.0f) {
     model->addLayer(createLayer(

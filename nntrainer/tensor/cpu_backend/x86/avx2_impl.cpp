@@ -1752,8 +1752,9 @@ void compute_kcaches(const float *in, const uint16_t *kcache, float *output,
           for (; i < head_dim; ++i)
             sum += in_ptr[i] * k_row[i];
 
+          // TODO : change this to optional
           output[(row - start_row) * num_cache_head * gqa_size + n * gqa_size +
-                 g] = sum / sqrt((float)head_dim);
+                 g] = sum;
         }
       }
     }
