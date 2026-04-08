@@ -106,6 +106,16 @@ public:
 };
 
 /**
+ * @brief UseRope property
+ */
+class UseRope : public nntrainer::Property<bool> {
+public:
+  UseRope(bool value = true) { set(value); };
+  static constexpr const char *key = "use_rope"; /**< unique key to access */
+  using prop_tag = nntrainer::bool_prop_tag;     /**< property type */
+};
+
+/**
  * @brief UseSink property
  */
 class UseSink : public nntrainer::Property<bool> {
@@ -306,9 +316,10 @@ private:
     nntrainer::props::ReturnAttentionWeight,
     nntrainer::props::AverageAttentionWeight, nntrainer::props::MaxTimestep,
     props::SlidingWindow, props::MaxNewTokens, props::RopeTheta,
-    props::MaxPositionEmbeddings, props::UseSink, props::RopeScalingType,
-    props::RopeScalingFactor, props::RopeScalingMaxPositionEmbeddings,
-    props::AttnLogitSoftcapping, props::IsCausal>
+    props::UseRope, props::MaxPositionEmbeddings, props::UseSink,
+    props::RopeScalingType, props::RopeScalingFactor,
+    props::RopeScalingMaxPositionEmbeddings, props::AttnLogitSoftcapping,
+    props::IsCausal>
     mha_core_props; /**< mha_core layer properties */
 
   /** softmax activation operation */
@@ -325,6 +336,7 @@ private:
   float theta;
   size_t local_window_size;
   bool use_sink = false;
+  bool use_rope = true;
   float attn_logit_softcapping = 0.0f;
   bool is_causal;
 

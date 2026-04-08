@@ -50,9 +50,10 @@ MHACoreLayer::MHACoreLayer() :
     nntrainer::props::ReturnAttentionWeight(),
     nntrainer::props::AverageAttentionWeight(), nntrainer::props::MaxTimestep(),
     props::SlidingWindow(), props::MaxNewTokens(), props::RopeTheta(),
-    props::MaxPositionEmbeddings(), props::UseSink(), props::RopeScalingType(),
-    props::RopeScalingFactor(), props::RopeScalingMaxPositionEmbeddings(),
-    props::AttnLogitSoftcapping(), props::IsCausal()),
+    props::UseRope(), props::MaxPositionEmbeddings(), props::UseSink(),
+    props::RopeScalingType(), props::RopeScalingFactor(),
+    props::RopeScalingMaxPositionEmbeddings(), props::AttnLogitSoftcapping(),
+    props::IsCausal()),
   sm(nntrainer::ActivationType::ACT_SOFTMAX),
   epsilon(1e-3),
   cache_index(0),
@@ -92,6 +93,9 @@ void MHACoreLayer::finalize(nntrainer::InitLayerContext &context) {
 
   /** local window size */
   local_window_size = std::get<props::SlidingWindow>(mha_core_props).get();
+
+  /** use rope */
+  use_rope = std::get<props::UseRope>(mha_core_props).get();
 
   /** attention scaling computation */
   rope_scaling_type = std::get<props::RopeScalingType>(mha_core_props).get();
@@ -149,7 +153,7 @@ void MHACoreLayer::finalize(nntrainer::InitLayerContext &context) {
   /** Is Causal */
   is_causal = std::get<props::IsCausal>(mha_core_props).get();
 
-  /** Tensor for KV-Cache */
+    /** Tensor for KV-Cache */
 #ifdef ENABLE_FP16
   ml::train::TensorDim cache_key_dim(
     {batch_size, 1, max_timestep, num_heads_KV * head_dim},
@@ -292,6 +296,10 @@ void MHACoreLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
     nntrainer::Tensor output_step = output.getSharedDataTensor(
       output_step_dim, batch * output_dim.getFeatureLen(), true);
 
+    query_step.print(std::cout);
+    key_step.print(std::cout);
+    value_step.print(std::cout);
+
     if (query_step.getDataType() == ml::train::TensorDim::DataType::FP32) {
 #if ENABLE_FP16 && defined(__ANDROID__)
       nntrainer::TensorDim Q_step_dim = query_step_dim;
@@ -343,7 +351,7 @@ void MHACoreLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
         cache_value_dim, cache_value_step_dim);
     }
   }
-  
+
   // increase cache size
   cache_index += step_size;
 }
@@ -496,12 +504,14 @@ void MHACoreLayer::one_batch_incremental_forwarding(
                                     true);
 
   // apply rotary embedding for query
-  apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, cache_index,
-                             false);
+  if (use_rope) {
+    apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, cache_index,
+                               false);
+  }
 
-  // append kcache with rotary embedding
+  // append kcache with or without rotary embedding
   apply_rotary_emb_tensor_v2(key_step, b_cache_key_step, head_dim, cache_index,
-                             false);
+                             !use_rope);
 
   // append vcache without rotary embedding
   if (query_step.getDataType() == ml::train::TensorDim::DataType::FP32) {
@@ -586,10 +596,12 @@ void MHACoreLayer::one_batch_incremental_forwarding(
     batch * cache_value_dim.getFeatureLen() + from * cache_value_dim.width(),
     true);
 
-  apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, _from, false);
+  if (use_rope) {
+    apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, _from, false);
+  }
 
   apply_rotary_emb_tensor_v2(key_step, b_cache_key_step, head_dim, _from,
-                             false);
+                             !use_rope);
 
   if (query_step.getDataType() == ml::train::TensorDim::DataType::FP32) {
     apply_rotary_emb_tensor_v2(value_step, b_cache_value_step, head_dim, _from,
@@ -756,6 +768,7 @@ void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {
 
   // Handle max position embeddings
 
+
   // Attention scaling calculation (simplified from Python version)
   auto get_mscale = [](float scale, float mscale = 1.0f) {
     return (scale <= 1.0f) ? 1.0f : (0.1f * mscale * std::log(scale) + 1.0f);
@@ -842,6 +855,12 @@ void MHACoreLayer::apply_rotary_emb_tensor_v2(nntrainer::Tensor &in,
                                               unsigned int dim,
                                               unsigned int from,
                                               bool convert_only) {
+  if (!use_rope) {
+    if (&in != &out) {
+      out.copyData(in);
+    }
+    return;
+  }
   unsigned int half_ = dim / 2;
   unsigned int max_timestep =
     std::get<nntrainer::props::MaxTimestep>(mha_core_props).get();

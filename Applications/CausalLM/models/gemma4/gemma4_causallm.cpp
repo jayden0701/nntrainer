@@ -105,6 +105,8 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
 
   FULL_ATTENTION_ROPE_THETA = ROPE_THETA;
   SLIDING_ATTENTION_ROPE_THETA = ROPE_THETA;
+  FULL_ATTENTION_ROPE_TYPE = "default";
+  SLIDING_ATTENTION_ROPE_TYPE = "default";
 
   NUM_KV_SHARED_LAYERS = cfg.contains("num_kv_shared_layers") &&
                              !cfg["num_kv_shared_layers"].is_null()
@@ -120,10 +122,24 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
       FULL_ATTENTION_ROPE_THETA =
         rope_params["full_attention"]["rope_theta"].get<unsigned int>();
     }
+    if (rope_params.contains("full_attention") &&
+        rope_params["full_attention"].contains("rope_type") &&
+        !rope_params["full_attention"]["rope_type"].is_null()) {
+      FULL_ATTENTION_ROPE_TYPE =
+        rope_params["full_attention"]["rope_type"].get<std::string>();
+    }
+
     if (rope_params.contains("sliding_attention") &&
         rope_params["sliding_attention"].contains("rope_theta")) {
       SLIDING_ATTENTION_ROPE_THETA =
         rope_params["sliding_attention"]["rope_theta"].get<unsigned int>();
+    }
+
+    if (rope_params.contains("sliding_attention") &&
+        rope_params["sliding_attention"].contains("rope_type") &&
+        !rope_params["sliding_attention"]["rope_type"].is_null()) {
+      SLIDING_ATTENTION_ROPE_TYPE =
+        rope_params["sliding_attention"]["rope_type"].get<std::string>();
     }
   }
 
@@ -141,7 +157,6 @@ void Gemma4Transformer::constructModel() {
   layers.push_back(createLayer(
     "input", {withKey("name", "input0"),
               withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))}));
-
 
   const std::string embedding_type =
     TIE_WORD_EMBEDDINGS ? "tie_word_embeddings" : "embedding_layer";
@@ -214,8 +229,6 @@ void Gemma4Transformer::constructModel() {
     layers.insert(layers.end(), transformer.begin(), transformer.end());
     decoder_input = "layer" + std::to_string(i) + "_layer_scalar";
   }
-
-  
 
   layers.push_back(
     createLayer("rms_norm", {withKey("name", "output_norm"),
@@ -381,12 +394,14 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
                                "_post_per_layer_input_norm")}));
 
   layers.push_back(createLayer(
-    "scalar_multiply", {
-                         withKey("name", "layer" + std::to_string(layer_id) + "_layer_scalar"),
-                         withKey("input_layers", "layer" + std::to_string(layer_id) + "_decoder_output"),
-                         withKey("packed", "false"),
-                         withKey("use_weight","true"),
-                       }));
+    "scalar_multiply",
+    {
+      withKey("name", "layer" + std::to_string(layer_id) + "_layer_scalar"),
+      withKey("input_layers",
+              "layer" + std::to_string(layer_id) + "_decoder_output"),
+      withKey("packed", "false"),
+      withKey("use_weight", "true"),
+    }));
 
   return layers;
 }
@@ -435,6 +450,9 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
   unsigned int rope_theta =
     is_sliding ? SLIDING_ATTENTION_ROPE_THETA : FULL_ATTENTION_ROPE_THETA;
 
+  const std::string &rope_type =
+    is_sliding ? SLIDING_ATTENTION_ROPE_TYPE : FULL_ATTENTION_ROPE_TYPE;
+
   // Shared attention core receives [Q_norm, shared_K_norm, shared_V_norm]
   std::vector<std::string> a_params = {
     withKey("name", A),
@@ -442,6 +460,7 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
     withKey("num_heads_kv", curr_kv_heads),
     withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
     withKey("sliding_window", window_size),
+    withKey("use_rope", "false"),
     withKey("rope_theta", std::to_string(rope_theta)),
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
@@ -547,6 +566,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("num_heads_kv", curr_kv_heads),
     withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
     withKey("sliding_window", window_size),
+    withKey("use_rope", "false"),
     withKey("rope_theta", std::to_string(rope_theta)),
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),

@@ -56,7 +56,9 @@ protected:
   int NUM_KV_SHARED_LAYERS = 0;
   bool USE_DOUBLE_WIDE_MLP = false;
   float EMBEDDING_PER_LAYER_SCALE = 1.0f;
-  
+
+  std::string FULL_ATTENTION_ROPE_TYPE = "default";
+  std::string SLIDING_ATTENTION_ROPE_TYPE = "default";
 
 public:
   std::vector<LayerHandle> createAttention(const int layer_id, int seq_len,
@@ -64,9 +66,11 @@ public:
                                            std::string query_name,
                                            std::string key_name,
                                            std::string value_name) override;
-  std::vector<LayerHandle> createSharedAttention(
-    const int layer_id, const int shared_kv_layer_id, int seq_len, int n_heads,
-    int head_dim, std::string query_name);
+  std::vector<LayerHandle> createSharedAttention(const int layer_id,
+                                                 const int shared_kv_layer_id,
+                                                 int seq_len, int n_heads,
+                                                 int head_dim,
+                                                 std::string query_name);
 
   std::vector<LayerHandle>
   createTransformerDecoderBlock(const int layer_id, std::string input_name);
