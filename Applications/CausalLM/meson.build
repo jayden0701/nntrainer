@@ -31,6 +31,7 @@ causallm_layer_dependencies += [
     causallm_embedding_normalize_layer_dep,
     causallm_per_layer_slice_dep,
     causallm_scalar_multiply_dep,
+    causallm_logit_softcapping_dep,
 ]
 
 subdir('models')

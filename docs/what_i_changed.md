@@ -92,3 +92,24 @@
 - Added support for Gemma4 `final_logit_softcapping` in NNTrainer output head:
   - apply `logits = tanh(logits / softcap) * softcap` after lm_head.
   - This aligns with HF Gemma4 `Gemma4ForCausalLM` forward logic.
+
+## Fix: Gemma4 final-logit softcapping for decode-step row shape
+
+- Added a dedicated custom layer `logit_softcapping` to avoid decode-time row-range mismatch in chained `scalar_multiply -> activation -> scalar_multiply` logic.
+- New layer files:
+  - `Applications/CausalLM/layers/logit_softcapping.h`
+  - `Applications/CausalLM/layers/logit_softcapping.cpp`
+- New layer properties:
+  - `activation_type` (activation enum, e.g., `tanh`)
+  - `apply_rows` (apply from front rows only)
+  - `softcap_value` (divide/apply activation/multiply)
+- Layer behavior:
+  - computes `y = activation(x / softcap_value) * softcap_value`
+  - applies only to the first `apply_rows` rows (front), passes other rows through
+  - supports both full forwarding and incremental forwarding path without assuming `to-from` equals requested rows.
+- Wired `logit_softcapping` into Gemma4 output head (`output_of_causallm_softcapped`) and removed the previous 3-layer softcap chain in Gemma4 graph construction.
+- Registered the new custom layer factory in Gemma4 custom layer registration.
+- Updated build wiring:
+  - `Applications/CausalLM/layers/meson.build`
+  - `Applications/CausalLM/meson.build`
+  - `Applications/CausalLM/jni/Android.mk`

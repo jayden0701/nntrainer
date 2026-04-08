@@ -13,6 +13,7 @@ causallm_embedding_pooling_src_abs = [meson.current_source_dir() / 'embedding_po
 causallm_embedding_normalize_src_abs = [meson.current_source_dir() / 'embedding_normalize_layer.cpp']
 causallm_per_layer_slice_src_abs = [meson.current_source_dir() / 'per_layer_slice.cpp']
 causallm_scalar_multiply_src_abs = [meson.current_source_dir() / 'scalar_multiply.cpp']
+causallm_logit_softcapping_src_abs = [meson.current_source_dir() / 'logit_softcapping.cpp']
 
 openmp_dep = dependency('openmp')
 causallm_rms_norm = shared_library(
@@ -170,5 +171,18 @@ causallm_scalar_multiply = shared_library(
 )
 causallm_scalar_multiply_dep = declare_dependency(
     link_with: causallm_scalar_multiply,
+    include_directories: causallm_layer_inc
+)
+
+causallm_logit_softcapping = shared_library(
+    'logit_softcapping_layer',
+    causallm_logit_softcapping_src_abs,
+    include_directories: causallm_layer_inc,
+    dependencies: [nntrainer_dep, nntrainer_ccapi_dep],
+    install: true,
+    install_dir: application_install_dir
+)
+causallm_logit_softcapping_dep = declare_dependency(
+    link_with: causallm_logit_softcapping,
     include_directories: causallm_layer_inc
 )
