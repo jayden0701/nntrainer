@@ -17,6 +17,7 @@
 #include <app_context.h>
 #include <engine.h>
 #include <llm_util.hpp>
+#include <logit_softcapping.h>
 #include <model.h>
 #include <per_layer_slice.h>
 #include <reshaped_rms_norm.h>
@@ -683,6 +684,8 @@ void Gemma4Transformer::registerCustomLayers() {
       nntrainer::createLayer<causallm::PerLayerSliceLayer>);
     app_context->registerFactory(
       nntrainer::createLayer<causallm::ScalarMultiplyLayer>);
+    app_context->registerFactory(
+      nntrainer::createLayer<causallm::LogitSoftCappingLayer>);
 
   } catch (std::invalid_argument &e) {
     std::cerr << "failed to register factory, reason: " << e.what()
@@ -718,21 +721,11 @@ void Gemma4CausalLM::constructModel() {
 
   if (FINAL_LOGIT_SOFTCAPPING > 0.0f) {
     model->addLayer(createLayer(
-      "scalar_multiply", {withKey("name", "output_softcap_scale_down"),
-                          withKey("input_layers", "output_of_causallm"),
-                          withKey("packed", "false"),
-                          withKey("multiplier", std::to_string(
-                                                    1.0f / FINAL_LOGIT_SOFTCAPPING))}));
-    model->addLayer(createLayer(
-      "activation", {withKey("name", "output_softcap_tanh"),
-                     withKey("activation", "tanh"),
-                     withKey("input_layers", "output_softcap_scale_down")}));
-    model->addLayer(createLayer(
-      "scalar_multiply", {withKey("name", "output_of_causallm_softcapped"),
-                          withKey("input_layers", "output_softcap_tanh"),
-                          withKey("packed", "false"),
-                          withKey("multiplier",
-                                  std::to_string(FINAL_LOGIT_SOFTCAPPING))}));
+      "logit_softcapping",
+      {withKey("name", "output_of_causallm_softcapped"),
+       withKey("input_layers", "output_of_causallm"), withKey("packed", "false"),
+       withKey("activation_type", "tanh"), withKey("apply_rows", "1"),
+       withKey("softcap_value", std::to_string(FINAL_LOGIT_SOFTCAPPING))}));
   }
 }
 
