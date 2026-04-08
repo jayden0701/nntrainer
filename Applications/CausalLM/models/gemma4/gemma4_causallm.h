@@ -59,6 +59,8 @@ protected:
 
   std::string FULL_ATTENTION_ROPE_TYPE = "default";
   std::string SLIDING_ATTENTION_ROPE_TYPE = "default";
+  float FINAL_LOGIT_SOFTCAPPING = 0.0f;
+  
 
 public:
   std::vector<LayerHandle> createAttention(const int layer_id, int seq_len,
