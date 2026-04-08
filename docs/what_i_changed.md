@@ -81,3 +81,14 @@
 - Implemented Gemma4 `use_double_wide_mlp` behavior in NNTrainer Gemma4 text MLP path.
 - Added model state for `use_double_wide_mlp` and config parsing in `setupParameters()`.
 - Updated `createMlp()` so layers in the KV-shared tail region (`num_kv_shared_layers`) use `2x intermediate_size` when `use_double_wide_mlp=true`, matching HF `Gemma4TextMLP` semantics for shared layers only.
+
+## Gemma4 parity fixes for PyTorch output mismatch (non-RoPE path)
+
+- Added config sanitization for HF Gemma4 multimodal checkpoints: when `text_config` exists in `config.json`, Gemma4 NNTrainer now lifts missing text fields to top-level keys before normal Transformer parameter parsing.
+- Fixed attention score scaling mismatch:
+  - HF Gemma4 text attention uses `scaling=1.0` after q/k RMSNorm.
+  - NNTrainer `mha_core` backend applies an internal `/sqrt(head_dim)` on QK.
+  - Added explicit `scalar_multiply` (`sqrt(head_dim)`) on Q after `q_norm` (both normal and KV-shared attention paths) so effective scaling matches HF behavior.
+- Added support for Gemma4 `final_logit_softcapping` in NNTrainer output head:
+  - apply `logits = tanh(logits / softcap) * softcap` after lm_head.
+  - This aligns with HF Gemma4 `Gemma4ForCausalLM` forward logic.

@@ -56,6 +56,7 @@ protected:
   int NUM_KV_SHARED_LAYERS = 0;
   bool USE_DOUBLE_WIDE_MLP = false;
   float EMBEDDING_PER_LAYER_SCALE = 1.0f;
+  float FINAL_LOGIT_SOFTCAPPING = 0.0f;
   
 
 public:

@@ -25,6 +25,15 @@
 namespace causallm {
 
 json &Gemma4Transformer::sanitizeConfig(json &cfg) {
+  if (cfg.contains("text_config") && cfg["text_config"].is_object()) {
+    const auto &text_cfg = cfg["text_config"];
+    for (auto it = text_cfg.begin(); it != text_cfg.end(); ++it) {
+      if (!cfg.contains(it.key())) {
+        cfg[it.key()] = it.value();
+      }
+    }
+  }
+
   if (!cfg.contains("tie_word_embeddings")) {
     cfg["tie_word_embeddings"] = true;
   }
@@ -72,6 +81,10 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
   if (cfg.contains("attn_logit_softcapping") &&
       !cfg["attn_logit_softcapping"].is_null()) {
     ATTN_LOGIT_SOFTCAPPING = cfg["attn_logit_softcapping"].get<float>();
+  }
+  if (cfg.contains("final_logit_softcapping") &&
+      !cfg["final_logit_softcapping"].is_null()) {
+    FINAL_LOGIT_SOFTCAPPING = cfg["final_logit_softcapping"].get<float>();
   }
 
   GLOBAL_HEAD_DIM =
@@ -404,6 +417,7 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
   auto O = "layer" + std::to_string(layer_id) + "_attention_out";
   auto shared_K_norm = "layer" + std::to_string(shared_kv_layer_id) + "_k_norm";
   auto shared_V_norm = "layer" + std::to_string(shared_kv_layer_id) + "_v_norm";
+  auto Q_scaled = "layer" + std::to_string(layer_id) + "_q_scaled";
 
   bool is_sliding = true;
   if (!layer_types.empty() && layer_id < static_cast<int>(layer_types.size())) {
@@ -431,6 +445,16 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
     withKey("feature_size", std::to_string(curr_head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
+  // Gemma4TextAttention uses scaling=1.0 after q_norm/k_norm.
+  // mha_core backend applies 1/sqrt(head_dim) to QK, so pre-scale Q by
+  // sqrt(head_dim) to preserve Gemma4 semantics.
+  layers.push_back(createLayer(
+    "scalar_multiply",
+    {withKey("name", Q_scaled), withKey("input_layers", Q_norm),
+     withKey("packed", "false"),
+     withKey("multiplier",
+             std::to_string(std::sqrt(static_cast<float>(curr_head_dim))))}));
+
   unsigned int window_size = is_sliding ? SLIDING_WINDOW : UINT_MAX;
   unsigned int rope_theta =
     is_sliding ? SLIDING_ATTENTION_ROPE_THETA : FULL_ATTENTION_ROPE_THETA;
@@ -446,7 +470,7 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
     withKey("is_causal", IS_CAUSAL ? "true" : "false"),
-    withKey("input_layers", {Q_norm, shared_K_norm, shared_V_norm})};
+    withKey("input_layers", {Q_scaled, shared_K_norm, shared_V_norm})};
   layers.push_back(createLayer("mha_core", a_params));
 
   // O layer [B, S, Nq*Dh] -> [B, S, H]
@@ -474,6 +498,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
   auto V_norm = "layer" + std::to_string(layer_id) + "_v_norm";
   auto A = "layer" + std::to_string(layer_id) + "_attention";
   auto O = "layer" + std::to_string(layer_id) + "_attention_out";
+  auto Q_scaled = "layer" + std::to_string(layer_id) + "_q_scaled";
 
   bool is_sliding = true;
   if (!layer_types.empty() && layer_id < static_cast<int>(layer_types.size())) {
@@ -521,6 +546,16 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("feature_size", std::to_string(curr_head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
+  // Gemma4TextAttention uses scaling=1.0 after q_norm/k_norm.
+  // mha_core backend applies 1/sqrt(head_dim) to QK, so pre-scale Q by
+  // sqrt(head_dim) to preserve Gemma4 semantics.
+  layers.push_back(createLayer(
+    "scalar_multiply",
+    {withKey("name", Q_scaled), withKey("input_layers", Q_norm),
+     withKey("packed", "false"),
+     withKey("multiplier",
+             std::to_string(std::sqrt(static_cast<float>(curr_head_dim))))}));
+
   // k_norm on per-head projection [B, S, Nk*Dh]
   std::vector<std::string> k_norm_params = {
     withKey("name", K_norm), withKey("input_layers", K),
@@ -551,7 +586,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
     withKey("is_causal", IS_CAUSAL ? "true" : "false"),
-    withKey("input_layers", {Q_norm, K_norm, V_norm})};
+    withKey("input_layers", {Q_scaled, K_norm, V_norm})};
   layers.push_back(createLayer("mha_core", a_params));
 
   // O layer [B, S, Nq*Dh] -> [B, S, H]
@@ -660,6 +695,25 @@ void Gemma4CausalLM::constructModel() {
     lmhead_prop.emplace_back(withKey("shared_from", "embedding0"));
 
   model->addLayer(createLayer(lmhead_type, lmhead_prop));
+
+  if (FINAL_LOGIT_SOFTCAPPING > 0.0f) {
+    model->addLayer(createLayer(
+      "scalar_multiply", {withKey("name", "output_softcap_scale_down"),
+                          withKey("input_layers", "output_of_causallm"),
+                          withKey("packed", "false"),
+                          withKey("multiplier", std::to_string(
+                                                    1.0f / FINAL_LOGIT_SOFTCAPPING))}));
+    model->addLayer(createLayer(
+      "activation", {withKey("name", "output_softcap_tanh"),
+                     withKey("activation", "tanh"),
+                     withKey("input_layers", "output_softcap_scale_down")}));
+    model->addLayer(createLayer(
+      "scalar_multiply", {withKey("name", "output_of_causallm_softcapped"),
+                          withKey("input_layers", "output_softcap_tanh"),
+                          withKey("packed", "false"),
+                          withKey("multiplier",
+                                  std::to_string(FINAL_LOGIT_SOFTCAPPING))}));
+  }
 }
 
 } // namespace causallm
