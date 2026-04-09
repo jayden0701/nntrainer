@@ -59,6 +59,8 @@ protected:
 
   std::string FULL_ATTENTION_ROPE_TYPE = "default";
   std::string SLIDING_ATTENTION_ROPE_TYPE = "default";
+  float FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR = 1.0f;
+  float SLIDING_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR = 1.0f;
   float FINAL_LOGIT_SOFTCAPPING = 0.0f;
   
 

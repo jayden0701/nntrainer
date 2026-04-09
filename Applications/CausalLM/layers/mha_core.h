@@ -32,6 +32,8 @@
 #endif
 
 #include <complex>
+#include <memory>
+#include <unordered_map>
 
 #include <acti_func.h>
 #include <bs_thread_pool_manager.hpp>
@@ -166,6 +168,17 @@ public:
   RopeScalingFactor(float value = 1.0) { set(value); };
   static constexpr const char *key =
     "rope_scaling_factor";                    /**< unique key to access */
+  using prop_tag = nntrainer::float_prop_tag; /**< property type */
+};
+
+/**
+ * @brief RopePartialRotaryFactor
+ */
+class RopePartialRotaryFactor : public nntrainer::Property<float> {
+public:
+  RopePartialRotaryFactor(float value = 1.0f) { set(value); };
+  static constexpr const char *key =
+    "rope_partial_rotary_factor";            /**< unique key to access */
   using prop_tag = nntrainer::float_prop_tag; /**< property type */
 };
 
@@ -318,6 +331,7 @@ private:
     props::SlidingWindow, props::MaxNewTokens, props::RopeTheta,
     props::UseRope, props::MaxPositionEmbeddings, props::UseSink,
     props::RopeScalingType, props::RopeScalingFactor,
+    props::RopePartialRotaryFactor,
     props::RopeScalingMaxPositionEmbeddings, props::AttnLogitSoftcapping,
     props::IsCausal>
     mha_core_props; /**< mha_core layer properties */
@@ -375,17 +389,27 @@ private:
   float attention_scaling = 1.0f;
   float mscale = 1.0f;
   float scale = 1.0f;
+  float rope_partial_rotary_factor = 1.0f;
   unsigned int original_max_position_embeddings = 4096;
 
   /****************** ROTARY EMBEDDING *****************/
-  /** static variable - they are all expected to be initialized once */
-  inline static std::vector<std::vector<float>> *freqs_cos = {};
-  inline static std::vector<std::vector<float>> *freqs_sin = {};
-  inline static std::vector<float> thetas;
+  struct RopeCacheFP32 {
+    std::vector<std::vector<float>> cos;
+    std::vector<std::vector<float>> sin;
+  };
+  inline static std::unordered_map<std::string, std::shared_ptr<RopeCacheFP32>>
+    rope_cache_fp32;
+  std::shared_ptr<RopeCacheFP32> freqs_fp32 = nullptr;
 #ifdef ENABLE_FP16
-  inline static std::vector<std::vector<_FP16>> *freqs_cos_fp16 = {};
-  inline static std::vector<std::vector<_FP16>> *freqs_sin_fp16 = {};
+  struct RopeCacheFP16 {
+    std::vector<std::vector<_FP16>> cos;
+    std::vector<std::vector<_FP16>> sin;
+  };
+  inline static std::unordered_map<std::string, std::shared_ptr<RopeCacheFP16>>
+    rope_cache_fp16;
+  std::shared_ptr<RopeCacheFP16> freqs_fp16 = nullptr;
 #endif
+  std::vector<float> thetas;
 
   /**
    * @brief pre_compute frequencies for Rotary Embedding.
@@ -406,6 +430,10 @@ private:
    * @brief _compute frequency parameters for default ROPE
    */
   void _compute_yarn_parameters(int head_dim, float theta);
+  void _compute_proportional_parameters(int head_dim, float theta);
+
+  std::string getRopeCacheKey(int head_dim, unsigned int seq_len,
+                              float theta) const;
 
   /**
    * @brief     apply rotary embedding
