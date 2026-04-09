@@ -65,47 +65,42 @@ void LogitSoftCappingLayer::applyOnRange(nntrainer::RunLayerContext &context,
   nntrainer::Tensor &in = context.getInput(SINGLE_INOUT_IDX);
   nntrainer::Tensor &out = context.getOutput(SINGLE_INOUT_IDX);
 
+
+
   const unsigned int apply_rows =
     std::get<props::ApplyRows>(logit_softcap_props).get();
   const float softcap = std::get<props::SoftcapValue>(logit_softcap_props).get();
 
+  if (apply_rows > (to-from))
+  {
+    throw std::invalid_argument("[logit_softcapping] apply_rows cannot exceed " +
+                                std::to_string(to - from));
+  }
+
   const auto input_dim = in.getDim();
-  const unsigned int chunk_rows = to - from;
-  if (chunk_rows == 0)
-    return;
 
   ml::train::TensorDim in_chunk_dim = input_dim;
   ml::train::TensorDim out_chunk_dim = input_dim;
   in_chunk_dim.batch(1);
   out_chunk_dim.batch(1);
-  in_chunk_dim.height(chunk_rows);
-  out_chunk_dim.height(chunk_rows);
+  in_chunk_dim.height(apply_rows);
+  out_chunk_dim.height(apply_rows);
 
   const unsigned int num_channels = input_dim.channel();
   const unsigned int batch_size = input_dim.batch();
-  const unsigned int activated_rows =
-    (from >= apply_rows) ? 0 : std::min(chunk_rows, apply_rows - from);
+\
 
   for (unsigned int b = 0; b < batch_size; ++b) {
     for (unsigned int c = 0; c < num_channels; ++c) {
-      const unsigned int offset = in.getIndex(b, c, from, 0);
       nntrainer::Tensor in_chunk =
-        in.getSharedDataTensor(in_chunk_dim, offset, true);
+        in.getSharedDataTensor(in_chunk_dim, 0, true);
       nntrainer::Tensor out_chunk =
-        out.getSharedDataTensor(out_chunk_dim, offset, true);
+        out.getSharedDataTensor(out_chunk_dim, 0, true);
       out_chunk.copyData(in_chunk);
 
-      if (activated_rows == 0)
-        continue;
-
-      ml::train::TensorDim active_dim = in_chunk_dim;
-      active_dim.height(activated_rows);
-      nntrainer::Tensor out_active =
-        out_chunk.getSharedDataTensor(active_dim, 0, true);
-
-      out_active.multiply(1.0f / softcap, out_active);
-      acti_func.run_fn(out_active, out_active);
-      out_active.multiply(softcap, out_active);
+      in_chunk.multiply(1.0f / softcap, out_chunk);
+      acti_func.run_fn(out_chunk, out_chunk);
+      out_chunk.multiply(softcap, out_chunk);
     }
   }
 }

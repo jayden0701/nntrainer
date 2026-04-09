@@ -725,11 +725,6 @@ void Gemma4CausalLM::constructModel() {
   model->addLayer(createLayer(lmhead_type, lmhead_prop));
 
 
-  // add identity layer for debug
-  model->addLayer(
-    createLayer("identity", {withKey("name", "real_output"),
-                             withKey("input_layers", "output_of_causallm")}));
-
   if (FINAL_LOGIT_SOFTCAPPING > 0.0f) {
     model->addLayer(createLayer(
       "logit_softcapping",

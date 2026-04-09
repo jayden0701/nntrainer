@@ -296,10 +296,6 @@ void MHACoreLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
     nntrainer::Tensor output_step = output.getSharedDataTensor(
       output_step_dim, batch * output_dim.getFeatureLen(), true);
 
-    query_step.print(std::cout);
-    key_step.print(std::cout);
-    value_step.print(std::cout);
-
     if (query_step.getDataType() == ml::train::TensorDim::DataType::FP32) {
 #if ENABLE_FP16 && defined(__ANDROID__)
       nntrainer::TensorDim Q_step_dim = query_step_dim;
