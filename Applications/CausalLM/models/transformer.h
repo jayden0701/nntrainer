@@ -104,18 +104,6 @@ public:
   virtual void save_weight(const std::string &weight_path);
 
   /**
-   * @brief Save the weight to a file with type conversion
-   * @param weight_path Path to save the weight file
-   * @param dtype Global target data type for all layers (NONE = keep original)
-   * @param layer_dtype_map Per-layer data type overrides (layer_name -> dtype)
-   */
-  virtual void
-  save_weight(const std::string &weight_path,
-              ml::train::TensorDim::DataType dtype,
-              const std::map<std::string, ml::train::TensorDim::DataType>
-                &layer_dtype_map = {});
-
-  /**
    * @brief run the Transformer model
    */
   virtual void run(const WSTR prompt, bool do_sample = false,

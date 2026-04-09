@@ -94,6 +94,41 @@ const std::map<std::string, DataType> dtype_str_map = {
 };
 
 /**
+ * @brief Map of string ISA names to ISA enum values
+ */
+const std::map<std::string, ml::train::ISA> isa_str_map = {
+  {"AUTO", ml::train::ISA::AUTO},
+  {"X86", ml::train::ISA::X86},
+  {"ARM", ml::train::ISA::ARM},
+};
+
+/**
+ * @brief Convert string to ISA enum
+ */
+ml::train::ISA strToISA(const std::string &s) {
+  std::string upper = s;
+  std::transform(upper.begin(), upper.end(), upper.begin(),
+                 [](unsigned char c) { return std::toupper(c); });
+  auto it = isa_str_map.find(upper);
+  if (it == isa_str_map.end()) {
+    throw std::invalid_argument("Unsupported ISA: " + s +
+                                ". Supported: AUTO, X86, ARM");
+  }
+  return it->second;
+}
+
+/**
+ * @brief Convert ISA enum to string
+ */
+std::string isaToStr(ml::train::ISA isa) {
+  for (const auto &[key, val] : isa_str_map) {
+    if (val == isa)
+      return key;
+  }
+  return "AUTO";
+}
+
+/**
  * @brief Convert string to DataType enum
  */
 DataType strToDataType(const std::string &s) {
@@ -293,6 +328,9 @@ void printUsage(const char *prog) {
     << "  --embd_dtype <type>   Target dtype for embedding (default: FP32)\n"
     << "  --lmhead_dtype <type> Target dtype for LM head (default: same as "
        "embd_dtype)\n"
+    << "  --isa <arch>          Target instruction set architecture for "
+       "quantized weights\n"
+    << "                        (default: AUTO). Options: AUTO, X86, ARM.\n"
     << "  --output_bin <name>   Output .bin filename (auto-generated if "
        "omitted)\n"
     << "  --config <path>       Use a target nntr_config.json instead of\n"
@@ -302,6 +340,7 @@ void printUsage(const char *prog) {
     << "  --help, -h            Show this help message\n"
     << "\n"
     << "Supported data types: FP32, FP16, Q4_0, Q6_K, Q4_K\n"
+    << "Supported ISA options: AUTO (current platform), X86, ARM\n"
     << "\n"
     << "Examples:\n"
     << "  # Quantize FC layers to Q4_0 (default):\n"
@@ -309,6 +348,12 @@ void printUsage(const char *prog) {
     << "\n"
     << "  # Quantize FC layers to Q4_0 and embedding to Q6_K:\n"
     << "  " << prog << " /path/to/qwen3-4b --fc_dtype Q4_0 --embd_dtype Q6_K\n"
+    << "\n"
+    << "  # Quantize to ARM format for deployment on ARM devices:\n"
+    << "  " << prog << " /path/to/qwen3-4b --isa ARM\n"
+    << "\n"
+    << "  # Quantize to X86 format for deployment on x86 devices:\n"
+    << "  " << prog << " /path/to/qwen3-4b --isa X86\n"
     << "\n"
     << "  # Quantize to a different output directory:\n"
     << "  " << prog << " /path/to/qwen3-4b -o /output/qwen3-4b-q4\n"
@@ -402,6 +447,7 @@ int main(int argc, char *argv[]) {
   std::string fc_dtype_str = "Q4_0";
   std::string embd_dtype_str = "FP32";
   std::string lmhead_dtype_str = "";
+  std::string isa_str = "AUTO";
   std::string output_bin_name = "";
   std::string target_config_path = "";
 
@@ -415,6 +461,8 @@ int main(int argc, char *argv[]) {
       embd_dtype_str = argv[++i];
     } else if (arg == "--lmhead_dtype" && i + 1 < argc) {
       lmhead_dtype_str = argv[++i];
+    } else if (arg == "--isa" && i + 1 < argc) {
+      isa_str = argv[++i];
     } else if (arg == "--output_bin" && i + 1 < argc) {
       output_bin_name = argv[++i];
     } else if (arg == "--config" && i + 1 < argc) {
@@ -461,6 +509,9 @@ int main(int argc, char *argv[]) {
     if (lmhead_dtype_str.empty())
       lmhead_dtype_str = embd_dtype_str;
 
+    // Parse target ISA
+    ml::train::ISA target_isa = strToISA(isa_str);
+
     // Parse target data types
     DataType fc_dtype = strToDataType(fc_dtype_str);
     DataType embd_dtype = strToDataType(embd_dtype_str);
@@ -503,6 +554,7 @@ int main(int argc, char *argv[]) {
     std::cout << "  FC dtype:     " << dataTypeToStr(fc_dtype) << "\n";
     std::cout << "  Embed dtype:  " << dataTypeToStr(embd_dtype) << "\n";
     std::cout << "  LMHead dtype: " << dataTypeToStr(lmhead_dtype) << "\n";
+    std::cout << "  Target ISA:   " << isaToStr(target_isa) << "\n";
     std::cout << "\n";
 
     // =========================================================================
@@ -551,7 +603,7 @@ int main(int argc, char *argv[]) {
       std::cout << "    " << name << " -> " << dataTypeToStr(dt) << "\n";
     }
 
-    model->save_weight(dst_weight_path, DataType::NONE, layer_dtype_map);
+    model->save_weight(dst_weight_path, DataType::NONE, layer_dtype_map, target_isa);
 
     // Report file size
     auto src_size = std::filesystem::file_size(src_weight_path);
