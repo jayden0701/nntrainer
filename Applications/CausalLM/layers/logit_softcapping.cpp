@@ -65,16 +65,15 @@ void LogitSoftCappingLayer::applyOnRange(nntrainer::RunLayerContext &context,
   nntrainer::Tensor &in = context.getInput(SINGLE_INOUT_IDX);
   nntrainer::Tensor &out = context.getOutput(SINGLE_INOUT_IDX);
 
-
-
   const unsigned int apply_rows =
     std::get<props::ApplyRows>(logit_softcap_props).get();
-  const float softcap = std::get<props::SoftcapValue>(logit_softcap_props).get();
+  const float softcap =
+    std::get<props::SoftcapValue>(logit_softcap_props).get();
 
-  if (apply_rows > (to-from))
-  {
-    throw std::invalid_argument("[logit_softcapping] apply_rows cannot exceed " +
-                                std::to_string(to - from));
+  if (apply_rows > (to - from)) {
+    throw std::invalid_argument(
+      "[logit_softcapping] apply_rows cannot exceed " +
+      std::to_string(to - from));
   }
 
   const auto input_dim = in.getDim();
@@ -88,7 +87,6 @@ void LogitSoftCappingLayer::applyOnRange(nntrainer::RunLayerContext &context,
 
   const unsigned int num_channels = input_dim.channel();
   const unsigned int batch_size = input_dim.batch();
-\
 
   for (unsigned int b = 0; b < batch_size; ++b) {
     for (unsigned int c = 0; c < num_channels; ++c) {
@@ -98,9 +96,36 @@ void LogitSoftCappingLayer::applyOnRange(nntrainer::RunLayerContext &context,
         out.getSharedDataTensor(out_chunk_dim, 0, true);
       out_chunk.copyData(in_chunk);
 
+      auto start_prefill = std::chrono::high_resolution_clock::now();
+
       in_chunk.multiply(1.0f / softcap, out_chunk);
+
+      auto finish_prefill = std::chrono::high_resolution_clock::now();
+      auto prefill_duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(finish_prefill -
+                                                              start_prefill);
+
+      std::cout << "mult 1 time: " << prefill_duration.count() << " ms \n";
+
+      start_prefill = std::chrono::high_resolution_clock::now();
+
       acti_func.run_fn(out_chunk, out_chunk);
+
+      finish_prefill = std::chrono::high_resolution_clock::now();
+      prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        finish_prefill - start_prefill);
+
+      std::cout << "acti time: " << prefill_duration.count() << " ms \n";
+
+      start_prefill = std::chrono::high_resolution_clock::now();
+
       out_chunk.multiply(softcap, out_chunk);
+
+      finish_prefill = std::chrono::high_resolution_clock::now();
+      prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        finish_prefill - start_prefill);
+
+      std::cout << "mult2 time: " << prefill_duration.count() << " ms \n";
     }
   }
 }
@@ -112,7 +137,8 @@ void LogitSoftCappingLayer::updateTensorsByInputDimensions(
   context.updateOutput(SINGLE_INOUT_IDX, input_dimensions[0]);
 }
 
-void LogitSoftCappingLayer::calcDerivative(nntrainer::RunLayerContext &context) {
+void LogitSoftCappingLayer::calcDerivative(
+  nntrainer::RunLayerContext &context) {
   std::throw_with_nested(std::runtime_error("Training is not supported yet."));
 }
 

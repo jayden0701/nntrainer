@@ -347,6 +347,11 @@ buildLayerDtypeMap(int num_layers, DataType fc_dtype, DataType embd_dtype,
     dtype_map["embedding0"] = embd_dtype;
   }
 
+  // Gemma4 PLE layers - set to Q4_0 first
+  dtype_map["per_layer_input_embedding"] = fc_dtype;
+  // Gemma4 PLE projection
+  dtype_map["per_layer_input_projection"] = fc_dtype;
+
   // Transformer decoder layers
   for (int i = 0; i < num_layers; ++i) {
     std::string prefix = "layer" + std::to_string(i);
@@ -362,6 +367,10 @@ buildLayerDtypeMap(int num_layers, DataType fc_dtype, DataType embd_dtype,
       dtype_map[prefix + "_ffn_up"] = fc_dtype;
       dtype_map[prefix + "_ffn_gate"] = fc_dtype;
       dtype_map[prefix + "_ffn_down"] = fc_dtype;
+
+      // PLE gate
+      dtype_map[prefix + "_per_layer_input_gate"] = fc_dtype;
+      dtype_map[prefix + "_per_layer_input_proj"] = fc_dtype;
     }
   }
 

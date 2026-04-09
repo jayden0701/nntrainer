@@ -200,12 +200,13 @@ void Gemma4Transformer::constructModel() {
   const unsigned int per_layer_total_dim =
     NUM_LAYERS * HIDDEN_SIZE_PER_LAYER_INPUT;
 
+  // try using same low bit precision as fc layers
   layers.push_back(
     createLayer("embedding_layer",
                 {withKey("name", "per_layer_input_embedding"),
                  withKey("in_dim", std::to_string(VOCAB_SIZE_PER_LAYER_INPUT)),
                  withKey("out_dim", std::to_string(per_layer_total_dim)),
-                 withKey("weight_dtype", EMBEDDING_DTYPE),
+                 withKey("weight_dtype", FC_LAYER_DTYPE),
                  withKey("input_layers", "input0"),
                  withKey("scale", EMBEDDING_PER_LAYER_SCALE)}));
 
@@ -732,12 +733,11 @@ void Gemma4CausalLM::constructModel() {
 
   model->addLayer(createLayer(lmhead_type, lmhead_prop));
 
-
   if (FINAL_LOGIT_SOFTCAPPING > 0.0f) {
     model->addLayer(createLayer(
       "logit_softcapping",
       {withKey("name", "output_of_causallm_softcapped"),
-       withKey("input_layers", "output_of_causallm"), withKey("packed", "false"),
+       withKey("input_layers", "output_of_causallm"),
        withKey("activation_type", "tanh"), withKey("apply_rows", "1"),
        withKey("softcap_value", std::to_string(FINAL_LOGIT_SOFTCAPPING))}));
   }

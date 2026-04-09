@@ -230,8 +230,6 @@ void Transformer::constructModel() {
 };
 
 void Transformer::load_weight(const std::string &weight_path) {
-  model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
-
   if (!is_initialized) {
     throw std::runtime_error(
       "Transformer model is not initialized. Please call "
