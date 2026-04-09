@@ -121,6 +121,8 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
   SLIDING_ATTENTION_ROPE_THETA = ROPE_THETA;
   FULL_ATTENTION_ROPE_TYPE = "default";
   SLIDING_ATTENTION_ROPE_TYPE = "default";
+  FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR = 1.0f;
+  SLIDING_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR = 1.0f;
 
   NUM_KV_SHARED_LAYERS = cfg.contains("num_kv_shared_layers") &&
                              !cfg["num_kv_shared_layers"].is_null()
@@ -142,6 +144,12 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
       FULL_ATTENTION_ROPE_TYPE =
         rope_params["full_attention"]["rope_type"].get<std::string>();
     }
+    if (rope_params.contains("full_attention") &&
+        rope_params["full_attention"].contains("partial_rotary_factor") &&
+        !rope_params["full_attention"]["partial_rotary_factor"].is_null()) {
+      FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR =
+        rope_params["full_attention"]["partial_rotary_factor"].get<float>();
+    }
 
     if (rope_params.contains("sliding_attention") &&
         rope_params["sliding_attention"].contains("rope_theta")) {
@@ -154,6 +162,12 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
         !rope_params["sliding_attention"]["rope_type"].is_null()) {
       SLIDING_ATTENTION_ROPE_TYPE =
         rope_params["sliding_attention"]["rope_type"].get<std::string>();
+    }
+    if (rope_params.contains("sliding_attention") &&
+        rope_params["sliding_attention"].contains("partial_rotary_factor") &&
+        !rope_params["sliding_attention"]["partial_rotary_factor"].is_null()) {
+      SLIDING_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR =
+        rope_params["sliding_attention"]["partial_rotary_factor"].get<float>();
     }
   }
 
@@ -436,7 +450,6 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
   auto O = "layer" + std::to_string(layer_id) + "_attention_out";
   auto shared_K_norm = "layer" + std::to_string(shared_kv_layer_id) + "_k_norm";
   auto shared_V_norm = "layer" + std::to_string(shared_kv_layer_id) + "_v_norm";
-  auto Q_scaled = "layer" + std::to_string(layer_id) + "_q_scaled";
 
   bool is_sliding = true;
   if (!layer_types.empty() && layer_id < static_cast<int>(layer_types.size())) {
@@ -464,17 +477,7 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
     withKey("feature_size", std::to_string(curr_head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
-  // Gemma4TextAttention uses scaling=1.0 after q_norm/k_norm.
-  // mha_core backend applies 1/sqrt(head_dim) to QK, so pre-scale Q by
-  // sqrt(head_dim) to preserve Gemma4 semantics.
-
-  // TODO : fixed AVX kernel to not make it divide by 1/sqrt(head_dim)
-  layers.push_back(createLayer(
-    "scalar_multiply",
-    {withKey("name", Q_scaled), withKey("input_layers", Q_norm),
-     withKey("packed", "false"),
-     withKey("multiplier",
-             std::to_string(1))}));
+  // TODO : fixed AVX kernel : remove divide by 1/sqrt(head_dim) - need to change this later
 
   unsigned int window_size = is_sliding ? SLIDING_WINDOW : UINT_MAX;
   unsigned int rope_theta =
@@ -482,6 +485,9 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
 
   const std::string &rope_type =
     is_sliding ? SLIDING_ATTENTION_ROPE_TYPE : FULL_ATTENTION_ROPE_TYPE;
+  const float rope_partial_rotary_factor =
+    is_sliding ? SLIDING_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR
+               : FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR;
 
   // Shared attention core receives [Q_norm, shared_K_norm, shared_V_norm]
   std::vector<std::string> a_params = {
@@ -490,12 +496,15 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
     withKey("num_heads_kv", curr_kv_heads),
     withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
     withKey("sliding_window", window_size),
-    withKey("use_rope", "false"),
+    withKey("use_rope", "true"),
     withKey("rope_theta", std::to_string(rope_theta)),
+    withKey("rope_scaling_type", rope_type),
+    withKey("rope_partial_rotary_factor",
+            std::to_string(rope_partial_rotary_factor)),
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
     withKey("is_causal", IS_CAUSAL ? "true" : "false"),
-    withKey("input_layers", {Q_scaled, shared_K_norm, shared_V_norm})};
+    withKey("input_layers", {Q_norm, shared_K_norm, shared_V_norm})};
   layers.push_back(createLayer("mha_core", a_params));
 
   // O layer [B, S, Nq*Dh] -> [B, S, H]
@@ -523,7 +532,6 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
   auto V_norm = "layer" + std::to_string(layer_id) + "_v_norm";
   auto A = "layer" + std::to_string(layer_id) + "_attention";
   auto O = "layer" + std::to_string(layer_id) + "_attention_out";
-  auto Q_scaled = "layer" + std::to_string(layer_id) + "_q_scaled";
 
   bool is_sliding = true;
   if (!layer_types.empty() && layer_id < static_cast<int>(layer_types.size())) {
@@ -571,15 +579,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("feature_size", std::to_string(curr_head_dim))};
   layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
-  // Gemma4TextAttention uses scaling=1.0 after q_norm/k_norm.
-  // mha_core backend applies 1/sqrt(head_dim) to QK, so pre-scale Q by
-  // sqrt(head_dim) to preserve Gemma4 semantics.
-  layers.push_back(createLayer(
-    "scalar_multiply",
-    {withKey("name", Q_scaled), withKey("input_layers", Q_norm),
-     withKey("packed", "false"),
-     withKey("multiplier",
-             std::to_string(1))}));
+  // TODO : fixed avx kernnel to divide by 1 - need to generalize later
 
   // k_norm on per-head projection [B, S, Nk*Dh]
   std::vector<std::string> k_norm_params = {
@@ -599,6 +599,11 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
   unsigned int window_size = is_sliding ? SLIDING_WINDOW : UINT_MAX;
   unsigned int rope_theta =
     is_sliding ? SLIDING_ATTENTION_ROPE_THETA : FULL_ATTENTION_ROPE_THETA;
+  const std::string &rope_type =
+    is_sliding ? SLIDING_ATTENTION_ROPE_TYPE : FULL_ATTENTION_ROPE_TYPE;
+  const float rope_partial_rotary_factor =
+    is_sliding ? SLIDING_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR
+               : FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR;
 
   // Attention core receives [Q_norm, K_norm, V_norm]
   std::vector<std::string> a_params = {
@@ -607,12 +612,15 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("num_heads_kv", curr_kv_heads),
     withKey("max_timestep", std::to_string(INIT_SEQ_LEN + NUM_TO_GENERATE)),
     withKey("sliding_window", window_size),
-    withKey("use_rope", "false"),
+    withKey("use_rope", "true"),
     withKey("rope_theta", std::to_string(rope_theta)),
+    withKey("rope_scaling_type", rope_type),
+    withKey("rope_partial_rotary_factor",
+            std::to_string(rope_partial_rotary_factor)),
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
     withKey("is_causal", IS_CAUSAL ? "true" : "false"),
-    withKey("input_layers", {Q_scaled, K_norm, V_norm})};
+    withKey("input_layers", {Q_norm, K_norm, V_norm})};
   layers.push_back(createLayer("mha_core", a_params));
 
   // O layer [B, S, Nq*Dh] -> [B, S, H]

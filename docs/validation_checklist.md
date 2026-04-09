@@ -11,9 +11,11 @@
 - [x] Attention `v_norm` (`Gemma4RMSNorm(with_scale=False)`) via `reshaped_rms_norm` with `use_gamma=false`
 - [x] Per-layer input embedding branch (embedding + projection + per-layer slice + per-layer gate/projection path)
 - [x] Final LM-head logit softcapping (`final_logit_softcapping`) via custom `logit_softcapping` layer
+- [x] Gemma4 text RoPE enabled in `mha_core` path (`use_rope=true`)
+- [x] Per-layer-type RoPE behavior (default + proportional) via `rope_scaling_type`
+- [x] `partial_rotary_factor` propagation for proportional RoPE
 
 ## Known gaps / TODO
 
 
 - [ ] Exact per-layer input scalar factors (`hidden_size^-0.5` and `2^-0.5`) are not yet applied in-graph.
-- [ ] Double-wide MLP behavior for KV-shared tail layers is not implemented.

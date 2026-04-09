@@ -88,7 +88,7 @@
 - Fixed attention score scaling mismatch:
   - HF Gemma4 text attention uses `scaling=1.0` after q/k RMSNorm.
   - NNTrainer `mha_core` backend applies an internal `/sqrt(head_dim)` on QK.
-  - Added explicit `scalar_multiply` (`sqrt(head_dim)`) on Q after `q_norm` (both normal and KV-shared attention paths) so effective scaling matches HF behavior.
+  - changed internel so it doesn't divide by `sqrt(head_dim)`
 - Added support for Gemma4 `final_logit_softcapping` in NNTrainer output head:
   - apply `logits = tanh(logits / softcap) * softcap` after lm_head.
   - This aligns with HF Gemma4 `Gemma4ForCausalLM` forward logic.
@@ -113,3 +113,16 @@
   - `Applications/CausalLM/layers/meson.build`
   - `Applications/CausalLM/meson.build`
   - `Applications/CausalLM/jni/Android.mk`
+
+## Gemma4 RoPE parity update (proportional + multi-type cache)
+
+- Implemented Gemma4 text RoPE in NNTrainer `mha_core` path and enabled it for Gemma4 attention blocks:
+  - Gemma4 attention now sets `use_rope=true` and passes per-layer-type RoPE properties (`rope_theta`, `rope_scaling_type`, `rope_partial_rotary_factor`) into `mha_core`.
+  - Added parsing of `partial_rotary_factor` from Gemma4 `rope_parameters` for both `full_attention` and `sliding_attention`.
+- Added `proportional` RoPE support in `mha_core` to match Gemma4 full-attention behavior:
+  - computes rotated frequencies for the configured rotary fraction and zero-fills remaining non-rotary dimensions.
+  - preserves HF behavior where returned RoPE dimension remains `head_dim`.
+- Updated `mha_core` RoPE cache behavior to support multiple RoPE types/configurations in one model run:
+  - replaced single static cos/sin buffers with keyed caches (FP32/FP16) so `default` and `proportional` caches can coexist safely.
+  - cache key includes rope type and core parameters (`head_dim`, `seq_len`, `theta`, scaling factors).
+- Restored Gemma4 attention score scaling parity in shared-KV attention path by applying `sqrt(head_dim)` pre-scale to `Q` before `mha_core`, matching non-shared path and HF `scaling=1.0` semantics.
