@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2026 Joonseok Oh <jrock.oh@samsung.com>
  *
- * @file   custom_rms_reverse_norm.h
+ * @file   rms_reverse_norm.h
  * @date   27 March 2026
  * @brief  This is Reverse RMS Norm Layer Class
  * @see    https://github.com/nntrainer/nntrainer
@@ -11,8 +11,8 @@
  *
  */
 
-#ifndef __CUSTOM_RMS_REVERSE_NORM_LAYER_H__
-#define __CUSTOM_RMS_REVERSE_NORM_LAYER_H__
+#ifndef __RMS_REVERSE_NORM_LAYER_H__
+#define __RMS_REVERSE_NORM_LAYER_H__
 
 #pragma once
 #ifdef _WIN32
@@ -36,16 +36,16 @@ namespace causallm {
 namespace props {
 
 /**
- * @brief CUSTOM_RMS_REVERSE_NORM_WEIGHT_INIT Initialization Enumeration Information
+ * @brief RMS_REVERSE_NORM_WEIGHT_INIT Initialization Enumeration Information
  *
  */
-WIN_EXPORT class CUSTOM_RMS_REVERSE_NORM_WEIGHT_INIT final
+WIN_EXPORT class RMS_REVERSE_NORM_WEIGHT_INIT final
   : public nntrainer::EnumProperty<nntrainer::props::InitializerInfo> {
 public:
   /**
-   * @brief Construct a CUSTOM_RMS_REVERSE_NORM_WEIGHT_INIT object
+   * @brief Construct a RMS_REVERSE_NORM_WEIGHT_INIT object
    */
-  WIN_EXPORT CUSTOM_RMS_REVERSE_NORM_WEIGHT_INIT(
+  WIN_EXPORT RMS_REVERSE_NORM_WEIGHT_INIT(
     nntrainer::Initializer value = nntrainer::Initializer::ONES) {
     set(value);
   };
@@ -55,16 +55,16 @@ public:
 };
 
 /**
- * @brief CUSTOM_RMS_REVERSE_NORM_OUTSCALE_INIT Initialization Enumeration Information
+ * @brief RMS_REVERSE_NORM_OUTSCALE_INIT Initialization Enumeration Information
  *
  */
-WIN_EXPORT class CUSTOM_RMS_REVERSE_NORM_OUTSCALE_INIT final
+WIN_EXPORT class RMS_REVERSE_NORM_OUTSCALE_INIT final
   : public nntrainer::EnumProperty<nntrainer::props::InitializerInfo> {
 public:
   /**
-   * @brief Construct a CUSTOM_RMS_REVERSE_NORM_OUTSCALE_INIT object
+   * @brief Construct a RMS_REVERSE_NORM_OUTSCALE_INIT object
    */
-  WIN_EXPORT CUSTOM_RMS_REVERSE_NORM_OUTSCALE_INIT(
+  WIN_EXPORT RMS_REVERSE_NORM_OUTSCALE_INIT(
     nntrainer::Initializer value = nntrainer::Initializer::ONES) {
     set(value);
   };
@@ -78,20 +78,20 @@ public:
 
 
 /**
- * @brief A custom ReverseRMS normalization layer.
+ * @brief A ReverseRMS normalization layer.
  *        Order of operations: input * weight → normalize → multiply by out_scale
  *
  */
 WIN_EXPORT class RMSReverseNormLayer final : public nntrainer::Layer {
 public:
   /**
-   * @brief Construct a new custom ReverseRMS normalization layer object
+   * @brief Construct a new ReverseRMS normalization layer object
    *
    */
   WIN_EXPORT RMSReverseNormLayer() : Layer() {}
 
   /**
-   * @brief Destroy the custom ReverseRMS normalization layer object
+   * @brief Destroy the ReverseRMS normalization layer object
    *
    */
   WIN_EXPORT ~RMSReverseNormLayer() {}
@@ -145,7 +145,7 @@ public:
   WIN_EXPORT void setProperty(const std::vector<std::string> &values) override {
     auto remain_props = nntrainer::loadProperties(values, rms_props);
     NNTR_THROW_IF(!remain_props.empty(), std::invalid_argument)
-      << "[custom_rms_reverse_norm] Unknown Layer Properties count " +
+      << "[rms_reverse_norm] Unknown Layer Properties count " +
            std::to_string(values.size());
   };
 
@@ -153,12 +153,12 @@ public:
     nntrainer::RunLayerContext &context,
     std::vector<nntrainer::TensorDim> input_dimensions) override;
 
-  inline static const std::string type = "custom_rms_reverse_norm";
+  inline static const std::string type = "rms_reverse_norm";
 
 private:
   std::array<unsigned int, 2> wt_idx;
-  std::tuple<props::CUSTOM_RMS_REVERSE_NORM_WEIGHT_INIT,
-              props::CUSTOM_RMS_REVERSE_NORM_OUTSCALE_INIT,
+  std::tuple<props::RMS_REVERSE_NORM_WEIGHT_INIT,
+              props::RMS_REVERSE_NORM_OUTSCALE_INIT,
               nntrainer::props::Epsilon, nntrainer::props::SkipPrefill>
     rms_props;
   bool skip_prefill = false;
@@ -166,4 +166,4 @@ private:
 
 } // namespace custom
 
-#endif /* __CUSTOM_RMS_REVERSE_NORM_LAYER_H__ */
+#endif /* RMS_REVERSE_NORM_LAYER_H__ */

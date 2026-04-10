@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2026 Joonseok Oh <jrock.oh@samsung.com>
  *
- * @file   custom_rms_reverse_norm.cpp
+ * @file   rms_reverse_norm.cpp
  * @date   27 March 2026
  * @brief  This is Reverse RMS Norm Layer Class
  * @see    https://github.com/nntrainer/nntrainer
@@ -14,13 +14,13 @@
 #include <cmath>
 #include <iostream>
 
-#include "custom_rms_reverse_norm.h"
+#include "rms_reverse_norm.h"
 
 namespace causallm {
 
 static constexpr size_t SINGLE_INOUT_IDX = 0;
 
-enum CustomRMSReverseParams { weight, out_scale };
+enum RMSReverseParams { weight, out_scale };
 
 void RMSReverseNormLayer::finalize(nntrainer::InitLayerContext &context) {
   std::vector<nntrainer::TensorDim> dim = context.getInputDimensions();
@@ -31,13 +31,13 @@ void RMSReverseNormLayer::finalize(nntrainer::InitLayerContext &context) {
   auto weight_init = nntrainer::props::InitializerInfo::Enum::ONES;
   auto outscale_init = nntrainer::props::InitializerInfo::Enum::ONES;
 
-  if (!std::get<props::CUSTOM_RMS_REVERSE_NORM_WEIGHT_INIT>(rms_props).empty()) {
-    weight_init = std::get<props::CUSTOM_RMS_REVERSE_NORM_WEIGHT_INIT>(rms_props).get();
+  if (!std::get<props::RMS_REVERSE_NORM_WEIGHT_INIT>(rms_props).empty()) {
+    weight_init = std::get<props::RMS_REVERSE_NORM_WEIGHT_INIT>(rms_props).get();
   }
 
-  if (!std::get<props::CUSTOM_RMS_REVERSE_NORM_OUTSCALE_INIT>(rms_props).empty()) {
+  if (!std::get<props::RMS_REVERSE_NORM_OUTSCALE_INIT>(rms_props).empty()) {
     outscale_init =
-      std::get<props::CUSTOM_RMS_REVERSE_NORM_OUTSCALE_INIT>(rms_props).get();
+      std::get<props::RMS_REVERSE_NORM_OUTSCALE_INIT>(rms_props).get();
   }
 
   if (!std::get<nntrainer::props::SkipPrefill>(rms_props).empty()) {
@@ -49,7 +49,7 @@ void RMSReverseNormLayer::finalize(nntrainer::InitLayerContext &context) {
     1, 1, 1, dim[0].width(),
     nntrainer::TensorDim::TensorType(context.getFormat(),
                                      context.getWeightDataType()));
-  wt_idx[CustomRMSReverseParams::weight] = context.requestWeight(
+  wt_idx[RMSReverseParams::weight] = context.requestWeight(
     weight_dim, weight_init, nntrainer::WeightRegularizer::NONE, 1.0f, 0.0f,
     "weight", true);
 
@@ -58,7 +58,7 @@ void RMSReverseNormLayer::finalize(nntrainer::InitLayerContext &context) {
     1, 1, 1, 1,
     nntrainer::TensorDim::TensorType(context.getFormat(),
                                      context.getWeightDataType()));
-  wt_idx[CustomRMSReverseParams::out_scale] = context.requestWeight(
+  wt_idx[RMSReverseParams::out_scale] = context.requestWeight(
     outscale_dim, outscale_init, nntrainer::WeightRegularizer::NONE, 1.0f, 0.0f,
     "out_scale", true);
 }
@@ -74,9 +74,9 @@ void RMSReverseNormLayer::incremental_forwarding(
   nntrainer::Tensor &in = context.getInput(SINGLE_INOUT_IDX);
   nntrainer::Tensor &out = context.getOutput(SINGLE_INOUT_IDX);
   nntrainer::Tensor &weight =
-    context.getWeight(wt_idx[CustomRMSReverseParams::weight]);
+    context.getWeight(wt_idx[RMSReverseParams::weight]);
   nntrainer::Tensor &out_scale =
-    context.getWeight(wt_idx[CustomRMSReverseParams::out_scale]);
+    context.getWeight(wt_idx[RMSReverseParams::out_scale]);
 
   ml::train::TensorDim in_dim = in.getDim();
   ml::train::TensorDim out_dim = out.getDim();
@@ -192,7 +192,7 @@ void RMSReverseNormLayer::calcDerivative(
 #ifdef PLUGGABLE
 
 nntrainer::Layer *create_rms_reverse_norm_layer() {
-  auto layer = new CustomRMSReverseNormLayer();
+  auto layer = new RMSReverseNormLayer();
   return layer;
 }
 

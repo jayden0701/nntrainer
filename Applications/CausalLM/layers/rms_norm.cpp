@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Seungbaek Hong <sb92.hong@samsung.com>
  *
- * @file   custom_rms_norm.cpp
+ * @file   rms_norm.cpp
  * @date   19 July 2023
  * @brief  Implementation of custom RMS normalization function
  * @see    https://github.com/nntrainer/nntrainer
