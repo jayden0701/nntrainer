@@ -149,6 +149,10 @@ void MHACoreLayer::finalize(nntrainer::InitLayerContext &context) {
   /** Is Causal */
   is_causal = std::get<props::IsCausal>(mha_core_props).get();
 
+  if (!std::get<nntrainer::props::SkipPrefill>(*layer_impl_props).empty())
+    skip_prefill =
+      std::get<nntrainer::props::SkipPrefill>(*layer_impl_props).get();
+
   /** Tensor for KV-Cache */
 #ifdef ENABLE_FP16
   ml::train::TensorDim cache_key_dim(
@@ -343,7 +347,7 @@ void MHACoreLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
         cache_value_dim, cache_value_step_dim);
     }
   }
-  
+
   // increase cache size
   cache_index += step_size;
 }
@@ -495,10 +499,6 @@ void MHACoreLayer::one_batch_incremental_forwarding(
                                       cache_index * cache_value_dim.width(),
                                     true);
 
-  // apply rotary embedding for query
-  apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, cache_index,
-                             false);
-
   // append kcache with rotary embedding
   apply_rotary_emb_tensor_v2(key_step, b_cache_key_step, head_dim, cache_index,
                              false);
@@ -515,6 +515,14 @@ void MHACoreLayer::one_batch_incremental_forwarding(
 #endif
   }
 
+  bool is_prefill = !from;
+  if (skip_prefill && is_prefill)
+    return;
+
+  // apply rotary embedding for query
+  apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, cache_index,
+                             false);
+                             
   /// @todo replace step_size into input height
   unsigned int step_size = to - from;
   unsigned int cache_from = cache_index;
