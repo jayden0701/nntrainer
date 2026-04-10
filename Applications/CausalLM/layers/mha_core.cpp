@@ -149,7 +149,11 @@ void MHACoreLayer::finalize(nntrainer::InitLayerContext &context) {
   /** Is Causal */
   is_causal = std::get<props::IsCausal>(mha_core_props).get();
 
-  /** Tensor for KV-Cache */
+  if (!std::get<nntrainer::props::SkipPrefill>(*layer_impl_props).empty())
+    skip_prefill =
+      std::get<nntrainer::props::SkipPrefill>(*layer_impl_props).get();
+
+    /** Tensor for KV-Cache */
 #ifdef ENABLE_FP16
   ml::train::TensorDim cache_key_dim(
     {batch_size, 1, max_timestep, num_heads_KV * head_dim},
