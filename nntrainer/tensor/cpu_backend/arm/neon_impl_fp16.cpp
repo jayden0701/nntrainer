@@ -1983,7 +1983,7 @@ void compute_kcaches(const float *in, const __fp16 *kcache, float *output,
             sum += in_ptr[i] * k_row[i];
 
           output[(row - start_row) * num_cache_head * gqa_size + n * gqa_size +
-                 g] = sum / sqrt((float)head_dim);
+                 g] = sum;
         }
       }
     }
@@ -2002,6 +2002,9 @@ void compute_kcaches(const __fp16 *in, const __fp16 *kcache, __fp16 *output,
   // If head_end is -1, process all heads from head_start to num_cache_head.
   // No other negative values are accepted for head_end.
   int actual_head_end = (head_end < 0) ? num_cache_head : head_end;
+
+
+  std::cout<<"THIS_ROUTE2" <<std::endl;
 
   // Validate head range: head_start must be less than actual_head_end
   NNTR_THROW_IF(head_start >= actual_head_end, std::invalid_argument)
@@ -2074,7 +2077,7 @@ void compute_kcaches(const __fp16 *in, const __fp16 *kcache, __fp16 *output,
           // Apply scaling factor (1/sqrt(head_dim)) and store result
           // This is the "Scaled" Dot-Product Attention
           output[(row - start_row) * num_cache_head * gqa_size + n * gqa_size +
-                 g] = sum / sqrt((float)head_dim);
+                 g] = sum;
         }
       }
     }
