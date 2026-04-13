@@ -141,3 +141,15 @@
 - Scope/intent:
   - keeps decode/generation semantics unchanged (`skip_prefill` only triggers when `from == 0`),
   - avoids unnecessary prefill-only compute where logits are not consumed and shared-tail layers are not needed for KV cache construction.
+
+## Gemma4 skip-prefill expansion for non-FC layers + final softcap
+
+- Expanded Gemma4 `skip_prefill` tagging in KV-shared tail layers beyond FC/RMSNorm/attention blocks to also skip inexpensive-but-unnecessary ops that are only used inside skipped shared-tail decode paths:
+  - residual additions in decoder block (`post_attention`, `decoder_output_base`, `decoder_output`)
+  - per-layer-input path ops (`per_layer_slice`, `activation`, `multiply`)
+  - layer output scaling (`scalar_multiply`)
+  - MLP activation/multiply (`ffn_gate_gelu`, `ffn_geglu`)
+- Added `skip_prefill` to Gemma4 final `logit_softcapping` layer so output softcap is skipped together with LM head during prefill.
+- Effect:
+  - prefill avoids extra graph work in KV-shared tail layers and final logits post-processing,
+  - decode behavior remains unchanged because `skip_prefill` applies only on prefill path.
