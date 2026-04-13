@@ -18,4 +18,4 @@
 ## Known gaps / TODO
 
 
-- [ ] Exact per-layer input scalar factors (`hidden_size^-0.5` and `2^-0.5`) are not yet applied in-graph.
+- [ ] Skip useless steps during prefill (due to KV sharing)

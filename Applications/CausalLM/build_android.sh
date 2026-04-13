@@ -97,6 +97,7 @@ if [ ! -f "$NNTRAINER_ROOT/builddir/android_build_result/lib/arm64-v8a/libnntrai
     ./tools/package_android.sh
 else
     log_info "nntrainer for Android already built (skipping)"
+    
 fi
 
 # Check if build was successful
