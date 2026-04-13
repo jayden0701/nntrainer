@@ -141,3 +141,13 @@
 - Scope/intent:
   - keeps decode/generation semantics unchanged (`skip_prefill` only triggers when `from == 0`),
   - avoids unnecessary prefill-only compute where logits are not consumed and shared-tail layers are not needed for KV cache construction.
+
+## Gemma4 skip-prefill expansion for non-FC ops in KV-shared tail
+
+- Expanded Gemma4 `skip_prefill` tagging in KV-shared tail decoder layers to cover lightweight-but-unnecessary ops that were still executing during prefill:
+  - FFN gate activation (`_ffn_gate_gelu`) and GeGLU multiply (`_ffn_geglu`)
+  - residual additions (`_post_attention`, `_decoder_output_base`, `_decoder_output`)
+  - per-layer input path non-FC ops (`per_layer_slice`, `_per_layer_input_act`, `_per_layer_input_mul`)
+  - per-layer scalar output (`_layer_scalar`)
+- Applied `skip_prefill` to final output `logit_softcapping` layer in Gemma4 CausalLM head so prefill can bypass post-lmhead softcap when logits are unused.
+- Result: when `nntr_cfg.skip_prefill=true`, KV-shared tail prefill now skips both heavy projections and dependent elementwise/composition layers for better end-to-end prefill efficiency, while decode path behavior remains unchanged.

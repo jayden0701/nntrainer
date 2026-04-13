@@ -350,9 +350,15 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
 
   layers.push_back(createLayer(
     "addition",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_post_attention"),
-     withKey("input_layers", input_name + ",layer" + std::to_string(layer_id) +
-                               "_post_attention_norm")}));
+    [&]() {
+      std::vector<std::string> post_attention_props = {
+        withKey("name", "layer" + std::to_string(layer_id) + "_post_attention"),
+        withKey("input_layers", input_name + ",layer" +
+                                  std::to_string(layer_id) +
+                                  "_post_attention_norm")};
+      appendSkipPrefillIfNeeded(post_attention_props, is_kv_shared_layer);
+      return post_attention_props;
+    }()));
 
   std::vector<std::string> pre_ffn_norm_props = {
     withKey("name", "layer" + std::to_string(layer_id) + "_pre_ffn_norm"),
@@ -379,19 +385,26 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
 
   layers.push_back(createLayer(
     "addition",
-    {withKey("name", decoder_output_name),
-     withKey("input_layers", "layer" + std::to_string(layer_id) +
-                               "_post_attention,layer" +
-                               std::to_string(layer_id) + "_post_ffn_norm")}));
+    [&]() {
+      std::vector<std::string> decoder_output_base_props = {
+        withKey("name", decoder_output_name),
+        withKey("input_layers", "layer" + std::to_string(layer_id) +
+                                  "_post_attention,layer" +
+                                  std::to_string(layer_id) +
+                                  "_post_ffn_norm")};
+      appendSkipPrefillIfNeeded(decoder_output_base_props, is_kv_shared_layer);
+      return decoder_output_base_props;
+    }()));
 
   // Select [B, S, hidden_size_per_layer_input] from packed per-layer input
   // [B, S, num_layers*hidden_size_per_layer_input]
-  layers.push_back(createLayer(
-    "per_layer_slice",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input"),
-     withKey("input_layers", "per_layer_input_scale"),
-     withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
-     withKey("layer_index", std::to_string(layer_id))}));
+  std::vector<std::string> per_layer_slice_props = {
+    withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input"),
+    withKey("input_layers", "per_layer_input_scale"),
+    withKey("feature_size", std::to_string(HIDDEN_SIZE_PER_LAYER_INPUT)),
+    withKey("layer_index", std::to_string(layer_id))};
+  appendSkipPrefillIfNeeded(per_layer_slice_props, is_kv_shared_layer);
+  layers.push_back(createLayer("per_layer_slice", per_layer_slice_props));
 
   std::vector<std::string> per_layer_input_gate_props = {
     withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_gate"),
@@ -404,19 +417,31 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
   layers.push_back(createLayer("fully_connected", per_layer_input_gate_props));
 
   layers.push_back(createLayer(
-    "activation", {withKey("name", "layer" + std::to_string(layer_id) +
-                                     "_per_layer_input_act"),
-                   withKey("activation", "tanh_gelu"),
-                   withKey("input_layers", "layer" + std::to_string(layer_id) +
-                                             "_per_layer_input_gate")}));
+    "activation",
+    [&]() {
+      std::vector<std::string> per_layer_input_act_props = {
+        withKey("name", "layer" + std::to_string(layer_id) +
+                          "_per_layer_input_act"),
+        withKey("activation", "tanh_gelu"),
+        withKey("input_layers", "layer" + std::to_string(layer_id) +
+                                  "_per_layer_input_gate")};
+      appendSkipPrefillIfNeeded(per_layer_input_act_props, is_kv_shared_layer);
+      return per_layer_input_act_props;
+    }()));
 
   layers.push_back(createLayer(
     "multiply",
-    {withKey("name",
-             "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
-     withKey("input_layers",
-             "layer" + std::to_string(layer_id) + "_per_layer_input_act,layer" +
-               std::to_string(layer_id) + "_per_layer_input")}));
+    [&]() {
+      std::vector<std::string> per_layer_input_mul_props = {
+        withKey("name",
+                "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
+        withKey("input_layers", "layer" + std::to_string(layer_id) +
+                                  "_per_layer_input_act,layer" +
+                                  std::to_string(layer_id) +
+                                  "_per_layer_input")};
+      appendSkipPrefillIfNeeded(per_layer_input_mul_props, is_kv_shared_layer);
+      return per_layer_input_mul_props;
+    }()));
 
   std::vector<std::string> per_layer_input_proj_props = {
     withKey("name", "layer" + std::to_string(layer_id) + "_per_layer_input_proj"),
@@ -438,20 +463,25 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
 
   layers.push_back(createLayer(
     "addition",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_decoder_output"),
-     withKey("input_layers", decoder_output_name + ",layer" +
-                               std::to_string(layer_id) +
-                               "_post_per_layer_input_norm")}));
+    [&]() {
+      std::vector<std::string> decoder_output_props = {
+        withKey("name", "layer" + std::to_string(layer_id) + "_decoder_output"),
+        withKey("input_layers", decoder_output_name + ",layer" +
+                                  std::to_string(layer_id) +
+                                  "_post_per_layer_input_norm")};
+      appendSkipPrefillIfNeeded(decoder_output_props, is_kv_shared_layer);
+      return decoder_output_props;
+    }()));
 
-  layers.push_back(createLayer(
-    "scalar_multiply",
-    {
-      withKey("name", "layer" + std::to_string(layer_id) + "_layer_scalar"),
-      withKey("input_layers",
-              "layer" + std::to_string(layer_id) + "_decoder_output"),
-      withKey("packed", "false"),
-      withKey("use_weight", "true"),
-    }));
+  std::vector<std::string> layer_scalar_props = {
+    withKey("name", "layer" + std::to_string(layer_id) + "_layer_scalar"),
+    withKey("input_layers", "layer" + std::to_string(layer_id) +
+                              "_decoder_output"),
+    withKey("packed", "false"),
+    withKey("use_weight", "true"),
+  };
+  appendSkipPrefillIfNeeded(layer_scalar_props, is_kv_shared_layer);
+  layers.push_back(createLayer("scalar_multiply", layer_scalar_props));
 
   return layers;
 }
@@ -689,10 +719,15 @@ std::vector<LayerHandle> Gemma4Transformer::createMlp(const int layer_id,
 
   layers.push_back(createLayer(
     "activation",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_gate_gelu"),
-     withKey("activation", "tanh_gelu"),
-     withKey("input_layers",
-             "layer" + std::to_string(layer_id) + "_ffn_gate")}));
+    [&]() {
+      std::vector<std::string> ffn_gate_act_props = {
+        withKey("name", "layer" + std::to_string(layer_id) + "_ffn_gate_gelu"),
+        withKey("activation", "tanh_gelu"),
+        withKey("input_layers", "layer" + std::to_string(layer_id) +
+                                  "_ffn_gate")};
+      appendSkipPrefillIfNeeded(ffn_gate_act_props, is_kv_shared_layer);
+      return ffn_gate_act_props;
+    }()));
 
   std::vector<std::string> ffn_up_props = {
     withKey("name", "layer" + std::to_string(layer_id) + "_ffn_up"),
@@ -706,10 +741,15 @@ std::vector<LayerHandle> Gemma4Transformer::createMlp(const int layer_id,
 
   layers.push_back(createLayer(
     "multiply",
-    {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_geglu"),
-     withKey("input_layers", "layer" + std::to_string(layer_id) +
-                               "_ffn_gate_gelu,layer" +
-                               std::to_string(layer_id) + "_ffn_up")}));
+    [&]() {
+      std::vector<std::string> ffn_geglu_props = {
+        withKey("name", "layer" + std::to_string(layer_id) + "_ffn_geglu"),
+        withKey("input_layers", "layer" + std::to_string(layer_id) +
+                                  "_ffn_gate_gelu,layer" +
+                                  std::to_string(layer_id) + "_ffn_up")};
+      appendSkipPrefillIfNeeded(ffn_geglu_props, is_kv_shared_layer);
+      return ffn_geglu_props;
+    }()));
 
   std::vector<std::string> ffn_down_props = {
     withKey("name", "layer" + std::to_string(layer_id) + "_ffn_down"),
@@ -773,12 +813,14 @@ void Gemma4CausalLM::constructModel() {
   model->addLayer(createLayer(lmhead_type, lmhead_prop));
 
   if (FINAL_LOGIT_SOFTCAPPING > 0.0f) {
-    model->addLayer(createLayer(
-      "logit_softcapping",
-      {withKey("name", "output_of_causallm_softcapped"),
-       withKey("input_layers", "output_of_causallm"),
-       withKey("activation_type", "tanh"), withKey("apply_rows", "1"),
-       withKey("softcap_value", std::to_string(FINAL_LOGIT_SOFTCAPPING))}));
+    std::vector<std::string> final_softcap_props = {
+      withKey("name", "output_of_causallm_softcapped"),
+      withKey("input_layers", "output_of_causallm"),
+      withKey("activation_type", "tanh"),
+      withKey("apply_rows", "1"),
+      withKey("softcap_value", std::to_string(FINAL_LOGIT_SOFTCAPPING))};
+    appendSkipPrefillIfNeeded(final_softcap_props, true);
+    model->addLayer(createLayer("logit_softcapping", final_softcap_props));
   }
 }
 
