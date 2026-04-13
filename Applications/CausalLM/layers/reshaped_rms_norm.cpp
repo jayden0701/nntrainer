@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Seungbaek Hong <sb92.hong@samsung.com>
  *
- * @file   custom_rms_norm.cpp
+ * @file   reshaped_rms_norm.cpp
  * @date   19 July 2023
  * @brief  Implementation of custom RMS normalization function
  * @see    https://github.com/nntrainer/nntrainer
@@ -24,6 +24,9 @@ void ReshapedRMSNormLayer::finalize(nntrainer::InitLayerContext &context) {
   context.setOutputDimensions(dim);
   feature_size = std::get<props::FeatureSize>(rms_props);
   use_gamma = std::get<props::UseGamma>(rms_props).get();
+
+  if (!std::get<nntrainer::props::SkipPrefill>(rms_props).empty())
+    skip_prefill = std::get<nntrainer::props::SkipPrefill>(rms_props).get();
 
   NNTR_THROW_IF(dim[0].width() % feature_size != 0, std::invalid_argument)
     << "feature size must be a divisor of width";
@@ -56,7 +59,9 @@ void ReshapedRMSNormLayer::incremental_forwarding(
   ml::train::TensorDim in_step_dim = in_dim;
   ml::train::TensorDim out_step_dim = out_dim;
 
-  unsigned int _from = from;
+  bool is_prefill = !from;
+  if (skip_prefill && is_prefill)
+    return;
 
   in_step_dim.batch(1);
   in_step_dim.height(to - from);

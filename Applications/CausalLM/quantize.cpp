@@ -167,7 +167,8 @@ std::string buildModelTensorType(const std::string &fc_dtype) {
  */
 std::string generateOutputBinName(const std::string &original_bin,
                                   const std::string &fc_dtype,
-                                  const std::string &embd_dtype) {
+                                  const std::string &embd_dtype,
+                                  const std::string &target_isa) {
   // Extract model name from original (e.g., "nntr_qwen3_4b_fp32.bin" ->
   // "nntr_qwen3_4b")
   std::string base = original_bin;
@@ -205,9 +206,9 @@ std::string generateOutputBinName(const std::string &original_bin,
                    embd_clean.end());
 
   if (embd_clean == fc_clean) {
-    return base + "_" + fc_clean + ".bin";
+    return base + "_" + fc_clean + "_"+ target_isa+".bin";
   }
-  return base + "_" + fc_clean + "_embd" + embd_clean + ".bin";
+  return base + "_" + fc_clean + "_embd" + embd_clean +  "_"+ target_isa+".bin";
 }
 
 /**
@@ -408,14 +409,24 @@ buildLayerDtypeMap(int num_layers, DataType fc_dtype, DataType embd_dtype,
       dtype_map[prefix + "_wv"] = fc_dtype;
       dtype_map[prefix + "_attention_out"] = fc_dtype;
 
-      // FFN FC layers
-      dtype_map[prefix + "_ffn_up"] = fc_dtype;
-      dtype_map[prefix + "_ffn_gate"] = fc_dtype;
-      dtype_map[prefix + "_ffn_down"] = fc_dtype;
+      // Attention Gates
+      dtype_map[prefix + "_attention_gate_down"] = fc_dtype;
+      dtype_map[prefix + "_attention_gate_up"] = fc_dtype;
 
-      // PLE gate
-      dtype_map[prefix + "_per_layer_input_gate"] = fc_dtype;
-      dtype_map[prefix + "_per_layer_input_proj"] = fc_dtype;
+      // Attention Gates
+      dtype_map[prefix + "_attention_gate_down"] = fc_dtype;
+      dtype_map[prefix + "_attention_gate_up"] = fc_dtype;
+
+      // FFN FC layers - version4
+      dtype_map[prefix + "_ffn_gate_up"] = fc_dtype;
+      dtype_map[prefix + "_ffn_gate_down"] = fc_dtype;
+      dtype_map[prefix + "_ffn_linear_up"] = fc_dtype;
+
+
+      // FFN FC layers - version3
+      dtype_map[prefix + "_ffn_gate"] = fc_dtype;
+      dtype_map[prefix + "_ffn_up"] = fc_dtype;
+      dtype_map[prefix + "_ffn_down"] = fc_dtype;
     }
   }
 
@@ -536,7 +547,7 @@ int main(int argc, char *argv[]) {
     std::string original_bin = nntr_cfg["model_file_name"].get<std::string>();
     if (output_bin_name.empty()) {
       output_bin_name = generateOutputBinName(
-        original_bin, dataTypeToStr(fc_dtype), dataTypeToStr(embd_dtype));
+        original_bin, dataTypeToStr(fc_dtype), dataTypeToStr(embd_dtype), isa_str);
     }
 
     std::string src_weight_path = model_path + "/" + original_bin;
@@ -603,7 +614,7 @@ int main(int argc, char *argv[]) {
       std::cout << "    " << name << " -> " << dataTypeToStr(dt) << "\n";
     }
 
-    model->save_weight(dst_weight_path, DataType::NONE, layer_dtype_map, target_isa);
+    model->save_weight(dst_weight_path, DataType::NONE, layer_dtype_map);
 
     // Report file size
     auto src_size = std::filesystem::file_size(src_weight_path);

@@ -102,7 +102,6 @@ public:
    * @brief Save the weight to a file
    */
   virtual void save_weight(const std::string &weight_path);
-
   /**
    * @brief Save the weight to a file with type conversion
    * @param weight_path Path to save the weight file

@@ -191,59 +191,6 @@ nntr_quantize <model_path> [options]
 | `--lmhead_dtype <type>` | Target dtype for LM head layer | Same as `embd_dtype` |
 | `--output_bin <name>` | Output `.bin` filename | Auto-generated |
 | `--config <path>` | Use a target `nntr_config.json` for dtype settings | – |
-
-For more details, please refer to the [Model Documentation](models/README.md).
-
-## Quantizing Models
-
-NNTrainer provides a quantization utility (`nntr_quantize`) that converts FP32 CausalLM model weights to lower-precision data types, reducing model size for efficient on-device inference.
-
-### Supported Quantization Types
-
-| Data Type | Description |
-|-----------|-------------|
-| `FP32`    | 32-bit floating point (default for embedding/LM head) |
-| `FP16`    | 16-bit floating point |
-| `Q4_0`    | 4-bit quantization (default for FC layers) |
-| `Q4_K`    | 4-bit K-quant quantization |
-| `Q6_K`    | 6-bit K-quant quantization |
-
-> **Note (Q4_0 platform dependency):** `Q4_0` quantization produces platform-specific binary formats — the output generated on x86 is **not compatible** with ARM, and vice versa. You must run `nntr_quantize` on the **same platform architecture** where the quantized model will be used for inference. Cross-platform quantization is not yet supported.
-
-
-### Prerequisites
-
-The model directory must contain the following files:
-- `config.json` – model architecture configuration
-- `generation_config.json` – generation parameters
-- `nntr_config.json` – NNTrainer-specific configuration
-- `.bin` weight file – FP32 model weights
-
-### Building
-
-The quantization utility is built automatically with the CausalLM application:
-
-```bash
-meson build && ninja -C build
-# The executable is: build/Applications/CausalLM/nntr_quantize
-```
-
-### Usage
-
-```
-nntr_quantize <model_path> [options]
-```
-
-**Options:**
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--output`, `-o <path>` | Output directory | Same as `<model_path>` |
-| `--fc_dtype <type>` | Target dtype for FC (fully-connected) layers | `Q4_0` |
-| `--embd_dtype <type>` | Target dtype for embedding layer | `FP32` |
-| `--lmhead_dtype <type>` | Target dtype for LM head layer | Same as `embd_dtype` |
-| `--output_bin <name>` | Output `.bin` filename | Auto-generated |
-| `--config <path>` | Use a target `nntr_config.json` for dtype settings | – |
 | `--isa <x86|ARM|AUTO>` | Target ISA for quantization | `AUTO` |
 
 ### Examples
@@ -256,7 +203,6 @@ nntr_quantize /path/to/qwen3-4b --fc_dtype Q4_0 --embd_dtype Q6_K
 
 # Quantize FC layers to Q4_0 and embedding to Q6_K in ARM format:
 nntr_quantize /path/to/qwen3-4b --fc_dtype Q4_0 --embd_dtype Q6_K --isa ARM
-
 
 # Quantize to a different output directory:
 nntr_quantize /path/to/qwen3-4b -o /output/qwen3-4b-q4

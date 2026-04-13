@@ -353,6 +353,7 @@ private:
   bool use_rope = true;
   float attn_logit_softcapping = 0.0f;
   bool is_causal;
+  bool skip_prefill = false;
 
   enum INOUT_INDEX {
     /** input index */
