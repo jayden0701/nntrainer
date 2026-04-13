@@ -62,7 +62,11 @@ protected:
   float FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR = 1.0f;
   float SLIDING_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR = 1.0f;
   float FINAL_LOGIT_SOFTCAPPING = 0.0f;
-  
+  bool ENABLE_SKIP_PREFILL_OPT = false;
+
+  bool isKVSharedLayer(int layer_id) const;
+  void appendSkipPrefillIfNeeded(std::vector<std::string> &props,
+                                 bool enable_skip) const;
 
 public:
   std::vector<LayerHandle> createAttention(const int layer_id, int seq_len,

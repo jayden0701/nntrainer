@@ -126,3 +126,18 @@
   - replaced single static cos/sin buffers with keyed caches (FP32/FP16) so `default` and `proportional` caches can coexist safely.
   - cache key includes rope type and core parameters (`head_dim`, `seq_len`, `theta`, scaling factors).
 - Restored Gemma4 attention score scaling parity in shared-KV attention path by applying `sqrt(head_dim)` pre-scale to `Q` before `mha_core`, matching non-shared path and HF `scaling=1.0` semantics.
+
+## Gemma4 prefill skip optimization for KV-shared tail + LM head
+
+- Added Gemma4 model-side wiring to apply `skip_prefill=true` only when `nntr_cfg.skip_prefill` is enabled.
+- Added helper logic in Gemma4 model builder to detect KV-shared tail layers (`num_kv_shared_layers`) and tag expensive per-layer ops in those layers with `skip_prefill`:
+  - attention projections/norm/core/output projection
+  - MLP FC projections
+  - additional RMSNorm-heavy points in decoder block and final output norm
+- Applied `skip_prefill` to Gemma4 `output_of_causallm` head construction as well.
+- Extended both LM-head implementations to actually honor `skip_prefill` in incremental prefill path:
+  - `lm_head` custom layer now reads `skip_prefill` and early-returns for prefill.
+  - `tie_word_embeddings` (lm_head mode) now reads `skip_prefill` and early-returns for prefill.
+- Scope/intent:
+  - keeps decode/generation semantics unchanged (`skip_prefill` only triggers when `from == 0`),
+  - avoids unnecessary prefill-only compute where logits are not consumed and shared-tail layers are not needed for KV cache construction.
