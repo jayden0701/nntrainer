@@ -18,4 +18,4 @@
 ## Known gaps / TODO
 
 
-- [ ] Skip useless steps during prefill (due to KV sharing)
+- [x] Skip useless steps during prefill (due to KV sharing)
