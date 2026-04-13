@@ -453,8 +453,9 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     SYS_PROMP_LEN = 0;
   }
   std::vector<unsigned int> id_list;
+  const bool did_skip_prefill = SKIP_PREFILL && init_len > 1;
 
-  if (SKIP_PREFILL && init_len > 1) {
+  if (did_skip_prefill) {
     // Prefill only N-1 tokens; the last input token will be used as the first
     // token in the generation phase (assigned directly, not sampled).
     unsigned int skipped_token =
@@ -505,8 +506,10 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
   auto start_generation = std::chrono::high_resolution_clock::now();
 
+  const unsigned int decode_steps = NUM_TO_GENERATE + (did_skip_prefill ? 1 : 0);
+
   for (token_generation_idx = input_len + 1;
-       token_generation_idx < input_len + 1 + NUM_TO_GENERATE;
+       token_generation_idx < input_len + 1 + decode_steps;
        ++token_generation_idx) {
 
     auto output_interval =

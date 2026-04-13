@@ -126,3 +126,13 @@
   - replaced single static cos/sin buffers with keyed caches (FP32/FP16) so `default` and `proportional` caches can coexist safely.
   - cache key includes rope type and core parameters (`head_dim`, `seq_len`, `theta`, scaling factors).
 - Restored Gemma4 attention score scaling parity in shared-KV attention path by applying `sqrt(head_dim)` pre-scale to `Q` before `mha_core`, matching non-shared path and HF `scaling=1.0` semantics.
+
+## Fix: skip_prefill decode step count consistency
+
+- Fixed `CausalLM::run()` so `skip_prefill` preserves output-length behavior with the non-skip path.
+- Root cause:
+  - In skip-prefill mode, prefill runs `init_len - 1` tokens and does not sample a token during prefill.
+  - Generation loop still used `NUM_TO_GENERATE` steps, so total emitted tokens became shorter by one versus normal path.
+- Change:
+  - Added `did_skip_prefill` flag and increased decode loop steps by `+1` only when `skip_prefill` is active and `init_len > 1`.
+  - This keeps token emission semantics aligned between skip/non-skip modes while retaining prefill compute savings.
