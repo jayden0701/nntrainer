@@ -53,9 +53,8 @@ MHACoreLayer::MHACoreLayer() :
     props::SlidingWindow(), props::MaxNewTokens(), props::RopeTheta(),
     props::UseRope(), props::MaxPositionEmbeddings(), props::UseSink(),
     props::RopeScalingType(), props::RopeScalingFactor(),
-    props::RopePartialRotaryFactor(),
-    props::RopeScalingMaxPositionEmbeddings(), props::AttnLogitSoftcapping(),
-    props::IsCausal()),
+    props::RopePartialRotaryFactor(), props::RopeScalingMaxPositionEmbeddings(),
+    props::AttnLogitSoftcapping(), props::IsCausal()),
   sm(nntrainer::ActivationType::ACT_SOFTMAX),
   epsilon(1e-3),
   cache_index(0),
@@ -161,7 +160,7 @@ void MHACoreLayer::finalize(nntrainer::InitLayerContext &context) {
     skip_prefill =
       std::get<nntrainer::props::SkipPrefill>(*layer_impl_props).get();
 
-    /** Tensor for KV-Cache */
+  /** Tensor for KV-Cache */
 #ifdef ENABLE_FP16
   ml::train::TensorDim cache_key_dim(
     {batch_size, 1, max_timestep, num_heads_KV * head_dim},
@@ -507,12 +506,6 @@ void MHACoreLayer::one_batch_incremental_forwarding(
                                       cache_index * cache_value_dim.width(),
                                     true);
 
-  // apply rotary embedding for query
-  if (use_rope) {
-    apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, cache_index,
-                               false);
-  }
-
   // append kcache with or without rotary embedding
   apply_rotary_emb_tensor_v2(key_step, b_cache_key_step, head_dim, cache_index,
                              !use_rope);
@@ -527,6 +520,16 @@ void MHACoreLayer::one_batch_incremental_forwarding(
 #else
     NNTR_THROW_IF(true, std::invalid_argument) << "enable-fp16 is not set!";
 #endif
+  }
+
+  bool is_prefill = !from;
+  if (skip_prefill && is_prefill)
+    return;
+
+  // apply rotary embedding for query
+  if (use_rope) {
+    apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, cache_index,
+                               false);
   }
 
   /// @todo replace step_size into input height
@@ -681,10 +684,9 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
 
     for (unsigned int i = 0; i < seq_len; ++i) {
 #ifdef USE_NEON
-      nntrainer::calc_trigonometric_vals_dup(half_, thetas.data(),
-                                             cached->cos[i].data(),
-                                             cached->sin[i].data(), i,
-                                             attention_scaling);
+      nntrainer::calc_trigonometric_vals_dup(
+        half_, thetas.data(), cached->cos[i].data(), cached->sin[i].data(), i,
+        attention_scaling);
 #else
       for (unsigned int j = 0; j < half_; ++j) {
         float angle = i * thetas[j];
@@ -797,7 +799,6 @@ void MHACoreLayer::_compute_yarn_parameters(int head_dim, float theta) {
   const float base = theta;
 
   // Handle max position embeddings
-
 
   // Attention scaling calculation (simplified from Python version)
   auto get_mscale = [](float scale, float mscale = 1.0f) {

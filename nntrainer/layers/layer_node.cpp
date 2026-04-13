@@ -868,8 +868,8 @@ void LayerNode::incremental_forwarding(unsigned int from, unsigned int to,
   auto prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
     finish_prefill - start_prefill);
 
-  std::cout << "layer_name: " << getName() << ", \t"
-            << "time: " << prefill_duration.count() << " ms \n";
+  // std::cout << "layer_name: " << getName() << ", \t"
+  //           << "time: " << prefill_duration.count() << " ms \n";
 
   PROFILE_TIME_END(forward_event_key);
   TRACE_MEMORY() << getName() + ": F";

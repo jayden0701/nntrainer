@@ -105,8 +105,6 @@ void LogitSoftCappingLayer::applyOnRange(nntrainer::RunLayerContext &context,
         std::chrono::duration_cast<std::chrono::milliseconds>(finish_prefill -
                                                               start_prefill);
 
-      std::cout << "mult 1 time: " << prefill_duration.count() << " ms \n";
-
       start_prefill = std::chrono::high_resolution_clock::now();
 
       acti_func.run_fn(out_chunk, out_chunk);
@@ -115,7 +113,6 @@ void LogitSoftCappingLayer::applyOnRange(nntrainer::RunLayerContext &context,
       prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         finish_prefill - start_prefill);
 
-      std::cout << "acti time: " << prefill_duration.count() << " ms \n";
 
       start_prefill = std::chrono::high_resolution_clock::now();
 
@@ -125,7 +122,6 @@ void LogitSoftCappingLayer::applyOnRange(nntrainer::RunLayerContext &context,
       prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         finish_prefill - start_prefill);
 
-      std::cout << "mult2 time: " << prefill_duration.count() << " ms \n";
     }
   }
 }
