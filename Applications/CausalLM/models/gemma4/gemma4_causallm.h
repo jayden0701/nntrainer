@@ -56,6 +56,7 @@ protected:
   int NUM_KV_SHARED_LAYERS = 0;
   bool USE_DOUBLE_WIDE_MLP = false;
   float EMBEDDING_PER_LAYER_SCALE = 1.0f;
+  bool SKIP_SHARED_PREFILL = false;
 
   std::string FULL_ATTENTION_ROPE_TYPE = "default";
   std::string SLIDING_ATTENTION_ROPE_TYPE = "default";
@@ -87,6 +88,7 @@ public:
   std::vector<LayerHandle> createMlp(const int layer_id, int dim,
                                      int hidden_dim,
                                      std::string input_name) override;
+  bool shouldSkipSharedLayerPrefill(const int layer_id) const;
 
   void registerCustomLayers() override;
 };

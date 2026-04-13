@@ -130,6 +130,8 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
                            : 0;
   USE_DOUBLE_WIDE_MLP = cfg.contains("use_double_wide_mlp") &&
                         cfg["use_double_wide_mlp"].get<bool>();
+  SKIP_SHARED_PREFILL = nntr_cfg.contains("skip_prefill") &&
+                        nntr_cfg["skip_prefill"].get<bool>();
 
   if (cfg.contains("rope_parameters") && cfg["rope_parameters"].is_object()) {
     const auto &rope_params = cfg["rope_parameters"];
@@ -174,6 +176,14 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
   EMBEDDING_SCALE = std::sqrt(static_cast<float>(DIM));
   EMBEDDING_PER_LAYER_SCALE =
     std::sqrt(static_cast<float>(HIDDEN_SIZE_PER_LAYER_INPUT));
+}
+
+bool Gemma4Transformer::shouldSkipSharedLayerPrefill(const int layer_id) const {
+  if (!SKIP_SHARED_PREFILL)
+    return false;
+
+  const int first_kv_shared_layer_idx = NUM_LAYERS - NUM_KV_SHARED_LAYERS;
+  return layer_id >= first_kv_shared_layer_idx && first_kv_shared_layer_idx > 0;
 }
 
 void Gemma4Transformer::constructModel() {
@@ -266,7 +276,9 @@ void Gemma4Transformer::constructModel() {
     createLayer("rms_norm", {withKey("name", "output_norm"),
                              withKey("epsilon", std::to_string(NORM_EPS)),
                              withKey("input_layers", decoder_input),
-                             withKey("packed", "false")}));
+                             withKey("packed", "false"),
+                             withKey("skip_prefill",
+                                     SKIP_SHARED_PREFILL ? "true" : "false")}));
 
   for (auto &layer : layers) {
     model->addLayer(layer);
@@ -278,6 +290,7 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
                                                  std::string input_name) {
 
   std::vector<LayerHandle> layers;
+  const bool skip_shared_prefill = shouldSkipSharedLayerPrefill(layer_id);
 
   // Gemma4TextRMSNorm scales by `weight` (initialized to ones), which matches
   // NNTrainer `rms_norm` behavior used here.
@@ -286,7 +299,8 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
     {withKey("name", "layer" + std::to_string(layer_id) + "_attention_norm"),
      withKey("input_layers", input_name),
      withKey("epsilon", std::to_string(NORM_EPS)),
-     withKey("packed", "false")}));
+     withKey("packed", "false"),
+     withKey("skip_prefill", skip_shared_prefill ? "true" : "false")}));
 
   int shared_kv_layer_id = -1;
 
@@ -329,7 +343,9 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
                  withKey("input_layers",
                          "layer" + std::to_string(layer_id) + "_attention_out"),
                  withKey("epsilon", std::to_string(NORM_EPS)),
-                 withKey("packed", "false")}));
+                 withKey("packed", "false"),
+                 withKey("skip_prefill",
+                         skip_shared_prefill ? "true" : "false")}));
 
   layers.push_back(createLayer(
     "addition",
@@ -343,7 +359,8 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
      withKey("input_layers",
              "layer" + std::to_string(layer_id) + "_post_attention"),
      withKey("epsilon", std::to_string(NORM_EPS)),
-     withKey("packed", "false")}));
+     withKey("packed", "false"),
+     withKey("skip_prefill", skip_shared_prefill ? "true" : "false")}));
 
   auto ffn_layer =
     createMlp(layer_id, DIM, INTERMEDIATE_SIZE,
@@ -354,7 +371,8 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
     "rms_norm",
     {withKey("name", "layer" + std::to_string(layer_id) + "_post_ffn_norm"),
      withKey("epsilon", std::to_string(NORM_EPS)),
-     withKey("packed", "false")}));
+     withKey("packed", "false"),
+     withKey("skip_prefill", skip_shared_prefill ? "true" : "false")}));
 
   const std::string decoder_output_name =
     "layer" + std::to_string(layer_id) + "_decoder_output_base";
@@ -383,7 +401,9 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
                  withKey("disable_bias", "true"),
                  withKey("input_layers", decoder_output_name),
                  withKey("weight_initializer", "ones"),
-                 withKey("weight_dtype", FC_LAYER_DTYPE)}));
+                 withKey("weight_dtype", FC_LAYER_DTYPE),
+                 withKey("skip_prefill",
+                         skip_shared_prefill ? "true" : "false")}));
 
   layers.push_back(createLayer(
     "activation", {withKey("name", "layer" + std::to_string(layer_id) +
@@ -408,7 +428,8 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
      withKey("input_layers",
              "layer" + std::to_string(layer_id) + "_per_layer_input_mul"),
      withKey("weight_initializer", "ones"),
-     withKey("weight_dtype", FC_LAYER_DTYPE)}));
+     withKey("weight_dtype", FC_LAYER_DTYPE),
+     withKey("skip_prefill", skip_shared_prefill ? "true" : "false")}));
 
   layers.push_back(createLayer(
     "rms_norm", {withKey("name", "layer" + std::to_string(layer_id) +
@@ -416,7 +437,9 @@ Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
                  withKey("input_layers", "layer" + std::to_string(layer_id) +
                                            "_per_layer_input_proj"),
                  withKey("epsilon", std::to_string(NORM_EPS)),
-                 withKey("packed", "false")}));
+                 withKey("packed", "false"),
+                 withKey("skip_prefill",
+                         skip_shared_prefill ? "true" : "false")}));
 
   layers.push_back(createLayer(
     "addition",
@@ -442,6 +465,7 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
   const int layer_id, const int shared_kv_layer_id, int seq_len, int n_heads,
   int head_dim, std::string query_name) {
   std::vector<LayerHandle> layers;
+  const bool skip_shared_prefill = shouldSkipSharedLayerPrefill(layer_id);
   (void)seq_len;
   (void)head_dim;
 
@@ -468,14 +492,18 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
                                        withKey("disable_bias", "true"),
                                        withKey("input_layers", query_name),
                                        withKey("weight_initializer", "ones"),
-                                       withKey("weight_dtype", FC_LAYER_DTYPE)};
+                                       withKey("weight_dtype", FC_LAYER_DTYPE),
+                                       withKey("skip_prefill",
+                                               skip_shared_prefill ? "true"
+                                                                   : "false")};
   layers.push_back(createLayer("fully_connected", q_params));
 
   // q_norm on per-head projection [B, S, Nq*Dh]
   std::vector<std::string> q_norm_params = {
     withKey("name", Q_norm), withKey("input_layers", Q),
     withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
-    withKey("feature_size", std::to_string(curr_head_dim))};
+    withKey("feature_size", std::to_string(curr_head_dim)),
+    withKey("skip_prefill", skip_shared_prefill ? "true" : "false")};
   layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
   // TODO : fixed AVX kernel : remove divide by 1/sqrt(head_dim) - need to change this later
@@ -505,6 +533,7 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
     withKey("is_causal", IS_CAUSAL ? "true" : "false"),
+    withKey("skip_prefill", skip_shared_prefill ? "true" : "false"),
     withKey("input_layers", {Q_norm, shared_K_norm, shared_V_norm})};
   layers.push_back(createLayer("mha_core", a_params));
 
@@ -514,7 +543,10 @@ std::vector<LayerHandle> Gemma4Transformer::createSharedAttention(
                                        withKey("disable_bias", "true"),
                                        withKey("input_layers", A),
                                        withKey("weight_initializer", "ones"),
-                                       withKey("weight_dtype", FC_LAYER_DTYPE)};
+                                       withKey("weight_dtype", FC_LAYER_DTYPE),
+                                       withKey("skip_prefill",
+                                               skip_shared_prefill ? "true"
+                                                                   : "false")};
   layers.push_back(createLayer("fully_connected", o_params));
 
   return layers;
@@ -524,6 +556,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
   const int layer_id, int seq_len, int n_heads, int head_dim,
   std::string query_name, std::string key_name, std::string value_name) {
   std::vector<LayerHandle> layers;
+  const bool skip_shared_prefill = shouldSkipSharedLayerPrefill(layer_id);
 
   auto Q = "layer" + std::to_string(layer_id) + "_wq";
   auto Q_norm = "layer" + std::to_string(layer_id) + "_q_norm";
@@ -550,7 +583,10 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
                                        withKey("disable_bias", "true"),
                                        withKey("input_layers", query_name),
                                        withKey("weight_initializer", "ones"),
-                                       withKey("weight_dtype", FC_LAYER_DTYPE)};
+                                       withKey("weight_dtype", FC_LAYER_DTYPE),
+                                       withKey("skip_prefill",
+                                               skip_shared_prefill ? "true"
+                                                                   : "false")};
   layers.push_back(createLayer("fully_connected", q_params));
 
   // K layer [B, S, H] -> [B, S, Nk*Dh]
@@ -560,7 +596,8 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("disable_bias", "true"),
     withKey("input_layers", key_name),
     withKey("weight_initializer", "ones"),
-    withKey("weight_dtype", FC_LAYER_DTYPE)};
+    withKey("weight_dtype", FC_LAYER_DTYPE),
+    withKey("skip_prefill", skip_shared_prefill ? "true" : "false")};
   layers.push_back(createLayer("fully_connected", k_params));
 
   // V layer [B, S, H] -> [B, S, Nk*Dh]
@@ -570,14 +607,16 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("disable_bias", "true"),
     withKey("input_layers", value_name),
     withKey("weight_initializer", "ones"),
-    withKey("weight_dtype", FC_LAYER_DTYPE)};
+    withKey("weight_dtype", FC_LAYER_DTYPE),
+    withKey("skip_prefill", skip_shared_prefill ? "true" : "false")};
   layers.push_back(createLayer("fully_connected", v_params));
 
   // q_norm on per-head projection [B, S, Nq*Dh]
   std::vector<std::string> q_norm_params = {
     withKey("name", Q_norm), withKey("input_layers", Q),
     withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
-    withKey("feature_size", std::to_string(curr_head_dim))};
+    withKey("feature_size", std::to_string(curr_head_dim)),
+    withKey("skip_prefill", skip_shared_prefill ? "true" : "false")};
   layers.push_back(createLayer("reshaped_rms_norm", q_norm_params));
 
   // TODO : fixed avx kernnel to divide by 1 - need to generalize later
@@ -586,14 +625,16 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
   std::vector<std::string> k_norm_params = {
     withKey("name", K_norm), withKey("input_layers", K),
     withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
-    withKey("feature_size", std::to_string(curr_head_dim))};
+    withKey("feature_size", std::to_string(curr_head_dim)),
+    withKey("skip_prefill", skip_shared_prefill ? "true" : "false")};
   layers.push_back(createLayer("reshaped_rms_norm", k_norm_params));
 
   // v_norm on per-head projection [B, S, Nk*Dh] (no learned scale)
   std::vector<std::string> v_norm_params = {
     withKey("name", V_norm), withKey("input_layers", V),
     withKey("packed", "false"), withKey("epsilon", std::to_string(NORM_EPS)),
-    withKey("feature_size", std::to_string(curr_head_dim))};
+    withKey("feature_size", std::to_string(curr_head_dim)),
+    withKey("skip_prefill", skip_shared_prefill ? "true" : "false")};
   v_norm_params.push_back(withKey("use_gamma", "false"));
   layers.push_back(createLayer("reshaped_rms_norm", v_norm_params));
 
@@ -621,6 +662,7 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
     withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
     withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
     withKey("is_causal", IS_CAUSAL ? "true" : "false"),
+    withKey("skip_prefill", skip_shared_prefill ? "true" : "false"),
     withKey("input_layers", {Q_norm, K_norm, V_norm})};
   layers.push_back(createLayer("mha_core", a_params));
 
@@ -630,7 +672,10 @@ std::vector<LayerHandle> Gemma4Transformer::createAttention(
                                        withKey("disable_bias", "true"),
                                        withKey("input_layers", A),
                                        withKey("weight_initializer", "ones"),
-                                       withKey("weight_dtype", FC_LAYER_DTYPE)};
+                                       withKey("weight_dtype", FC_LAYER_DTYPE),
+                                       withKey("skip_prefill",
+                                               skip_shared_prefill ? "true"
+                                                                   : "false")};
   layers.push_back(createLayer("fully_connected", o_params));
 
   return layers;
@@ -640,6 +685,7 @@ std::vector<LayerHandle> Gemma4Transformer::createMlp(const int layer_id,
                                                       int dim, int hidden_dim,
                                                       std::string input_name) {
   std::vector<LayerHandle> layers;
+  const bool skip_shared_prefill = shouldSkipSharedLayerPrefill(layer_id);
 
   const int first_kv_shared_layer_idx = NUM_LAYERS - NUM_KV_SHARED_LAYERS;
   const bool is_kv_shared_layer =
@@ -652,7 +698,8 @@ std::vector<LayerHandle> Gemma4Transformer::createMlp(const int layer_id,
     {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_gate"),
      withKey("unit", curr_hidden_dim), withKey("disable_bias", "true"),
      withKey("input_layers", input_name), withKey("weight_initializer", "ones"),
-     withKey("weight_dtype", FC_LAYER_DTYPE)}));
+     withKey("weight_dtype", FC_LAYER_DTYPE),
+     withKey("skip_prefill", skip_shared_prefill ? "true" : "false")}));
 
   layers.push_back(createLayer(
     "activation",
@@ -666,7 +713,8 @@ std::vector<LayerHandle> Gemma4Transformer::createMlp(const int layer_id,
     {withKey("name", "layer" + std::to_string(layer_id) + "_ffn_up"),
      withKey("unit", curr_hidden_dim), withKey("disable_bias", "true"),
      withKey("input_layers", input_name), withKey("weight_initializer", "ones"),
-     withKey("weight_dtype", FC_LAYER_DTYPE)}));
+     withKey("weight_dtype", FC_LAYER_DTYPE),
+     withKey("skip_prefill", skip_shared_prefill ? "true" : "false")}));
 
   layers.push_back(createLayer(
     "multiply",
@@ -681,7 +729,8 @@ std::vector<LayerHandle> Gemma4Transformer::createMlp(const int layer_id,
      withKey("unit", dim), withKey("disable_bias", "true"),
      withKey("input_layers", "layer" + std::to_string(layer_id) + "_ffn_geglu"),
      withKey("weight_initializer", "ones"),
-     withKey("weight_dtype", FC_LAYER_DTYPE)}));
+     withKey("weight_dtype", FC_LAYER_DTYPE),
+     withKey("skip_prefill", skip_shared_prefill ? "true" : "false")}));
 
   return layers;
 }
@@ -726,6 +775,7 @@ void Gemma4CausalLM::constructModel() {
     withKey("disable_bias", "true"),
     withKey("input_layers", "output_norm"),
     withKey("weight_dtype", LMHEAD_DTYPE),
+    withKey("skip_prefill", SKIP_SHARED_PREFILL ? "true" : "false"),
   };
 
   if (TIE_WORD_EMBEDDINGS)
