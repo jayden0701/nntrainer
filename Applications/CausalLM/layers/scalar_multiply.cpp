@@ -23,6 +23,9 @@ static constexpr size_t SINGLE_INOUT_IDX = 0;
 void ScalarMultiplyLayer::finalize(nntrainer::InitLayerContext &context) {
   std::vector<nntrainer::TensorDim> dim = context.getInputDimensions();
   context.setOutputDimensions(dim);
+  if (!std::get<nntrainer::props::SkipPrefill>(scalar_multiply_props).empty())
+    skip_prefill =
+      std::get<nntrainer::props::SkipPrefill>(scalar_multiply_props).get();
 
   bool use_weight = std::get<props::UseWeight>(scalar_multiply_props).get();
 
@@ -61,6 +64,9 @@ void ScalarMultiplyLayer::forwarding(nntrainer::RunLayerContext &context,
 void ScalarMultiplyLayer::incremental_forwarding(
   nntrainer::RunLayerContext &context, unsigned int from, unsigned int to,
   bool training) {
+  bool is_prefill = !from;
+  if (skip_prefill && is_prefill)
+    return;
 
   bool use_weight = std::get<props::UseWeight>(scalar_multiply_props).get();
 

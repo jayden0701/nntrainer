@@ -21,6 +21,7 @@
 #include <layer_devel.h>
 #include <base_properties.h>
 #include <causallm_common_properties.h>
+#include <common_properties.h>
 
 #include <nntrainer_error.h>
 #include <nntrainer_log.h>
@@ -43,7 +44,9 @@ public:
 class PerLayerSliceLayer final : public nntrainer::Layer {
 public:
   PerLayerSliceLayer() :
-    Layer(), slice_props(props::FeatureSize(), props::LayerIndex()) {}
+    Layer(),
+    slice_props(props::FeatureSize(), props::LayerIndex(),
+                nntrainer::props::SkipPrefill()) {}
 
   ~PerLayerSliceLayer() {}
 
@@ -74,7 +77,9 @@ public:
   inline static const std::string type = "per_layer_slice";
 
 private:
-  std::tuple<props::FeatureSize, props::LayerIndex> slice_props;
+  std::tuple<props::FeatureSize, props::LayerIndex, nntrainer::props::SkipPrefill>
+    slice_props;
+  bool skip_prefill = false;
 };
 
 } // namespace causallm

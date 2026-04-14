@@ -22,6 +22,9 @@ static constexpr size_t SINGLE_INOUT_IDX = 0;
 void LogitSoftCappingLayer::finalize(nntrainer::InitLayerContext &context) {
   std::vector<nntrainer::TensorDim> dim = context.getInputDimensions();
   context.setOutputDimensions(dim);
+  if (!std::get<nntrainer::props::SkipPrefill>(logit_softcap_props).empty())
+    skip_prefill =
+      std::get<nntrainer::props::SkipPrefill>(logit_softcap_props).get();
 
   auto activation =
     std::get<props::LogitSoftcapActivation>(logit_softcap_props).get();
@@ -57,6 +60,10 @@ void LogitSoftCappingLayer::forwarding(nntrainer::RunLayerContext &context,
 void LogitSoftCappingLayer::incremental_forwarding(
   nntrainer::RunLayerContext &context, unsigned int from, unsigned int to,
   bool training) {
+  bool is_prefill = !from;
+  if (skip_prefill && is_prefill)
+    return;
+
   applyOnRange(context, from, to);
 }
 

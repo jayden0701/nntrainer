@@ -27,6 +27,7 @@
 #include <utility>
 
 #include <causallm_common_properties.h>
+#include <common_properties.h>
 #include <connection.h>
 #include <tensor.h>
 #include <tensor_wrap_specs.h>
@@ -137,7 +138,9 @@ public:
 
 private:
   std::array<unsigned int, 1> wt_idx;
-  std::tuple<props::ScalarMultiplier, props::UseWeight> scalar_multiply_props;
+  std::tuple<props::ScalarMultiplier, props::UseWeight, nntrainer::props::SkipPrefill>
+    scalar_multiply_props;
+  bool skip_prefill = false;
 };
 
 } // namespace causallm

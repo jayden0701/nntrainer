@@ -153,3 +153,19 @@
 - Effect:
   - prefill avoids extra graph work in KV-shared tail layers and final logits post-processing,
   - decode behavior remains unchanged because `skip_prefill` applies only on prefill path.
+
+## Skip-prefill support implemented in actual layer kernels
+
+- Implemented `skip_prefill` parsing + runtime behavior in layers that Gemma4 now tags with `skip_prefill`, so tagged properties actually skip compute in incremental prefill (`from == 0`):
+  - Core NNTrainer layers:
+    - `activation`
+    - `addition`
+    - `multiply`
+  - CausalLM custom layers:
+    - `per_layer_slice`
+    - `scalar_multiply`
+    - `logit_softcapping`
+- Behavior is aligned with existing FC/MHA/RMS skip-prefill semantics:
+  - when `skip_prefill=true` and incremental prefill is running, the layer returns early,
+  - decode-step incremental path remains unchanged.
+- This fixes the previous gap where Gemma4 graph nodes were tagged with `skip_prefill` but several layer implementations did not consume that property, so computation was still executed.
