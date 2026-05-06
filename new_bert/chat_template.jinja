@@ -1,0 +1,7 @@
+{{- bos_token }}{%- if messages[0]['role'] | lower == 'system' %}{%- else %}{{- '<|turn_start|>System
+<|turn_end|>
+' }}{%- endif %}{% for message in messages %}{{- '<|turn_start|>' + message['role'] | capitalize + '
+' }}{% if message['content'] is string %}{{ message['content'] | trim }}{% else %}{% for content in message['content'] %}{% if 'text' in content %}{{ content['text'] }}{%- elif content['type'] == 'image' %}{{- '<|image_start|><|image|><|image_end|>' }}{% endif %}{% endfor %}{% endif %}{{'<|turn_end|>' }}{%if not loop.last %}{{ '
+' }}{% endif %}{% endfor %}{%- if add_generation_prompt and messages[-1]['role'] | lower != 'assistant' %}{{- '
+<|turn_start|>Assistant
+' }}{%- endif %}

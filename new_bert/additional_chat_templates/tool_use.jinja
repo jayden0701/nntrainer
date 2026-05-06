@@ -1,0 +1,28 @@
+{{- bos_token -}} {{- "<|turn_start|>System
+" -}} {%- if messages[0]["role"] | lower == "system" -%} {%- if messages[0]["content"] is string -%} {{- messages[0]["content"] | trim + "
+" -}} {%- else -%} {%- for content in messages[0]["content"] -%} {%- if "text" in content -%} {{- content["text"] | trim + "
+" -}} {%- endif -%} {%- endfor -%} {%- endif -%} {%- set messages = messages[1:] -%} {%- endif -%} {{- "You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools:
+<tools>
+" -}} {%- for tool in tools -%} {%- if tool.function is defined -%} {%- set tool = tool.function -%} {%- endif -%} {{- "{\"type\": \"function\", \"function\": " + tool | tojson + "}" -}} {%- if not loop.last -%} {{- "
+" -}} {%- endif -%} {%- endfor -%} {{- "
+</tools>
+Use the following pydantic model json schema for each tool call you will make: {\"properties\": {\"name\": {\"title\": \"Name\", \"type\": \"string\"}, \"arguments\": {\"title\": \"Arguments\", \"type\": \"object\"}}, \"required\": [\"name\", \"arguments\"], \"title\": \"FunctionCall\", \"type\": \"object\"}
+For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
+<tool_call>
+{\"arguments\": <args-dict>, \"name\": <function-name>}
+</tool_call><|turn_end|>
+" -}} {%- for message in messages -%} {%- if message.role == "user" or message.role == "system" or message.role == "assistant" and message.tool_calls is not defined -%} {{- "<|turn_start|>" + message.role | capitalize + "
+" -}} {%- if message["content"] is string -%} {{- message["content"] | trim -}} {%- else -%} {%- for content in message["content"] -%} {%- if "text" in content -%} {{- content["text"] -}} {%- endif -%} {%- endfor -%} {%- endif -%} {{- "<|turn_end|>" + "
+" -}} {%- elif message.role == "assistant" -%} {{- "<|turn_start|>" + message.role | capitalize -}} {%- for tool_call in message.tool_calls -%} {{- "
+<tool_call>
+" -}} {%- if tool_call.function is defined -%} {%- set tool_call = tool_call.function -%} {%- endif -%} {{- "{\"name\": \"" + tool_call.name + "\"" -}} {%- if tool_call.arguments is defined -%} {{- ", \"arguments\": " -}} {%- if tool_call.arguments is string -%} {{- tool_call.arguments -}} {%- else -%} {{- tool_call.arguments | tojson -}} {%- endif -%} {%- endif -%} {{- "}
+</tool_call>" -}} {%- endfor -%} {{- "<|turn_end|>
+" -}} {%- elif message.role == "tool" -%} {%- if loop.previtem and loop.previtem.role != "tool" -%} {{- "<|turn_start|>Tool
+" -}} {%- endif -%} {%- if message.content is iterable and (message.content is not string and message.content is not mapping) -%} {%- for t in message.content -%} {{- "<tool_response>
+" + t | tojson + "
+</tool_response>" -}} {%- endfor -%} {%- else -%} {{- "<tool_response>
+" + message.content | tojson + "
+</tool_response>" -}} {%- endif -%} {%- if not loop.last and loop.nextitem.role != "tool" -%} {{- "<|turn_end|>
+" -}} {%- elif loop.last -%} {{- "<|turn_end|>
+" -}} {%- endif -%} {%- endif -%} {%- endfor -%} {%- if add_generation_prompt -%} {{- "<|turn_start|>Assistant
+" -}} {%- endif -%}
