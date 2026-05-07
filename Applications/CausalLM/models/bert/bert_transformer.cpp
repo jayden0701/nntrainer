@@ -16,6 +16,9 @@
 #include <model.h>
 
 #include <app_context.h>
+#include <algorithm>
+#include <embedding_pooling_layer.h>
+#include <engine.h>
 
 namespace causallm {
 
@@ -60,6 +63,19 @@ json &BertTransformer::sanitizeConfig(json &cfg) {
 void BertTransformer::setupParameters(json &cfg, json &generation_cfg,
                                       json &nntr_cfg) {
   Transformer::setupParameters(cfg, generation_cfg, nntr_cfg);
+  TYPE_VOCAB_SIZE = cfg.contains("type_vocab_size")
+                      ? cfg["type_vocab_size"].get<unsigned int>()
+                      : 2;
+  HIDDEN_DROPOUT_PROB = cfg.contains("hidden_dropout_prob")
+                          ? cfg["hidden_dropout_prob"].get<float>()
+                          : 0.1f;
+  USE_SEQUENCE_CLASSIFIER =
+    cfg.contains("architectures") &&
+    std::find(cfg["architectures"].begin(), cfg["architectures"].end(),
+              "BertForSequenceClassification") != cfg["architectures"].end();
+  NUM_CLASSES = cfg.contains("num_classes")
+                  ? cfg["num_classes"].get<unsigned int>()
+                  : (cfg.contains("num_labels") ? cfg["num_labels"].get<unsigned int>() : 0);
 }
 
 void BertTransformer::constructModel() {
@@ -127,6 +143,40 @@ void BertTransformer::constructModel() {
       block = createTransformerDecoderBlock(i, "layer" + std::to_string(i - 1) +
                                                  "_ffn_norm");
     layers.insert(layers.end(), block.begin(), block.end());
+  }
+
+  if (USE_SEQUENCE_CLASSIFIER && NUM_CLASSES > 0) {
+    layers.push_back(createLayer(
+      "embedding_pooling",
+      {withKey("name", "cls_pooling"),
+       withKey("word_embedding_dimension", DIM),
+       withKey("pooling_mode_mean_tokens", "true"),
+       withKey("input_layers",
+               "layer" + std::to_string(NUM_LAYERS - 1) + "_ffn_norm")}));
+
+    layers.push_back(createLayer(
+      "fully_connected",
+      {withKey("name", "bert_pooler"), withKey("unit", DIM),
+       withKey("disable_bias", "false"), withKey("input_layers", "cls_pooling"),
+       withKey("weight_initializer", "ones")}));
+
+    layers.push_back(
+      createLayer("activation", {withKey("name", "bert_pooler_act"),
+                                 withKey("activation", "tanh"),
+                                 withKey("input_layers", "bert_pooler")}));
+
+    layers.push_back(createLayer("dropout",
+                                 {withKey("name", "bert_classifier_dropout"),
+                                  withKey("rate", HIDDEN_DROPOUT_PROB),
+                                  withKey("input_layers",
+                                          "bert_pooler_act")}));
+
+    layers.push_back(createLayer(
+      "fully_connected",
+      {withKey("name", "output_of_classifier"), withKey("unit", NUM_CLASSES),
+       withKey("disable_bias", "false"),
+       withKey("input_layers", "bert_classifier_dropout"),
+       withKey("weight_initializer", "ones")}));
   }
 
   for (auto &layer : layers) {
@@ -304,6 +354,18 @@ void BertTransformer::run(const WSTR prompt, bool do_sample,
 
 void BertTransformer::registerCustomLayers() {
   Transformer::registerCustomLayers();
+
+  const auto &ct_engine = nntrainer::Engine::Global();
+  const auto app_context =
+    static_cast<nntrainer::AppContext *>(ct_engine.getRegisteredContext("cpu"));
+
+  try {
+    app_context->registerFactory(
+      nntrainer::createLayer<causallm::EmbeddingPoolingLayer>);
+  } catch (std::invalid_argument &e) {
+    std::cerr << "failed to register factory, reason: " << e.what()
+              << std::endl;
+  }
 }
 
 } // namespace causallm

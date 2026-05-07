@@ -83,6 +83,9 @@ protected:
    * @brief Type-vocab size for token_type_ids (BERT default: 2)
    */
   unsigned int TYPE_VOCAB_SIZE = 2;
+  bool USE_SEQUENCE_CLASSIFIER = false;
+  unsigned int NUM_CLASSES = 0;
+  float HIDDEN_DROPOUT_PROB = 0.1f;
 
 public:
   /**
