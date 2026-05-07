@@ -110,9 +110,8 @@ public:
 /**
  * @brief Embedding Pooling Layer
  * @note This layer corresponds to sentence_transformers.models.Pooling.
- *       Currently, only pooling_mode_lasttoken with include_prompt is fully
- * implemented. Other pooling modes are defined as properties but their logic is
- * not yet implemented.
+ *       Currently supports pooling_mode_cls_token, pooling_mode_lasttoken, and
+ *       pooling_mode_mean_tokens.
  */
 class EmbeddingPoolingLayer : public nntrainer::LayerImpl {
 public:

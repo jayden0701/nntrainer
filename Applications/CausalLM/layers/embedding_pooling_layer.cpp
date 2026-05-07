@@ -60,9 +60,10 @@ void EmbeddingPoolingLayer::finalize(nntrainer::InitLayerContext &context) {
   bool mode_weighted_mean =
     std::get<props::PoolingModeWeightedMeanTokens>(pooling_props);
 
-  if (mode_cls || mode_max || mode_mean_sqrt || mode_weighted_mean) {
+  if (mode_max || mode_mean_sqrt || mode_weighted_mean) {
     throw nntrainer::exception::not_supported(
-      "Only pooling_mode_lasttoken and pooling_mode_mean_tokens are currently "
+      "Only pooling_mode_cls_token, pooling_mode_lasttoken and "
+      "pooling_mode_mean_tokens are currently "
       "supported in EmbeddingPoolingLayer");
   }
 }
@@ -83,9 +84,18 @@ void EmbeddingPoolingLayer::forwarding(nntrainer::RunLayerContext &context,
   unsigned int dim = input.width();
 
   bool mode_lasttoken = std::get<props::PoolingModeLastToken>(pooling_props);
+  bool mode_cls = std::get<props::PoolingModeClsToken>(pooling_props);
   bool mode_mean = std::get<props::PoolingModeMeanTokens>(pooling_props);
 
-  if (mode_lasttoken) {
+  if (mode_cls) {
+    for (unsigned int b = 0; b < batch; ++b) {
+      nntrainer::Tensor source =
+        input.getSharedDataTensor({1, 1, 1, dim}, b * seq_len * dim);
+      nntrainer::Tensor dest =
+        output.getSharedDataTensor({1, 1, 1, dim}, b * dim);
+      dest.copyData(source);
+    }
+  } else if (mode_lasttoken) {
     for (unsigned int b = 0; b < batch; ++b) {
       // Last token index = seq_len - 1
       nntrainer::Tensor source = input.getSharedDataTensor(
@@ -121,8 +131,18 @@ void EmbeddingPoolingLayer::incremental_forwarding(
   size_t feature_len = input.getDim().getFeatureLen(); // height * width
 
   bool mode_lasttoken = std::get<props::PoolingModeLastToken>(pooling_props);
+  bool mode_cls = std::get<props::PoolingModeClsToken>(pooling_props);
 
-  if (mode_lasttoken) {
+  if (mode_cls) {
+    for (unsigned int b = 0; b < batch; ++b) {
+      size_t offset = static_cast<size_t>(b) * feature_len;
+      nntrainer::Tensor source =
+        input.getSharedDataTensor({1, 1, 1, dim}, offset);
+      nntrainer::Tensor dest =
+        output.getSharedDataTensor({1, 1, 1, dim}, b * dim);
+      dest.copyData(source);
+    }
+  } else if (mode_lasttoken) {
     for (unsigned int b = 0; b < batch; ++b) {
       // Use feature_len for batch stride
       // The last token processed is at index `to-1` in the absolute sequence.

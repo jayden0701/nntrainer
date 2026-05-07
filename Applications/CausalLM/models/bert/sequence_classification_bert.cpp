@@ -35,7 +35,7 @@ void SequenceClassificationBert::constructModel() {
   model->addLayer(createLayer(
     "embedding_pooling",
     {withKey("name", "cls_pooling"), withKey("word_embedding_dimension", DIM),
-     withKey("pooling_mode_mean_tokens", "true"),
+     withKey("pooling_mode_cls_token", "true"),
      withKey("input_layers", "layer" + std::to_string(NUM_LAYERS - 1) +
                                "_ffn_norm")}));
 
