@@ -42,6 +42,7 @@
 #include "qwen3_embedding.h"
 #include "qwen3_moe_causallm.h"
 #include "qwen3_slim_moe_causallm.h"
+#include "sequence_classification_bert.h"
 #include <models/gemma3/function.h>
 #include <sys/resource.h>
 
@@ -123,6 +124,8 @@ std::string resolve_architecture(std::string model_type,
       return "Qwen2Embedding";
     } else if (architecture == "BertForMaskedLM") {
       return "MultilingualTinyBert";
+    } else if (architecture == "BertForSequenceClassification") {
+      return "BertForSequenceClassification";
     } else {
       throw std::invalid_argument(
         "Unsupported architecture for embedding model: " + architecture);
@@ -203,6 +206,12 @@ int main(int argc, char *argv[]) {
   causallm::Factory::Instance().registerModel(
     "MultilingualTinyBert", [](json cfg, json generation_cfg, json nntr_cfg) {
       return std::make_unique<causallm::MultilingualTinyBert>(
+        cfg, generation_cfg, nntr_cfg);
+    });
+  causallm::Factory::Instance().registerModel(
+    "BertForSequenceClassification",
+    [](json cfg, json generation_cfg, json nntr_cfg) {
+      return std::make_unique<causallm::SequenceClassificationBert>(
         cfg, generation_cfg, nntr_cfg);
     });
 

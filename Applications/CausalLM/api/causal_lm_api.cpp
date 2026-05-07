@@ -31,6 +31,7 @@
 #include "qwen3_causallm.h"
 #include "qwen3_moe_causallm.h"
 #include "qwen3_slim_moe_causallm.h"
+#include "sequence_classification_bert.h"
 #include <factory.h>
 #include <fstream>
 #include <sys/stat.h>
@@ -116,6 +117,12 @@ static void register_models() {
       "Gemma3ForCausalLM", [](json cfg, json generation_cfg, json nntr_cfg) {
         return std::make_unique<causallm::Gemma3CausalLM>(cfg, generation_cfg,
                                                           nntr_cfg);
+      });
+    causallm::Factory::Instance().registerModel(
+      "BertForSequenceClassification",
+      [](json cfg, json generation_cfg, json nntr_cfg) {
+        return std::make_unique<causallm::SequenceClassificationBert>(
+          cfg, generation_cfg, nntr_cfg);
       });
 
     // Register built-in configurations

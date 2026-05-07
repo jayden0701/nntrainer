@@ -93,6 +93,7 @@ LOCAL_SRC_FILES := \
     ../models/gemma3/function.cpp \
     ../models/bert/bert_transformer.cpp \
     ../models/bert/multilingual_tinybert_16mb.cpp \
+    ../models/bert/sequence_classification_bert.cpp \
 
 LOCAL_SHARED_LIBRARIES := nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := tokenizers_c
@@ -219,6 +220,7 @@ LOCAL_SRC_FILES := ../quantize.cpp \
     ../models/gemma3/embedding_gemma.cpp \
     ../models/bert/bert_transformer.cpp \
     ../models/bert/multilingual_tinybert_16mb.cpp \
+    ../models/bert/sequence_classification_bert.cpp \
 
 LOCAL_SHARED_LIBRARIES := nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := tokenizers_c

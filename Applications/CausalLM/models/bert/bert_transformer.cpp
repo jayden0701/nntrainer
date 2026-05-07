@@ -60,6 +60,9 @@ json &BertTransformer::sanitizeConfig(json &cfg) {
 void BertTransformer::setupParameters(json &cfg, json &generation_cfg,
                                       json &nntr_cfg) {
   Transformer::setupParameters(cfg, generation_cfg, nntr_cfg);
+  TYPE_VOCAB_SIZE = cfg.contains("type_vocab_size")
+                      ? cfg["type_vocab_size"].get<unsigned int>()
+                      : 2;
 }
 
 void BertTransformer::constructModel() {
