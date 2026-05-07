@@ -3,7 +3,6 @@
 #include "sequence_classification_bert.h"
 
 #include <app_context.h>
-#include <chrono>
 #include <codecvt>
 #include <embedding_pooling_layer.h>
 #include <engine.h>
