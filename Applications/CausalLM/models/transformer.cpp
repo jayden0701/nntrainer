@@ -174,6 +174,12 @@ void Transformer::setupParameters(json &cfg, json &generation_cfg,
   } else if (cfg.contains("rope_parameters") &&
              cfg["rope_parameters"].contains("rope_theta")) {
     ROPE_THETA = cfg["rope_parameters"]["rope_theta"].get<unsigned int>();
+  } else if (cfg.contains("rope_parameters") &&
+             cfg["rope_parameters"].contains("sliding_attention")) {
+    json &rope_cfg = cfg["rope_parameters"]["sliding_attention"];
+    ROPE_THETA = rope_cfg.value("rope_theta", 10000);
+  } else {
+    ROPE_THETA = cfg.value("rope_theta", 10000);
   }
   TIE_WORD_EMBEDDINGS = cfg["tie_word_embeddings"].get<bool>();
   NORM_EPS = cfg["rms_norm_eps"];
@@ -210,7 +216,6 @@ void Transformer::initialize() {
   }
 
   is_initialized = true;
-
 #ifdef DEBUG
   model->summarize(std::cout, ML_TRAIN_SUMMARY_MODEL);
 #endif
@@ -255,7 +260,6 @@ std::pair<Tensor, Tensor> Transformer::constructModel() {
  * @brief Load model weights from a binary nntrainer model file.
  */
 void Transformer::load_weight(const std::string &weight_path) {
-
   if (!is_initialized) {
     throw std::runtime_error(
       "Transformer model is not initialized. Please call "

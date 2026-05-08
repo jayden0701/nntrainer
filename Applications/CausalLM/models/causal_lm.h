@@ -146,6 +146,7 @@ protected:
   std::string PRE_COMPUTED_CACHE_PATH;
   bool SAVE_KVCACHE;
   bool USE_KVCACHE;
+  bool SKIP_PREFILL;
   unsigned int global_token_len;
 
   std::mt19937 rng; /**< Random Number Gen */
