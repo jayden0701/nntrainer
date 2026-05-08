@@ -141,3 +141,31 @@
 - Scope/intent:
   - keeps decode/generation semantics unchanged (`skip_prefill` only triggers when `from == 0`),
   - avoids unnecessary prefill-only compute where logits are not consumed and shared-tail layers are not needed for KV cache construction.
+
+## Gemma4 skip-prefill expansion for non-FC layers + final softcap
+
+- Expanded Gemma4 `skip_prefill` tagging in KV-shared tail layers beyond FC/RMSNorm/attention blocks to also skip inexpensive-but-unnecessary ops that are only used inside skipped shared-tail decode paths:
+  - residual additions in decoder block (`post_attention`, `decoder_output_base`, `decoder_output`)
+  - per-layer-input path ops (`per_layer_slice`, `activation`, `multiply`)
+  - layer output scaling (`scalar_multiply`)
+  - MLP activation/multiply (`ffn_gate_gelu`, `ffn_geglu`)
+- Added `skip_prefill` to Gemma4 final `logit_softcapping` layer so output softcap is skipped together with LM head during prefill.
+- Effect:
+  - prefill avoids extra graph work in KV-shared tail layers and final logits post-processing,
+  - decode behavior remains unchanged because `skip_prefill` applies only on prefill path.
+
+## Skip-prefill support implemented in actual layer kernels
+
+- Implemented `skip_prefill` parsing + runtime behavior in layers that Gemma4 now tags with `skip_prefill`, so tagged properties actually skip compute in incremental prefill (`from == 0`):
+  - Core NNTrainer layers:
+    - `activation`
+    - `addition`
+    - `multiply`
+  - CausalLM custom layers:
+    - `per_layer_slice`
+    - `scalar_multiply`
+    - `logit_softcapping`
+- Behavior is aligned with existing FC/MHA/RMS skip-prefill semantics:
+  - when `skip_prefill=true` and incremental prefill is running, the layer returns early,
+  - decode-step incremental path remains unchanged.
+- This fixes the previous gap where Gemma4 graph nodes were tagged with `skip_prefill` but several layer implementations did not consume that property, so computation was still executed.

@@ -32,7 +32,8 @@
 
 namespace nntrainer {
 ActivationLayer::ActivationLayer() :
-  Layer(), activation_props(new PropTypes(props::Activation())) {
+  Layer(),
+  activation_props(new PropTypes(props::Activation(), props::SkipPrefill())) {
   acti_func.setActiFunc(ActivationType::ACT_NONE);
 }
 
@@ -40,6 +41,8 @@ static constexpr size_t SINGLE_INOUT_IDX = 0;
 
 void ActivationLayer::finalize(InitLayerContext &context) {
   auto &act = std::get<props::Activation>(*activation_props);
+  if (!std::get<props::SkipPrefill>(*activation_props).empty())
+    skip_prefill = std::get<props::SkipPrefill>(*activation_props).get();
   NNTR_THROW_IF(act.empty(), std::invalid_argument)
     << "activation has not been set!";
   if (context.getActivationDataType() == TensorDim::DataType::FP16) {
@@ -77,6 +80,10 @@ void ActivationLayer::incremental_forwarding(RunLayerContext &context,
                                              unsigned int from,
                                              unsigned int to, bool training) {
   (void)training;
+  bool is_prefill = !from;
+  if (skip_prefill && is_prefill)
+    return;
+
   Tensor &hidden_ = context.getOutput(SINGLE_INOUT_IDX);
   Tensor &input_ = context.getInput(SINGLE_INOUT_IDX);
 

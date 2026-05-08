@@ -27,6 +27,7 @@
 #include <utility>
 
 #include <causallm_common_properties.h>
+#include <common_properties.h>
 #include <tensor.h>
 
 namespace causallm {
@@ -110,13 +111,15 @@ public:
 
 private:
   using PropTypes = std::tuple<props::LogitSoftcapActivation, props::ApplyRows,
-                               props::SoftcapValue>;
+                               props::SoftcapValue,
+                               nntrainer::props::SkipPrefill>;
 
   void applyOnRange(nntrainer::RunLayerContext &context, unsigned int from,
                     unsigned int to);
 
   PropTypes logit_softcap_props;
   nntrainer::ActiFunc acti_func;
+  bool skip_prefill = false;
 };
 
 } // namespace causallm

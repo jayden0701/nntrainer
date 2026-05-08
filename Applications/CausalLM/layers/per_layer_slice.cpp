@@ -12,6 +12,8 @@ static constexpr size_t SINGLE_INOUT_IDX = 0;
 void PerLayerSliceLayer::finalize(nntrainer::InitLayerContext &context) {
   auto dims = context.getInputDimensions();
   auto in_dim = dims[0];
+  if (!std::get<nntrainer::props::SkipPrefill>(slice_props).empty())
+    skip_prefill = std::get<nntrainer::props::SkipPrefill>(slice_props).get();
 
   unsigned int feature_size = std::get<props::FeatureSize>(slice_props).get();
   NNTR_THROW_IF(feature_size == 0, std::invalid_argument)
@@ -31,6 +33,10 @@ void PerLayerSliceLayer::incremental_forwarding(nntrainer::RunLayerContext &cont
                                                 unsigned int from,
                                                 unsigned int to,
                                                 bool training) {
+  bool is_prefill = !from;
+  if (skip_prefill && is_prefill)
+    return;
+
   auto &in = context.getInput(SINGLE_INOUT_IDX);
   auto &out = context.getOutput(SINGLE_INOUT_IDX);
 
