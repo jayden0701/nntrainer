@@ -34,6 +34,9 @@
 namespace causallm {
 
 namespace props {
+/**
+ * @brief Layer index used to select a per-layer tensor slice.
+ */
 class LayerIndex : public nntrainer::Property<unsigned int> {
 public:
   static constexpr const char *key = "layer_index";
@@ -42,6 +45,9 @@ public:
 };
 } // namespace props
 
+/**
+ * @brief Layer that selects one layer-specific chunk from packed input.
+ */
 WIN_EXPORT class PerLayerSliceLayer final : public nntrainer::Layer {
 public:
   WIN_EXPORT PerLayerSliceLayer() :

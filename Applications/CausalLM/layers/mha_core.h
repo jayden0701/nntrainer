@@ -418,6 +418,9 @@ private:
   unsigned int incremental_step_size = 0;
 
   /****************** ROTARY EMBEDDING *****************/
+  /**
+   * @brief FP32 rotary embedding cache entries.
+   */
   struct RopeCacheFP32 {
     std::vector<std::vector<float>> cos;
     std::vector<std::vector<float>> sin;
@@ -426,6 +429,9 @@ private:
     rope_cache_fp32;
   std::shared_ptr<RopeCacheFP32> freqs_fp32 = nullptr;
 #ifdef ENABLE_FP16
+  /**
+   * @brief FP16 rotary embedding cache entries.
+   */
   struct RopeCacheFP16 {
     std::vector<std::vector<_FP16>> cos;
     std::vector<std::vector<_FP16>> sin;
