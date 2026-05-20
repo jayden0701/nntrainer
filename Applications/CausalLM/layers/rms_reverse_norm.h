@@ -75,11 +75,10 @@ public:
 
 }; // namespace props
 
-
-
 /**
  * @brief A ReverseRMS normalization layer.
- *        Order of operations: input * weight → normalize → multiply by out_scale
+ *        Order of operations: input * weight → normalize → multiply by
+ * out_scale
  *
  */
 WIN_EXPORT class RMSReverseNormLayer final : public nntrainer::Layer {
@@ -158,12 +157,12 @@ public:
 private:
   std::array<unsigned int, 2> wt_idx;
   std::tuple<props::RMS_REVERSE_NORM_WEIGHT_INIT,
-              props::RMS_REVERSE_NORM_OUTSCALE_INIT,
-              nntrainer::props::Epsilon, nntrainer::props::SkipPrefill>
+             props::RMS_REVERSE_NORM_OUTSCALE_INIT, nntrainer::props::Epsilon,
+             nntrainer::props::SkipPrefill>
     rms_props;
   bool skip_prefill = false;
 };
 
-} // namespace custom
+} // namespace causallm
 
 #endif /* RMS_REVERSE_NORM_LAYER_H__ */

@@ -219,9 +219,10 @@ std::string generateOutputBinName(const std::string &original_bin,
                    embd_clean.end());
 
   if (embd_clean == fc_clean) {
-    return base + "_" + fc_clean + "_"+ target_isa+".bin";
+    return base + "_" + fc_clean + "_" + target_isa + ".bin";
   }
-  return base + "_" + fc_clean + "_embd" + embd_clean +  "_"+ target_isa+".bin";
+  return base + "_" + fc_clean + "_embd" + embd_clean + "_" + target_isa +
+         ".bin";
 }
 
 /**
@@ -244,6 +245,11 @@ std::string resolve_architecture(std::string model_type,
       throw std::invalid_argument(
         "Unsupported architecture for embedding model: " + architecture);
   }
+
+  if (architecture == "Gemma4ForConditionalGeneration") {
+    return "Gemma4ForCausalLM";
+  }
+
   return architecture;
 }
 
@@ -451,18 +457,16 @@ buildLayerDtypeMap(int num_layers, DataType fc_dtype, DataType embd_dtype,
       dtype_map[prefix + "_ffn_gate_down"] = fc_dtype;
       dtype_map[prefix + "_ffn_linear_up"] = fc_dtype;
 
-
       // FFN FC layers - version3
       dtype_map[prefix + "_ffn_gate"] = fc_dtype;
       dtype_map[prefix + "_ffn_up"] = fc_dtype;
       dtype_map[prefix + "_ffn_down"] = fc_dtype;
 
-
-
-
       dtype_map[prefix + "_ffn_output"] = fc_dtype;
 
       // for PLE
+      dtype_map[prefix + "_per_layer_input_gate"] = fc_dtype;
+      dtype_map[prefix + "_per_layer_input_proj"] = fc_dtype;
       if (embd_dtype != DataType::FP32 && embd_dtype != DataType::NONE) {
         dtype_map[prefix + "_ple"] = fc_dtype;
       }
@@ -634,8 +638,9 @@ int main(int argc, char *argv[]) {
     // Determine output bin filename
     std::string original_bin = nntr_cfg["model_file_name"].get<std::string>();
     if (output_bin_name.empty()) {
-      output_bin_name = generateOutputBinName(
-        original_bin, dataTypeToStr(fc_dtype), dataTypeToStr(embd_dtype), isa_str);
+      output_bin_name =
+        generateOutputBinName(original_bin, dataTypeToStr(fc_dtype),
+                              dataTypeToStr(embd_dtype), isa_str);
     }
 
     std::string src_weight_path = model_path + "/" + original_bin;

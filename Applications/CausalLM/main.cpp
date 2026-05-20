@@ -186,6 +186,10 @@ std::string resolve_architecture(std::string model_type,
     return "TimmViT";
   }
 
+  if (architecture == "Gemma4ForConditionalGeneration") {
+    return "Gemma4ForCausalLM";
+  }
+
   return architecture;
 }
 

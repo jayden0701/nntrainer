@@ -65,34 +65,40 @@ protected:
   bool ENABLE_SKIP_PREFILL_OPT = false;
 
   bool isKVSharedLayer(int layer_id) const;
+  bool isSlidingAttentionLayer(int layer_id) const;
+  unsigned int getAttentionHeadDim(int layer_id) const;
+  unsigned int getKVHeadCount(int layer_id) const;
+  unsigned int getKVCacheWidth(int layer_id) const;
   void appendSkipPrefillIfNeeded(std::vector<std::string> &props,
                                  bool enable_skip) const;
+  std::pair<Tensor, Tensor>
+  createGemma4KVCachePlaceholders(const int layer_id, unsigned int kv_width);
 
 public:
-  std::vector<LayerHandle> createAttention(const int layer_id, int seq_len,
-                                           int n_heads, int head_dim,
-                                           std::string query_name,
-                                           std::string key_name,
-                                           std::string value_name) override;
-  std::vector<LayerHandle> createSharedAttention(const int layer_id,
-                                                 const int shared_kv_layer_id,
-                                                 int seq_len, int n_heads,
-                                                 int head_dim,
-                                                 std::string query_name);
+  Tensor createAttention(const int layer_id, int seq_len, int n_heads,
+                         int head_dim, Tensor query, Tensor key,
+                         Tensor value) override;
+  Tensor createSharedAttention(const int layer_id, const int shared_kv_layer_id,
+                               int seq_len, int n_heads, int head_dim,
+                               Tensor query);
 
-  std::vector<LayerHandle>
-  createTransformerDecoderBlock(const int layer_id, std::string input_name);
+  Tensor createTransformerDecoderBlock(const int layer_id,
+                                       Tensor input) override;
 
   void setupParameters(json &cfg, json &generation_cfg,
                        json &nntr_cfg) override;
 
-  void constructModel() override;
+  std::pair<Tensor, Tensor> constructModel() override;
 
-  std::vector<LayerHandle> createMlp(const int layer_id, int dim,
-                                     int hidden_dim,
-                                     std::string input_name) override;
+  Tensor createMlp(const int layer_id, int dim, int hidden_dim,
+                   Tensor input) override;
 
   void registerCustomLayers() override;
+
+protected:
+  Tensor per_layer_input;
+  std::vector<Tensor> layer_k_norms;
+  std::vector<Tensor> layer_v_norms;
 };
 
 /**
@@ -105,7 +111,8 @@ public:
 
   Gemma4CausalLM(json &cfg, json &generation_cfg, json &nntr_cfg) :
     Transformer(sanitizeConfig(cfg),
-                sanitizeGenerationConfig(generation_cfg, cfg), nntr_cfg),
+                sanitizeGenerationConfig(generation_cfg, cfg), nntr_cfg,
+                ModelType::CAUSALLM),
     CausalLM(sanitizeConfig(cfg), sanitizeGenerationConfig(generation_cfg, cfg),
              nntr_cfg),
     Gemma4Transformer(sanitizeConfig(cfg),
@@ -120,9 +127,12 @@ public:
     Gemma4Transformer::setupParameters(cfg, generation_cfg, nntr_cfg);
   }
 
-  void constructModel() override;
+  std::pair<Tensor, Tensor> constructModel() override;
 
   void registerCustomLayers() override;
+
+protected:
+  void allocateAndBindKVCache() override;
 };
 } // namespace causallm
 

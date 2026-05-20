@@ -139,7 +139,8 @@ void Transformer::setupParameters(json &cfg, json &generation_cfg,
 
   if (cfg.contains("is_causal")) {
     IS_CAUSAL = cfg["is_causal"].get<bool>();
-  } else if (cfg.contains("use_bidirectional_attention")) {
+  } else if (cfg.contains("use_bidirectional_attention") &&
+             !cfg["use_bidirectional_attention"].is_null()) {
     IS_CAUSAL = !cfg["use_bidirectional_attention"].get<bool>();
   } else if (nntr_cfg.contains("model_type") &&
              strToModelType(nntr_cfg["model_type"].get<std::string>()) ==

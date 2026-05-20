@@ -31,6 +31,7 @@
 #endif
 
 #include <base_properties.h>
+#include <common_properties.h>
 #include <tensor.h>
 #include <utility>
 

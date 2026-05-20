@@ -530,9 +530,8 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
     const unsigned int prefill_to = prefill_from + input_len - 1;
     setKVCachePosition(prefill_from);
-    output = model->incremental_inference(BATCH_SIZE, input, label,
-                                          init_len - 1, prefill_from,
-                                          prefill_to, false);
+    output = model->incremental_inference(
+      BATCH_SIZE, input, label, init_len - 1, prefill_from, prefill_to, false);
 
     for (unsigned int b = 0; b < BATCH_SIZE; ++b)
       id_list.push_back(skipped_token);

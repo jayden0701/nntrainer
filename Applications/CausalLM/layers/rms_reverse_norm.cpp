@@ -32,7 +32,8 @@ void RMSReverseNormLayer::finalize(nntrainer::InitLayerContext &context) {
   auto outscale_init = nntrainer::props::InitializerInfo::Enum::ONES;
 
   if (!std::get<props::RMS_REVERSE_NORM_WEIGHT_INIT>(rms_props).empty()) {
-    weight_init = std::get<props::RMS_REVERSE_NORM_WEIGHT_INIT>(rms_props).get();
+    weight_init =
+      std::get<props::RMS_REVERSE_NORM_WEIGHT_INIT>(rms_props).get();
   }
 
   if (!std::get<props::RMS_REVERSE_NORM_OUTSCALE_INIT>(rms_props).empty()) {
@@ -44,7 +45,8 @@ void RMSReverseNormLayer::finalize(nntrainer::InitLayerContext &context) {
     skip_prefill = std::get<nntrainer::props::SkipPrefill>(rms_props).get();
   }
 
-  // Request weight parameter (learnable multiplicative weight applied BEFORE norm)
+  // Request weight parameter (learnable multiplicative weight applied BEFORE
+  // norm)
   nntrainer::TensorDim weight_dim(
     1, 1, 1, dim[0].width(),
     nntrainer::TensorDim::TensorType(context.getFormat(),
@@ -64,7 +66,7 @@ void RMSReverseNormLayer::finalize(nntrainer::InitLayerContext &context) {
 }
 
 void RMSReverseNormLayer::forwarding(nntrainer::RunLayerContext &context,
-                                           bool training) {}
+                                     bool training) {}
 
 void RMSReverseNormLayer::incremental_forwarding(
   nntrainer::RunLayerContext &context, unsigned int from, unsigned int to,
@@ -99,10 +101,7 @@ void RMSReverseNormLayer::incremental_forwarding(
   out_step_dim.batch(1);
   out_step_dim.height(to - from);
 
-
   unsigned int b_size = in_dim.batch();
-
- 
 
   for (unsigned int b = 0; b < b_size; ++b) {
     nntrainer::Tensor in_step =
@@ -183,10 +182,10 @@ void RMSReverseNormLayer::updateTensorsByInputDimensions(
   context.updateOutput(SINGLE_INOUT_IDX, output_dim);
 }
 
-void RMSReverseNormLayer::calcDerivative(
-  nntrainer::RunLayerContext &context) {
+void RMSReverseNormLayer::calcDerivative(nntrainer::RunLayerContext &context) {
   // Training not implemented yet
-  // std::throw_with_nested(std::runtime_error("Training is not supported yet."));
+  // std::throw_with_nested(std::runtime_error("Training is not supported
+  // yet."));
 }
 
 #ifdef PLUGGABLE
@@ -205,4 +204,4 @@ nntrainer::LayerPluggable ml_train_layer_pluggable{
 
 #endif
 
-} // namespace custom
+} // namespace causallm

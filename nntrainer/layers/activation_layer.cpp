@@ -77,8 +77,8 @@ void ActivationLayer::forwarding(RunLayerContext &context, bool training) {
 }
 
 void ActivationLayer::incremental_forwarding(RunLayerContext &context,
-                                             unsigned int from,
-                                             unsigned int to, bool training) {
+                                             unsigned int from, unsigned int to,
+                                             bool training) {
   (void)training;
   bool is_prefill = !from;
   if (skip_prefill && is_prefill)

@@ -47,7 +47,8 @@ public:
   WIN_EXPORT ReshapedRMSNormLayer() :
     Layer(),
     rms_props(props::RMS_NORM_GAMMA_INIT(), nntrainer::props::Epsilon(),
-              props::FeatureSize(), nntrainer::props::SkipPrefill(), props::UseGamma()),
+              props::FeatureSize(), nntrainer::props::SkipPrefill(),
+              props::UseGamma()),
     feature_size(0),
     use_gamma(true) {
     wt_idx.fill(std::numeric_limits<unsigned int>::max());

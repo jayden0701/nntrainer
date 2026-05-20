@@ -103,30 +103,9 @@ void LogitSoftCappingLayer::applyOnRange(nntrainer::RunLayerContext &context,
         out.getSharedDataTensor(out_chunk_dim, 0, true);
       out_chunk.copyData(in_chunk);
 
-      auto start_prefill = std::chrono::high_resolution_clock::now();
-
       in_chunk.multiply(1.0f / softcap, out_chunk);
-
-      auto finish_prefill = std::chrono::high_resolution_clock::now();
-      auto prefill_duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(finish_prefill -
-                                                              start_prefill);
-
-      start_prefill = std::chrono::high_resolution_clock::now();
-
       acti_func.run_fn(out_chunk, out_chunk);
-
-      finish_prefill = std::chrono::high_resolution_clock::now();
-      prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-        finish_prefill - start_prefill);
-
-      start_prefill = std::chrono::high_resolution_clock::now();
-
       out_chunk.multiply(softcap, out_chunk);
-
-      finish_prefill = std::chrono::high_resolution_clock::now();
-      prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-        finish_prefill - start_prefill);
     }
   }
 }
