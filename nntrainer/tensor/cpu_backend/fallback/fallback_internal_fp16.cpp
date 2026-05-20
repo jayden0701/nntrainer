@@ -497,8 +497,24 @@ template <>
 void __fallback_rms_norm_wrt_width_fp16_intrinsic(const _FP16 *__restrict X,
                                                   _FP16 *__restrict Y, size_t H,
                                                   size_t W, float epsilon) {
-  throw std::runtime_error(
-    "NYI : __fallback_rms_norm_wrt_width_fp16_intrinsic");
+  for (size_t h = 0; h < H; ++h) {
+    const _FP16 *rowX = X + h * W;
+    _FP16 *rowY = Y + h * W;
+
+    // Use FP32 accumulator to avoid overflow
+    float sum_sq = 0.F;
+    for (size_t i = 0; i < W; ++i) {
+      float fx = static_cast<float>(rowX[i]);
+      sum_sq += fx * fx;
+    }
+
+    float mean_single = sum_sq / W;
+    float scale_single = 1.F / std::sqrt(mean_single + epsilon);
+
+    for (size_t i = 0; i < W; ++i) {
+      rowY[i] = static_cast<_FP16>(static_cast<float>(rowX[i]) * scale_single);
+    }
+  }
 }
 
 template <>
