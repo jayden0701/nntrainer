@@ -859,7 +859,11 @@ void Gemma4CausalLM::allocateAndBindKVCache() {
     kv_cache.allocate(static_cast<unsigned int>(NUM_LAYERS), BATCH_SIZE,
                       static_cast<unsigned int>(MAX_SEQ_LEN), kv_widths,
                       cache_dtype);
+    kv_cache_bound = false;
   }
+
+  if (kv_cache_bound)
+    return;
 
   for (int i = 0; i < NUM_LAYERS; ++i) {
     auto &kc = kv_cache.getKeyCache(i);
@@ -900,6 +904,8 @@ void Gemma4CausalLM::allocateAndBindKVCache() {
     kp->setData(kc.getMemoryData(), kc.getOffset(), false);
     vp->setData(vc.getMemoryData(), vc.getOffset(), false);
   }
+
+  kv_cache_bound = true;
 }
 
 } // namespace causallm

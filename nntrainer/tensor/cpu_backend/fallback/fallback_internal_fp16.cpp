@@ -497,8 +497,9 @@ template <>
 void __fallback_rms_norm_wrt_width_fp16_intrinsic(const _FP16 *__restrict X,
                                                   _FP16 *__restrict Y, size_t H,
                                                   size_t W, float epsilon) {
+
   throw std::runtime_error(
-    "NYI : __fallback_rms_norm_wrt_width_fp16_intrinsic");
+    "NYI : __fallback_rms_norm_wrt_width_fp16_intrinsic with FP16 type input");
 }
 
 template <>
