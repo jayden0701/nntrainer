@@ -89,12 +89,12 @@ public:
    * @note Creates model with small dimensions for testing
    */
   static Lfm2CausalLM createTestModel();
-  
+
   /**
    * @brief Run the model with a text prompt.
    *
-   * When USE_EMBEDDING=true, tokenizes the prompt, converts tokens to
-   * embeddings via lookupEmbedding(), and delegates to run_with_embeddings().
+   * When USE_EMBEDDING=true, tokenizes the prompt, copies token embeddings
+   * directly into the prefill buffer, and delegates to run_with_embeddings().
    * When USE_EMBEDDING=false, delegates to CausalLM::run() directly.
    */
   void run(const WSTR prompt, bool do_sample = false,
@@ -119,6 +119,17 @@ public:
    * @return Embedding vector of size DIM (FP32)
    */
   std::vector<float> lookupEmbedding(unsigned int token_id);
+
+  /**
+   * @brief Decode/copy one token embedding directly into caller-owned memory.
+   *
+   * Avoids the temporary std::vector allocation used by lookupEmbedding(),
+   * which is on the autoregressive decode hot path when USE_EMBEDDING=true.
+   *
+   * @param token_id Token ID to look up
+   * @param dst Destination buffer of at least DIM floats
+   */
+  void copyEmbedding(unsigned int token_id, float *dst) const;
 
   /**
    * @brief Tokenize text using the model's tokenizer.
