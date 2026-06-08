@@ -122,6 +122,17 @@ Lfm2VlConnector::forward(const std::vector<float> &x,
   return out;
 }
 
+std::vector<float>
+Lfm2VlConnector::project(const std::vector<float> &features,
+                         unsigned int n_patches,
+                         unsigned int embed_dim,
+                         unsigned int patch_h,
+                         unsigned int patch_w) const {
+  auto unshuffled = pixelUnshuffle(features, n_patches, embed_dim, patch_h,
+                                   patch_w, factor_);
+  return forward(unshuffled, outTokens(n_patches));
+}
+
 std::vector<float> pixelUnshuffle(const std::vector<float> &features,
                                   unsigned int n_patches,
                                   unsigned int embed_dim,

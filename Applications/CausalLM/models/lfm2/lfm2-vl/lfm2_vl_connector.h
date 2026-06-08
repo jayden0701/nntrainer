@@ -88,15 +88,32 @@ public:
   std::vector<float> forward(const std::vector<float> &x,
                              unsigned int n_patches) const;
 
+  /**
+   * @brief Pixel-unshuffle raw vision features and run the MLP projection.
+   *
+   * @param features  Input: [n_patches * embed_dim] raw vision features.
+   * @param n_patches Number of input vision patches.
+   * @param embed_dim Embedding dimension per input patch.
+   * @param patch_h   Input patch grid height.
+   * @param patch_w   Input patch grid width.
+   * @return Output: [outTokens(n_patches) * out_features] floats.
+   */
+  std::vector<float> project(const std::vector<float> &features,
+                             unsigned int n_patches,
+                             unsigned int embed_dim,
+                             unsigned int patch_h,
+                             unsigned int patch_w) const;
+
   /** @brief Number of output tokens (patches after unshuffle). */
   unsigned int outTokens(unsigned int n_input_patches) const {
     unsigned int r = factor_;
     return n_input_patches / (r * r);
   }
 
-  unsigned int inFeatures()  const { return in_features_; }
+  unsigned int inFeatures() const { return in_features_; }
   unsigned int outFeatures() const { return out_features_; }
-  unsigned int hiddenSize()  const { return hidden_size_; }
+  unsigned int hiddenSize() const { return hidden_size_; }
+  unsigned int downsampleFactor() const { return factor_; }
 
 private:
   unsigned int in_features_;
