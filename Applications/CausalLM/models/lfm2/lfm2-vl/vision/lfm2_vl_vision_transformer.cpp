@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -448,6 +449,83 @@ void Lfm2VlVisionTransformer::run(const WSTR image_tensor_path, bool,
     const size_t n_out = static_cast<size_t>(BATCH_SIZE) * NUM_PATCHES * DIM;
     last_features_.assign(out_ptrs[0], out_ptrs[0] + n_out);
   }
+}
+
+multimodal_pointer
+Lfm2VlVisionTransformer::run_image(const WSTR prompt, multimodal_pointer image,
+                                   int image_height, int image_width, bool,
+                                   const WSTR, const WSTR, bool log_output) {
+  (void)prompt;
+  (void)image_height;
+  (void)image_width;
+
+  if (!is_initialized) {
+    throw std::runtime_error(
+      "Lfm2VlVisionTransformer is not initialized. Call initialize() first.");
+  }
+
+  const size_t n_elems =
+    static_cast<size_t>(BATCH_SIZE) * NUM_CHANNELS * PATCH_H * PATCH_SIZE *
+    PATCH_W * PATCH_SIZE;
+  const size_t expected_bytes = n_elems * sizeof(float);
+  if (image.first == nullptr || image.second < expected_bytes) {
+    throw std::runtime_error(
+      "Lfm2VlVisionTransformer::run_image input tensor is smaller than "
+      "expected. Need " +
+      std::to_string(expected_bytes) + " bytes.");
+  }
+
+  allocateAndBindVitKVCache();
+  vit_kv_cache_.reset();
+
+  std::vector<std::pair<std::string, float *>> cache_inputs;
+  cache_inputs.reserve(static_cast<size_t>(NUM_LAYERS) * 2);
+  for (int i = 0; i < NUM_LAYERS; ++i) {
+    cache_inputs.emplace_back(
+      "cache_k_l" + std::to_string(i),
+      reinterpret_cast<float *>(vit_kv_cache_.getKeyCache(i).getData()));
+    cache_inputs.emplace_back(
+      "cache_v_l" + std::to_string(i),
+      reinterpret_cast<float *>(vit_kv_cache_.getValueCache(i).getData()));
+  }
+  std::sort(cache_inputs.begin(), cache_inputs.end(),
+            [](const auto &lhs, const auto &rhs) {
+              return lhs.first < rhs.first;
+            });
+
+  auto *image_data = static_cast<float *>(image.first);
+  std::vector<float *> in_ptrs;
+  in_ptrs.reserve(1 + cache_inputs.size());
+  in_ptrs.push_back(image_data);
+  for (const auto &ci : cache_inputs)
+    in_ptrs.push_back(ci.second);
+
+  std::vector<float *> vit_label;
+  std::vector<float *> out_ptrs =
+    model->incremental_inference(BATCH_SIZE, in_ptrs, vit_label, NUM_PATCHES,
+                                 0, NUM_PATCHES, false);
+
+  if (out_ptrs.empty() || out_ptrs[0] == nullptr)
+    return {nullptr, 0};
+
+  const size_t n_out = static_cast<size_t>(BATCH_SIZE) * NUM_PATCHES * DIM;
+  last_features_.assign(out_ptrs[0], out_ptrs[0] + n_out);
+
+  if (log_output) {
+    std::cout << "Lfm2VlVisionTransformer features [" << NUM_PATCHES << "x"
+              << DIM << "], first 10 values: ";
+    for (int i = 0; i < 10 && i < DIM; ++i) {
+      std::cout << out_ptrs[0][i] << (i == 9 ? "" : ", ");
+    }
+    std::cout << " ..." << std::endl;
+  }
+
+  const size_t out_bytes = n_out * sizeof(float);
+  auto *features = static_cast<float *>(std::malloc(out_bytes));
+  if (features == nullptr)
+    throw std::bad_alloc();
+  std::memcpy(features, out_ptrs[0], out_bytes);
+  return {features, out_bytes};
 }
 
 } // namespace causallm

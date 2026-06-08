@@ -98,6 +98,13 @@ public:
            const WSTR system_prompt = "", const WSTR tail_prompt = "",
            bool log_output = true) override;
 
+  multimodal_pointer run_image(const WSTR prompt, multimodal_pointer image,
+                               int image_height, int image_width,
+                               bool do_sample = false,
+                               const WSTR system_prompt = "",
+                               const WSTR tail_prompt = "",
+                               bool log_output = true) override;
+
   /**
    * @brief Allocate and bind external UINT16 KV cache buffers to every
    *        mha_core placeholder created by createSelfAttention().  Must be
