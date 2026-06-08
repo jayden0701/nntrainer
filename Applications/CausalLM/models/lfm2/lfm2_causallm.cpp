@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cpu_backend.h>
+#include <cstring>
 
 #include <iostream>
 
@@ -160,19 +161,16 @@ std::pair<Tensor, Tensor> Lfm2CausalLM::constructModel() {
     // subsequent layers (attention, FC) see the correct channel/time/feature
     // layout used throughout the transformer graph.
     LayerHandle input_layer = createLayer(
-      "input",
-      {withKey("name", "input0"),
-       withKey("input_shape",
-               "1:1:" + std::to_string(INIT_SEQ_LEN) + ":" +
-                 std::to_string(DIM))});
+      "input", {withKey("name", "input0"),
+                withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN) +
+                                         ":" + std::to_string(DIM))});
     model_input = input_layer(Tensor());
     x = model_input;
   } else {
     // Standard LM path: input is a sequence of token IDs.
     LayerHandle input_layer = createLayer(
-      "input",
-      {withKey("name", "input0"),
-       withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))});
+      "input", {withKey("name", "input0"),
+                withKey("input_shape", "1:1:" + std::to_string(INIT_SEQ_LEN))});
     model_input = input_layer(Tensor());
 
     const std::string embedding_type =
@@ -401,7 +399,7 @@ void Lfm2CausalLM::setupParameters(json &cfg, json &generation_cfg,
   try {
     unsigned int ff_dim = INTERMEDIATE_SIZE;
     if (cfg.contains("block_ff_dim")) {
-      ff_dim = cfg["block_ff_dim"].get<unsigned int>();  // 10240
+      ff_dim = cfg["block_ff_dim"].get<unsigned int>(); // 10240
     }
 
     if (cfg.contains("block_auto_adjust_ff_dim") &&
@@ -549,24 +547,35 @@ void Lfm2CausalLM::loadEmbeddingWeight() {
 }
 
 std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
+  std::vector<float> result(DIM, 0.0f);
+  copyEmbedding(token_id, result.data());
+  return result;
+}
+
+void Lfm2CausalLM::copyEmbedding(unsigned int token_id, float *dst) {
   if (!embedding_weight_cached_) {
     throw std::runtime_error(
-      "lookupEmbedding: embedding weight not loaded. "
+      "copyEmbedding: embedding weight not loaded. "
       "Set use_embedding=true in nntr_config and ensure load_weight() was "
       "called.");
   }
 
-  std::vector<float> result(DIM, 0.0f);
+  if (token_id >= static_cast<unsigned int>(NUM_VOCAB)) {
+    throw std::out_of_range(
+      "copyEmbedding: token ID " + std::to_string(token_id) +
+      " exceeds vocabulary size " + std::to_string(NUM_VOCAB));
+  }
 
   if (embedding_weight_dtype_ == nntrainer::TensorDim::DataType::FP32) {
     const float *data = embedding_weight_cache_.data();
     std::copy(data + static_cast<size_t>(token_id) * DIM,
-              data + static_cast<size_t>(token_id + 1) * DIM, result.begin());
+              data + static_cast<size_t>(token_id + 1) * DIM, dst);
   } else if (embedding_weight_dtype_ == nntrainer::TensorDim::DataType::Q4_0) {
-    // Q4_0: 18-byte blocks (2-byte fp16 scale + 16 bytes nibble data = 32 elems)
-    const uint8_t *row =
-      embedding_weight_cache_uint8_.data() +
-      static_cast<size_t>(token_id) * embedding_row_bytes_;
+    std::fill(dst, dst + DIM, 0.0f);
+    // Q4_0: 18-byte blocks (2-byte fp16 scale + 16 bytes nibble data = 32
+    // elems)
+    const uint8_t *row = embedding_weight_cache_uint8_.data() +
+                         static_cast<size_t>(token_id) * embedding_row_bytes_;
     int num_blocks = (DIM + 31) / 32;
     for (int blk = 0; blk < num_blocks; ++blk) {
       const uint8_t *block = row + blk * 18;
@@ -585,16 +594,16 @@ std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
         int e0 = blk * 32 + i;
         int e1 = blk * 32 + i + 16;
         if (e0 < DIM)
-          result[e0] = scale * static_cast<float>(q0);
+          dst[e0] = scale * static_cast<float>(q0);
         if (e1 < DIM)
-          result[e1] = scale * static_cast<float>(q1);
+          dst[e1] = scale * static_cast<float>(q1);
       }
     }
   } else {
+    std::fill(dst, dst + DIM, 0.0f);
     // Q6_K: 210-byte blocks (256 elements each)
-    const uint8_t *row =
-      embedding_weight_cache_uint8_.data() +
-      static_cast<size_t>(token_id) * embedding_row_bytes_;
+    const uint8_t *row = embedding_weight_cache_uint8_.data() +
+                         static_cast<size_t>(token_id) * embedding_row_bytes_;
     int num_blocks = (DIM + 255) / 256;
     for (int blk = 0; blk < num_blocks; ++blk) {
       const uint8_t *block = row + blk * 210;
@@ -618,17 +627,15 @@ std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
         int q6 = static_cast<int>(low4 | (high2 << 4)) - 32;
         int scale_idx = (i / 16) + (i / 128) * 8;
         float scale = d * static_cast<float>(sc[scale_idx]);
-        result[elem] = scale * static_cast<float>(q6);
+        dst[elem] = scale * static_cast<float>(q6);
       }
     }
   }
-
-  return result;
 }
 
 void Lfm2CausalLM::run(const WSTR prompt, bool do_sample,
-                        const WSTR system_prompt, const WSTR tail_prompt,
-                        bool log_output) {
+                       const WSTR system_prompt, const WSTR tail_prompt,
+                       bool log_output) {
 
   if (!USE_EMBEDDING) {
     // Standard path: token IDs flow through the embedding layer in the graph
@@ -638,7 +645,7 @@ void Lfm2CausalLM::run(const WSTR prompt, bool do_sample,
 
   // USE_EMBEDDING=true path:
   // Tokenize the prompt, convert token IDs to embedding vectors via
-  // lookupEmbedding(), then delegate to run_with_embeddings().
+  // copyEmbedding(), then delegate to run_with_embeddings().
 
   if (!embedding_weight_cached_) {
     throw std::runtime_error(
@@ -656,9 +663,8 @@ void Lfm2CausalLM::run(const WSTR prompt, bool do_sample,
   auto tokens = tokenizer->Encode(full_prompt);
 
   // Truncate to fit within INIT_SEQ_LEN (run_with_embeddings enforces this)
-  unsigned int text_len =
-    std::min(static_cast<unsigned int>(tokens.size()),
-             static_cast<unsigned int>(INIT_SEQ_LEN));
+  unsigned int text_len = std::min(static_cast<unsigned int>(tokens.size()),
+                                   static_cast<unsigned int>(INIT_SEQ_LEN));
 
   // Convert token IDs to embedding vectors: [B * text_len * DIM]
   std::vector<float> inputs_embeds(
@@ -668,11 +674,11 @@ void Lfm2CausalLM::run(const WSTR prompt, bool do_sample,
   for (unsigned int i = 0; i < text_len; ++i) {
     unsigned int token_id = static_cast<unsigned int>(tokens[i]);
     seed_tokens[i] = static_cast<int>(token_id);
-    std::vector<float> embed = lookupEmbedding(token_id);
-    for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
-      std::copy(embed.begin(), embed.end(),
-                inputs_embeds.data() +
-                  static_cast<size_t>(b) * text_len * DIM +
+    float *first_embed = inputs_embeds.data() + static_cast<size_t>(i) * DIM;
+    copyEmbedding(token_id, first_embed);
+    for (unsigned int b = 1; b < BATCH_SIZE; ++b) {
+      std::copy(first_embed, first_embed + DIM,
+                inputs_embeds.data() + static_cast<size_t>(b) * text_len * DIM +
                   static_cast<size_t>(i) * DIM);
     }
   }
@@ -728,29 +734,29 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
     }
   }
 
-  // Local lambda: build inference inputs list from embeddings data + KV cache
-  auto build_inference_inputs = [this](float *input_data) {
-    std::vector<std::pair<std::string, float *>> cache_inputs;
-    cache_inputs.reserve(static_cast<size_t>(NUM_LAYERS) * 2);
-    for (int i = 0; i < NUM_LAYERS; ++i) {
-      cache_inputs.emplace_back(
-        "cache_k_l" + std::to_string(i),
-        reinterpret_cast<float *>(kv_cache.getKeyCache(i).getData()));
-      cache_inputs.emplace_back(
-        "cache_v_l" + std::to_string(i),
-        reinterpret_cast<float *>(kv_cache.getValueCache(i).getData()));
-    }
-    std::sort(cache_inputs.begin(), cache_inputs.end(),
-              [](const auto &lhs, const auto &rhs) {
-                return lhs.first < rhs.first;
-              });
-    std::vector<float *> inference_inputs;
-    inference_inputs.reserve(1 + cache_inputs.size());
-    inference_inputs.push_back(input_data);
-    for (const auto &ci : cache_inputs)
-      inference_inputs.push_back(ci.second);
-    return inference_inputs;
-  };
+  // Build the inference input list once. Cache slabs are stable after
+  // allocateAndBindKVCache(), so decode can just swap slot 0 to the current
+  // embedding buffer instead of recreating and sorting the cache list per
+  // token.
+  std::vector<std::pair<std::string, float *>> cache_inputs;
+  cache_inputs.reserve(static_cast<size_t>(NUM_LAYERS) * 2);
+  for (int i = 0; i < NUM_LAYERS; ++i) {
+    cache_inputs.emplace_back(
+      "cache_k_l" + std::to_string(i),
+      reinterpret_cast<float *>(kv_cache.getKeyCache(i).getData()));
+    cache_inputs.emplace_back(
+      "cache_v_l" + std::to_string(i),
+      reinterpret_cast<float *>(kv_cache.getValueCache(i).getData()));
+  }
+  std::sort(
+    cache_inputs.begin(), cache_inputs.end(),
+    [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
+
+  std::vector<float *> input;
+  input.reserve(1 + cache_inputs.size());
+  input.push_back(nullptr);
+  for (const auto &ci : cache_inputs)
+    input.push_back(ci.second);
 
   unsigned int generation_cnt = 0;
 
@@ -769,7 +775,7 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
     input_sample = const_cast<float *>(embeds);
   }
 
-  auto input = build_inference_inputs(input_sample);
+  input[0] = input_sample;
   std::vector<float *> label;
 
   auto start_prefill = std::chrono::high_resolution_clock::now();
@@ -778,9 +784,8 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
   const unsigned int prefill_to = prefill_from + input_len;
   setKVCachePosition(prefill_from);
 
-  std::vector<float *> outputs =
-    model->incremental_inference(BATCH_SIZE, input, label, input_len,
-                                 prefill_from, prefill_to, false);
+  std::vector<float *> outputs = model->incremental_inference(
+    BATCH_SIZE, input, label, input_len, prefill_from, prefill_to, false);
 
   advanceKVCachePosition(input_len);
 
@@ -806,26 +811,22 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
 
   std::vector<float> gen_input(
     static_cast<size_t>(BATCH_SIZE) * INIT_SEQ_LEN * DIM, 0.0f);
+  std::vector<float *> decode_input = input;
+  decode_input[0] = gen_input.data();
 
   auto start_generation = std::chrono::high_resolution_clock::now();
 
   for (unsigned int tok_idx = input_len + 1;
        tok_idx < input_len + 1 + NUM_TO_GENERATE; ++tok_idx) {
 
-    std::fill(gen_input.begin(), gen_input.end(), 0.0f);
     for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
-      std::vector<float> embed = lookupEmbedding(id_list[b]);
-      std::copy(embed.begin(), embed.end(),
-                gen_input.data() + static_cast<size_t>(b) * INIT_SEQ_LEN * DIM);
+      copyEmbedding(id_list[b], gen_input.data() +
+                                  static_cast<size_t>(b) * INIT_SEQ_LEN * DIM);
     }
 
-    input = build_inference_inputs(gen_input.data());
-    allocateAndBindKVCache();
-
-    auto output_interval =
-      model->incremental_inference(BATCH_SIZE, input, label, input_len,
-                                   tok_idx - 1 + global_token_len,
-                                   tok_idx + global_token_len);
+    auto output_interval = model->incremental_inference(
+      BATCH_SIZE, decode_input, label, input_len,
+      tok_idx - 1 + global_token_len, tok_idx + global_token_len);
 
     id_list = generate(output_interval[0], do_sample);
     generated_ids_.push_back(id_list[0]);
@@ -842,9 +843,8 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
 
     // Check EOS
     for (unsigned int j = 0; j < BATCH_SIZE; ++j) {
-      if (!eos_list[j] &&
-          std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(), id_list[j]) !=
-            EOS_TOKEN_ID.end()) {
+      if (!eos_list[j] && std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(),
+                                    id_list[j]) != EOS_TOKEN_ID.end()) {
         eos_list[j] = true;
       }
     }

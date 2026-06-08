@@ -89,7 +89,7 @@ public:
    * @note Creates model with small dimensions for testing
    */
   static Lfm2CausalLM createTestModel();
-  
+
   /**
    * @brief Run the model with a text prompt.
    *
@@ -119,6 +119,17 @@ public:
    * @return Embedding vector of size DIM (FP32)
    */
   std::vector<float> lookupEmbedding(unsigned int token_id);
+
+  /**
+   * @brief Copy an embedding vector directly into caller-owned storage.
+   *
+   * Avoids per-token heap allocations in the LFM2 embedding decode path while
+   * sharing the same FP32/Q4_0/Q6_K dequantization logic as lookupEmbedding().
+   *
+   * @param token_id Token ID to look up
+   * @param dst Destination buffer with room for DIM floats
+   */
+  void copyEmbedding(unsigned int token_id, float *dst);
 
   /**
    * @brief Tokenize text using the model's tokenizer.
