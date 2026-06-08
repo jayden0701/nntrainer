@@ -14,6 +14,7 @@
 #ifndef __LFM2_CAUSALLM_H__
 #define __LFM2_CAUSALLM_H__
 
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <stdexcept>
@@ -89,7 +90,7 @@ public:
    * @note Creates model with small dimensions for testing
    */
   static Lfm2CausalLM createTestModel();
-  
+
   /**
    * @brief Run the model with a text prompt.
    *
@@ -164,6 +165,13 @@ private:
   std::vector<uint8_t>
     embedding_weight_cache_uint8_; /**< Quantized embedding weights */
   size_t embedding_row_bytes_ = 0; /**< Bytes per row for quantized types */
+
+  /**
+   * @brief Decode/copy one token embedding directly into caller storage.
+   * @param token_id Token ID to look up
+   * @param dst Destination buffer with at least DIM floats
+   */
+  void writeEmbedding(unsigned int token_id, float *dst) const;
 
   /**
    * @brief Load embedding weights from EMBEDDING_BIN_PATH into cache.
