@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <cpu_backend.h>
 
 #include <iostream>
@@ -548,7 +549,7 @@ void Lfm2CausalLM::loadEmbeddingWeight() {
   embedding_weight_cached_ = true;
 }
 
-std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
+void Lfm2CausalLM::lookupEmbeddingInto(unsigned int token_id, float *output) {
   if (!embedding_weight_cached_) {
     throw std::runtime_error(
       "lookupEmbedding: embedding weight not loaded. "
@@ -556,13 +557,25 @@ std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
       "called.");
   }
 
-  std::vector<float> result(DIM, 0.0f);
+  if (token_id >= NUM_VOCAB) {
+    throw std::out_of_range("lookupEmbedding: token_id " +
+                            std::to_string(token_id) +
+                            " is outside vocabulary size " +
+                            std::to_string(NUM_VOCAB));
+  }
 
   if (embedding_weight_dtype_ == nntrainer::TensorDim::DataType::FP32) {
-    const float *data = embedding_weight_cache_.data();
-    std::copy(data + static_cast<size_t>(token_id) * DIM,
-              data + static_cast<size_t>(token_id + 1) * DIM, result.begin());
-  } else if (embedding_weight_dtype_ == nntrainer::TensorDim::DataType::Q4_0) {
+    const float *src =
+      embedding_weight_cache_.data() + static_cast<size_t>(token_id) * DIM;
+    std::memcpy(output, src, static_cast<size_t>(DIM) * sizeof(float));
+    return;
+  }
+
+  // Quantized rows may have padded blocks; clear the tail first so dimensions
+  // that do not align to the block size keep the old vector-returning behavior.
+  std::fill(output, output + DIM, 0.0f);
+
+  if (embedding_weight_dtype_ == nntrainer::TensorDim::DataType::Q4_0) {
     // Q4_0: 18-byte blocks (2-byte fp16 scale + 16 bytes nibble data = 32 elems)
     const uint8_t *row =
       embedding_weight_cache_uint8_.data() +
@@ -585,9 +598,9 @@ std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
         int e0 = blk * 32 + i;
         int e1 = blk * 32 + i + 16;
         if (e0 < DIM)
-          result[e0] = scale * static_cast<float>(q0);
+          output[e0] = scale * static_cast<float>(q0);
         if (e1 < DIM)
-          result[e1] = scale * static_cast<float>(q1);
+          output[e1] = scale * static_cast<float>(q1);
       }
     }
   } else {
@@ -613,16 +626,21 @@ std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
         if (elem >= DIM)
           break;
         int qi = i % 128;
-        uint8_t low4 = (qi % 2 == 0) ? (ql[qi / 2] & 0x0F) : (ql[qi / 2] >> 4);
+        uint8_t low4 =
+          (qi % 2 == 0) ? (ql[qi / 2] & 0x0F) : (ql[qi / 2] >> 4);
         uint8_t high2 = (qh[qi / 4] >> (2 * (qi % 4))) & 0x03;
         int q6 = static_cast<int>(low4 | (high2 << 4)) - 32;
         int scale_idx = (i / 16) + (i / 128) * 8;
         float scale = d * static_cast<float>(sc[scale_idx]);
-        result[elem] = scale * static_cast<float>(q6);
+        output[elem] = scale * static_cast<float>(q6);
       }
     }
   }
+}
 
+std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
+  std::vector<float> result(DIM);
+  lookupEmbeddingInto(token_id, result.data());
   return result;
 }
 
@@ -668,12 +686,11 @@ void Lfm2CausalLM::run(const WSTR prompt, bool do_sample,
   for (unsigned int i = 0; i < text_len; ++i) {
     unsigned int token_id = static_cast<unsigned int>(tokens[i]);
     seed_tokens[i] = static_cast<int>(token_id);
-    std::vector<float> embed = lookupEmbedding(token_id);
     for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
-      std::copy(embed.begin(), embed.end(),
-                inputs_embeds.data() +
-                  static_cast<size_t>(b) * text_len * DIM +
-                  static_cast<size_t>(i) * DIM);
+      lookupEmbeddingInto(
+        token_id, inputs_embeds.data() +
+                    static_cast<size_t>(b) * text_len * DIM +
+                    static_cast<size_t>(i) * DIM);
     }
   }
 
@@ -728,29 +745,29 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
     }
   }
 
-  // Local lambda: build inference inputs list from embeddings data + KV cache
-  auto build_inference_inputs = [this](float *input_data) {
-    std::vector<std::pair<std::string, float *>> cache_inputs;
-    cache_inputs.reserve(static_cast<size_t>(NUM_LAYERS) * 2);
-    for (int i = 0; i < NUM_LAYERS; ++i) {
-      cache_inputs.emplace_back(
-        "cache_k_l" + std::to_string(i),
-        reinterpret_cast<float *>(kv_cache.getKeyCache(i).getData()));
-      cache_inputs.emplace_back(
-        "cache_v_l" + std::to_string(i),
-        reinterpret_cast<float *>(kv_cache.getValueCache(i).getData()));
-    }
-    std::sort(cache_inputs.begin(), cache_inputs.end(),
-              [](const auto &lhs, const auto &rhs) {
-                return lhs.first < rhs.first;
-              });
-    std::vector<float *> inference_inputs;
-    inference_inputs.reserve(1 + cache_inputs.size());
-    inference_inputs.push_back(input_data);
-    for (const auto &ci : cache_inputs)
-      inference_inputs.push_back(ci.second);
-    return inference_inputs;
-  };
+  // Build the sorted external-input list once.  The KV cache slabs stay
+  // allocated for the whole run, so every decode step only needs to swap the
+  // first data pointer instead of rebuilding and sorting 2 * NUM_LAYERS names.
+  std::vector<std::pair<std::string, float *>> cache_inputs;
+  cache_inputs.reserve(static_cast<size_t>(NUM_LAYERS) * 2);
+  for (int i = 0; i < NUM_LAYERS; ++i) {
+    cache_inputs.emplace_back(
+      "cache_k_l" + std::to_string(i),
+      reinterpret_cast<float *>(kv_cache.getKeyCache(i).getData()));
+    cache_inputs.emplace_back(
+      "cache_v_l" + std::to_string(i),
+      reinterpret_cast<float *>(kv_cache.getValueCache(i).getData()));
+  }
+  std::sort(cache_inputs.begin(), cache_inputs.end(),
+            [](const auto &lhs, const auto &rhs) {
+              return lhs.first < rhs.first;
+            });
+
+  std::vector<float *> input;
+  input.reserve(1 + cache_inputs.size());
+  input.push_back(nullptr);
+  for (const auto &ci : cache_inputs)
+    input.push_back(ci.second);
 
   unsigned int generation_cnt = 0;
 
@@ -769,7 +786,7 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
     input_sample = const_cast<float *>(embeds);
   }
 
-  auto input = build_inference_inputs(input_sample);
+  input[0] = input_sample;
   std::vector<float *> label;
 
   auto start_prefill = std::chrono::high_resolution_clock::now();
@@ -806,21 +823,20 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
 
   std::vector<float> gen_input(
     static_cast<size_t>(BATCH_SIZE) * INIT_SEQ_LEN * DIM, 0.0f);
+  input[0] = gen_input.data();
 
   auto start_generation = std::chrono::high_resolution_clock::now();
 
   for (unsigned int tok_idx = input_len + 1;
        tok_idx < input_len + 1 + NUM_TO_GENERATE; ++tok_idx) {
 
-    std::fill(gen_input.begin(), gen_input.end(), 0.0f);
+    // Only position 0 is consumed during a one-token decode step.  Keep the
+    // rest of gen_input zero-initialized and overwrite just the active row.
     for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
-      std::vector<float> embed = lookupEmbedding(id_list[b]);
-      std::copy(embed.begin(), embed.end(),
-                gen_input.data() + static_cast<size_t>(b) * INIT_SEQ_LEN * DIM);
+      lookupEmbeddingInto(
+        id_list[b],
+        gen_input.data() + static_cast<size_t>(b) * INIT_SEQ_LEN * DIM);
     }
-
-    input = build_inference_inputs(gen_input.data());
-    allocateAndBindKVCache();
 
     auto output_interval =
       model->incremental_inference(BATCH_SIZE, input, label, input_len,

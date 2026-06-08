@@ -121,6 +121,16 @@ public:
   std::vector<float> lookupEmbedding(unsigned int token_id);
 
   /**
+   * @brief Decode one embedding row directly into caller-owned memory.
+   *
+   * Avoids a temporary std::vector allocation in autoregressive decode loops.
+   *
+   * @param token_id Token ID to look up
+   * @param output Destination buffer with room for DIM FP32 values
+   */
+  void lookupEmbeddingInto(unsigned int token_id, float *output);
+
+  /**
    * @brief Tokenize text using the model's tokenizer.
    *
    * Encodes the given text without adding BOS/EOS automatically.
