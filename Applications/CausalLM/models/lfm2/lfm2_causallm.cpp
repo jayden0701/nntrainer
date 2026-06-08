@@ -548,12 +548,34 @@ void Lfm2CausalLM::loadEmbeddingWeight() {
   embedding_weight_cached_ = true;
 }
 
-std::vector<float> Lfm2CausalLM::lookupEmbedding(unsigned int token_id) {
+size_t Lfm2CausalLM::embeddingBytesPerToken() const {
+  return embedding_weight_cached_ ? sizeof(float) * DIM : 0;
+}
+
+const void *Lfm2CausalLM::lookupEmbedding(int token_id) const {
+  if (token_id < 0)
+    return nullptr;
+
+  try {
+    embedding_lookup_scratch_ =
+      lookupEmbeddingVector(static_cast<unsigned int>(token_id));
+    return embedding_lookup_scratch_.data();
+  } catch (...) {
+    embedding_lookup_scratch_.clear();
+    return nullptr;
+  }
+}
+
+std::vector<float> Lfm2CausalLM::lookupEmbeddingVector(
+  unsigned int token_id) const {
   if (!embedding_weight_cached_) {
     throw std::runtime_error(
       "lookupEmbedding: embedding weight not loaded. "
       "Set use_embedding=true in nntr_config and ensure load_weight() was "
       "called.");
+  }
+  if (token_id >= NUM_VOCAB) {
+    throw std::out_of_range("lookupEmbedding: token_id out of range");
   }
 
   std::vector<float> result(DIM, 0.0f);
@@ -758,7 +780,7 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
 
     std::fill(gen_input.begin(), gen_input.end(), 0.0f);
     for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
-      std::vector<float> embed = lookupEmbedding(id_list[b]);
+      std::vector<float> embed = lookupEmbeddingVector(id_list[b]);
       std::copy(embed.begin(), embed.end(),
                 gen_input.data() + static_cast<size_t>(b) * INIT_SEQ_LEN * DIM);
     }

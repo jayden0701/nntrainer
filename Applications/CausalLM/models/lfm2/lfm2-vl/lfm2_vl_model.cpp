@@ -228,7 +228,7 @@ void Lfm2VlForConditionalGeneration::run(const std::string &image_tensor_path,
 
   // 1) BOS embedding (token_id = 1 for LFM2).
   {
-    auto bos_emb = lm_->lookupEmbedding(1);
+    auto bos_emb = lm_->lookupEmbeddingVector(1);
     merged.insert(merged.end(), bos_emb.begin(), bos_emb.end());
   }
 
@@ -247,7 +247,8 @@ void Lfm2VlForConditionalGeneration::run(const std::string &image_tensor_path,
       tok_pos += n_img_tokens;
       ++image_chunks_used;
     } else {
-      auto tok_emb = lm_->lookupEmbedding(static_cast<unsigned int>(tid));
+      auto tok_emb =
+        lm_->lookupEmbeddingVector(static_cast<unsigned int>(tid));
       merged.insert(merged.end(), tok_emb.begin(), tok_emb.end());
       ++tok_pos;
     }

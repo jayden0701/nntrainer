@@ -90,6 +90,16 @@ public:
    */
   static Lfm2CausalLM createTestModel();
 
+  /** @brief Bytes in one FP32 token embedding, or 0 until cached. */
+  size_t embeddingBytesPerToken() const override;
+
+  /**
+   * @brief Return a pointer to the token embedding scratch buffer.
+   *
+   * The returned pointer remains valid until the next lookup on this model.
+   */
+  const void *lookupEmbedding(int token_id) const override;
+
   /**
    * @brief Run prefill with in-memory input embeddings (skips file I/O).
    *
@@ -97,7 +107,8 @@ public:
    */
   void run_with_embeddings(const void *inputs_embeds, size_t n_tokens,
                            std::vector<int> seed_tokens, bool do_sample,
-                           bool log_output);
+                           bool log_output) override;
+
   /**
    * @brief Look up the embedding vector for a given token ID.
    *
@@ -107,7 +118,7 @@ public:
    * @param token_id Token ID to look up
    * @return Embedding vector of size DIM (FP32)
    */
-  std::vector<float> lookupEmbedding(unsigned int token_id);
+  std::vector<float> lookupEmbeddingVector(unsigned int token_id) const;
 
   /**
    * @brief Tokenize text using the model's tokenizer.
@@ -153,6 +164,7 @@ private:
   std::vector<uint8_t>
     embedding_weight_cache_uint8_; /**< Quantized embedding weights */
   size_t embedding_row_bytes_ = 0; /**< Bytes per row for quantized types */
+  mutable std::vector<float> embedding_lookup_scratch_;
 
   /**
    * @brief Load embedding weights from EMBEDDING_BIN_PATH into cache.
