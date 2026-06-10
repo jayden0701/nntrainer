@@ -41,6 +41,7 @@
 
 #include <causal_lm.h>
 #include <llm_util.hpp>
+#include <xgrammar_wrapper.h>
 
 // Streamer vtable lives in the api/ directory; pulled in here so
 // registerOutputs() can push per-token deltas through streamer_put()
@@ -330,6 +331,10 @@ std::vector<unsigned int> CausalLM::generate(float *logits, bool do_sample,
       applyBadWordsPenalty(logits, BAD_WORD_IDS.data(), NUM_BADWORDS);
     }
 
+    if (xgrammar_ != nullptr && xgrammar_->isGrammarEnabled()) {
+      xgrammar_->applyGrammarMask(logits, NUM_VOCAB);
+    }
+
     // return argmax if do_sample is false
     if (do_sample == false) {
       unsigned int argmax_idx =
@@ -358,6 +363,15 @@ std::vector<unsigned int> CausalLM::generate(float *logits, bool do_sample,
       outputs.push_back(sampled_idx);
     }
 
+    if (xgrammar_ != nullptr && xgrammar_->isGrammarEnabled() &&
+        std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(), outputs.back()) ==
+          EOS_TOKEN_ID.end()) {
+      xgrammar_->getGrammarMatcher()->AcceptToken(
+        static_cast<int>(outputs.back()));
+      xgrammar_->getGrammarMatcher()->FillNextTokenBitmask(
+        &xgrammar_->getBitmaskTensor());
+    }
+
     // set batch offset
     logits = logits + NUM_VOCAB;
     input_ids = input_ids + MAX_SEQ_LEN;
@@ -365,6 +379,11 @@ std::vector<unsigned int> CausalLM::generate(float *logits, bool do_sample,
 
   return outputs;
 };
+
+void CausalLM::resetXGrammar() {
+  if (xgrammar_ != nullptr)
+    xgrammar_->resetGrammar();
+}
 
 void CausalLM::registerCustomLayers() {
   Transformer::registerCustomLayers();

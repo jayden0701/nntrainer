@@ -147,6 +147,10 @@ public:
     stop_requested_.store(false, std::memory_order_release);
   }
 
+  void setXGrammar(XGrammar *grammar) override { xgrammar_ = grammar; }
+
+  void resetXGrammar() override;
+
 protected:
   /**
    * @brief Setup the parameters for the CausalLM model
@@ -236,6 +240,8 @@ protected:
   std::atomic<bool> stop_requested_{false};
 
   std::mt19937 rng; /**< Random Number Gen */
+
+  XGrammar *xgrammar_ = nullptr;
 
   /**
    * @brief Externalized KV cache (host-owned). Allocated by allocateKVCache()
