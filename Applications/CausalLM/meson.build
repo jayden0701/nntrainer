@@ -226,6 +226,21 @@ if get_option('enable-test')
     suite: 'unittests'
   )
 
+  unittest_chat_template = executable(
+    'unittest_chat_template',
+    meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_chat_template.cpp',
+    dependencies: [gtest_main_dep, causallm_dep],
+    include_directories: [causallm_inc, causallm_inc_nlohmann_inc],
+    build_by_default: true,
+    install: false,
+  )
+
+  test('unittest_chat_template', unittest_chat_template,
+    args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_chat_template'),
+    timeout: 60,
+    suite: 'unittests'
+  )
+
   # Ubuntu native builds use platform=none.
   model_unittest_platforms = ['none', 'windows', 'android']
   platform = get_option('platform')

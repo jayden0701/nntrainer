@@ -125,6 +125,28 @@ std::string textFromContentParts(const nlohmann::json &content) {
   return text;
 }
 
+nlohmann::json templateMapFromArray(const nlohmann::json &chat_template) {
+  nlohmann::json template_map = nlohmann::json::object();
+  for (const auto &entry : chat_template) {
+    if (!entry.is_object()) {
+      throw std::runtime_error(
+        "tokenizer_config.chat_template array entries must be objects");
+    }
+
+    if (!entry.contains("name") || !entry["name"].is_string() ||
+        !entry.contains("template") || !entry["template"].is_string()) {
+      throw std::runtime_error(
+        "tokenizer_config.chat_template array entries must include string name "
+        "and template");
+    }
+
+    template_map[entry["name"].get<std::string>()] =
+      entry["template"].get<std::string>();
+  }
+
+  return template_map;
+}
+
 bool shouldAddGenerationPrompt(const OrderedJson &messages,
                                const nlohmann::json &request,
                                const ChatTemplate::Options &options) {
@@ -450,9 +472,11 @@ ChatTemplate ChatTemplate::Load(const std::string &model_path) {
     impl->template_source = chat_template.get<std::string>();
   } else if (chat_template.is_object()) {
     impl->template_map = chat_template;
+  } else if (chat_template.is_array()) {
+    impl->template_map = templateMapFromArray(chat_template);
   } else {
-    throw std::runtime_error("tokenizer_config.chat_template must be string or "
-                             "object");
+    throw std::runtime_error(
+      "tokenizer_config.chat_template must be string, object, or array");
   }
 
   return ChatTemplate(std::move(impl));
