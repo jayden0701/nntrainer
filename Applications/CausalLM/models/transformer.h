@@ -177,6 +177,11 @@ public:
   unsigned int getVocabSize() const { return NUM_VOCAB; }
 
   /**
+   * @brief Get tokenizer owned by this model, or nullptr if no tokenizer exists
+   */
+  tokenizers::Tokenizer *getTokenizer() { return tokenizer.get(); }
+
+  /**
    * @brief Attach a non-owning logits processor
    * @param processor Processor pointer, or nullptr to detach
    */
