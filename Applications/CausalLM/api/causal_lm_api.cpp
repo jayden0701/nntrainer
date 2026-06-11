@@ -13,6 +13,7 @@
 #include "causal_lm_api.h"
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -68,6 +69,18 @@ struct RegisteredModel {
 };
 static std::map<std::string, RegisteredModel> g_model_registry;
 static std::map<std::string, ModelArchConfig> g_arch_config_map;
+
+static void resolveNntrConfigPath(json &nntr_cfg, const std::string &key,
+                                  const std::string &model_dir_path) {
+  if (!nntr_cfg.contains(key) || !nntr_cfg[key].is_string())
+    return;
+
+  std::filesystem::path path = nntr_cfg[key].get<std::string>();
+  if (path.empty() || path.is_absolute())
+    return;
+
+  nntr_cfg[key] = (std::filesystem::path(model_dir_path) / path).string();
+}
 
 // Helper to register models (similar to main.cpp)
 // ensuring factory is populated.
@@ -454,8 +467,14 @@ ErrorCode loadModel(BackendType compute, ModelType modeltype,
       nntr_cfg["fc_layer_dtype"] = std::string(rc.fc_layer_dtype);
       nntr_cfg["model_file_name"] = std::string(rc.model_file_name);
 
-      std::string t_file = rc.tokenizer_file;
-      nntr_cfg["tokenizer_file"] = model_dir_path + "/" + t_file;
+      nntr_cfg["tokenizer_file"] = std::string(rc.tokenizer_file);
+      if (strlen(rc.embedding_file_name) > 0)
+        nntr_cfg["embedding_file_name"] = std::string(rc.embedding_file_name);
+      if (strlen(rc.ple_file_name) > 0)
+        nntr_cfg["ple_file_name"] = std::string(rc.ple_file_name);
+      resolveNntrConfigPath(nntr_cfg, "tokenizer_file", model_dir_path);
+      resolveNntrConfigPath(nntr_cfg, "embedding_file_name", model_dir_path);
+      resolveNntrConfigPath(nntr_cfg, "ple_file_name", model_dir_path);
 
       if (strlen(rc.lmhead_dtype) > 0) {
         nntr_cfg["lmhead_dtype"] = std::string(rc.lmhead_dtype);
@@ -481,10 +500,9 @@ ErrorCode loadModel(BackendType compute, ModelType modeltype,
         causallm::LoadJsonFile(model_dir_path + "/generation_config.json");
       nntr_cfg = causallm::LoadJsonFile(model_dir_path + "/nntr_config.json");
 
-      if (nntr_cfg.contains("tokenizer_file")) {
-        std::string t_file = nntr_cfg["tokenizer_file"];
-        nntr_cfg["tokenizer_file"] = model_dir_path + "/" + t_file;
-      }
+      resolveNntrConfigPath(nntr_cfg, "tokenizer_file", model_dir_path);
+      resolveNntrConfigPath(nntr_cfg, "embedding_file_name", model_dir_path);
+      resolveNntrConfigPath(nntr_cfg, "ple_file_name", model_dir_path);
     }
 
     // Load chat template from model directory if available
