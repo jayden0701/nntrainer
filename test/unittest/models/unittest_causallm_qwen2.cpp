@@ -613,6 +613,16 @@ TEST_P(Qwen2CausalLMTinyModelTest, TransformerReturnsConfiguredVocabSize) {
 }
 
 /**
+ * @brief Test that Transformer exposes its owned tokenizer
+ */
+TEST_P(Qwen2CausalLMTinyModelTest, TransformerReturnsOwnedTokenizer) {
+  const auto files = makeFiles();
+  auto model = makeDirectTinyQwen2Model(files, GetParam());
+
+  EXPECT_NE(model->getTokenizer(), nullptr);
+}
+
+/**
  * @brief Test that embedding_file_name reaches the embedding layer sidecar path
  */
 TEST_P(Qwen2CausalLMTinyModelTest,
@@ -740,6 +750,7 @@ TEST(Qwen25EmbeddingTinyModelTest,
   auto model = makeLoadedQwen25Embedding(files);
 
   EXPECT_FALSE(model->isCausalForTest());
+  EXPECT_EQ(model->getEmbeddingDim(), 64);
 
   std::vector<float> embedding;
   ASSERT_NO_THROW(embedding = model->encodePrompt("hello tok4"));
