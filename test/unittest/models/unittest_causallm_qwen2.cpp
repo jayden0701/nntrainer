@@ -613,6 +613,23 @@ TEST_P(Qwen2CausalLMTinyModelTest, TransformerReturnsConfiguredVocabSize) {
 }
 
 /**
+ * @brief Test that embedding_file_name reaches the embedding layer sidecar path
+ */
+TEST_P(Qwen2CausalLMTinyModelTest,
+       EmbeddingFileNameIsPassedToEmbeddingLayerSidecarPath) {
+  const auto files = makeFiles();
+  auto config =
+    causallm_test::makeTinyCausalLMConfig(GetParam(), files.tokenizer_path);
+  config.model["tie_word_embeddings"] = false;
+  config.nntrainer["embedding_file_name"] =
+    (files.dir / "missing_sidecar_lut.bin").string();
+  auto model = std::make_unique<TinyQwen2CausalLM>(
+    config.model, config.generation, config.nntrainer);
+
+  EXPECT_THROW(model->initializeModel(), std::runtime_error);
+}
+
+/**
  * @brief Test that a logits processor can force greedy generation
  */
 TEST_P(Qwen2CausalLMTinyModelTest,
