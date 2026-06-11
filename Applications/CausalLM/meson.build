@@ -2,8 +2,10 @@ causallm_src = [
     meson.current_source_dir() / 'chat_template.cpp',
     meson.current_source_dir() / 'huggingface_tokenizer.cpp',
     meson.current_source_dir() / 'llm_util.cpp',
+    meson.current_source_dir() / 'api' / 'callback_streamer.cpp',
     meson.current_source_dir() / 'api' / 'causal_lm_api.cpp',
     meson.current_source_dir() / 'api' / 'model_config.cpp',
+    meson.current_source_dir() / 'api' / 'streamer.cpp',
     meson.current_source_dir() / 'kv_cache_manager.cpp',
 ]
 
@@ -237,6 +239,25 @@ if get_option('enable-test')
 
   test('unittest_chat_template', unittest_chat_template,
     args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_chat_template'),
+    timeout: 60,
+    suite: 'unittests'
+  )
+
+  unittest_callback_streamer = executable(
+    'unittest_callback_streamer',
+    [
+      meson.current_source_dir() / 'api' / 'unittest_callback_streamer.cpp',
+      meson.current_source_dir() / 'api' / 'callback_streamer.cpp',
+      meson.current_source_dir() / 'api' / 'streamer.cpp',
+    ],
+    dependencies: [gtest_main_dep],
+    include_directories: causallm_inc,
+    build_by_default: true,
+    install: false,
+  )
+
+  test('unittest_callback_streamer', unittest_callback_streamer,
+    args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_callback_streamer'),
     timeout: 60,
     suite: 'unittests'
   )
