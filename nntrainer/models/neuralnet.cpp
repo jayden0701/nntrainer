@@ -224,8 +224,27 @@ int NeuralNetwork::compile(ExecutionMode mode) {
   const std::string tensor_type =
     to_string(std::get<props::ModelTensorDataType>(model_flex_props));
 
+  // QNN/HTP graph layers register their input/output tensors with the DSP via
+  // rpcmem_to_fd(), which requires every buffer to be an rpcmem (DMA/ION) base
+  // address. When the graph contains a qnn_graph layer, build the tensor
+  // manager with the "qnn" engine's allocator (QNNRpcManager) so the activation
+  // pool — which holds the input_embeds / attention-mask / KV tensors a
+  // qnn_graph layer reads — is rpcmem-backed. Otherwise those buffers land in
+  // the default CPU pool and rpcmem_to_fd fails at execute (QnnDsp "undefined
+  // m_mutex handle object", hard exit). CPU graphs keep the default "cpu"
+  // engine, so this is a no-op for the text path.
+  std::string engine_name = "cpu";
+  for (auto &node : graph_representation) {
+    if (node->getComputeEngineType() == "qnn" ||
+        node->getType() == "qnn_graph") {
+      engine_name = "qnn";
+      break;
+    }
+  }
+
   model_graph =
-    NetworkGraph(fsu, mode, fsu_path, lookahead, tensor_format, tensor_type);
+    NetworkGraph(fsu, mode, fsu_path, lookahead, tensor_format, tensor_type,
+                 engine_name);
 
   model_graph.setMemoryOptimizations(
     std::get<props::MemoryOptimization>(model_flex_props));
