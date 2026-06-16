@@ -224,27 +224,29 @@ int NeuralNetwork::compile(ExecutionMode mode) {
   const std::string tensor_type =
     to_string(std::get<props::ModelTensorDataType>(model_flex_props));
 
-  // QNN/HTP graph layers register their input/output tensors with the DSP via
-  // rpcmem_to_fd(), which requires every buffer to be an rpcmem (DMA/ION) base
-  // address. When the graph contains a qnn_graph layer, build the tensor
-  // manager with the "qnn" engine's allocator (QNNRpcManager) so the activation
-  // pool — which holds the input_embeds / attention-mask / KV tensors a
-  // qnn_graph layer reads — is rpcmem-backed. Otherwise those buffers land in
-  // the default CPU pool and rpcmem_to_fd fails at execute (QnnDsp "undefined
-  // m_mutex handle object", hard exit). CPU graphs keep the default "cpu"
-  // engine, so this is a no-op for the text path.
-  std::string engine_name = "cpu";
+  bool has_qnn_engine = false;
   for (auto &node : graph_representation) {
     if (node->getComputeEngineType() == "qnn" ||
         node->getType() == "qnn_graph") {
-      engine_name = "qnn";
+      has_qnn_engine = true;
       break;
     }
   }
 
   model_graph =
-    NetworkGraph(fsu, mode, fsu_path, lookahead, tensor_format, tensor_type,
-                 engine_name);
+    NetworkGraph(fsu, mode, fsu_path, lookahead, tensor_format, tensor_type);
+
+  // QNN/HTP graphs register their I/O tensors with the DSP via rpcmem_to_fd(),
+  // which requires those buffers to be rpcmem (DMA/ION). Route ONLY the
+  // activation pool to the "qnn" (rpcmem) allocator; the weight pool stays on
+  // CPU. The nntrainer weight pool is NOT DSP-registered (QNN graph weights are
+  // loaded by the QNN context loader), so routing weights to rpcmem too would
+  // needlessly exhaust the scarce CMA pool — observed as rpcmem_to_fd failures
+  // after a few generated tokens once the app UI's GPU dmabuf also draws on CMA.
+  // Mirrors the upstream setComputeBackend("", "npu") tensor-only design
+  // (here the QNN context registers under the name "qnn").
+  if (has_qnn_engine)
+    model_graph.setComputeBackend("", "qnn");
 
   model_graph.setMemoryOptimizations(
     std::get<props::MemoryOptimization>(model_flex_props));
