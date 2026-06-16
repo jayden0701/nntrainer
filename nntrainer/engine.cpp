@@ -37,6 +37,15 @@ std::once_flag global_engine_init_flag;
 nntrainer::Context
   *Engine::nntrainerRegisteredContext[Engine::RegisterContextMax];
 
+Engine &Engine::Global() {
+  // Single definition in libnntrainer.so → one Engine instance shared by every
+  // consumer .so (see declaration in engine.h). initializeOnce() registers the
+  // default contexts (cpu/gpu, and qnn when ENABLE_NPU) exactly once.
+  static Engine instance;
+  instance.initializeOnce();
+  return instance;
+}
+
 void Engine::add_default_object() {
   /// @note all layers should be added to the app_context to guarantee that
   /// createLayer/createOptimizer class is created
