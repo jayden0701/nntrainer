@@ -515,6 +515,20 @@ private:
 
   size_t calc_attn_index(size_t i);
 
+  /**
+   * @brief Windowed cumulative attention score index.
+   *
+   * Returns the cumulative number of attention scores before absolute query
+   * row i, respecting a sliding window of size local_window_size (W):
+   *
+   *   S(i) = sum_{k=0}^{i-1} min(k+1, W)
+   *        = (i <= W) ? i*(i+1)/2 : W*(W+1)/2 + (i - W)*W
+   *
+   * When W == UINT_MAX (full attention), this reduces exactly to
+   * i*(i+1)/2 == calc_attn_index(i), preserving byte-identical behaviour.
+   */
+  size_t calc_windowed_attn_index(size_t i);
+
 }; // end of class MHACoreLayer
 } // namespace causallm
 

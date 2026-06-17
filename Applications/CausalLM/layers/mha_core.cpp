@@ -615,17 +615,17 @@ void MHACoreLayer::compute_kcaches(nntrainer::Tensor &in,
 
     } else {
       // Sequence processing (prefill or chunked)
-      // Parallelize over the sequence length
-      int seq =
-        sequence_len < local_window_size ? sequence_len : local_window_size;
+      // Iterate over ALL query rows so that no row is skipped even when
+      // sequence_len > local_window_size.
       auto &tm = nntrainer::ThreadManager::Global();
-      tm.parallel_for(0, static_cast<size_t>(seq), [=](size_t i) {
+      tm.parallel_for(0, static_cast<size_t>(sequence_len), [=](size_t i) {
         float *input_addr = in.getData<float>() + num_head * head_dim * i;
         int row_to_compute = is_causal ? from + i + 1 : from + sequence_len;
-        // Calculate dynamic offset for the output (triangle optimization)
-        size_t out_start_row =
-          is_causal ? calc_attn_index(from + i) - calc_attn_index(from)
-                    : i * (from + sequence_len);
+        // Windowed cumulative offset so that each row's scores are placed
+        // contiguously after the previous row's scores (respecting the window).
+        size_t out_start_row = is_causal ? calc_windowed_attn_index(from + i) -
+                                             calc_windowed_attn_index(from)
+                                         : i * (from + sequence_len);
         float *output_addr = out.getData<float>() + out_start_row * num_head;
 
         if (cache.getDataType() == ml::train::TensorDim::DataType::FP32) {
@@ -663,27 +663,26 @@ void MHACoreLayer::compute_kcaches(nntrainer::Tensor &in,
             group_size, tile_size, local_window_size, head_kv, head_kv + 1);
         });
     } else {
-      unsigned int seq_start =
-        sequence_len < local_window_size ? 0 : sequence_len - local_window_size;
-
+      // Iterate over ALL query rows so that no row is skipped even when
+      // sequence_len > local_window_size.
       auto &tm = nntrainer::ThreadManager::Global();
-      tm.parallel_for(
-        static_cast<size_t>(seq_start), static_cast<size_t>(sequence_len),
-        [=](size_t i) {
-          _FP16 *input_addr = in.getData<_FP16>() + num_head * head_dim * i;
-          _FP16 *cache_addr = cache.getData<_FP16>();
-          int row_to_compute = is_causal ? from + i + 1 : from + sequence_len;
-          size_t out_start_row =
-            is_causal ? calc_attn_index(from + i) - calc_attn_index(from)
-                      : i * (from + sequence_len);
+      tm.parallel_for(0, static_cast<size_t>(sequence_len), [=](size_t i) {
+        _FP16 *input_addr = in.getData<_FP16>() + num_head * head_dim * i;
+        _FP16 *cache_addr = cache.getData<_FP16>();
+        int row_to_compute = is_causal ? from + i + 1 : from + sequence_len;
+        // Windowed cumulative offset so that each row's scores are placed
+        // contiguously after the previous row's scores (respecting the window).
+        size_t out_start_row = is_causal ? calc_windowed_attn_index(from + i) -
+                                             calc_windowed_attn_index(from)
+                                         : i * (from + sequence_len);
 
-          _FP16 *output_addr = out.getData<_FP16>() + out_start_row * num_head;
+        _FP16 *output_addr = out.getData<_FP16>() + out_start_row * num_head;
 
-          nntrainer::compute_kcaches(input_addr, cache_addr, output_addr,
-                                     row_to_compute, num_head / group_size,
-                                     head_dim, group_size, tile_size,
-                                     local_window_size);
-        });
+        nntrainer::compute_kcaches(input_addr, cache_addr, output_addr,
+                                   row_to_compute, num_head / group_size,
+                                   head_dim, group_size, tile_size,
+                                   local_window_size);
+      });
     }
 #else
     NNTR_THROW_IF(true, std::invalid_argument) << "enable-fp16 is not set!";
@@ -764,11 +763,11 @@ void MHACoreLayer::one_batch_incremental_forwarding(
     cached_value_dim, batch * cache_value_dim.getFeatureLen(), true);
 
   // out_ stores the output of Q * K
-  nntrainer::Tensor out_(
-    1, 1,
-    is_causal ? (calc_attn_index(cache_to) - calc_attn_index(cache_from))
-              : (step_size * cache_to),
-    num_heads_Q, query_step.getTensorType());
+  nntrainer::Tensor out_(1, 1,
+                         is_causal ? (calc_windowed_attn_index(cache_to) -
+                                      calc_windowed_attn_index(cache_from))
+                                   : (step_size * cache_to),
+                         num_heads_Q, query_step.getTensorType());
 
   unsigned int gqa_size = num_heads_Q / num_heads_KV;
 
@@ -844,12 +843,13 @@ void MHACoreLayer::one_batch_incremental_forwarding(
   nntrainer::Tensor b_cached_value = cache_value.getSharedDataTensor(
     cached_value_dim, batch * cache_value_dim.getFeatureLen(), true);
 
-  nntrainer::Tensor out_(
-    1, 1,
-    is_causal
-      ? (((to - from) == 1) ? to : calc_attn_index(to) - calc_attn_index(from))
-      : ((to - from) * to),
-    num_heads_Q, query_step.getTensorType());
+  nntrainer::Tensor out_(1, 1,
+                         is_causal ? (((to - from) == 1)
+                                        ? to
+                                        : calc_windowed_attn_index(to) -
+                                            calc_windowed_attn_index(from))
+                                   : ((to - from) * to),
+                         num_heads_Q, query_step.getTensorType());
 
   unsigned int gqa_size = num_heads_Q / num_heads_KV;
 
@@ -1220,16 +1220,20 @@ void MHACoreLayer::softmax_triangle(nntrainer::Tensor &qk_out, size_t row,
       }
       nntrainer::softmax_row_inplace(qk_out_, start_row, end_row, num_head);
     } else {
-      int seq = row < local_window_size ? row : local_window_size;
+      // Iterate over ALL rows (not just min(row, window)) so that every query
+      // row in a long prefill gets softmaxed over the correct windowed range.
+      size_t total_rows = row;
       if (!is_causal)
-        seq = row;
+        total_rows = row;
 
       auto &tm = nntrainer::ThreadManager::Global();
-      tm.parallel_for(0, static_cast<size_t>(seq), [=](size_t i) {
+      tm.parallel_for(0, total_rows, [=](size_t i) {
         size_t start_row, end_row;
         if (is_causal) {
-          start_row = calc_attn_index(from + i) - calc_attn_index(from);
-          end_row = calc_attn_index(from + i + 1) - calc_attn_index(from);
+          start_row =
+            calc_windowed_attn_index(from + i) - calc_windowed_attn_index(from);
+          end_row = calc_windowed_attn_index(from + i + 1) -
+                    calc_windowed_attn_index(from);
         } else {
           unsigned int to = from + row;
           start_row = i * to;
@@ -1262,16 +1266,20 @@ void MHACoreLayer::softmax_triangle(nntrainer::Tensor &qk_out, size_t row,
       }
       nntrainer::softmax_row_inplace(qk_out_, start_row, end_row, num_head);
     } else {
-      int seq = row < local_window_size ? row : local_window_size;
+      // Iterate over ALL rows (not just min(row, window)) so that every query
+      // row in a long prefill gets softmaxed over the correct windowed range.
+      size_t total_rows = row;
       if (!is_causal)
-        seq = row;
+        total_rows = row;
 
       auto &tm = nntrainer::ThreadManager::Global();
-      tm.parallel_for(0, static_cast<size_t>(seq), [=](size_t i) {
+      tm.parallel_for(0, total_rows, [=](size_t i) {
         size_t start_row, end_row;
         if (is_causal) {
-          start_row = calc_attn_index(from + i) - calc_attn_index(from);
-          end_row = calc_attn_index(from + i + 1) - calc_attn_index(from);
+          start_row =
+            calc_windowed_attn_index(from + i) - calc_windowed_attn_index(from);
+          end_row = calc_windowed_attn_index(from + i + 1) -
+                    calc_windowed_attn_index(from);
         } else {
           unsigned int to = from + row;
           start_row = i * to;
@@ -1314,16 +1322,20 @@ void MHACoreLayer::softmax_triangle(nntrainer::Tensor &qk_out, size_t row,
       nntrainer::softmax_row_inplace(qk_out_, start_row, end_row, num_head,
                                      sink_step.getData());
     } else {
-      int seq = row < local_window_size ? row : local_window_size;
+      // Iterate over ALL rows (not just min(row, window)) for correct windowed
+      // prefill when sequence_len > local_window_size.
+      size_t total_rows = row;
       if (!is_causal)
-        seq = row;
+        total_rows = row;
 
       auto &tm = nntrainer::ThreadManager::Global();
-      tm.parallel_for(0, static_cast<size_t>(seq), [=](size_t i) {
+      tm.parallel_for(0, total_rows, [=](size_t i) {
         size_t start_row, end_row;
         if (is_causal) {
-          start_row = calc_attn_index(i + from) - calc_attn_index(from);
-          end_row = calc_attn_index(from + i + 1) - calc_attn_index(from);
+          start_row =
+            calc_windowed_attn_index(i + from) - calc_windowed_attn_index(from);
+          end_row = calc_windowed_attn_index(from + i + 1) -
+                    calc_windowed_attn_index(from);
         } else {
           unsigned int to = from + row;
           start_row = i * to;
@@ -1359,14 +1371,25 @@ void MHACoreLayer::softmax_triangle(nntrainer::Tensor &qk_out, size_t row,
       nntrainer::softmax_row_inplace(qk_out_, start_row, end_row, num_head,
                                      sink_step_);
     } else {
-      int seq = row < local_window_size ? row : local_window_size;
+      // Iterate over ALL rows (not just min(row, window)) for correct windowed
+      // prefill when sequence_len > local_window_size.
+      size_t total_rows = row;
       if (!is_causal)
-        seq = row;
+        total_rows = row;
 
       auto &tm = nntrainer::ThreadManager::Global();
-      tm.parallel_for(0, static_cast<size_t>(seq), [=](size_t i) {
-        size_t start_row = calc_attn_index(i + from) - calc_attn_index(from);
-        size_t end_row = calc_attn_index(from + i + 1) - calc_attn_index(from);
+      tm.parallel_for(0, total_rows, [=](size_t i) {
+        size_t start_row, end_row;
+        if (is_causal) {
+          start_row =
+            calc_windowed_attn_index(i + from) - calc_windowed_attn_index(from);
+          end_row = calc_windowed_attn_index(from + i + 1) -
+                    calc_windowed_attn_index(from);
+        } else {
+          unsigned int to = from + row;
+          start_row = i * to;
+          end_row = (i + 1) * to;
+        }
         nntrainer::softmax_row(qk_out_, start_row, end_row, num_head,
                                sink_step_);
       });
@@ -1383,16 +1406,18 @@ void MHACoreLayer::compute_fp16vcache_transposed(
 
   if (in.getDataType() == ml::train::TensorDim::DataType::FP32) {
     if ((to - from) != 1) {
-      int seq = (to - from) < local_window_size ? to - from : local_window_size;
-      // if non-causal, seq is practically to - from.
+      // Iterate over ALL output rows so every query row gets an output even
+      // when (to - from) > local_window_size.
+      int total = to - from;
       if (!is_causal)
-        seq = to - from;
+        total = to - from;
 
       auto &tm = nntrainer::ThreadManager::Global();
-      tm.parallel_for(0, static_cast<size_t>(seq), [=](size_t i) {
+      tm.parallel_for(0, static_cast<size_t>(total), [=](size_t i) {
         size_t start_idx;
         if (is_causal) {
-          start_idx = calc_attn_index(to - seq + i) - calc_attn_index(to - seq);
+          start_idx =
+            calc_windowed_attn_index(from + i) - calc_windowed_attn_index(from);
         } else {
           start_idx = i * to; // linear index
         }
@@ -1401,7 +1426,7 @@ void MHACoreLayer::compute_fp16vcache_transposed(
         float *out =
           output.getData<float>() + i * (num_cache_head * gqa_size * head_dim);
 
-        int row_num = is_causal ? (to - seq + i) : to - 1;
+        int row_num = is_causal ? (from + (int)i) : to - 1;
         if (vcache.getDataType() == ml::train::TensorDim::DataType::FP32) {
           compute_vcache_fp32_transposed_reference(
             row_num, input, vcache.getData<float>(), out, num_cache_head,
@@ -1443,15 +1468,18 @@ void MHACoreLayer::compute_fp16vcache_transposed(
   } else if (in.getDataType() == ml::train::TensorDim::DataType::FP16) {
 #ifdef ENABLE_FP16
     if ((to - from) != 1) {
-      int seq = (to - from) < local_window_size ? to - from : local_window_size;
+      // Iterate over ALL output rows so every query row gets an output even
+      // when (to - from) > local_window_size.
+      int total = to - from;
       if (!is_causal)
-        seq = to - from;
+        total = to - from;
 
       auto &tm = nntrainer::ThreadManager::Global();
-      tm.parallel_for(0, static_cast<size_t>(seq), [=](size_t i) {
+      tm.parallel_for(0, static_cast<size_t>(total), [=](size_t i) {
         size_t start_idx;
         if (is_causal) {
-          start_idx = calc_attn_index(to - seq + i) - calc_attn_index(to - seq);
+          start_idx =
+            calc_windowed_attn_index(from + i) - calc_windowed_attn_index(from);
         } else {
           start_idx = i * to;
         }
@@ -1459,7 +1487,7 @@ void MHACoreLayer::compute_fp16vcache_transposed(
           in.getData<_FP16>() + start_idx * num_cache_head * gqa_size;
         _FP16 *out =
           output.getData<_FP16>() + i * (num_cache_head * gqa_size * head_dim);
-        int row_num = is_causal ? (to - seq + i) : to - 1;
+        int row_num = is_causal ? (from + (int)i) : to - 1;
         nntrainer::compute_fp16vcache_transposed(
           row_num, input, vcache.getData<_FP16>(), out, num_cache_head,
           gqa_size, head_dim, local_window_size);
@@ -1562,6 +1590,20 @@ void MHACoreLayer::setProperty(const std::vector<std::string> &values) {
 }
 
 size_t MHACoreLayer::calc_attn_index(size_t i) { return (i * (i + 1)) / 2; };
+
+size_t MHACoreLayer::calc_windowed_attn_index(size_t i) {
+  // S(i) = sum_{k=0}^{i-1} min(k+1, W)
+  // For i <= W:  S(i) = i*(i+1)/2   (same as full-attention triangular index)
+  // For i >  W:  S(i) = W*(W+1)/2 + (i - W)*W
+  // When W == UINT_MAX, i <= W is always true, so we never evaluate
+  // W*(W+1)/2 and there is no overflow.
+  if (i <= local_window_size) {
+    return (i * (i + 1)) / 2;
+  } else {
+    return (local_window_size * (local_window_size + 1)) / 2 +
+           (i - local_window_size) * local_window_size;
+  }
+};
 
 #ifdef PLUGGABLE
 
