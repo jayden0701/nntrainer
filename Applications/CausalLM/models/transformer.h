@@ -38,8 +38,10 @@
 #include <map>
 #include <model.h>
 #include <random>
+#include <stdexcept>
 #include <tensor_api.h>
 #include <utility>
+#include <vector>
 
 #include <limits.h>
 
@@ -157,6 +159,44 @@ public:
   virtual void run(const WSTR prompt, bool do_sample = false,
                    const WSTR system_prompt = WSTR(),
                    const WSTR tail_prompt = WSTR(), bool log_output = true);
+
+  // ── Multimodal composition interface (model-agnostic) ──────────────────
+  // Lets a generic composer drive any [vision producer, LLM consumer] pair
+  // through base pointers, without knowing the concrete model type.
+  // Default implementations mean "this role is not supported by this model".
+
+  /** Embedding-CONSUMER (LLM): bytes of one token embedding (0 ⇒ no table). */
+  virtual size_t embeddingBytesPerToken() const { return 0; }
+
+  /** Embedding-CONSUMER (LLM): embedding of @p token_id, or nullptr. */
+  virtual const void *lookupEmbedding(int token_id) const {
+    (void)token_id;
+    return nullptr;
+  }
+
+  /** Embedding-CONSUMER (LLM): (scale, offset) of the embedding quant space. */
+  virtual std::pair<float, int> get_embedding_info() { return {1.0f, 0}; }
+
+  /** Embedding-CONSUMER (LLM): run generation from precomputed embeddings. */
+  virtual void run_with_embeddings(const void *prefill_embeds, size_t n_tokens,
+                                   std::vector<int> seed_tokens, bool do_sample,
+                                   bool log_output) {
+    (void)prefill_embeds;
+    (void)n_tokens;
+    (void)seed_tokens;
+    (void)do_sample;
+    (void)log_output;
+    throw std::runtime_error("run_with_embeddings not supported by this model");
+  }
+
+  /** Embedding-PRODUCER (vision): set the (scale, offset) it should emit in. */
+  virtual void set_quant_param(float scale, int offset) {
+    (void)scale;
+    (void)offset;
+  }
+
+  /** Current KV-cache length (0 if the model has no persistent KV cache). */
+  virtual int getKvLen() const { return 0; }
 
   /**
    * @brief Get TransformerPerformanceMetrics
