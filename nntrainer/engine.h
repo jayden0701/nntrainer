@@ -73,9 +73,14 @@ protected:
                    [](unsigned char c) { return std::tolower(c); });
 
     if (engines.find(name) != engines.end()) {
-      std::stringstream ss;
-      ss << "Cannot register Context with name : " << name;
-      throw std::invalid_argument(ss.str().c_str());
+      // Re-registering an already-registered Context is a no-op, not an error.
+      // QuickAI QNN models register the process-global "qnn" Context once per
+      // model in Quick_Dot_AI_QNN::initialize(); a multi-model handle (e.g. the
+      // multimodal [vision, LLM] pair) therefore calls this more than once.
+      // Upstream main throws here, but pr/3963 (the working QNN reference)
+      // returns early so the 2nd+ models reuse the existing Context. Carried
+      // forward from pr/3963.
+      return;
     }
     engines.insert(std::make_pair(name, context));
 
