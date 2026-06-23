@@ -66,6 +66,13 @@ using json = nlohmann::json;
 enum class ModelType { MODEL, CAUSALLM, EMBEDDING, UNKNOWN };
 
 /**
+ * @brief {data, size} pointer pair produced/consumed by multimodal vision
+ *        models. The buffer is heap-allocated by the producer (run_image) and
+ *        ownership transfers to the caller.
+ */
+using multimodal_pointer = std::pair<void *, size_t>;
+
+/**
  * @brief Non-owning logits processor hook for token generation
  */
 class LogitsProcessor {
@@ -193,6 +200,26 @@ public:
   virtual void set_quant_param(float scale, int offset) {
     (void)scale;
     (void)offset;
+  }
+
+  /** Embedding-PRODUCER (vision): encode an image into LLM-space embeddings.
+   *  Returns a heap buffer (caller frees) of size {bytes}; the default
+   *  {nullptr,0} means "this model is not a vision producer". */
+  virtual multimodal_pointer run_image(const WSTR prompt, multimodal_pointer image,
+                                       int image_height, int image_width,
+                                       bool do_sample = false,
+                                       const WSTR system_prompt = WSTR(),
+                                       const WSTR tail_prompt = WSTR(),
+                                       bool log_output = true) {
+    (void)prompt;
+    (void)image;
+    (void)image_height;
+    (void)image_width;
+    (void)do_sample;
+    (void)system_prompt;
+    (void)tail_prompt;
+    (void)log_output;
+    return {nullptr, 0};
   }
 
   /** Current KV-cache length (0 if the model has no persistent KV cache). */
