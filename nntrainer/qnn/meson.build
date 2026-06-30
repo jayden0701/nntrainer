@@ -1,9 +1,37 @@
 # nntrainer/nntrainer/qnn/meson.build
 # Defines qnn_sources_abs and qnn_inc_abs for the ndk-build Android.mk module.
-# Gated by the parent (enable-npu). No external -Dqnn-sdk-root: the QNN 2.47
-# headers + sample utilities are vendored under jni/vendor/.
+# Gated by the parent (enable-npu). The QNN 2.47 headers + sample utilities
+# are auto-generated under jni/vendor/ at configure time from a locally-installed
+# Qualcomm QNN SDK. Provide the SDK via -Dqnn-sdk-root=PATH or $QNN_SDK_ROOT.
 
 qnn_src_dir = meson.current_source_dir()
+
+# ── Auto-generate the vendor tree if it is missing ───────────────────────────
+# The sentinel file is a stable header that must exist after a successful run.
+fs = import('fs')
+_vendor_sentinel = qnn_src_dir / 'jni/vendor/QNN/QnnCommon.h'
+if not fs.exists(_vendor_sentinel)
+  _gen_script = qnn_src_dir / 'jni/tools/update_qnn_version.py'
+  _gen_cmd = ['python3', _gen_script]
+  _sdk_root_opt = get_option('qnn-sdk-root')
+  if _sdk_root_opt != ''
+    _gen_cmd += ['--qnn-sdk-root=' + _sdk_root_opt]
+  endif
+  # When qnn-sdk-root is empty the script falls back to $QNN_SDK_ROOT, which
+  # run_command inherits from the meson configure environment.
+  _gen_result = run_command(_gen_cmd, check: false)
+  if _gen_result.returncode() != 0
+    error(
+      'QNN vendor tree generation failed.\n' +
+      'stdout: ' + _gen_result.stdout() + '\n' +
+      'stderr: ' + _gen_result.stderr() + '\n' +
+      'Set -Dqnn-sdk-root=<path> or export QNN_SDK_ROOT=<path> to your ' +
+      'Qualcomm QNN SDK root (e.g. ~/qairt/2.47.0.260601).'
+    )
+  endif
+  message('QNN vendor tree generated from SDK.')
+endif
+# ─────────────────────────────────────────────────────────────────────────────
 
 qnn_sources_abs = [
   qnn_src_dir / 'jni/vendor/Log/Logger.cpp',

@@ -1,7 +1,9 @@
 import os
+import re
+import sys
 import shutil
 
-VENDOR_DIR = 'qnn/jni/vendor'
+VENDOR_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'vendor'))
 SAMPLEAPP_SRC_PREFIX = 'examples/QNN/SampleApp/SampleApp/src'
 GENIE_SRC_PREFIX = 'examples/Genie/Genie/src'
 
@@ -65,8 +67,19 @@ extra_files = [
 ]
 
 if __name__ == '__main__':
-	assert os.environ.get('QNN_SDK_ROOT'), 'Set QNN_SDK_ROOT env variable'
-	qnn_root = os.environ.get('QNN_SDK_ROOT')
+	# Resolve SDK root: --qnn-sdk-root=PATH flag takes priority, then env var.
+	qnn_root = None
+	for arg in sys.argv[1:]:
+		if arg.startswith('--qnn-sdk-root='):
+			qnn_root = arg[len('--qnn-sdk-root='):]
+			break
+	if not qnn_root:
+		qnn_root = os.environ.get('QNN_SDK_ROOT', '')
+	if not qnn_root:
+		sys.exit(
+			'Set --qnn-sdk-root=<path> or the QNN_SDK_ROOT env variable to your '
+			'Qualcomm QNN SDK root (e.g. .../qairt/2.47.0.x)'
+		)
 
 	# Copy directories
 	for target_name, src_rel in target_src_dirs.items():
@@ -90,6 +103,27 @@ if __name__ == '__main__':
 			os.makedirs(os.path.dirname(target_rel), exist_ok=True)
 			shutil.copyfile(src_path, target_rel)
 
+	# ── 1b. Pin QNN API version ───────────────────────────────────────────
+	_qnn_common_h = os.path.join(VENDOR_DIR, 'QNN/QnnCommon.h')
+	if not os.path.exists(_qnn_common_h):
+		sys.exit(f'Expected {_qnn_common_h} to exist after SDK copy — check SDK layout.')
+	_expected_minor = 36
+	_found_minor = None
+	with open(_qnn_common_h, 'r') as _fh:
+		for _line in _fh:
+			_m = re.match(r'\s*#define\s+QNN_API_VERSION_MINOR\s+(\d+)', _line)
+			if _m:
+				_found_minor = int(_m.group(1))
+				break
+	if _found_minor is None:
+		sys.exit(f'{_qnn_common_h} does not define QNN_API_VERSION_MINOR — unexpected SDK layout.')
+	if _found_minor != _expected_minor:
+		sys.exit(
+			f'Unexpected QNN API version: expected MINOR={_expected_minor} (QNN SDK 2.47.x), '
+			f'found MINOR={_found_minor}. '
+			f'Update the expected version in this script if you intend to bump the SDK.'
+		)
+
 	# ── 2. Remove unused files/directories ────────────────────────────────
 
 	# Unused QNN backend subdirs (we only use HTP and System)
@@ -111,7 +145,8 @@ if __name__ == '__main__':
 	          'QnnApi.hpp', 'QnnApi.cpp', 'QnnApiUtils.hpp', 'QnnApiUtils.cpp',
 	          'RpcMem.hpp', 'RpcMem.cpp', 'QnnWrapperUtils.hpp',
 	          'BufferUtils.hpp', 'BufferUtils.cpp',
-	          'QnnTypeUtils.hpp', 'QnnTypeUtils.cpp']:
+	          'QnnTypeUtils.hpp', 'QnnTypeUtils.cpp',
+	          'QnnTypeMacros.hpp']:
 		remove_path(os.path.join(VENDOR_DIR, 'qnn-api', f))
 
 	# Unused qnn-api subdirs with unresolvable dependencies
