@@ -24,6 +24,7 @@
 #include "qnn_rpc_manager.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <fcntl.h>
 #include <functional>
@@ -73,14 +74,32 @@ struct Qnn_Context_Graph_t {
     }
   }
 
-  qnn_wrapper_api::GraphInfo_t *getGraphPtr(std::string graph_name) {
+  qnn_wrapper_api::GraphInfo_t *getGraphPtr(const std::string &graph_name) {
     auto mapIt = graph_map.find(graph_name);
     if (mapIt != graph_map.end()) {
       return mapIt->second;
-    } else {
-      ml_loge("cannot find graph");
-      return nullptr;
     }
+
+    /**
+     * nntrainer's GraphCore::ensureName() lowercases every layer name, but QNN
+     * graph names are case-sensitive (e.g. "gemma_4_E2B_..."). When the layer
+     * name was lowercased the exact lookup above misses, so fall back to a
+     * case-insensitive match against the binary's real graph names.
+     */
+    auto ci_equal = [](const std::string &a, const std::string &b) {
+      return a.size() == b.size() &&
+             std::equal(a.begin(), a.end(), b.begin(),
+                        [](unsigned char x, unsigned char y) {
+                          return std::tolower(x) == std::tolower(y);
+                        });
+    };
+    for (auto &kv : graph_map) {
+      if (ci_equal(kv.first, graph_name))
+        return kv.second;
+    }
+
+    ml_loge("cannot find graph");
+    return nullptr;
   }
 
   int getGraphIdx(std::string graph_name) {
@@ -331,16 +350,26 @@ struct QNNVar {
 
     qnn_wrapper_api::GraphInfo_t *graphInfo = context_i.getGraphPtr(graphName);
 
+    if (nullptr == graphInfo) {
+      ml_loge("cannot find graph for graph name : %s", graphName.c_str());
+      return nullptr;
+    }
+
     if (nullptr == m_qnnFunctionPointers.qnnInterface.graphRetrieve) {
       ml_loge("graphRetrieveFnHandle is nullptr.");
       return nullptr;
     }
 
+    /**
+     * QNN's graphRetrieve is case-sensitive, so pass the binary's real graph
+     * name (graphInfo->graphName) rather than the possibly-lowercased lookup
+     * key in graphName.
+     */
     if (QNN_SUCCESS !=
         m_qnnFunctionPointers.qnnInterface.graphRetrieve(
-          context_i.m_context, graphName.c_str(), &(graphInfo->graph))) {
+          context_i.m_context, graphInfo->graphName, &(graphInfo->graph))) {
       ml_loge("Unable to retrieve graph handle for graph name : %s",
-              graphName.c_str());
+              graphInfo->graphName);
       return nullptr;
     }
 
