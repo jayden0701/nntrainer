@@ -35,7 +35,7 @@ void MultiplyLayer::forwarding_operation(const Tensor &input0,
 void MultiplyLayer::incremental_forwarding(RunLayerContext &context,
                                            unsigned int from, unsigned int to,
                                            bool training) {
-  bool is_prefill = !from;
+  bool is_prefill = !from || (to - from) > 1;
   if (skip_prefill && is_prefill)
     return;
 

@@ -47,7 +47,7 @@ void SwiGLULayer::incremental_forwarding(nntrainer::RunLayerContext &context,
   nntrainer::Tensor &in2 = context.getInput(INPUT_IDX_2);
   nntrainer::Tensor &out = context.getOutput(OUT_IDX);
 
-  bool is_prefill = !from;
+  bool is_prefill = !from || (to - from) > 1;
   if (skip_prefill && is_prefill)
     return;
 

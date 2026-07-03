@@ -46,7 +46,7 @@ void AdditionLayer::forwarding(RunLayerContext &context, bool training) {
 void AdditionLayer::incremental_forwarding(RunLayerContext &context,
                                            unsigned int from, unsigned int to,
                                            bool training) {
-  bool is_prefill = !from;
+  bool is_prefill = !from || (to - from) > 1;
   if (skip_prefill && is_prefill)
     return;
 

@@ -247,7 +247,7 @@ void FullyConnectedLayer::incremental_forwarding(RunLayerContext &context,
   Tensor &hidden_ = context.getOutput(SINGLE_INOUT_IDX);
   Tensor loraA, loraB, hidden_tmp_lora, hidden_out_lora;
 
-  bool is_prefill = !from;
+  bool is_prefill = !from || (to - from) > 1;
   if (skip_prefill && is_prefill)
     return;
 

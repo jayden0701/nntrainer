@@ -60,7 +60,7 @@ void LogitSoftCappingLayer::forwarding(nntrainer::RunLayerContext &context,
 void LogitSoftCappingLayer::incremental_forwarding(
   nntrainer::RunLayerContext &context, unsigned int from, unsigned int to,
   bool training) {
-  bool is_prefill = !from;
+  bool is_prefill = !from || (to - from) > 1;
   if (skip_prefill && is_prefill)
     return;
 
