@@ -1,4 +1,5 @@
 LOCAL_PATH := $(call my-dir)
+CAUSALLM_JNI_PATH := $(LOCAL_PATH)
 
 include $(CLEAR_VARS)
 
@@ -10,8 +11,6 @@ endif
 ifndef NNTRAINER_ROOT
 NNTRAINER_ROOT := $(LOCAL_PATH)/../../..
 endif
-
-NNTRAINER_INCLUDES := $(NNTRAINER_ROOT)/builddir/android_build_result/include/nntrainer
 
 # Common Includes Definition
 CAUSALLM_COMMON_INCLUDES := \
@@ -33,22 +32,19 @@ CAUSALLM_COMMON_INCLUDES := \
     $(LOCAL_PATH)/../third_party \
 
 # Common compile flags. -std=c++17/-fexceptions/-frtti come from Application.mk
-# (APP_CPPFLAGS). -DUSE__FP16 must match the prebuilt libnntrainer.so so that
-# _FP16 resolves to __fp16 in the shared nntrainer headers.
-CAUSALLM_COMMON_CFLAGS := -O3 -ffast-math -march=armv8.2-a+fp16+dotprod+i8mm \
-    -DENABLE_FP16=1 -DUSE__FP16=1 -DUSE_NEON=1 \
+# (APP_CPPFLAGS); -march and the FP16 ABI defines are inherited from the
+# prebuilt nntrainer modules below via LOCAL_EXPORT_CFLAGS.
+CAUSALLM_COMMON_CFLAGS := -O3 -ffast-math -DUSE_NEON=1 \
     -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
 
-# Prebuilt nntrainer libraries
-include $(CLEAR_VARS)
-LOCAL_MODULE := nntrainer
-LOCAL_SRC_FILES := $(NNTRAINER_ROOT)/builddir/android_build_result/lib/$(TARGET_ARCH_ABI)/libnntrainer.so
-include $(PREBUILT_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := ccapi-nntrainer
-LOCAL_SRC_FILES := $(NNTRAINER_ROOT)/builddir/android_build_result/lib/$(TARGET_ARCH_ABI)/libccapi-nntrainer.so
-include $(PREBUILT_SHARED_LIBRARY)
+# Prebuilt nntrainer libraries. The generated Android.mk exports the include
+# paths and the -march/FP16 cflags the prebuilts were built with.
+NNTRAINER_PREBUILT_MK := $(NNTRAINER_ROOT)/builddir/android_build_result/Android.mk
+ifeq ($(wildcard $(NNTRAINER_PREBUILT_MK)),)
+$(error $(NNTRAINER_PREBUILT_MK) not found. Build nntrainer first (tools/package_android.sh))
+endif
+include $(NNTRAINER_PREBUILT_MK)
+LOCAL_PATH := $(CAUSALLM_JNI_PATH)
 
 # Tokenizer library
 include $(CLEAR_VARS)
@@ -111,7 +107,7 @@ LOCAL_SRC_FILES := \
 LOCAL_SHARED_LIBRARIES := nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := tokenizers_c
 
-LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) $(CAUSALLM_COMMON_INCLUDES)
+LOCAL_C_INCLUDES += $(CAUSALLM_COMMON_INCLUDES)
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -130,7 +126,7 @@ LOCAL_SRC_FILES := \
 LOCAL_SHARED_LIBRARIES := causallm_core nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := tokenizers_c
 
-LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) $(CAUSALLM_COMMON_INCLUDES) \
+LOCAL_C_INCLUDES += $(CAUSALLM_COMMON_INCLUDES) \
     $(LOCAL_PATH)/../api
 
 include $(BUILD_SHARED_LIBRARY)
@@ -147,7 +143,7 @@ LOCAL_SRC_FILES := ../main.cpp
 LOCAL_SHARED_LIBRARIES := causallm_core nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := tokenizers_c
 
-LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) $(CAUSALLM_COMMON_INCLUDES)
+LOCAL_C_INCLUDES += $(CAUSALLM_COMMON_INCLUDES)
 
 include $(BUILD_EXECUTABLE)
 
@@ -163,7 +159,7 @@ LOCAL_SRC_FILES := ../api/test_api.cpp
 LOCAL_SHARED_LIBRARIES := causallm_api causallm_core nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := tokenizers_c
 
-LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) $(CAUSALLM_COMMON_INCLUDES) \
+LOCAL_C_INCLUDES += $(CAUSALLM_COMMON_INCLUDES) \
     $(LOCAL_PATH)/../api
 
 include $(BUILD_EXECUTABLE)
@@ -222,7 +218,7 @@ LOCAL_SRC_FILES := ../quantize.cpp \
 LOCAL_SHARED_LIBRARIES := nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := tokenizers_c
 
-LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) \
+LOCAL_C_INCLUDES += \
     $(LOCAL_PATH)/.. \
     $(LOCAL_PATH)/../layers \
     $(LOCAL_PATH)/../models \
@@ -251,8 +247,7 @@ LOCAL_SRC_FILES := ../safetensors_info.cpp
 
 LOCAL_SHARED_LIBRARIES := nntrainer ccapi-nntrainer
 
-LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) \
-    $(LOCAL_PATH)/..
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/..
 
 include $(BUILD_EXECUTABLE)
 
@@ -307,7 +302,7 @@ LOCAL_SRC_FILES := \
 LOCAL_SHARED_LIBRARIES := causallm_core nntrainer ccapi-nntrainer
 LOCAL_STATIC_LIBRARIES := googletest_main
 
-LOCAL_C_INCLUDES += $(NNTRAINER_INCLUDES) $(CAUSALLM_COMMON_INCLUDES) \
+LOCAL_C_INCLUDES += $(CAUSALLM_COMMON_INCLUDES) \
     $(LOCAL_PATH)/$(GTEST_PATH)/include \
     $(LOCAL_PATH)/../api \
     $(LOCAL_PATH)/$(UNITTEST_MODELS_DIR)
