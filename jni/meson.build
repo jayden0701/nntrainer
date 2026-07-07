@@ -16,8 +16,6 @@ if get_option('platform') == 'android'
       arm_march_flag = '-march=armv9.2-a+fp16+sve2+sme'
     elif arm_arch_opt == 'armv8.2-a' or arm_arch_opt == 'auto'
       arm_march_flag = '-march=armv8.2-a+fp16+dotprod+i8mm'
-    elif arm_arch_opt == 'armv7l'
-      arm_march_flag = '-march=armv7-a+neon'
     endif
   endif
   if arm_march_flag != ''
