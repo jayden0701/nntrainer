@@ -34,7 +34,7 @@ CAUSALLM_COMMON_INCLUDES := \
 # Common compile flags. -std=c++17/-fexceptions/-frtti come from Application.mk
 # (APP_CPPFLAGS); -march and the FP16 ABI defines are inherited from the
 # prebuilt nntrainer modules below via LOCAL_EXPORT_CFLAGS.
-CAUSALLM_COMMON_CFLAGS := -O3 -ffast-math -DUSE_NEON=1 \
+CAUSALLM_COMMON_CFLAGS := -O3 -ffast-math \
     -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
 
 # Prebuilt nntrainer libraries. The generated Android.mk exports the include

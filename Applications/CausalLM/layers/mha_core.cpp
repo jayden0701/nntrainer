@@ -895,20 +895,9 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
     cached->sin.assign(seq_len, std::vector<float>(head_dim, 0));
 
     for (unsigned int i = 0; i < seq_len; ++i) {
-#ifdef USE_NEON
       nntrainer::calc_trigonometric_vals_dup(
         half_, thetas.data(), cached->cos[i].data(), cached->sin[i].data(), i,
         attention_scaling);
-#else
-      for (unsigned int j = 0; j < half_; ++j) {
-        float angle = i * thetas[j];
-        cached->cos[i][j] = std::cos(angle) * attention_scaling;
-        cached->cos[i][j + half_] = std::cos(angle) * attention_scaling;
-
-        cached->sin[i][j] = std::sin(angle) * attention_scaling;
-        cached->sin[i][j + half_] = std::sin(angle) * attention_scaling;
-      }
-#endif
     }
     rope_cache_fp32[rope_cache_key] = cached;
     freqs_fp32 = cached;
@@ -930,20 +919,9 @@ void MHACoreLayer::precompute_freqs(int head_dim, unsigned int seq_len,
     std::vector<float> sin_tmp(head_dim);
 
     for (unsigned int i = 0; i < seq_len; ++i) {
-#ifdef USE_NEON
       nntrainer::calc_trigonometric_vals_dup(half_, thetas.data(),
                                              cos_tmp.data(), sin_tmp.data(), i,
                                              attention_scaling);
-#else
-      for (unsigned int j = 0; j < half_; ++j) {
-        float angle = i * thetas[j];
-        cos_tmp[j] = std::cos(angle) * attention_scaling;
-        cos_tmp[j + half_] = std::cos(angle) * attention_scaling;
-
-        sin_tmp[j] = std::sin(angle) * attention_scaling;
-        sin_tmp[j + half_] = std::sin(angle) * attention_scaling;
-      }
-#endif
       for (unsigned int j = 0; j < head_dim; ++j) {
         cached->cos[i][j] = (_FP16)cos_tmp[j];
         cached->sin[i][j] = (_FP16)sin_tmp[j];
