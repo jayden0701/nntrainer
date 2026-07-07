@@ -32,6 +32,13 @@ CAUSALLM_COMMON_INCLUDES := \
     $(LOCAL_PATH)/../third_party/minja/include \
     $(LOCAL_PATH)/../third_party \
 
+# Common compile flags. -std=c++17/-fexceptions/-frtti come from Application.mk
+# (APP_CPPFLAGS). -DUSE__FP16 must match the prebuilt libnntrainer.so so that
+# _FP16 resolves to __fp16 in the shared nntrainer headers.
+CAUSALLM_COMMON_CFLAGS := -O3 -ffast-math -march=armv8.2-a+fp16+dotprod+i8mm \
+    -DENABLE_FP16=1 -DUSE__FP16=1 -DUSE_NEON=1 \
+    -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
+
 # Prebuilt nntrainer libraries
 include $(CLEAR_VARS)
 LOCAL_MODULE := nntrainer
@@ -52,13 +59,9 @@ include $(PREBUILT_STATIC_LIBRARY)
 # Build libcausallm_core.so (shared library - without api)
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS += -std=c++17 -Ofast -mcpu=cortex-a53 -Ilz4-nougat/lib -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -Llz4-nougat/lib/obj/local/$(TARGET_ARCH_ABI)/
-LOCAL_CXXFLAGS += -std=c++17 -frtti
-LOCAL_CFLAGS += -pthread -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math
+LOCAL_CFLAGS += $(CAUSALLM_COMMON_CFLAGS)
 LOCAL_MODULE := causallm_core
-LOCAL_LDLIBS := -llog -landroid -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1
+LOCAL_LDLIBS := -llog -landroid
 
 LOCAL_SRC_FILES := \
     ../chat_template.cpp \
@@ -115,12 +118,9 @@ include $(BUILD_SHARED_LIBRARY)
 # Build libcausallm_api.so (shared library - api only)
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS += -std=c++17 -Ofast -mcpu=cortex-a53 -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_CXXFLAGS += -std=c++17 -frtti
-LOCAL_CFLAGS += -pthread -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math
+LOCAL_CFLAGS += $(CAUSALLM_COMMON_CFLAGS)
 LOCAL_MODULE := causallm_api
-LOCAL_LDLIBS := -llog -landroid -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1
+LOCAL_LDLIBS := -llog -landroid
 
 LOCAL_SRC_FILES := \
     ../api/causal_lm_api.cpp \
@@ -138,13 +138,9 @@ include $(BUILD_SHARED_LIBRARY)
 # Build nntrainer_causallm executable
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS += -std=c++17 -Ofast -mcpu=cortex-a53 -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_CXXFLAGS += -std=c++17 -frtti
-LOCAL_CFLAGS += -pthread -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math
-LOCAL_MODULE_TAGS := optional
+LOCAL_CFLAGS += $(CAUSALLM_COMMON_CFLAGS)
 LOCAL_MODULE := nntrainer_causallm
-LOCAL_LDLIBS := -llog -landroid -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1
+LOCAL_LDLIBS := -llog -landroid
 
 LOCAL_SRC_FILES := ../main.cpp
 
@@ -158,13 +154,9 @@ include $(BUILD_EXECUTABLE)
 # Build test_api executable
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS += -std=c++17 -Ofast -mcpu=cortex-a53 -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_CXXFLAGS += -std=c++17 -frtti
-LOCAL_CFLAGS += -pthread -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math
-LOCAL_MODULE_TAGS := optional
+LOCAL_CFLAGS += $(CAUSALLM_COMMON_CFLAGS)
 LOCAL_MODULE := test_api
-LOCAL_LDLIBS := -llog -landroid -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1
+LOCAL_LDLIBS := -llog -landroid
 
 LOCAL_SRC_FILES := ../api/test_api.cpp
 
@@ -180,14 +172,9 @@ include $(BUILD_EXECUTABLE)
 # Build nntr_quantize executable
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS += -std=c++17 -Ofast -mcpu=cortex-a53 -Ilz4-nougat/lib -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -Llz4-nougat/lib/obj/local/$(TARGET_ARCH_ABI)/
-LOCAL_CXXFLAGS += -std=c++17 -frtti
-LOCAL_CFLAGS += -pthread -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -fexceptions -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math
-LOCAL_MODULE_TAGS := optional
+LOCAL_CFLAGS += $(CAUSALLM_COMMON_CFLAGS)
 LOCAL_MODULE := nntr_quantize
-LOCAL_LDLIBS := -llog -landroid -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1
+LOCAL_LDLIBS := -llog -landroid
 
 # Source files
 LOCAL_SRC_FILES := ../quantize.cpp \
@@ -255,14 +242,9 @@ include $(BUILD_EXECUTABLE)
 # Build nntr_safetensors_info executable
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS += -std=c++17 -Ofast -mcpu=cortex-a53 -Ilz4-nougat/lib -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -Llz4-nougat/lib/obj/local/$(TARGET_ARCH_ABI)/
-LOCAL_CXXFLAGS += -std=c++17 -frtti
-LOCAL_CFLAGS += -pthread -fexceptions -fopenmp -static-openmp -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_LDFLAGS += -fexceptions -fopenmp -static-openmp -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math
-LOCAL_MODULE_TAGS := optional
+LOCAL_CFLAGS += $(CAUSALLM_COMMON_CFLAGS)
 LOCAL_MODULE := nntr_safetensors_info
-LOCAL_LDLIBS := -llog -landroid -fopenmp -static-openmp -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1
+LOCAL_LDLIBS := -llog -landroid
 
 # Source files (header-only inspector; uses safetensors_util from libnntrainer)
 LOCAL_SRC_FILES := ../safetensors_info.cpp
@@ -294,13 +276,9 @@ include $(BUILD_STATIC_LIBRARY)
 # with the same FP16 ABI flags as causallm_core so the prebuilt shared libs link.
 include $(CLEAR_VARS)
 
-LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := unittest_causallm_models
 
-CAUSALLM_TEST_FLAGS := -pthread -fexceptions -frtti -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -march=armv8.2-a+fp16+dotprod+i8mm -DUSE_NEON=1 -mtune=cortex-a76 -O3 -ffast-math -Wno-nan-infinity-disabled -Wno-deprecated-literal-operator
-LOCAL_CFLAGS += -std=c++17 $(CAUSALLM_TEST_FLAGS) -Igoogletest/include -Igoogletest/
-LOCAL_CXXFLAGS += -std=c++17 -frtti
-LOCAL_LDFLAGS += -fexceptions
+LOCAL_CFLAGS += $(CAUSALLM_COMMON_CFLAGS) -Igoogletest/include -Igoogletest/
 LOCAL_LDLIBS := -llog -landroid
 
 UNITTEST_MODELS_DIR := ../../../test/unittest/models
