@@ -150,7 +150,7 @@ public:
   };
 
   /**
-   * @brief Create an LearningRateScheduler Object from the type (stirng)
+   * @brief Create a LearningRateScheduler Object from the type (string)
    *
    * @param type type of optimizer
    * @param props property
@@ -159,7 +159,7 @@ public:
    */
   virtual PtrType<ml::train::LearningRateScheduler>
   createLearningRateSchedulerObject(
-    const std::string &type, const std::vector<std::string> &propeties = {}) {
+    const std::string &type, const std::vector<std::string> &properties = {}) {
     return nullptr;
   }
 
@@ -173,7 +173,7 @@ public:
    */
   virtual std::unique_ptr<ml::train::LearningRateScheduler>
   createLearningRateSchedulerObject(
-    const int int_key, const std::vector<std::string> &propeties = {}) {
+    const int int_key, const std::vector<std::string> &properties = {}) {
     return nullptr;
   }
 
@@ -193,7 +193,7 @@ public:
   /**
    * @brief load weight and graph for the specific context
    *
-   * @return return 0 for success
+   * @return 0 on success
    */
   virtual int load(const std::string &file_path) { return 0; };
 
@@ -215,7 +215,7 @@ using DestroyContextFunc = void (*)(nntrainer::Context *);
  */
 typedef struct {
   CreateContextFunc createfunc;   /**< create layer function */
-  DestroyContextFunc destroyfunc; /**< destory function */
+  DestroyContextFunc destroyfunc; /**< destroy function */
 } ContextPluggable;
 
 /**

@@ -4,9 +4,9 @@
  *
  * @file   fc_layer_cl.h
  * @date   7 May 2024
- * @brief  This is Fully Connected Layer Class of Neural Network with OpenCl
- * implementation
- * @see    https://github.com/nntrainer/nntrainer
+ * @brief  This is OpenCL Fully Connected Layer Class of Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author Debadri Samaddar <s.debadri@samsung.com>
  * @bug    No known bugs except for NYI items
  *
@@ -22,7 +22,7 @@
 namespace nntrainer {
 
 /**
- * @class   FullyConnecedLayer
+ * @class   FullyConnectedLayerCl
  * @brief   fully connected layer
  */
 class FullyConnectedLayerCl : public LayerImplCl {
@@ -39,13 +39,13 @@ public:
 
   /**
    *  @brief  Move constructor.
-   *  @param[in] FullyConnected &&
+   *  @param[in] rhs
    */
   FullyConnectedLayerCl(FullyConnectedLayerCl &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs FullyConnectedLayer to be moved.
+   * @param[in] rhs
    */
   FullyConnectedLayerCl &operator=(FullyConnectedLayerCl &&rhs) = default;
 

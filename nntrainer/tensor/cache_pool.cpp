@@ -33,7 +33,7 @@ namespace {
  * @return cache policy
  * @note cache policy is defined by tensor's lifetime. If it needs to be
  * maintained its value, ALWAYS_SYNCED or ITERATION_CONSIST is proper. If not,
- * TEMPORAL doesnot keep its value.
+ * TEMPORAL does not keep its value.
  */
 inline const CachePolicy
 convertTensorLifespanToCachePolicy(const TensorLifespan lifespan) {

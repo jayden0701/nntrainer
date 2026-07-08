@@ -4,7 +4,7 @@
  *
  * @file   tensor_layer.cpp
  * @date   17 Jan 2025
- * @brief  This is QNN Tensor Layer Class of Neural Network
+ * @brief  Tensor layer
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>
  * @bug    No known bugs except for NYI items
@@ -96,7 +96,7 @@ void TensorLayer::forwarding(RunLayerContext &context, bool training) {
 
 void TensorLayer::calcDerivative(RunLayerContext &context) {
   throw exception::not_supported(
-    "calcDerivative for input layer is not supported");
+    "calcDerivative for TensorLayer is not supported");
 }
 
 void TensorLayer::exportTo(Exporter &exporter,

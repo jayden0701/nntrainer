@@ -37,7 +37,7 @@ namespace train {
 enum LayerType {
   LAYER_IN = ML_TRAIN_LAYER_TYPE_INPUT,          /**< Input Layer type */
   LAYER_WEIGHT = ML_TRAIN_LAYER_TYPE_WEIGHT,     /**< Weight Layer type */
-  LAYER_TENSOR = ML_TRAIN_LAYER_TYPE_TENSOR,     /**< Weight Layer type */
+  LAYER_TENSOR = ML_TRAIN_LAYER_TYPE_TENSOR,     /**< Tensor Layer type */
   LAYER_ADD = ML_TRAIN_LAYER_TYPE_ADD,           /**< Add Layer type */
   LAYER_SUBTRACT = ML_TRAIN_LAYER_TYPE_SUBTRACT, /**< Subtract Layer type */
   LAYER_MULTIPLY = ML_TRAIN_LAYER_TYPE_MULTIPLY, /**< Multiply Layer type */
@@ -70,7 +70,7 @@ enum LayerType {
   LAYER_EMBEDDING = ML_TRAIN_LAYER_TYPE_EMBEDDING, /**< Embedding Layer type */
   LAYER_RNN = ML_TRAIN_LAYER_TYPE_RNN,             /**< RNN Layer type */
   LAYER_LSTM = ML_TRAIN_LAYER_TYPE_LSTM,           /**< LSTM Layer type */
-  LAYER_SPLIT = ML_TRAIN_LAYER_TYPE_SPLIT,         /**< Splite Layer type */
+  LAYER_SPLIT = ML_TRAIN_LAYER_TYPE_SPLIT,         /**< Split Layer type */
   LAYER_GRU = ML_TRAIN_LAYER_TYPE_GRU,             /**< GRU Layer type */
   LAYER_PERMUTE = ML_TRAIN_LAYER_TYPE_PERMUTE,     /**< Permute layer */
   LAYER_DROPOUT = ML_TRAIN_LAYER_TYPE_DROPOUT,     /**< DropOut Layer type */
@@ -114,7 +114,7 @@ enum LayerType {
     ML_TRAIN_LAYER_TYPE_LOSS_CROSS_ENTROPY_SOFTMAX, /**< Cross Entropy with
                                                        Softmax Loss Layer type
                                                      */
-  LAYER_RMSNORM = ML_TRAIN_LAYER_TYPE_RMSNORM,      /**<RMS NORM Layer */
+  LAYER_RMSNORM = ML_TRAIN_LAYER_TYPE_RMSNORM,      /**< RMSNorm Layer */
   LAYER_TRANSPOSE = ML_TRAIN_LAYER_TYPE_TRANSPOSE,  /**< Transpose Layer type */
   LAYER_CHANNEL_SHUFFLE =
     ML_TRAIN_LAYER_TYPE_CHANNEL_SHUFFLE, /**< Channel Shuffle Layer type */
@@ -159,6 +159,7 @@ public:
    */
   virtual void initialize() = 0;
 
+  // clang-format off
   /**
    * @brief     Default allowed properties
    * - input shape : string
@@ -191,13 +192,14 @@ public:
    * - flip_direction
    * - random_translate
    * - in_dim : int ( input dimension for embedding layer )
-   * - out_dim : int ( output dimesion for embedding layer )
-   * - recurrent_activation : string (type) - used only in lstm
-   * - return_sequences : bool (type) - used only in lstm
+   * - out_dim : int ( output dimension for embedding layer )
+   * - recurrent_activation: string, lstm only
+   * - return_sequences: bool, lstm only
    * - distribute : bool
    * - hidden_state_activation : string (type) - used only in lstm
    * - drop_out : float (type) - drop out rate
    */
+  // clang-format on
   /**
    * @brief     set Property of layer
    * @todo      change the function signature
@@ -247,14 +249,16 @@ public:
    */
   virtual const std::vector<float *> getWeights() = 0;
 
+  // clang-format off
   /**
    * @brief     Get weight data of the layer
-   * @retval    weights : float * arrary to store weight data
-   * @retval    weights_dim : TensorDim for each weights
-   * @note      nntrainer assign the vector and if there is no weights, the size
-   * of vector is zero
+   * @param[out] weights Weight data buffers.
+   * @param[out] weights_dim Tensor dimensions for each weight.
+   * @note      nntrainer assigns the vectors. If there are no weights, the
+   * vectors are empty.
    * @note      layer needs to be finalized before called.
    */
+  // clang-format on
   virtual void getWeights(std::vector<float *> &weights,
                           std::vector<ml::train::TensorDim> &weights_dim) = 0;
 
@@ -268,14 +272,16 @@ public:
    */
   virtual const std::vector<_FP16 *> getFP16Weights() = 0;
 
+  // clang-format off
   /**
    * @brief     Get weight data of the layer
-   * @retval    weights : float * arrary to store weight data
-   * @retval    weights_dim : TensorDim for each weights
-   * @note      nntrainer assign the vector and if there is no weights, the size
-   * of vector is zero
+   * @param[out] weights FP16 weight data buffers.
+   * @param[out] weights_dim Tensor dimensions for each weight.
+   * @note      nntrainer assigns the vectors. If there are no weights, the
+   * vectors are empty.
    * @note      layer needs to be finalized before called.
    */
+  // clang-format on
   virtual void
   getFP16Weights(std::vector<_FP16 *> &weights,
                  std::vector<ml::train::TensorDim> &weights_dim) = 0;

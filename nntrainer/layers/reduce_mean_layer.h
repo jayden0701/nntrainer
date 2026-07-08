@@ -47,7 +47,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs ReduceMeanLayer to be moved.
+   * @param[in] rhs ReduceMeanLayer to be moved.
    */
   ReduceMeanLayer &operator=(ReduceMeanLayer &&rhs) = default;
 

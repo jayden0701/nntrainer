@@ -25,7 +25,7 @@ namespace nntrainer {
 constexpr const unsigned int CONV2D_TRANSPOSE_DIM = 2;
 
 /**
- * @class   Convolution 2D Transpose Layer
+ * @class   Conv2DTransposeLayer
  * @brief   Convolution 2D Transpose Layer
  */
 class Conv2DTransposeLayer : public LayerImpl {
@@ -43,13 +43,13 @@ public:
 
   /**
    *  @brief  Move constructor of Conv 2D Transpose Layer.
-   *  @param[in] Conv2dTransposeLayer &&
+   *  @param[in] rhs
    */
   Conv2DTransposeLayer(Conv2DTransposeLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs Conv2DTransposeLayer to be moved.
+   * @param[in] rhs
    */
   Conv2DTransposeLayer &operator=(Conv2DTransposeLayer &&rhs) = default;
 

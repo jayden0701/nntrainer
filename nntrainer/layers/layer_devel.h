@@ -114,8 +114,9 @@ public:
    *            27. flip_direction
    *            28. random_translate
    *            29. in_dim : int ( input dimension for embedding layer )
-   *            30. out_dim : int ( output dimesion for embedding layer )
-   *            31. recurrent_activation :  string (type) - lstm
+   *            30. out_dim : int ( output dimension for embedding layer )
+ *
+   * 31. recurrent_activation :  string (type) - lstm
    *            32. distribute : bool
    *            33. axis : string (type)
    *            34. return_sequences :  bool (type) - lstm
@@ -259,13 +260,10 @@ public:
    */
   virtual std::string getProperty(const std::string &key) { return ""; }
 
-  /**
-   * @brief this function helps exporting the layer in a predefined format,
-   * while workarounding issue caused by templated function type eraser
-   *
-   * @param     exporter exporter that conatins exporting logic
-   * @param     method enum value to identify how it should be exported to
-   */
+  /// @brief Export the layer in a predefined format while working around an
+  /// issue caused by the templated function type eraser.
+  /// @param exporter Exporter that contains exporting logic.
+  /// @param method Enum value to identify how it should be exported.
   virtual void exportTo(Exporter &exporter,
                         const ml::train::ExportMethods &method) const {}
 
@@ -335,12 +333,10 @@ public:
    */
   virtual bool requireLabel() const { return false; }
 
-  /**
-   * @brief  check if this layer supports backwarding
-   * @note   support backwarding primarily means that the layer can process the
-   * derivatives and return back the gradients to the previous layer.
-   * @return true if supports backwarding, else false
-   */
+  /// @brief Check if this layer supports the backward pass.
+  /// @note Backward pass support means the layer can process derivatives and
+  /// return gradients to the previous layer.
+  /// @return True if the backward pass is supported, else false.
   virtual bool supportBackwarding() const = 0;
 
   /**
@@ -372,7 +368,7 @@ public:
         }
       }
     } else {
-      // @note shared weights are only be saved at the first access
+      // @note shared weights are saved only on first access
       for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
         if (run_context.isGradientFirstAccess(i)) {
           auto &weight = run_context.getWeight(i);
@@ -383,8 +379,8 @@ public:
             if (dtype == TensorDim::DataType::Q4_0) {
               NNTR_THROW_IF(weight.getDataType() != TensorDim::DataType::FP32,
                             std::runtime_error)
-                << "Save with quantization only supports for FP32 weight.";
-              ///@note The codelines below can be replaced with quantizer's
+                << "Save with quantization supports only FP32 weights.";
+              ///@note The code lines below can be replaced with quantizer's
               /// quantize()
               TensorDim dim = weight.getDim();
               unsigned int K = dim.height();
@@ -414,8 +410,8 @@ public:
             } else if (dtype == TensorDim::DataType::QS4CX) {
               NNTR_THROW_IF(weight.getDataType() != TensorDim::DataType::FP32,
                             std::runtime_error)
-                << "Save with quantization only supports for FP32 weight.";
-              ///@note The codelines below can be replaced with quantizer's
+                << "Save with quantization supports only FP32 weights.";
+              ///@note The code lines below can be replaced with quantizer's
               /// quantize()
               TensorDim dim = weight.getDim();
               unsigned int K = dim.height();
@@ -480,7 +476,7 @@ public:
         }
       } else {
         for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
-          /// @note shared weights are only be read at the first acecss
+          /// @note shared weights are read only on first access
           if (run_context.isGradientFirstAccess(i)) {
             run_context.getWeight(i).read(file, start_offset, read_from_offset,
                                           file_fd);
@@ -530,7 +526,7 @@ public:
         }
       } else {
         for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
-          /// @note shared weights are only be read at the first acecss
+          /// @note shared weights are read only on first access
           if (run_context.isGradientFirstAccess(i)) {
             // file_fd is forwarded so virtual weights (e.g. SlimMoE expert
             // tensors) can capture a long-lived fd for later mmap-on-demand
@@ -585,7 +581,7 @@ std::unique_ptr<Layer> createLayer(const std::vector<std::string> &props = {}) {
  */
 typedef struct {
   CreateLayerFunc createfunc;   /**< create layer function */
-  DestroyLayerFunc destroyfunc; /**< destory function */
+  DestroyLayerFunc destroyfunc; /**< destroy function */
 } LayerPluggable;
 
 /**

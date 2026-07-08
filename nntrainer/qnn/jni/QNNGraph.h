@@ -4,9 +4,11 @@
  *
  * @file   QNNGraph.h
  * @date   10 Jan 2025
- * @brief  This is QNN Graph Layer Class of Neural Network
- * @see    https://github.com/nnstreamer/nntrainer
- * @author Jijoong Moon <jijoong.moon@samsung.com>
+ * @brief  QNN graph layer for Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
+ * @author Jijoong Moon,
+ * jijoong.moon@samsung.com
  * @bug    No known bugs except for NYI items
  *
  */

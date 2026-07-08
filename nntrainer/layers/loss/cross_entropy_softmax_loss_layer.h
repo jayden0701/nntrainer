@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file   cross_entropy_Softmax_loss_layer.h
+ * @file   cross_entropy_softmax_loss_layer.h
  * @date   24 June 2021
  * @brief  This is Cross Entropy Softmax with Softmax Loss Layer Class of Neural
  * Network

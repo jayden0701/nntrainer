@@ -2,17 +2,18 @@
 /**
  * Copyright (C) 2020 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file   loss_layer.h
+ * @file   entropy_layer.h
  * @date   12 June 2020
- * @brief  This is Loss Layer Class of Neural Network
- * @see    https://github.com/nntrainer/nntrainer
+ * @brief  This is Entropy Layer Class of Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author Parichay Kapoor <pk.kapoor@samsung.com>
  * @bug    No known bugs except for NYI items
  *
  */
 
-#ifndef __LOSS_LAYER_H__
-#define __LOSS_LAYER_H__
+#ifndef __ENTROPY_LAYER_H__
+#define __ENTROPY_LAYER_H__
 #ifdef __cplusplus
 
 #include <tensor.h>
@@ -26,12 +27,12 @@ namespace nntrainer {
 class LossLayer : public Layer {
 public:
   /**
-   * @brief     Constructor of Loss Layer
+   * @brief     Constructor of Entropy Layer
    */
   LossLayer() : Layer(), loss_type(LossType::LOSS_UNKNOWN) {}
 
   /**
-   * @brief     Destructor of Loss Layer
+   * @brief     Destructor of Entropy Layer
    */
   ~LossLayer() = default();
 
@@ -94,4 +95,4 @@ private:
 } // namespace nntrainer
 
 #endif /* __cplusplus */
-#endif /* __LOSS_LAYER_H__ */
+#endif /* __ENTROPY_LAYER_H__ */

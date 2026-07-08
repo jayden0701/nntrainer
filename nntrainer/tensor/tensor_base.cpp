@@ -190,18 +190,11 @@ void TensorBase::allocateSrcTensor() {
 
 void TensorBase::createSharedDataTensor(const TensorBase *src, TensorBase *dest,
                                         size_t offset) const {
-  /**
-   * - If src already has data allocated, then directly make dest tensor based
-   * on the src tensor.
-   * - If src->data does not exist (meaning tensor does not memory allocated),
-   * and src->src_tensor does not exist (meaning the src tensor does not depened
-   * on another tensor), then create a SrcSharedTensor around the src.
-   * - If src->src_tensor exists, then use the src->src_tensor to create the
-   *  required SrcSharedTensor to avoid recursive dependency.
-   *
-   * @note src->data and src->src_tensor CAN co-exist. src->src_tensor is stored
-   * if the batch size of src is updated and needs reallocation.
-   */
+  // If src already has data allocated, make dest share src directly.
+  // If src has neither data nor src_tensor, create a SrcSharedTensor around
+  // src. If src has src_tensor, use it to avoid recursive dependency.
+  // Note: src->data and src->src_tensor can co-exist. src->src_tensor is
+  // stored if src batch size is updated and needs reallocation.
   dest->data = nullptr;
   if (src->data) {
     dest->src_tensor = std::make_shared<SrcSharedTensorBase>(src, offset);
@@ -412,7 +405,7 @@ void TensorBase::calculateFlattenDot(
 /**
  * Please note that the following functions need to be implemented in a child
  * class to utilize tensor operations fully — operations such as addition,
- * division, multiplication, dot production, data averaging, and so on.
+ * division, multiplication, dot product, data averaging, and so on.
  */
 void TensorBase::setRandNormal(float mean, float stddev) {
   throw std::invalid_argument(

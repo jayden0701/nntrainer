@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs WeightLayer to be moved.
+   * @param[in] rhs WeightLayer to be moved.
    */
   WeightLayer &operator=(WeightLayer &&rhs) = default;
 

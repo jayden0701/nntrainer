@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs ChannelShuffle to be moved.
+   * @param[in] rhs ChannelShuffle to be moved.
    */
   ChannelShuffle &operator=(ChannelShuffle &&rhs) = default;
 

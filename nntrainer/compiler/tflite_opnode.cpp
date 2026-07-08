@@ -229,10 +229,9 @@ void TfOpNode::finalize() {
     if (fn) {
       auto result = fn(v);
       v.resize(result.size());
-      /// basically, result.size() == v.size() except InputLayer because a
-      /// Transpose operator is added for converting nchw to nhwc
-      /// @todo comment out below codes. TfOpNode needs to have LayerNode
-      /// pointer
+      /// result.size() == v.size() except for InputLayer because a Transpose
+      /// operator is added to convert NCHW to NHWC.
+      /// @todo Re-enable the size check when TfOpNode owns a LayerNode pointer.
       // NNTR_THROW_IF(dynamic_cast<InputLayer>(layer_ptr->getLayer()) ==
       // nullptr && result.size() != v.size(), std::invalid_argument)
       //   << "result size must match with given variable size";

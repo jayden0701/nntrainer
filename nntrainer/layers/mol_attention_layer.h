@@ -44,7 +44,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs MoLAttentionLayer to be moved.
+   * @param[in] rhs MoLAttentionLayer to be moved.
    */
   MoLAttentionLayer &operator=(MoLAttentionLayer &&rhs) = default;
 

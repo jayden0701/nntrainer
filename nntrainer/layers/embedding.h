@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs EmbeddingLayer to be moved.
+   * @param[in] rhs EmbeddingLayer to be moved.
    */
   EmbeddingLayer &operator=(EmbeddingLayer &&rhs) = default;
 

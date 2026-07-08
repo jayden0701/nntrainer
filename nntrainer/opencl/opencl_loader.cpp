@@ -37,7 +37,7 @@ static bool opencl_init_failed = false;
 /**
  * @brief Loading OpenCL libraries and required function
  *
- * @return true if successfull or false otherwise
+ * @return true if successful or false otherwise
  */
 bool LoadOpenCL() {
   // check if already loaded

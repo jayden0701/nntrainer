@@ -246,8 +246,7 @@ public:
    * @param sections_ sections that should go into ini
    */
   IniWrapper(const std::string &name_, const Sections &sections_ = {}) :
-    name(name_),
-    sections(sections_){};
+    name(name_), sections(sections_){};
 
   /**
    * @brief ini operator== to check if IniWrapper is equal
@@ -361,7 +360,7 @@ public:
   /**
    * @brief save ini by ini_name
    *
-   * @param ini_name ini name to svae
+   * @param ini_name ini name to save
    */
   void save_ini(const std::string &ini_name) const;
 

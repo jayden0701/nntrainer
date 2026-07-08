@@ -179,7 +179,7 @@ public:
    *
    * @param type layer name
    * @param props property
-   * @return unitque_ptr<T> unique pointer to the Layer object
+   * @return unique_ptr<T> unique pointer to the Layer object
    */
   std::unique_ptr<nntrainer::Layer>
   createLayerObject(const std::string &type,
@@ -193,7 +193,7 @@ public:
    *
    * @param int_key key
    * @param props property
-   * @return unitque_ptr<T> unique pointer to the Layer object
+   * @return unique_ptr<T> unique pointer to the Layer object
    */
   std::unique_ptr<nntrainer::Layer>
   createLayerObject(const int int_key,
@@ -207,7 +207,7 @@ public:
    *
    * @param type Optimizer name
    * @param props property
-   * @return unitque_ptr<T> unique pointer to the Optimizer object
+   * @return unique_ptr<T> unique pointer to the Optimizer object
    */
   std::unique_ptr<nntrainer::Optimizer>
   createOptimizerObject(const std::string &type,
@@ -221,7 +221,7 @@ public:
    *
    * @param int_key key
    * @param props property
-   * @return unitque_ptr<T> unique pointer to the Optimizer object
+   * @return unique_ptr<T> unique pointer to the Optimizer object
    */
   std::unique_ptr<nntrainer::Optimizer>
   createOptimizerObject(const int int_key,
@@ -235,7 +235,8 @@ public:
    *
    * @param type type of LearningRateScheduler
    * @param props property
-   * @return unitque_ptr<T> unique pointer to the LearningRateScheduler object
+   * @return unique_ptr<T> unique pointer to the LearningRateScheduler object
+
    */
   std::unique_ptr<ml::train::LearningRateScheduler>
   createLearningRateSchedulerObject(
@@ -250,7 +251,8 @@ public:
    *
    * @param int_key key
    * @param props property
-   * @return unitque_ptr<T> unique pointer to the LearningRateScheduler object
+   * @return unique_ptr<T> unique pointer to the LearningRateScheduler object
+
    */
   std::unique_ptr<ml::train::LearningRateScheduler>
   createLearningRateSchedulerObject(

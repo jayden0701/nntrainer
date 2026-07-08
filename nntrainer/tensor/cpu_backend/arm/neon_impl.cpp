@@ -531,7 +531,7 @@ void copy_int4_to_fp32(const unsigned int N, const uint8_t *X, float *Y) {
     vst1q_f32(&Y[2 * idx + 12], y3);
   }
 
-  // pocessing remaining values
+  // processing remaining values
   for (; idx < N; idx++) {
     Y[2 * idx] = X[idx] >> 4;
     Y[2 * idx + 1] = X[idx] & 0x0f;
@@ -2100,9 +2100,9 @@ void transform_int4_osv32_isv2_to_q4_0x4(size_t N, size_t K,
                 std::invalid_argument)
     << "Scale group size must be 32/64/128";
   NNTR_THROW_IF(K % QK4_0 != 0, std::invalid_argument)
-    << "K size must be divisable by QK4_0 (32)";
+    << "K size must be divisible by QK4_0 (32)";
   NNTR_THROW_IF(N % 8 != 0, std::invalid_argument)
-    << "N size must be divisable by 8";
+    << "N size must be divisible by 8";
 
   static constexpr const size_t NUM_Q4_0_BLOCKS = 4;
   static constexpr const size_t ROW_BLOCK_SIZE = 32;

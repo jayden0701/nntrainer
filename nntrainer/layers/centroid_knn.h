@@ -40,7 +40,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs CentroidKNN to be moved.
+   * @param[in] rhs CentroidKNN to be moved.
    */
   CentroidKNN &operator=(CentroidKNN &&rhs) noexcept = default;
 

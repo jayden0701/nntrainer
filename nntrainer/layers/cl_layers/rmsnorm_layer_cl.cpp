@@ -4,9 +4,9 @@
  *
  * @file        rmsnorm_layer_cl.cpp
  * @date        8 June 2024
- * @brief       This is RMSNorm Layer Class for Neural Network with
- * OpenCl implementation
- * @see         https://github.com/nntrainer/nntrainer
+ * @brief       This is OpenCL RMSNorm Layer Class for Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author      Thummala Pallavi <t.pallavi@samsung.com>
  * @bug         No known bugs except for NYI items
  *

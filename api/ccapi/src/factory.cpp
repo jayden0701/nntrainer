@@ -8,7 +8,7 @@
  * @author Parichay Kapoor <pk.kapoor@samsung.com>
  * @author Debadri Samaddar <s.debadri@samsung.com>
  * @bug    No known bugs except for NYI items
- * @brief  This is implementaion for factory builder interface for c++ API
+ * @brief  This is implementation for factory builder interface for c++ API
  */
 
 #include <memory>

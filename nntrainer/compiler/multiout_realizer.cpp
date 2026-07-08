@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file multiout_realizer.h
+ * @file multiout_realizer.cpp
  * @date 17 November 2021
  * @brief NNTrainer graph realizer which realizes multiout to actual node
  * @see	https://github.com/nntrainer/nntrainer

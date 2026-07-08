@@ -284,7 +284,7 @@ int ModelLoader::loadDatasetConfigIni(dictionary *ini, NeuralNetwork &model) {
     /// @todo delegate this to app context (currently there is only file
     /// databuffer so file is directly used)
     if (!istrequal(db_type, "file")) {
-      ml_loge("databuffer type is unknonw, type: %s", db_type);
+      ml_loge("databuffer type is unknown, type: %s", db_type);
       return ML_ERROR_INVALID_PARAMETER;
     }
 
@@ -497,7 +497,7 @@ int ModelLoader::loadFromONNX(std::string onnx_file, NeuralNetwork &model) {
  * @brief     load all properties from context
  */
 int ModelLoader::loadFromContext(NeuralNetwork &model) {
-  /// @todo: Property for Context needs to updated
+  /// @todo: Update Context properties before loading them.
   // auto props = app_context.getProperties();
   // model.setTrainConfig(props);
 
@@ -511,7 +511,7 @@ int ModelLoader::loadFromConfig(std::string config, NeuralNetwork &model) {
 
   if (model_file_engine != nullptr) {
     ml_loge(
-      "model_file_engine is already initialized, there is a possiblity that "
+      "model_file_engine is already initialized, there is a possibility that "
       "last load from config wasn't finished correctly, and model loader is "
       "reused");
     return ML_ERROR_UNKNOWN;

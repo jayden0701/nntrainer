@@ -160,7 +160,7 @@ void ConcatLayer::forwarding(RunLayerContext &context, bool training) {
 
     /** loop over the dimensions before the concat dimension */
     if (in_dim.getDataType() == TensorDim::DataType::FP32) {
-      /** copy continous tensor data (reshaped width) */
+      /** copy continuous tensor data (reshaped width) */
       for (unsigned int batch = 0; batch < output.batch(); batch++) {
         Tensor dest_tensor = Tensor::Map<float>(
           output.getAddress<float>(batch, 0, 0, output_width_offset),
@@ -174,7 +174,7 @@ void ConcatLayer::forwarding(RunLayerContext &context, bool training) {
       }
     } else if (in_dim.getDataType() == TensorDim::DataType::FP16) {
 #ifdef ENABLE_FP16
-      /** copy continous tensor data (reshaped width) */
+      /** copy continuous tensor data (reshaped width) */
       for (unsigned int batch = 0; batch < output.batch(); batch++) {
         Tensor dest_tensor = Tensor::Map<_FP16>(
           output.getAddress<_FP16>(batch, 0, 0, output_width_offset),
@@ -212,8 +212,8 @@ void ConcatLayer::incremental_forwarding(RunLayerContext &context,
   unsigned int output_height_offset = 0;
   unsigned int data_copy_size = output_reshape_helper.width();
 
-  // @todo: this implementation is only works when axis is 3(width). Consider
-  // for other axes
+  // @todo: This implementation only works when axis is 3 (width). Add support
+  // for other axes.
   unsigned int batch_channel = out_dim.batch() * out_dim.channel();
 
   for (unsigned int idx = 0; idx < context.getNumInputs(); idx++) {
@@ -278,7 +278,7 @@ void ConcatLayer::calcDerivative(RunLayerContext &context) {
     if (in_dim.getDataType() == TensorDim::DataType::FP32) {
       /** loop over the dimensions before the concat dimension */
       for (unsigned int batch = 0; batch < output.batch(); batch++) {
-        /** copy continous data (reshaped width size) in a tensor */
+        /** copy continuous data (reshaped width size) in a tensor */
         const Tensor source_tensor = Tensor::Map<float>(
           output.getAddress<float>(batch, 0, 0, output_width_offset),
           data_copy_size * sizeof(float),
@@ -293,7 +293,7 @@ void ConcatLayer::calcDerivative(RunLayerContext &context) {
 #ifdef ENABLE_FP16
       /** loop over the dimensions before the concat dimension */
       for (unsigned int batch = 0; batch < output.batch(); batch++) {
-        /** copy continous data (reshaped width size) in a tensor */
+        /** copy continuous data (reshaped width size) in a tensor */
         const Tensor source_tensor = Tensor::Map<_FP16>(
           output.getAddress<_FP16>(batch, 0, 0, output_width_offset),
           data_copy_size * sizeof(_FP16),

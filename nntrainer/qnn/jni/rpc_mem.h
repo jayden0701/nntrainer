@@ -4,8 +4,9 @@
  *
  * @file    rpc_mem.h
  * @date    21 May 2026
- * @see     https://github.com/nnstreamer/nntrainer
- * @author  haehun.yang <haehun.yang@samsung.com>
+ * @see     https://github.com/nntrainer/nntrainer
+ * @author  haehun.yang,
+ * haehun.yang@samsung.com
  * @bug     No known bugs except for NYI items
  * @brief   Single source-of-truth loader for Hexagon RPC memory.
  *

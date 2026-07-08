@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs RNNCellLayer to be moved.
+   * @param[in] rhs RNNCellLayer to be moved.
    */
   RNNCellLayer &operator=(RNNCellLayer &&rhs) = default;
 
@@ -124,7 +124,7 @@ private:
   ActiFunc acti_func;
 
   /**
-   * @brief     to pretect overflow
+   * @brief     to protect overflow
    */
   float epsilon;
 };

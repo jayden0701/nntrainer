@@ -128,7 +128,7 @@ public:
   bool isAllDone(const std::vector<int> &ids);
 
   /**
-   * @brief Submit mutiple tasks
+   * @brief Submit multiple tasks
    *
    */
   void submitTasks(const std::vector<TaskDesc> &tasks);

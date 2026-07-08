@@ -46,7 +46,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs MultiHeadAttentionLayer to be moved.
+   * @param[in] rhs MultiHeadAttentionLayer to be moved.
    */
   MultiHeadAttentionLayer &operator=(MultiHeadAttentionLayer &&rhs) = default;
 

@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file    network_graph.h
+ * @file    graph_core.h
  * @date    12 May 2020
  * @see     https://github.com/nntrainer/nntrainer
  * @author  Jijoong Moon <jijoong.moon@samsung.com>
@@ -139,10 +139,8 @@ public:
       return graph_const_iterator<T>(&(*Sorted.cbegin())) + Sorted.size();
   }
 
-  /**
-   * @brief     get begin iterator for the backwarding
-   * @retval    const reverse iterator marking the begin of backwarding
-   */
+  /// @brief Get begin iterator for the backward pass.
+  /// @retval const reverse iterator marking the beginning of the backward pass.
   template <
     typename T = GraphNode,
     std::enable_if_t<std::is_base_of<GraphNode, T>::value, T> * = nullptr>
@@ -150,10 +148,8 @@ public:
     return graph_const_reverse_iterator<T>(cend<T>());
   }
 
-  /**
-   * @brief     get end iterator for the backwarding
-   * @retval    const reverse iterator marking the end of backwarding
-   */
+  /// @brief Get end iterator for the backward pass.
+  /// @retval const reverse iterator marking the end of the backward pass.
   template <
     typename T = GraphNode,
     std::enable_if_t<std::is_base_of<GraphNode, T>::value, T> * = nullptr>
@@ -169,7 +165,7 @@ public:
   /**
    * @brief     Copy the graph
    * @param[in] from Graph Object to copy
-   * @retval    Graph Object copyed
+   * @retval    Graph Object copied
    */
   GraphCore &copy(GraphCore &from) {
     node_list.resize(from.node_list.size());
@@ -284,7 +280,7 @@ private:
   void addGraphNode(std::shared_ptr<GraphNode> node);
 
   /**
-   * @brief     make adjancency list for the current graph
+   * @brief     make adjacency list for the current graph
    */
   void
   makeAdjacencyList(std::vector<std::list<std::shared_ptr<GraphNode>>> &adj);

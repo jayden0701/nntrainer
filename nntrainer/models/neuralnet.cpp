@@ -148,7 +148,7 @@ NeuralNetwork::NeuralNetwork(const Engine *ct_engine_) :
 
 int NeuralNetwork::loadFromConfig(const std::string &config) {
   if (loadedFromConfig == true) {
-    ml_loge("can not do loadFromConfig twice");
+    ml_loge("Cannot call loadFromConfig twice");
     return ML_ERROR_INVALID_PARAMETER;
   }
 
@@ -563,11 +563,10 @@ NeuralNetwork::incremental_forwarding(unsigned int from, unsigned int to,
   return incremental_forwarding(from, to, training);
 }
 
-/**
- * @brief     back propagation
- *            Call backwarding function of layer in reverse order
- *            No need to call at first Input Layer (No data to be updated)
- */
+/// @brief Backpropagation.
+///
+/// Call each layer's backward function in reverse order. No need to call the
+/// first input layer because no data is updated.
 void NeuralNetwork::backwarding(int iteration,
                                 std::function<bool(void *userdata)> stop_cb,
                                 void *userdata) {
@@ -1170,11 +1169,11 @@ void NeuralNetwork::load(const std::string &file_path,
   }
 
   case ml::train::ModelFormat::MODEL_FORMAT_QNN: {
-    // for now, we only support to QNN binary format for Inference mode.
-    // expect to have the file path for qnn bin and nntrainer bin seperated by
+    // QNN binary format is only supported for inference mode.
+    // expect to have the file path for qnn bin and nntrainer bin separated by
     // ":" QNN bin ( graph ) : NNTrainer bin (weight)
     NNTR_THROW_IF(exec_mode != ExecutionMode::INFERENCE, std::invalid_argument)
-      << "Only support QNN biarny for Infernece";
+      << "Only QNN binary inference is supported";
     NNTR_THROW_IF(!isFileExist(props::FilePath(v[0])), std::invalid_argument)
       << "Cannot open QNN context bin file";
 

@@ -147,7 +147,7 @@ void GenericProfileListener::report(std::ostream &out) const {
       << std::setw(column_size[5]) << "pct" << '\n';
   // clang-format on
 
-  // seperator
+  // separator
   out << std::string(total_col_size, '=') << '\n';
 
   std::map<int, std::function<void(std::ostream & out)>> ordered_report;

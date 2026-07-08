@@ -110,7 +110,8 @@ public:
 
   /**
    * @brief this function helps exporting the data producer in a predefined
-   * format, while workarounding issue caused by templated function type eraser
+   * format, while working around issue caused by templated function type
+   * eraser
    *
    * @param     exporter exporter that contains exporting logic
    * @param     method enum value to identify how it should be exported to

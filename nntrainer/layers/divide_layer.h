@@ -49,7 +49,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs DivideLayer to be moved.
+   * @param[in] rhs DivideLayer to be moved.
    */
   DivideLayer &operator=(DivideLayer &&rhs) = default;
 
@@ -133,7 +133,7 @@ public:
 
   std::tuple<props::Print, props::InPlaceProp, props::InPlaceDirectionProp>
     divide_props;
-  bool support_backwarding; /**< support backwarding */
+  bool support_backwarding; /**< support backward pass */
 
   static constexpr const char *type = "divide";
 };

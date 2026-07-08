@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
+// clang-format off
 /**
  * Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
  * @file constant_derivative_loss_layer.cpp
  * @date 05 Oct 2021
- * @brief This patch contains constant derivative loss implementation
- * @note This is special type of loss to feed an arbitrary derivative value to
- * the last layer.
- * @see	https://github.com/nntrainer/nntrainer
+ * @brief Constant derivative loss implementation
+ * @note Feeds an arbitrary derivative value to the last layer.
+ * @see https://github.com/nntrainer/nntrainer
  * @author Jihoon Lee <jhoon.it.lee@samsung.com>
  * @bug No known bugs except for NYI items
  */
+// clang-format on
 
 #include <constant_derivative_loss_layer.h>
 

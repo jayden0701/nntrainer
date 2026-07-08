@@ -175,7 +175,7 @@ public:
                       const std::shared_ptr<ProfileEventData> data) = 0;
 
   /**
-   * @brief resets the listener to the inital state for a particular key
+   * @brief resets the listener to the initial state for a particular key
    *
    * @param time_item time item which will be reset
    */

@@ -52,7 +52,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs ConcatLayer to be moved.
+   * @param[in] rhs ConcatLayer to be moved.
    */
   ConcatLayerCl &operator=(ConcatLayerCl &&rhs) = default;
 

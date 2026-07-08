@@ -43,7 +43,7 @@ Weight::Weight(const TensorDim &dim, const Initializer init,
    * @note We assume if the Weight Data Type is not FP32, then FP32 Weight is
    * necessary to maintain the accuracy.
    * We could think it can be other data type and if there is the case to
-   * support other data type, then the code below needs to be udpated.
+   * support other data type, then the code below needs to be updated.
    *
    * Also, the loss_scale is not used in Weight but leave as it is for later
    * usage.
@@ -137,7 +137,8 @@ void Weight::applyGradient(double lr, Tensor &updated_grad) {
     quantizeWeight();
     return;
   } else {
-    /** FP32 (or matching dtype) path: apply the provided updated_grad directly */
+    /** FP32 (or matching dtype) path: apply the provided updated_grad directly
+     */
     var->add_i(updated_grad, -lr);
   }
 }

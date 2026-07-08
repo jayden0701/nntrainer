@@ -75,7 +75,7 @@ void FullyConnectedLayer::finalize(InitLayerContext &context) {
 
   std::vector<TensorDim> output_dims(1);
 
-  /// @todo fc actaully supports multidimensions. EffDimFlag shouldn't be fixed
+  /// @todo fc actually supports multidimensions. EffDimFlag shouldn't be fixed
   /// like this.
   context.setEffDimFlagInputDimension(0, 0b1001);
   context.setDynDimFlagInputDimension(0, 0b1000);
@@ -92,8 +92,8 @@ void FullyConnectedLayer::finalize(InitLayerContext &context) {
   context.setOutputDimensions(output_dims);
 
   /** set weight specifications */
-  // @todo : This NCHW format setting is just temporal, it needs to be set by
-  // global configuration
+  // @todo : This NCHW format setting is temporary and needs to be set by the
+  // global configuration.
 
   /** Bias Dimension : (1, 1, 1, unit) */
   /// @note Bias is un-quantized and added directly to the activation. Its

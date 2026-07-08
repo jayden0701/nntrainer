@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 DongHak Park <donghak.park@samsung.com>
  *
- * @file   flatbuffer_opnode.h
+ * @file   flatbuffer_opnode.cpp
  * @date   10 February 2023
  * @brief  NNTrainer flatbuffer opnode
  * @see	   https://github.com/nntrainer/nntrainer

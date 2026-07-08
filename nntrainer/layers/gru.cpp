@@ -106,7 +106,7 @@ void GRULayer::finalize(InitLayerContext &context) {
     {batch_size, 1, return_sequences ? max_timestep : 1, unit});
   context.setOutputDimensions({output_dim});
 
-  // weight_initializer can be set seperately. weight_ih initializer,
+  // weight_initializer can be set separately. weight_ih initializer,
   // weight_hh initializer kernel initializer & recurrent_initializer in keras
   // for now, it is set same way.
 

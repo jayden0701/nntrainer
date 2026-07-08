@@ -726,10 +726,10 @@ public:
   bool tensorHasGradient(unsigned int idx) const;
 
   /**
-   * @brief check if the weight is burrowed from others so it is dependent
+   * @brief check if the weight is borrowed from others so it is dependent
    *
    * @param idx index
-   * @return bool true if weight is burrowed from outside
+   * @return bool true if weight is borrowed from outside
    */
   bool isWeightDependent(unsigned int idx) const;
 
@@ -764,7 +764,7 @@ public:
   bool isGradientClipByGlobalNorm(unsigned int idx) const;
 
   /**
-   * @brief check if the weight is mixed precsion
+   * @brief check if the weight is mixed precision
    *
    * @param idx index
    * @return bool true if it is mixed precision
@@ -890,7 +890,7 @@ public:
    * @brief   update loss by the layer
    *
    * @return loss of the layer
-   * @note does not includes the regularization loss.
+   * @note does not include the regularization loss.
    */
   float getLoss() const { return loss; }
 
@@ -1001,7 +1001,7 @@ private:
   float loss;       /**< loss of the layer */
   bool is_inplace;  /**< if the layer is expected to run in-place */
   float loss_scale; /**< loss_scale of the layer */
-  bool restoreData; /**< reset output for mixed precsion */
+  bool restoreData; /**< reset output for mixed precision */
 
   std::vector<Weight *> weights;   /**< weights of the layer */
   std::vector<Var_Grad *> inputs;  /**< inputs of the layer */

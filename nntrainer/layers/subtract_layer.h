@@ -36,19 +36,19 @@ public:
                    props::InPlaceDirectionProp()) {}
 
   /**
-   * @brief Destructor of Sub Layer
+   * @brief Destructor of Subtract Layer
    */
   ~SubtractLayer(){};
 
   /**
-   *  @brief  Move constructor of Sub Layer.
-   *  @param[in] SubtractLayer &&
+   *  @brief  Move constructor of SubtractLayer.
+   *  @param[in] rhs
    */
   SubtractLayer(SubtractLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs SubtractLayer to be moved.
+   * @param[in] rhs SubtractLayer to be moved.
    */
   SubtractLayer &operator=(SubtractLayer &&rhs) = default;
 

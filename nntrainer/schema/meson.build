@@ -23,7 +23,7 @@ endif
 
 if get_option('enable-tflite-interpreter')
   if not tflite_dep.found()
-    error('Tensorflow2-Lite dependency not found')
+    error('TensorFlow Lite dependency not found')
   endif
   if not flatc_prog.found()
     error('flatc executable not found')

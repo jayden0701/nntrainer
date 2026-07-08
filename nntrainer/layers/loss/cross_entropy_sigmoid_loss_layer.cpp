@@ -4,7 +4,8 @@
  *
  * @file   cross_entropy_sigmoid_loss_layer.cpp
  * @date   24 June 2021
- * @brief  This is MSE Loss Layer Class of Neural Network
+ * @brief  This is Cross Entropy Sigmoid Loss Layer Class of Neural Network
+ *
  * @see    https://github.com/nntrainer/nntrainer
  * @author Parichay Kapoor <pk.kapoor@samsung.com>
  * @bug    No known bugs except for NYI items

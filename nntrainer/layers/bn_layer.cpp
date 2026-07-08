@@ -143,12 +143,10 @@ void BatchNormalizationLayer::finalize(InitLayerContext &context) {
   wt_idx[BNParams::invstd] =
     context.requestTensor(dim, "invstd", Initializer::NONE, false,
                           TensorLifespan::ITERATION_LIFESPAN);
-  /**
-   * Temporary tensor to store the full sized tensors in order to allow batch
-   * norm to execute in-place. Running in-place leads to same memory footprint
-   * for this layer in its backwarding, but reduces the peak memory requirement
-   * as the output of this layer need not be stored all the time.
-   */
+  // Temporary tensor to store full-sized tensors so batch norm can execute
+  // in-place. Running in-place keeps the same memory footprint for this layer
+  // in its backward pass, but reduces peak memory because the output of this
+  // layer need not be stored all the time.
   wt_idx[BNParams::t_full] =
     context.requestTensor(in_dim_, "tensor_full", Initializer::NONE, false,
                           TensorLifespan::CALC_DERIV_LIFESPAN);
@@ -394,7 +392,7 @@ void BatchNormalizationLayer::save(std::ofstream &file,
       }
     }
   } else {
-    // @note shared weights are only be saved at the first access
+    // @note shared weights are saved only on first access
     for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
       if (run_context.isGradientFirstAccess(i)) {
 
@@ -438,7 +436,7 @@ void BatchNormalizationLayer::read(std::ifstream &file,
     }
   } else {
     for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
-      /// @note shared weights are only be read at the first acecss
+      /// @note shared weights are read only on first access
       //      if (run_context->isGradientLastAccess(i)) {
       if (run_context.isGradientFirstAccess(i)) {
         if ((mode == ml::train::ExecutionMode::TRAIN) &&
@@ -447,7 +445,7 @@ void BatchNormalizationLayer::read(std::ifstream &file,
           /** @note for batch normalization layer, we do need full
           precision
            * for training. but weight can be saved with other type. for
-           * training, bn weight type is fixed with full precsion */
+           * training, bn weight type is fixed with full precision */
 
           TensorDim dim = run_context.getWeight(i).getDim();
           dim.setDataType(definedWeightDataType);
@@ -484,7 +482,7 @@ void BatchNormalizationLayer::read(ReadSource src, RunLayerContext &run_context,
     }
   } else {
     for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
-      /// @note shared weights are only be read at the first acecss
+      /// @note shared weights are read only on first access
       //      if (run_context->isGradientLastAccess(i)) {
       if (run_context.isGradientFirstAccess(i)) {
         if ((mode == ml::train::ExecutionMode::TRAIN) &&
@@ -493,7 +491,7 @@ void BatchNormalizationLayer::read(ReadSource src, RunLayerContext &run_context,
           /** @note for batch normalization layer, we do need full
           precision
            * for training. but weight can be saved with other type. for
-           * training, bn weight type is fixed with full precsion */
+           * training, bn weight type is fixed with full precision */
 
           TensorDim dim = run_context.getWeight(i).getDim();
           dim.setDataType(definedWeightDataType);

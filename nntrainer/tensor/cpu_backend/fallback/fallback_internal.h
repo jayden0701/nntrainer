@@ -378,7 +378,7 @@ void __fallback_transpose_matrix(const unsigned int M, const unsigned int N,
  * @brief     check if X array has NaN or inf
  * @param[in] N  length of the vector
  * @param[in] X float/fp16 * for Vector X
- * @param[out] bool false if not valide else true
+ * @param[out] bool false if not valid else true
  */
 bool __fallback_isValid(const unsigned int N, const _FP16 *X);
 
@@ -560,7 +560,7 @@ void __fallback_softmax(const unsigned int N, float *X, float *Y);
  * @brief     check if X array has NaN or inf
  * @param[in] N  length of the vector
  * @param[in] X float/fp16 * for Vector X
- * @param[out] bool false if not valide else true
+ * @param[out] bool false if not valid else true
  */
 bool __fallback_isValid(const unsigned int N, const float *X);
 
@@ -803,7 +803,7 @@ void __fallback_cosine(const unsigned int N, T *X, T *Y, float alpha = 1.F,
                        float beta = 1.F);
 
 /**
- * @brief inversed squared root transformation inplace : X  / sqrt(X)
+ * @brief inverse square root transformation inplace : X / sqrt(X)
  *
  * @param N size of X
  * @param X float * for Vector X
@@ -883,7 +883,7 @@ void __fallback_ele_div(const unsigned N, const float *X, const float *Y,
  * @param A Input activation to be online-runtime quantized to q8_K_MxN format
  * @param lda Leading dimension of A
  * @param B (void*) (block_q4_K*) for Offline-quantized transposed weight
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C float* output
  * @param ldc Leading dimension of C
  */
@@ -902,7 +902,7 @@ void __fallback_gemm_q4_0(const unsigned int M, const unsigned int N,
  * @param A Input activation to be online-runtime quantized to q8_K_MxN format
  * @param lda Leading dimension of A
  * @param B (void*) (block_q4_K*) for Offline-quantized transposed weight
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C float* output
  * @param ldc Leading dimension of C
  */
@@ -920,7 +920,7 @@ void __fallback_gemm_q4_K(const unsigned int M, const unsigned int N,
  * @param A Input activation to be online-runtime quantized to q8_K_MxN format
  * @param lda Leading dimension of A
  * @param B (void*) (block_q4_K*) for Offline-quantized transposed weight
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C T* output
  * @param ldc Leading dimension of C
  */
@@ -1085,7 +1085,9 @@ void __fallback_repack_q4_K_to_q4_K_8(void *dst, void *src, size_t data_size,
                                       const unsigned int N);
 
 /**
- * @brief unpack q40x8 to q40 - invers method: __fallback_repack_q4_0_to_q4_0_8
+ * @brief unpack q40x8 to q40 - inverse method:
+ *
+ * __fallback_repack_q4_0_to_q4_0_8
  *
  * @param in_q4_0x input q40x
  * @param out_q4_0 output q40
@@ -1170,8 +1172,8 @@ void __fallback_compute_kcaches(const float *in, const BType *kcache,
  * @param[in] width current w value from b, c, h, w
  * @param[in] dim unit length of simd computation
  * @param[in] half_ criterion for rotational direction of embedding
- * @param[in/out] inout float* uesed also as output when expected output
- * float* values
+ * @param[in/out] inout input buffer; also used as output for float outputs
+ *
  * @param[out] output void* output values, used when expected output __fp16*
  * values
  * @param[in] cos_ float* input con values

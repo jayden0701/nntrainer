@@ -58,7 +58,7 @@ public:
 
   /**
    * @brief this function helps exporting the optimizer in a predefined format,
-   * while workarounding issue caused by templated function type eraser
+   * while working around issue caused by templated function type eraser
    *
    * @param     exporter exporter that contains exporting logic
    * @param     method enum value to identify how it should be exported to

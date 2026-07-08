@@ -910,7 +910,7 @@ void cosine(const unsigned int N, T *X, T *Y, float alpha = 1.f,
             float beta = 1.f);
 
 /**
- * @brief inversed squared root transformation inplace : X = 1 / sqrt(X)
+ * @brief inverse square root transformation inplace : X = 1 / sqrt(X)
  *
  * @param N size of X
  * @param X float * for Vector X
@@ -996,7 +996,7 @@ bool is_valid(const unsigned int N, const float *X);
  * @param A Input activation to be online-runtime quantized to q8_K_MxN format
  * @param lda Leading dimension of A
  * @param B (void*) (block_q4_K*) for Offline-quantized transposed weight
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C T* output
  * @param ldc Leading dimension of C
  */
@@ -1013,7 +1013,7 @@ void gemm_q4_0(const unsigned int M, const unsigned int N, const unsigned int K,
  * @param A Input activation to be online-runtime quantized to q8_K_MxN format
  * @param lda Leading dimension of A
  * @param B (void*) (block_q4_K*) for Offline-quantized transposed weight
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C float* output
  * @param ldc Leading dimension of C
  */
@@ -1029,7 +1029,7 @@ void gemm_q4_K(const unsigned int M, const unsigned int N, const unsigned int K,
  * @param A Input activation to be online-runtime quantized to q8_K_MxN format
  * @param lda Leading dimension of A
  * @param B (void*) (block_q4_K*) for Offline-quantized transposed weight
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C T* output
  * @param ldc Leading dimension of C
  */
@@ -1174,7 +1174,7 @@ void repack_q4_0(void *dst, void *src, size_t data_size, const unsigned int M,
                  ml::train::ISA target = ml::train::ISA::DEFAULT);
 
 /**
- * @brief unpack q40x8 to q40 - invers method: repack_q4_0
+ * @brief unpack q40x8 to q40 - inverse method: repack_q4_0
  *
  * @param in_q4_0x input q40x
  * @param out_q4_0 output q40
@@ -1254,8 +1254,8 @@ void compute_kcaches(const float *in, const BType *kcache, float *output,
  * @param[in] width current w value from b, c, h, w
  * @param[in] dim unit length of simd computation
  * @param[in] half_ criterion for rotational direction of embedding
- * @param[in/out] inout float* uesed also as output when expected output float*
- * values
+ * @param[in/out] inout input buffer; also used as output for float outputs
+ *
  * @param[out] output void* output values, used when expected output __fp16*
  * values
  * @param[in] cos_ float* input con values

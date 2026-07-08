@@ -185,9 +185,9 @@ void Q4_0Utils::transformQ4_0x_FromInt4(size_t N, size_t K,
                 std::invalid_argument)
     << "Scale group size must be 32/64/128";
   NNTR_THROW_IF(K % QK4_0 != 0, std::invalid_argument)
-    << "K size must be divisable by QK4_0 (32)";
+    << "K size must be divisible by QK4_0 (32)";
   NNTR_THROW_IF(N % 8 != 0, std::invalid_argument)
-    << "N size must be divisable by 8";
+    << "N size must be divisible by 8";
   NNTR_THROW_IF((!(q4_0x_block_size == 4 || q4_0x_block_size == 8)),
                 std::invalid_argument)
     << "q4_0x_block_size must be 4 or 8";

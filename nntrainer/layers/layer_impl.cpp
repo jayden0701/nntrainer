@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file   layer_impl.h
+ * @file   layer_impl.cpp
  * @date   21 June 2021
  * @brief  This is base layer implementation class
  * @see    https://github.com/nntrainer/nntrainer

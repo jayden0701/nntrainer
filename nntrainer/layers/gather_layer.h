@@ -44,7 +44,7 @@ public:
 
   /**
    * @brief Move assignment operator.
-   * @parma[in] rhs GatherLayer to be moved.
+   * @param[in] rhs GatherLayer to be moved.
    */
   GatherLayer &operator=(GatherLayer &&rhs) = default;
 

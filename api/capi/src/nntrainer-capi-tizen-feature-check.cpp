@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file nnstreamer-capi-tizen-feature-check.cpp
+ * @file nntrainer-capi-tizen-feature-check.cpp
  * @date 7 August 2020
  * @brief NNTrainer/C-API Tizen dependent functions.
  * @see	https://github.com/nntrainer/nntrainer
@@ -28,7 +28,7 @@ extern "C" {
  */
 #define ML_TRAIN_FEATURE_PATH "tizen.org/feature/machine_learning.training"
 
-/// please note that this is a improvised measure for nnstreamer/api#110
+/// please note that this is an improvised measure for nnstreamer/api#110
 /// proper way will need exposing this particular function in ml-api side
 #if (TIZENVERSION >= 7) && (TIZENVERSION < 9999)
 
@@ -36,7 +36,7 @@ extern "C" {
  * @brief tizen set feature state from ml api side
  *
  * @param state -1 NOT checked yet, 0 supported, 1 not supported
- * @return int 0 if success
+ * @return 0 on success
  */
 int _ml_tizen_set_feature_state(ml_feature_e feature, int state);
 #define ml_api_set_feature_state(...) _ml_tizen_set_feature_state(__VA_ARGS__)
@@ -47,7 +47,7 @@ int _ml_tizen_set_feature_state(ml_feature_e feature, int state);
  * @brief tizen set feature state from ml api side
  *
  * @param state -1 NOT checked yet, 0 supported, 1 not supported
- * @return int 0 if success
+ * @return 0 on success
  */
 int ml_tizen_set_feature_state(ml_feature_e feature, int state);
 #define ml_api_set_feature_state(...) ml_tizen_set_feature_state(__VA_ARGS__)
@@ -126,7 +126,7 @@ int ml_tizen_get_feature_enabled(void) {
     } else {
       switch (ret) {
       case SYSTEM_INFO_ERROR_INVALID_PARAMETER:
-        ml_loge("failed to get feature value because feature key is not vaild");
+        ml_loge("failed to get feature value because feature key is not valid");
         ret = ML_ERROR_NOT_SUPPORTED;
         break;
 

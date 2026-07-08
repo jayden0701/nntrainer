@@ -47,7 +47,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs CosineLayer to be moved.
+   * @param[in] rhs CosineLayer to be moved.
    */
   CosineLayer &operator=(CosineLayer &&rhs) = default;
 
@@ -107,7 +107,7 @@ public:
   const std::string getType() const final { return CosineLayer::type; };
 
   std::tuple<props::Print, props::InPlaceProp> cosine_props;
-  bool support_backwarding; /**< support backwarding */
+  bool support_backwarding; /**< support backward pass */
 
   inline static const std::string type = "cos";
 };

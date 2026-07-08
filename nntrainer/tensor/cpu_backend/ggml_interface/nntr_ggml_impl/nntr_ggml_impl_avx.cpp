@@ -310,7 +310,7 @@ void nntr_gemm_q4_0_8x8_q8_0(int n, float *__restrict s, size_t bs,
             rhs_mat_2367_3, 221); // B2(28-31) B3(28-31) B2(28-31) B3(28-31)
                                   // B6(28-31) B7(28-31) B6(28-31) B7(28-31)
 
-          // Scale values - Load the wight scale values of block_q4_0x8
+          // Scale values - Load the weight scale values of block_q4_0x8
           const __m256 col_scale_f32 = GGML_F32Cx8_LOAD(b_ptr[b].d);
 
           // Process LHS in groups of four
@@ -497,7 +497,7 @@ void nntr_gemm_q4_0_8x8_q8_0(int n, float *__restrict s, size_t bs,
             const __m256 row_scale_f32 =
               GGML_F32Cx8_REPEAT_LOAD(a_ptrs[rp][b].d, loadMask);
 
-            // Multiply with appropiate scales and accumulate
+            // Multiply with appropriate scales and accumulate
             acc_rows[rp * 4] = _mm256_fmadd_ps(
               _mm256_cvtepi32_ps(iacc_row_0),
               _mm256_mul_ps(col_scale_f32,
@@ -562,7 +562,7 @@ void nntr_gemm_q4_0_8x8_q8_0(int n, float *__restrict s, size_t bs,
             _mm256_loadu_si256((const __m256i *)(b_ptr[b].qs + 96));
 
           // Save the values in the following vectors in the formats B0B1B4B5,
-          // B2B3B6B7 for further processing and storing of valuess
+          // B2B3B6B7 for further processing and storing of values
           const __m256i rhs_raw_mat_0145_0 = _mm256_blend_epi32(
             rhs_raw_mat_0123_0,
             _mm256_permutevar8x32_epi32(rhs_raw_mat_4567_0, requiredOrder),
@@ -674,7 +674,7 @@ void nntr_gemm_q4_0_8x8_q8_0(int n, float *__restrict s, size_t bs,
             rhs_mat_2367_3, 221); // B2(28-31) B3(28-31) B2(28-31) B3(28-31)
                                   // B6(28-31) B7(28-31) B6(28-31) B7(28-31)
 
-          // Scale values - Load the wight scale values of block_q4_0x8
+          // Scale values - Load the weight scale values of block_q4_0x8
           const __m256 col_scale_f32 = GGML_F32Cx8_LOAD(b_ptr[b].d);
 
           // Load the four block_q4_0 quantized values interleaved with each
@@ -861,7 +861,7 @@ void nntr_gemm_q4_0_8x8_q8_0(int n, float *__restrict s, size_t bs,
           const __m256 row_scale_f32 =
             GGML_F32Cx8_REPEAT_LOAD(a_ptr[b].d, loadMask);
 
-          // Multiply with appropiate scales and accumulate
+          // Multiply with appropriate scales and accumulate
           acc_rows[0] = _mm256_fmadd_ps(
             _mm256_cvtepi32_ps(iacc_row_0),
             _mm256_mul_ps(col_scale_f32,
@@ -1675,7 +1675,7 @@ void nntr_gemm_q4_K_8x8_q8_K(int n, float *__restrict s, size_t bs,
               row_scale_f32_sse); // GGML_F32Cx8_REPEAT_LOAD(a_ptrs[rp][b].d,
                                   // loadMask);
 
-            // Multiply with appropiate scales and accumulate (for both d and
+            // Multiply with appropriate scales and accumulate (for both d and
             // dmin) below
             acc_rows[rp * 4] = _mm256_fmadd_ps(
               _mm256_cvtepi32_ps(iacc_row_0),
@@ -2415,7 +2415,7 @@ void nntr_gemm_q4_K_8x8_q8_K(int n, float *__restrict s, size_t bs,
             row_scale_f32_sse); // GGML_F32Cx8_REPEAT_LOAD(a_ptrs[rp][b].d,
                                 // loadMask);
 
-          // Multiply with appropiate scales and accumulate (for both d and
+          // Multiply with appropriate scales and accumulate (for both d and
           // dmin) below
           acc_rows[0] = _mm256_fmadd_ps(
             _mm256_cvtepi32_ps(iacc_row_0),
@@ -2673,7 +2673,7 @@ void nntr_gemv_q4_K_8x8_q8_K(int n, float *__restrict s, size_t bs,
           lhs_vec_11 = _mm256_permute2f128_si256(lhs_vec_11, lhs_vec_11, 0);
 
           // Dot product done within 32 bit lanes and accumulated in the same
-          // vector First done for first sub block and thenn for second sub
+          // vector. First done for first sub block and then for second sub
           // block in each sb B0(0-3) B4(0-3) B1(0-3) B5(0-3) B2(0-3) B6(0-3)
           // B3(0-3) B7(0-3) with A0(0-3) B0(4-7) B4(4-7) B1(4-7) B5(4-7)
           // B2(4-7) B6(4-7) B3(4-7) B7(4-7) with A0(4-7)
@@ -2965,7 +2965,7 @@ void nntr_quantize_mat_q8_K_4x8(const float *__restrict x, void *__restrict vy,
       quants_interleaved[j] = i0;
     }
 
-    // Masks to shuffle the quants of corresonding sub blocks for rearraning
+    // Masks to shuffle the quants of corresponding sub blocks for rearranging
     // quants for vectorized bsums computation
     __m256i shuffle_mask_sb2 = _mm256_castsi128_si256(
       _mm_setr_epi8(0, 1, 0, 1, 4, 5, 6, 7, 8, 9, 8, 9, 12, 13, 14, 15));

@@ -4,9 +4,11 @@
  *
  * @file   QNNGraph.cpp
  * @date   10 Jan 2025
- * @brief  This is QNN Graph Layer Class of Neural Network
- * @see    https://github.com/nnstreamer/nntrainer
- * @author Jijoong Moon <jijoong.moon@samsung.com>
+ * @brief  QNN graph layer for Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
+ * @author Jijoong Moon,
+ * jijoong.moon@samsung.com
  * @bug    No known bugs except for NYI items
  *
  */
@@ -124,7 +126,7 @@ void QNNGraph::finalize(InitLayerContext &context) {
     }
   }
 
-  /// @todo fc actaully supports multidimensions. EffDimFlag shouldn't be fixed
+  /// @todo fc actually supports multidimensions. EffDimFlag shouldn't be fixed
   /// like this.
   context.setEffDimFlagInputDimension(0, 0b1001);
   context.setDynDimFlagInputDimension(0, 0b1000);
@@ -145,7 +147,7 @@ StatusCode QNNGraph::freeContext(RunLayerContext &context) {
   if (m_context) {
     if (QNN_CONTEXT_NO_ERROR !=
         m_qnnFunctionPointers.qnnInterface.contextFree(m_context, nullptr)) {
-      ml_loge("Faile to free Context");
+      ml_loge("Failed to free Context");
       return StatusCode::FAILURE;
     }
     m_isContextCreated = false;
@@ -190,13 +192,13 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
 
   NNTR_THROW_IF(context.getNumInputs() != graphInfo->numInputTensors,
                 std::invalid_argument)
-    << "Number of NNtrainer's inputs " << context.getNumInputs()
+    << "Number of NNTrainer inputs " << context.getNumInputs()
     << " does not match with number of QNN's input tensors "
     << graphInfo->numInputTensors << "!";
 
   NNTR_THROW_IF(context.getNumOutputs() != graphInfo->numOutputTensors,
                 std::invalid_argument)
-    << "Number of NNtrainer's outputs " << context.getNumOutputs()
+    << "Number of NNTrainer outputs " << context.getNumOutputs()
     << " does not match with number of QNN's output tensors "
     << graphInfo->numOutputTensors << "!";
 

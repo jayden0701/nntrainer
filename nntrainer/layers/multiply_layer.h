@@ -49,7 +49,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs MultiplyLayer to be moved.
+   * @param[in] rhs MultiplyLayer to be moved.
    */
   MultiplyLayer &operator=(MultiplyLayer &&rhs) = default;
 
@@ -142,7 +142,7 @@ public:
   std::tuple<props::Print, props::InPlaceProp, props::InPlaceDirectionProp,
              props::SkipPrefill>
     multiply_props;
-  bool support_backwarding; /**< support backwarding */
+  bool support_backwarding; /**< support backward pass */
   bool skip_prefill = false;
 
   static constexpr const char *type = "multiply";

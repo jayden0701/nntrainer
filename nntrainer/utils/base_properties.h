@@ -312,8 +312,9 @@ public:
   virtual bool isValid(const unsigned int &value) const override;
 };
 /**
- * @brief meta function to cast tag to it's base
- * @code below is the test spec for the cast
+ * @brief meta function to cast tag to its base
+ * @code below is the test spec
+ * for the cast
  *
  * struct custom_tag: int_prop_tag {};
  *
@@ -382,7 +383,7 @@ template <typename Tag, typename DataType> struct str_converter {
 /**
  * @brief str converter specialization for enum classes
  *
- * @tparam EnumInfo enum informations
+ * @tparam EnumInfo enum information
  */
 template <typename EnumInfo>
 struct str_converter<enum_class_prop_tag, EnumInfo> {

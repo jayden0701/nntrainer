@@ -2,14 +2,14 @@
 /**
  * Copyright (C) 2020 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   flatten_layer.cpp
+ * @file   reshape_layer.cpp
  * @date   16 June 2020
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>
  * @bug	   No known bugs except for NYI items
- * @brief  This is Flatten Layer Class for Neural Network
+ * @brief  This is Reshape Layer Class for Neural Network
  *
- * @todo Update flatten to work in-place properly.
+ * @todo Update reshape to work in-place properly.
  */
 
 #include <layer_context.h>

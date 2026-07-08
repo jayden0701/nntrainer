@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2024 Sungsik Kong <ss.kong@samsung.com>
  *
- * @file fallback_internal.cpp
+ * @file fallback_internal_fp16.cpp
  * @date   23 April 2024
  * @see    https://github.com/nntrainer/nntrainer
  * @author Sungsik Kong <ss.kong@samsung.com>

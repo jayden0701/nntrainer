@@ -90,7 +90,7 @@ endif
 
 if get_option('enable-tflite-backbone')
   if not tflite_dep.found()
-    error('Tensorflow-Lite dependency not found')
+    error('TensorFlow Lite dependency not found')
   endif
   layer_deps += tflite_dep
   layer_sources += 'tflite_layer.cpp'

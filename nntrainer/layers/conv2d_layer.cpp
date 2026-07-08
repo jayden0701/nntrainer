@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   conv2d_layer.h
+ * @file   conv2d_layer.cpp
  * @date   02 June 2020
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>
@@ -46,8 +46,9 @@ static TensorDim calcCol2ImOutputDim(const TensorDim &out,
  * @brief     reconstruct image data from 2d column matrix
  *
  * @param[in] in input data
- * @param[in] kdim kernel dimesion for define number of row
- * @param[in] padding padding information
+ * @param[in] kdim kernel dimension for define number of row
+ * @param[in]
+ * padding padding information
  * @param[in] mstride stride value : x, y direction
  * @param[in] dilation kernel dilation factor : x, y each
  * @param[out] image image tensor to put
@@ -91,7 +92,7 @@ static void col2im(const Tensor &col_matrix, const TensorDim &kdim,
 
   /** @todo We need to implement way to use this kind of function to work inside
    * of Tensor. Then we could remove to access the getData or getValue which has
-   * dependecy of data type.
+   * dependency of data type.
    */
   auto apply_data = [&](auto *val) {
     using T = std::decay_t<decltype(*val)>;
@@ -147,8 +148,9 @@ static void col2im(const Tensor &col_matrix, const TensorDim &kdim,
  * if not, kernel channel is consider part of output dimension
  *
  * @param[in] in input data
- * @param[in] kdim kernel dimesion for define number of row
- * @param[in] padding padding information
+ * @param[in] kdim kernel dimension for define number of row
+ * @param[in]
+ * padding padding information
  * @param[in] mstride stride value : x, y direction
  * @param[in] dilation kernel dilation factor : x, y each
  * @param[out] out out tensor, padding set each time for now
@@ -424,7 +426,7 @@ void Conv2DLayer::forwarding(RunLayerContext &context, bool training) {
    *                     [ output_dim.height
    *                      * output_dim.width (width) ]
    *
-   * Output Dimention
+   * Output Dimension
    *   -> [Channel ( = filter_size = output_dim.channel )]
    *       x [output_dim.height x output_dim.width]
    */
@@ -440,7 +442,7 @@ void Conv2DLayer::forwarding(RunLayerContext &context, bool training) {
 
   /**
    * Below sets the pad area values to zero
-   * it is faster to do this way than seting selective area to zero
+   * it is faster to do this way than setting selective area to zero
    */
   auto forwarding_job = [&](unsigned int s, unsigned int e, unsigned int pid,
                             void *user_data) {

@@ -35,7 +35,7 @@ namespace nntrainer {
 
 /**
  * @class   BatchNormalizationLayer
- * @brief   Batch Noramlization Layer
+ * @brief   Batch Normalization Layer
  */
 class BatchNormalizationLayer : public Layer {
 public:
@@ -50,14 +50,15 @@ public:
   ~BatchNormalizationLayer() {}
 
   /**
-   *  @brief  Move constructor of Pooling 2D Layer.
-   *  @param[in] BatchNormalization &&
+   *  @brief  Move constructor of BatchNormalizationLayer.
+   * @param[in]
+   * rhs
    */
   BatchNormalizationLayer(BatchNormalizationLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs BatchNormalizationLayer to be moved.
+   * @param[in] rhs BatchNormalizationLayer to be moved.
    */
   BatchNormalizationLayer &operator=(BatchNormalizationLayer &&rhs) = default;
 

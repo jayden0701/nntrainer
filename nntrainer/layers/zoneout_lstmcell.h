@@ -49,12 +49,10 @@ public:
     using prop_tag = float_prop_tag; /**< property type */
 
     /**
-     * @brief HiddenStateZoneOutRate validator
+     * @brief HiddenStateZoneOutRate validator for [0.0, 1.0]
      *
-     * @param v float to validate
-     * @retval true if it is equal or greater than 0.0 and equal or smaller than
-     * to 1.0
-     * @retval false if it is samller than 0.0 or greater than 1.0
+     * @param value float to validate
+     * @retval true if valid
      */
     bool isValid(const float &value) const override;
   };
@@ -84,14 +82,13 @@ public:
      * @param v float to validate
      * @retval true if it is equal or greater than 0.0 and equal or smaller than
      * to 1.0
-     * @retval false if it is samller than 0.0 or greater than 1.0
+     * @retval false if it is smaller than 0.0 or greater than 1.0
      */
     bool isValid(const float &value) const override;
   };
 
   /**
-   * @brief Test property, this property is set to true when test the zoneout
-   * lstmcell in unittest
+   * @brief Test property for zoneout LSTMCell unit tests
    *
    */
   class Test : public nntrainer::Property<bool> {

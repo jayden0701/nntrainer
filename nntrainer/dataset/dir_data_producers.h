@@ -64,8 +64,7 @@ public:
   bool isMultiThreadSafe() const override;
 
   /**
-   * @copydoc DataProducer::setProeprty(const std::vector<std::string>
-   * &properties)
+   * @copydoc DataProducer::setProperty
    */
   void setProperty(const std::vector<std::string> &properties) override;
 

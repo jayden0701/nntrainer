@@ -10,7 +10,7 @@
  * @brief  This is Split Layer Class for Neural Network
  *
  * @todo   Add support for uneven splits. For now, this can
- * be acheived with combination of split and concat layers.
+ * be achieved with combination of split and concat layers.
  */
 
 #ifndef __SPLIT_LAYER_H__
@@ -47,7 +47,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs SplitLayer to be moved.
+   * @param[in] rhs SplitLayer to be moved.
    */
   SplitLayer &operator=(SplitLayer &&rhs) = default;
 

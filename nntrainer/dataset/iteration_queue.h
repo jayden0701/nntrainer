@@ -299,7 +299,7 @@ private:
     MarkableIteration(MarkableIteration &&rhs);
 
     /**
-     * @brief Move Assignement operator
+     * @brief Move Assignment operator
      *
      * @param rhs rhs to move
      * @return MarkableIteration& markable iteration

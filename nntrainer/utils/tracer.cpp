@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2022 Jiho Chu <jjiho.chu@samsung.com>
  *
- * @file   trace.cpp
+ * @file   tracer.cpp
  * @date   23 December 2022
  * @brief  trace class
  * @see    https://github.com/nntrainer/nntrainer
@@ -71,8 +71,7 @@ std::unique_ptr<MemoryTracer> &MemoryTracer::getInstance() {
 }
 
 MemoryTracer::MemoryTracer(const std::string &name, bool flush) :
-  Tracer(name),
-  flush_(flush) {
+  Tracer(name), flush_(flush) {
   std::ofstream ifs(outputFileName(name), std::fstream::trunc);
   trace_info_.emplace_back(getMemoryUsage(), "start");
   if (flush_)
@@ -101,8 +100,7 @@ std::unique_ptr<TimeTracer> &TimeTracer::getInstance() {
 }
 
 TimeTracer::TimeTracer(const std::string &name, bool flush_) :
-  Tracer(name),
-  flush_(flush_) {
+  Tracer(name), flush_(flush_) {
   std::ofstream ifs(outputFileName(name), std::fstream::trunc);
   trace_info_.emplace_back(getTimeStamp(), "start");
   if (flush_)

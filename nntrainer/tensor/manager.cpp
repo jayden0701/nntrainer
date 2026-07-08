@@ -4,8 +4,7 @@
  *
  * @file   manager.cpp
  * @date   2 Dec 2020
- * @brief  This is NNtrainer manager for all weights, i/o and intermediate
- * tensors
+ * @brief  Manager for NNTrainer weights, I/O, and intermediate tensors
  * @see    https://github.com/nntrainer/nntrainer
  * @author Parichay Kapoor <pk.kapoor@samsung.com>
  * @author Jihoon Lee <jhoon.it.lee@samsung.com>
@@ -289,7 +288,8 @@ void Manager::initializeTensorsInference(unsigned int max_exec_order_) {
    * @note Input for the first layer is not initialized in inference.
    */
   // Initialize shared input/output memory for inference
-  // @note Memory for label is not allocated here as inference doesnt has label
+  // @note Memory for labels is not allocated here because inference does not
+  // use labels.
   if (enable_inference_inout_memory_opt)
     shared_inout = Tensor(TensorDim({max_shared_inout}), false);
 
@@ -380,9 +380,9 @@ std::vector<Weight *> Manager::requestWeights(
     {forwarding_order, calcDerivative_order});
 
   /**
-   *  TODO: This needs to be fixed. calcDerivative does not needs the gradient.
-   *  However, current implementation of loss needs the gradient computation.
-   *  and therefore, if we remove the calcDerivative order, then tests fails.
+   *  TODO: This needs to be fixed. calcDerivative does not need gradients.
+   *  However, the current loss implementation needs gradient computation, so
+   *  tests fail if the calcDerivative order is removed.
    */
   TensorLifespan var_ls;
   if (exec_mode != ExecutionMode::INFERENCE) {
@@ -430,7 +430,8 @@ std::vector<Weight *> Manager::requestWeights(
     if (Weight::isGradientClipByGlobalNorm(clip_by_global_norm) ||
         isMixedPrecision()) {
       grad_exec_order.push_back(TensorPool::PERSIST_END_ORDER);
-      // TODO: We need double check if it is OK not to add PERSIST_END_ORDER
+      // TODO: We need to double-check whether it is OK not to add
+      // PERSIST_END_ORDER
       // here or add other conditions
       // var_exec_order.push_back(TensorPool::PERSIST_END_ORDER);
     }
@@ -444,9 +445,9 @@ std::vector<Weight *> Manager::requestWeights(
       var = weight_pool.requestOrExtend(shared_name, dim_v, var_exec_order,
                                         var_ls, t_initializer);
       if (trainable && need_gradient) {
-        /** We cannot use the tensor scheduling for weight gradient if the
-         * weight is shared. Weight Sharing means, the gradient is not temporal
-         * for each layer anymore and it is hard to overwritten.
+        /** We cannot use tensor scheduling for weight gradients when the
+         * weight is shared. Weight sharing means the gradient is no longer
+         * temporary per layer and cannot be overwritten safely.
          */
         grad = tensor_pool.requestOrExtend(shared_name + Var_Grad::grad_suffix,
                                            dim_g, grad_exec_order, grad_ls,
@@ -539,7 +540,7 @@ std::vector<Var_Grad *> Manager::requestTensors(
     if (enum_class_logical_and(tspan, TensorLifespan::FORWARD_FUNC_LIFESPAN))
       var_exec_order.push_back(forwarding_order);
 
-    /** usage for tensors gradient in backwarding */
+    /** usage for tensor gradients in the backward pass */
     if (trainable && is_train_mode &&
         enum_class_logical_and(tspan, TensorLifespan::CALC_GRAD_LIFESPAN)) {
       var_exec_order.push_back(calcGradient_order);
@@ -857,7 +858,7 @@ void Manager::UnloadTensors(unsigned int order) {
       ml_logd("unload tensor is requested in UnLoadTensors with order - %d", o);
     }
     NNTR_THROW_IF(unload_weight < 0 || unload_tensor < 0, std::runtime_error)
-      << "Faile to launch task";
+      << "Failed to launch task";
     async_unload_tensor[o] = std::make_tuple(unload_weight, unload_tensor);
   };
 

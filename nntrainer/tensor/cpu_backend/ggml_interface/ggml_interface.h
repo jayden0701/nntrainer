@@ -104,9 +104,10 @@ void __ggml_quantize_row_q8_K(const T *src, void *dst, int64_t k);
 /**
  * @brief A(M, K) * W.T(N, K) = (M, N)
  *
- * @param M as descripted above
- * @param N as descripted above
- * @param K as descripted above
+ * @param M as described above
+ * @param N as described above
+ * @param K as
+ * described above
  * @param A Activation
  * @param lda leading dimension of A
  * @param B offline quantized and packed q4_0x8 Weight
@@ -123,9 +124,10 @@ void __ggml_q4_0_8x8_q8_0_GEMM(const unsigned int M, const unsigned int N,
 /**
  * @brief A(M, K) * W.T(N, K) = (M, N)
  *
- * @param M as descripted above
- * @param N as descripted above
- * @param K as descripted above
+ * @param M as described above
+ * @param N as described above
+ * @param K as
+ * described above
  * @param A Activation
  * @param lda leading dimension of A
  * @param Bs vector of offline quantized and packed q4_0x8 Weights
@@ -145,9 +147,10 @@ void __ggml_q4_0_8x8_q8_0_GEMM(const unsigned int M,
 /**
  * @brief A(M, K) * W.T(N, K) = (M, N)
  *
- * @param M as descripted above
- * @param N as descripted above
- * @param K as descripted above
+ * @param M as described above
+ * @param N as described above
+ * @param K as
+ * described above
  * @param A Activation
  * @param lda leading dimension of A
  * @param B offline quantized and packed q4_0x4 Weight
@@ -165,9 +168,10 @@ void __ggml_q4_0_4x8_q8_0_GEMM(const unsigned int M, const unsigned int N,
 /**
  * @brief A(M, K) * W.T(N, K) = (M, N)
  *
- * @param M as descripted above
- * @param N as descripted above
- * @param K as descripted above
+ * @param M as described above
+ * @param N as described above
+ * @param K as
+ * described above
  * @param A Activation
  * @param lda leading dimension of A
  * @param Bs vector of offline quantized and packed q4_0x4 Weights
@@ -186,9 +190,10 @@ void __ggml_q4_0_4x8_q8_0_GEMM(const unsigned int M,
 /**
  * @brief A(M, K) * W.T(N, K) = (M, N)
  *
- * @param M as descripted above
- * @param N as descripted above
- * @param K as descripted above
+ * @param M as described above
+ * @param N as described above
+ * @param K as
+ * described above
  * @param A Activation
  * @param lda leading dimension of A
  * @param B offline quantized and packed q4_kx8 Weight
@@ -205,9 +210,10 @@ void __ggml_q4_K_8x8_q8_K_GEMM(const unsigned int M, const unsigned int N,
 /**
  * @brief A(M, K) * W.T(N, K) = (M, N)
  *
- * @param M as descripted above
- * @param N as descripted above
- * @param K as descripted above
+ * @param M as described above
+ * @param N as described above
+ * @param K as
+ * described above
  * @param A Activation
  * @param lda leading dimension of A
  * @param Bs vector of offline quantized and packed q4_kx8 Weights
@@ -225,9 +231,10 @@ void __ggml_q4_K_8x8_q8_K_GEMM(const unsigned int M,
 /**
  * @brief A(M, K) * W.T(N, K) = (M, N)
  *
- * @param M as descripted above
- * @param N as descripted above
- * @param K as descripted above
+ * @param M as described above
+ * @param N as described above
+ * @param K as
+ * described above
  * @param A Activation
  * @param lda leading dimension of A
  * @param B offline quantized and packed q4_kx8 Weight

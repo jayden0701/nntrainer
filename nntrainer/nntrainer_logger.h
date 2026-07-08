@@ -14,9 +14,9 @@
 /**
  * @file nntrainer_logger.h
  * @date 02 April 2020
- * @brief NNTrainer Logger
- *        This allows to logging nntrainer logs.
- * @see	https://github.com/nntrainer/nntrainer
+ * @brief NNTrainer logger.
+ * @see https://github.com/nntrainer/nntrainer
+ *
  * @author Jijoong Moon <jijoong.moon@samsung.com>
  * @bug No known bugs except for NYI items
  */
@@ -29,11 +29,9 @@
 #include <string>
 
 /**
- * @brief     Log Level of NNtrainer
- *            0. informations
- *            1. warnings
- *            2. errors
- *            3. debugging informations
+ * @brief Log level of NNTrainer.
+ *
+ * Order: debug, info, warn, error.
  */
 typedef enum {
   NNTRAINER_LOG_DEBUG = 0,
@@ -43,7 +41,7 @@ typedef enum {
 } nntrainer_loglevel;
 
 /**
- * @brief     Log TimeStamp type
+ * @brief     Log timestamp type
  */
 typedef enum {
   NNTRAINER_LOG_TIMESTAMP_SEC = 0,
@@ -54,9 +52,7 @@ namespace nntrainer {
 
 /**
  * @class   NNTrainer Logger Class
- * @brief   Class for Logging. This is alternatives when there is no logging
- * system. For the tizen, we are going to use dlog and it is android_log for
- * android.
+ * @brief   Fallback logger for platforms without native logging support.
  */
 class Logger {
 public:

@@ -113,7 +113,7 @@ public:
   const std::string getType() const final { return NegativeLayer::type; };
 
   std::tuple<props::Print, props::InPlaceProp> negative_props;
-  bool support_backwarding; /**< support backwarding */
+  bool support_backwarding; /**< support backward pass */
 
   static constexpr const char *type = "negative";
 };

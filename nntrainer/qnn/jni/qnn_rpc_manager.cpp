@@ -4,8 +4,9 @@
  *
  * @file    qnn_rpc_manager.cpp
  * @date    06 Jan 2025
- * @see     https://github.com/nnstreamer/nntrainer
- * @author  Jijoong Moon <jijoong.moon@samsung.com>
+ * @see     https://github.com/nntrainer/nntrainer
+ * @author  Jijoong Moon,
+ * jijoong.moon@samsung.com
  * @bug     No known bugs except for NYI items
  * @brief   This file contains qnn rpc memory manager
  */

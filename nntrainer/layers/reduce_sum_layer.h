@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs ReduceSumLayer to be moved.
+   * @param[in] rhs ReduceSumLayer to be moved.
    */
   ReduceSumLayer &operator=(ReduceSumLayer &&rhs) = default;
 

@@ -150,7 +150,7 @@ public:
    * @brief Create an Object from the string key
    *
    * @tparam T Type of object, currently, only Layer is supported
-   * @param key integer key
+   * @param key string key
    * @param props property
    * @return PtrType<T> unique pointer to the object
    */
@@ -194,7 +194,7 @@ public:
   /**
    * @brief Create a Layer object from the integer key
    *
-   * @param type integer key
+   * @param int_key integer key
    * @param properties property
    * @return std::unique_ptr<nntrainer::Layer> unique pointer to the object
    */
@@ -240,13 +240,13 @@ public:
 
 private:
   /**
-   * @brief   Overriden initialization function
+   * @brief   Overridden initialization function
    */
   void initialize() noexcept override;
 
   void add_default_object();
 
-  // flag to check opencl commandqueue and context inititalization
+  // flag to check opencl commandqueue and context initialization
   bool cl_initialized = false;
 
   // flag to check default blas kernels registered or not

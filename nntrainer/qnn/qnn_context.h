@@ -3,8 +3,9 @@
  *
  * @file    qnn_context.h
  * @date    10 Dec 2024
- * @see     https://github.com/nnstreamer/nntrainer
- * @author  Jijoong Moon <jijoong.moon@samsung.com>
+ * @see     https://github.com/nntrainer/nntrainer
+ * @author  Jijoong Moon,
+ * jijoong.moon@samsung.com
  * @bug     No known bugs except for NYI items
  * @brief   This file contains app context related functions and classes that
  * manages the global configuration of the current QNN environment.
@@ -190,7 +191,7 @@ public:
    * @brief Create an Object from the string key
    *
    * @tparam T Type of object, currently, only Layer is supported
-   * @param key integer key
+   * @param key string key
    * @param props property
    * @return PtrType<T> unique pointer to the object
    */

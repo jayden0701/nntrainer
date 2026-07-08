@@ -138,11 +138,12 @@ public:
    */
   const std::vector<std::string> getProperties(void);
 
+  // clang-format off
   /**
    * @brief Factory register function, use this function to register custom
    * object
    *
-   * @tparam T object to create. Currently Optimizer, Layer is supported
+   * @tparam T supported object type
    * @param factory factory function that creates std::unique_ptr<T>
    * @param key key to access the factory, if key is empty, try to find key by
    * calling factory({})->getType();
@@ -153,6 +154,7 @@ public:
    * returned (no-op re-registration). This allows multi-model handles to
    * safely re-register shared custom layers.
    */
+  // clang-format on
   template <typename T>
   const int registerFactory(const PtrFactoryType<T> factory,
                             const std::string &key = "",
@@ -161,11 +163,12 @@ public:
     return registerFactory(f, key, int_key);
   }
 
+  // clang-format off
   /**
    * @brief Factory register function, use this function to register custom
    * object
    *
-   * @tparam T object to create. Currently Optimizer, Layer is supported
+   * @tparam T supported object type
    * @param factory factory function that creates std::unique_ptr<T>
    * @param key key to access the factory, if key is empty, try to find key by
    * calling factory({})->getType();
@@ -176,6 +179,7 @@ public:
    * returned (no-op re-registration). This allows multi-model handles to
    * safely re-register shared custom layers.
    */
+  // clang-format on
   template <typename T>
   const int registerFactory(const FactoryType<T> factory,
                             const std::string &key = "",
@@ -219,14 +223,16 @@ public:
     return createObject<ml::train::LearningRateScheduler>(int_key, properties);
   }
 
+  // clang-format off
   /**
    * @brief Create an Object from the integer key
    *
-   * @tparam T Type of Object, currently, Only optimizer is supported
+   * @tparam T supported object type
    * @param int_key integer key
    * @param props property
    * @return PtrType<T> unique pointer to the object
    */
+  // clang-format on
   template <typename T>
   PtrType<T> createObject(const int int_key,
                           const PropsType &props = {}) const {
@@ -246,14 +252,16 @@ public:
     return createObject<T>(entry->second, props);
   }
 
+  // clang-format off
   /**
    * @brief Create an Object from the string key
    *
-   * @tparam T Type of object, currently, only optimizer is supported
-   * @param key integer key
+   * @tparam T supported object type
+   * @param key string key
    * @param props property
    * @return PtrType<T> unique pointer to the object
    */
+  // clang-format on
   template <typename T>
   PtrType<T> createObject(const std::string &key,
                           const PropsType &props = {}) const {
@@ -297,7 +305,7 @@ public:
 
 private:
   /**
-   * @brief   Overriden initialization function
+   * @brief   Overridden initialization function
    */
   void initialize() noexcept override;
 

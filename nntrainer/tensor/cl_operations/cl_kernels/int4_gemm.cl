@@ -1233,7 +1233,7 @@ inline void fc_bf_tiled_kernel_dyn_quan(
   // Dispatch as bs_fs_bsv_fsv, where bsv = DISPATCH_BSV and fsv = DISPATCH_FSV.
   // This allows more fine grained control over dispatch order than using
   // work-groups and avoids requirement of threads being available for whole
-  // work-group. It could hovewer have some drawbacks like not providing
+  // work-group. It could however have some drawbacks like not providing
   // physical locality or not using full dispatch pipeline.
   uint feature_mini_block = gid % DISPATCH_FSV;
   uint batch_mini_block = gid / DISPATCH_FSV % DISPATCH_BSV;

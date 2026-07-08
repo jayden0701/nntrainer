@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs SineLayer to be moved.
+   * @param[in] rhs SineLayer to be moved.
    */
   SineLayer &operator=(SineLayer &&rhs) = default;
 
@@ -104,7 +104,7 @@ public:
   const std::string getType() const final { return SineLayer::type; };
 
   std::tuple<props::Print, props::InPlaceProp> sine_props;
-  bool support_backwarding; /**< support backwarding */
+  bool support_backwarding; /**< support backward pass */
 
   inline static const std::string type = "sin";
 };

@@ -262,8 +262,9 @@ void restore_block_q4_0_cl(const void *src_q, const void *src_d, void *dst,
  * @param K height (col)
  *
  * @note This kernel is only used for activations
- * Activation is coverted to FP16 and adds zero padding for non multiple of 8
- * Output is not returned and instead saved to outBufferB
+ * Activation is converted to FP16 and adds zero padding for non multiple of 8
+
+ * * Output is not returned and instead saved to outBufferB
  */
 void transpose_32_16(float *data, int M, int K);
 

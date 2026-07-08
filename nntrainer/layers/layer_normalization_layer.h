@@ -27,7 +27,7 @@ namespace nntrainer {
 
 /**
  * @class   LayerNormalizationLayer
- * @brief   Layer Noramlization Layer
+ * @brief   Layer Normalization Layer
  */
 class LayerNormalizationLayer : public Layer {
 public:

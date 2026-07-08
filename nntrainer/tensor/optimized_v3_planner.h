@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   optimzied_v3_planner.h
+ * @file   optimized_v3_planner.h
  * @date   2 January 2023
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>

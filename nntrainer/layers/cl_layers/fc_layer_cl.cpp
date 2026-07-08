@@ -4,9 +4,9 @@
  *
  * @file	fc_layer_cl.cpp
  * @date	7 May 2024
- * @brief	This is Fully Connected Layer Class for Neural Network with OpenCl
- * implementation
- * @see		https://github.com/nntrainer/nntrainer
+ * @brief	This is OpenCL Fully Connected Layer Class for Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author	Debadri Samaddar <s.debadri@samsung.com>
  * @bug		No known bugs except for NYI items
  *
@@ -54,7 +54,7 @@ void FullyConnectedLayerCl::finalize(InitLayerContext &context) {
 
   std::vector<TensorDim> output_dims(1);
 
-  /// @todo fc actaully supports multidimensions. EffDimFlag shouldn't be fixed
+  /// @todo fc actually supports multidimensions. EffDimFlag shouldn't be fixed
   /// like this.
   context.setEffDimFlagInputDimension(0, 0b1001);
   context.setDynDimFlagInputDimension(0, 0b1000);
@@ -71,8 +71,8 @@ void FullyConnectedLayerCl::finalize(InitLayerContext &context) {
   context.setOutputDimensions(output_dims);
 
   /** set weight specifications */
-  // @todo : This NCHW format setting is just temporal, it needs to be set by
-  // global configuration
+  // @todo : This NCHW format setting is temporary and needs to be set by the
+  // global configuration.
   TensorDim bias_dim(
     1, is_nchw ? 1 : unit, 1, is_nchw ? unit : 1,
     TensorDim::TensorType(context.getFormat(), context.getWeightDataType()),

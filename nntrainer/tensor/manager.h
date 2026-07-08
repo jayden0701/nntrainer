@@ -4,15 +4,15 @@
  *
  * @file   manager.h
  * @date   30 Nov 2020
- * @brief  This is NNtrainer manager for all weights, i/o and intermediate
- * tensors
+ * @brief  Manager for NNTrainer weights, I/O, and intermediate tensors
  * @see    https://github.com/nntrainer/nntrainer
  * @author Parichay Kapoor <pk.kapoor@samsung.com>
  * @author Jihoon Lee <jhoon.it.lee@samsung.com>
  * @bug	   No known bugs except for NYI items
  *
  *
- * @details Manager assumes that the layer inouts are being tracked by the
+ * @details Manager assumes that the layer inputs are being tracked by the
+ *
  * manager in the order of the execution. If the order is not maintained, then
  * the optimizations cannot be performed and will result in wrong values.
  */
@@ -44,7 +44,7 @@ using ExecutionMode = ml::train::ExecutionMode;
 
 /**
  * @class MMappedMemory
- * @brief Memory Handler, that has mmaped memory with a file descriptor
+ * @brief Memory Handler, that has mapped memory with a file descriptor
  */
 class MMapedMemory : public Noncopyable, public Nonmovable {
 public:
@@ -67,7 +67,7 @@ public:
    * Will return -1 except for android
    * @todo make this available for other platforms
    *
-   * @return -1 if fd is not allocated (or unabled to allocate)
+   * @return -1 if fd is not allocated (or unable to allocate)
    */
   int getFd() noexcept { return fd; }
 
@@ -99,7 +99,7 @@ private:
 
 /**
  * @class   Manager
- * @brief   manager of nntrainer
+ * @brief   NNTrainer tensor manager
  */
 class Manager : public Noncopyable, public Nonmovable {
 
@@ -309,7 +309,7 @@ public:
    * @param name tensor name
    * @param current_execution current execution
    * @param is_weight check if this should be queried in weight pool
-   * @return bool ture if given execution order is the last access
+   * @return bool true if given execution order is the last access
    */
   bool isLastAccess(const std::string &name, unsigned current_execution,
                     bool is_weight = false);
@@ -320,7 +320,7 @@ public:
    * @param name tensor name
    * @param current_execution current execution
    * @param is_weight check if this should be queried in weight pool
-   * @return bool ture if given execution order is the second last access
+   * @return bool true if given execution order is the second last access
    */
   bool isSecondLastAccess(const std::string &name, unsigned current_execution,
                           bool is_weight = false);
@@ -349,7 +349,7 @@ public:
   /**
    * @brief Set the batch size for the given tensor
    *
-   * @note this does not works for weights as they are supposed to be
+   * @note This does not work for weights as they are supposed to be
    * independent of batch size.
    */
   void setBatchSize(const std::string &name, unsigned int batch) {
@@ -546,7 +546,7 @@ public:
   };
 
   /**
-   * @brief     return if it is mixed precsion
+   * @brief     return if it is mixed precision
    */
   bool isMixedPrecision() { return !istrequal(tensor_dtype[0], "FP32"); }
 

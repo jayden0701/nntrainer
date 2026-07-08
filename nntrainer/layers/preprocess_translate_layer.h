@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file   preprocess_layer.h
+ * @file   preprocess_translate_layer.h
  * @date   31 December 2020
  * @see    https://github.com/nntrainer/nntrainer
  * @author Parichay Kapoor <pk.kapoor@samsung.com>
@@ -50,7 +50,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs PreprocessLayer to be moved.
+   * @param[in] rhs PreprocessLayer to be moved.
    */
   PreprocessTranslateLayer &operator=(PreprocessTranslateLayer &&rhs) = default;
 

@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   dropout_layer.cpp
+ * @file   dropout.cpp
  * @date   16 June 2020
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>

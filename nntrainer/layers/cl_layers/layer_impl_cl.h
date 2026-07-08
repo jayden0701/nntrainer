@@ -50,7 +50,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs LayerImplCl to be moved.
+   * @param[in] rhs LayerImplCl to be moved.
    */
   LayerImplCl &operator=(LayerImplCl &&rhs) = default;
 };

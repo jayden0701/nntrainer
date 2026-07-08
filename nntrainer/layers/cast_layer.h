@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs CastLayer to be moved.
+   * @param[in] rhs CastLayer to be moved.
    */
   CastLayer &operator=(CastLayer &&rhs) = default;
 

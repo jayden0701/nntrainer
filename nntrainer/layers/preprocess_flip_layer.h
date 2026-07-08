@@ -23,18 +23,18 @@
 namespace nntrainer {
 
 /**
- * @class   Preprocess FLip Layer
- * @brief   Preprocess FLip Layer
+ * @class   Preprocess Flip Layer
+ * @brief   Preprocess Flip Layer
  */
 class PreprocessFlipLayer : public Layer {
 public:
   /**
-   * @brief     Constructor of Preprocess FLip Layer
+   * @brief     Constructor of PreprocessFlipLayer
    */
   PreprocessFlipLayer();
 
   /**
-   * @brief     Destructor of Preprocess FLip Layer
+   * @brief     Destructor of PreprocessFlipLayer
    */
   ~PreprocessFlipLayer() = default;
 
@@ -46,7 +46,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs PreprocessLayer to be moved.
+   * @param[in] rhs PreprocessLayer to be moved.
    */
   PreprocessFlipLayer &operator=(PreprocessFlipLayer &&rhs) = default;
 

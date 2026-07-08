@@ -28,12 +28,12 @@ namespace nntrainer {
 class KLDLossLayer : public LossLayer {
 public:
   /**
-   * @brief     Constructor of Constant Loss Layer
+   * @brief     Constructor of KLDLossLayer
    */
   KLDLossLayer() : LossLayer() {}
 
   /**
-   * @brief     Destructor of MSE Loss Layer
+   * @brief     Destructor of KLDLossLayer
    */
   ~KLDLossLayer() = default;
 

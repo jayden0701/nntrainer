@@ -7,8 +7,7 @@
  * @see    https://github.com/nntrainer/nntrainer
  * @author Yash Singh yash.singh@samsung.com>
  * @bug    No known bugs except for NYI items
- * @brief	 This is Addition Layer Class Class for Neural Network with OpenCl
- * implementation
+ * @brief	 OpenCL Addition Layer implementation
  */
 
 #ifndef __ADDITION_LAYER_CL_H__
@@ -46,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs AdditionLayer to be moved.
+   * @param[in] rhs AdditionLayer to be moved.
    */
   AdditionLayerCL &operator=(AdditionLayerCL &&rhs) = default;
 

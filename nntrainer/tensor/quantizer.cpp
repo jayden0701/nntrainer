@@ -22,7 +22,7 @@ namespace nntrainer {
  * @param val value to clip
  * @param lower lower bound
  * @param upper upper bound
- * @return T cliped data
+ * @return T clipped data
  */
 template <typename T> T clip(const T &val, const T &lower, const T &upper) {
   return std::max(lower, std::min(val, upper));

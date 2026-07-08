@@ -255,8 +255,9 @@ void compute_kcaches(const float *in, const BType *kcache, float *output,
  * @param[in] width current w value from b, c, h, w
  * @param[in] dim unit length of simd computation
  * @param[in] half_ criterion for rotational direction of embedding
- * @param[in/out] inout float* uesed also as output when expected output float*
- * values
+ * @param[in/out] inout float* used also as output when expected output float*
+
+ * * values
  * @param[out] output void* output values, used when expected output __fp16*
  * values
  * @param[in] cos_ float* input con values

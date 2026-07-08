@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file recurrent_realizer.h
+ * @file recurrent_realizer.cpp
  * @date 12 October 2021
  * @brief NNTrainer graph realizer to create unrolled graph from a graph
  * realizer

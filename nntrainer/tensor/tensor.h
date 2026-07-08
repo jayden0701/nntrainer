@@ -221,8 +221,9 @@ public:
    * @note      This constructor copies vector again. needs refactoring
    * @param[in] d data for the Tensor with batch size one
    * @param[in] t_type Tensor Type
-   * @todo      It is more desirable to move this implementaton into
-   *            `tensor.cpp`, for it requires half_tensor.h
+   * @todo      It is more desirable to move this implementation into
+   *
+   * `tensor.cpp`, for it requires half_tensor.h
    */
   Tensor(std::vector<std::vector<std::vector<std::vector<_FP16>>>> const &d,
          ml::train::TensorDim::TensorType t_type) {
@@ -475,7 +476,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs Tensor to be moved.
+   * @param[in] rhs Tensor to be moved.
    */
   Tensor &operator=(Tensor &&rhs) noexcept = default;
 
@@ -712,7 +713,7 @@ public:
    * @param[in] offset offset from start location
    * @param[in] value value to be stored
    *
-   * @todo      This is a temporary workout. Remove this
+   * @todo      This is a temporary workaround. Remove this
    */
   void setValueInt(unsigned int offset, int value) noexcept {
     int *data_int = (int *)getData();
@@ -763,7 +764,7 @@ public:
 
   /**
    * @brief     Initialize the memory of the given tensor
-   * @param     init Initiailizer to use for the initialization
+   * @param     init Initializer to use for the initialization
    */
   void initialize(Initializer init);
 
@@ -1102,8 +1103,9 @@ public:
   int subtract_i(Tensor const &m);
 
   /**
-   * @brief     Substract Tensor Element by Element
-   * @param[in] m Tensor to be subtracted
+   * @brief     Subtract Tensor Element by Element
+   * @param[in] m Tensor to
+   * be subtracted
    * @retval    Calculated Tensor
    */
   Tensor subtract(Tensor const &m) const;
@@ -1494,7 +1496,7 @@ public:
    *
    * @param num_size num_size
    * @param axis axis
-   * @return Tensor splitted tensor
+   * @return Tensor split tensor
    */
   std::vector<Tensor> split(unsigned num_size, int axis = 0);
 
@@ -1503,9 +1505,9 @@ public:
    *
    * @param sizes sizes
    * @param axis axis
-   * @return Tensor splitted tensor
-   * @note if the given array sizes is just a 1 unsigned int value, assumes that
-   * it divide tensor by given size evenly
+   * @return Tensor split tensor
+   * @note if the given array sizes is just a 1
+   * unsigned int value, assumes that it divide tensor by given size evenly
    */
   std::vector<Tensor> split(std::vector<size_t> sizes, int axis = 0);
 
@@ -1557,7 +1559,7 @@ public:
    * @brief Set the memory buffer for the tensor
    *
    * @param buf the memory buffer
-   * @param init intialize the buffer
+   * @param init initialize the buffer
    */
   void setData(const std::shared_ptr<MemoryData> buf, size_t off = 0,
                bool init = false);
@@ -1639,14 +1641,16 @@ public:
   Tensor getBatchSlice(const std::vector<unsigned int> &indices) const;
 
   /**
-   * @brief     Convient wrapper for inplace copy of @a this.
-   * @retval    Copied version of this
+   * @brief     Convenient wrapper for inplace copy of @a this.
+   * @retval
+   * Copied version of this
    */
   Tensor clone() const;
 
   /**
-   * @brief     Convient wrapper for inplace copy of @a this.
-   * @param[in] type output tensor data type
+   * @brief     Convenient wrapper for inplace copy of @a this.
+   * @param[in]
+   * type output tensor data type
    * @retval    Copied version of this
    */
   Tensor clone(ml::train::TensorDim::DataType type) const;
@@ -1767,7 +1771,7 @@ public:
   /**
    * @brief fill tensor data with current value,
    * if dimension is not exactly same, it is a hard error in this function
-   * so, only stride is overriden to @a this
+   * so, only stride is overridden to @a this
    *
    * @param from Tensor to fill the data from
    * @param allocate if unallocated, allocate with from.getDim()
@@ -2111,7 +2115,7 @@ private:
 
   /**
    * @brief properties for virtual tensor
-   * @note This should be removed by defining VirutalTensor class
+   * @note This should be removed by defining VirtualTensor class
    * */
   bool is_virtual = false;    /** flag to check virtual */
   size_t read_offset;         /** save read_offset info for virtual */

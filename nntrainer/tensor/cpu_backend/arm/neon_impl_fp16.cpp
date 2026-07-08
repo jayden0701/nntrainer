@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2024 Sungsik Kong <ss.kong@samsung.com>
  *
- * @file neon_fp16.cpp
+ * @file neon_impl_fp16.cpp
  * @date   23 April 2024
  * @see    https://github.com/nntrainer/nntrainer
  * @author Sungsik Kong <ss.kong@samsung.com>
@@ -710,7 +710,7 @@ void haxpy(const unsigned int N, const float alpha, const __fp16 *X,
     vst1_f16(&Y[idx], mulacc);
   }
 
-  // pocessing remaining values
+  // processing remaining values
   for (; idx < N; idx++)
     Y[idx] = Y[idx] + alpha * X[idx];
 }
@@ -791,7 +791,7 @@ void hscal(const unsigned int N, __fp16 *X, const float alpha) {
     vst1_f16(&X[idx], mulacc);
   }
 
-  // pocessing remaining values
+  // processing remaining values
   for (; idx < N; idx++)
     X[idx] = alpha * X[idx];
 }
@@ -819,7 +819,7 @@ void hcopy(const unsigned int N, const __fp16 *X, __fp16 *Y) {
     vst1_f16(&Y[idx], batch);
   }
 
-  // pocessing remaining values
+  // processing remaining values
   for (; idx < N; idx++)
     Y[idx] = X[idx];
 }
@@ -894,7 +894,7 @@ void copy_int4_to_fp16(const unsigned int N, const uint8_t *X, __fp16 *Y) {
     vst1q_f16(&Y[2 * idx + 8], y1);
   }
 
-  // pocessing remaining values
+  // processing remaining values
   for (; idx < N; idx++) {
     Y[2 * idx] = X[idx] >> 4;
     Y[2 * idx + 1] = X[idx] & 0x0f;
@@ -2172,7 +2172,7 @@ void compute_rotary_emb_value(unsigned int width, unsigned int dim,
                               unsigned int half_, __fp16 *inout, __fp16 *output,
                               const __fp16 *cos_, const __fp16 *sin_) {
   // Iterate over the width dimension (e.g., flattened batch/head/seq)
-  // 'dim' is typicallly the head dimension
+  // 'dim' is typically the head dimension
   for (unsigned int w = 0; w < width; w += dim) {
     unsigned int k = 0;
     if (output != nullptr) {

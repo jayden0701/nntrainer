@@ -2,12 +2,13 @@
 /**
  * Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file   common_properties.h
+ * @file   qnn_properties.h
  * @date   09 April 2021
- * @brief  This file contains list of common properties widely used across
- * layers
- * @see	   https://github.com/nnstreamer/nntrainer
- * @author Jihoon Lee <jhoon.it.lee@samsung.com>
+ * @brief  This file contains QNN graph properties
+ * @see
+ * https://github.com/nntrainer/nntrainer
+ * @author Jihoon Lee,
+ * jhoon.it.lee@samsung.com
  * @bug    No known bugs except for NYI items
  */
 #ifndef __QNN_PROPERTIES_H__

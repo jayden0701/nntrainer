@@ -83,7 +83,7 @@ Buffer::~Buffer() { Release(); }
 /**
  * @brief Get the Buffer object
  *
- * @return cl_mem& refrence to cl_mem
+ * @return cl_mem& reference to cl_mem
  */
 cl_mem &Buffer::GetBuffer() { return mem_buf_; }
 

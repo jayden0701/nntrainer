@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief Move assignment operator.
-   * @parma[in] rhs SliceLayer to be moved.
+   * @param[in] rhs SliceLayer to be moved.
    */
   SliceLayer &operator=(SliceLayer &&rhs) = default;
 

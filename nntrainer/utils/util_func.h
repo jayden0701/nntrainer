@@ -142,8 +142,9 @@ template <typename T> bool isFloatValid(const T value) {
 }
 
 /**
- * @brief     Check Existance of File
- * @param[in] file path of the file to be checked
+ * @brief     Check existence of file
+ * @param[in] file path of the file to be
+ * checked
  * @returns   true if file exists, else false
  */
 bool isFileExist(std::string file);
@@ -209,10 +210,11 @@ void writeString(std::ofstream &file, const std::string &str,
 /**
  * @brief check if string ends with @a suffix
  *
- * @param target string to cehck
- * @param suffix check if string ends with @a suffix
+ * @param target string to check
+ * @param suffix check if string ends with @a
+ * suffix
  * @retval true @a target ends with @a suffix
- * @retval false @a target does not ends with @a suffix
+ * @retval false @a target does not end with @a suffix
  */
 bool endswith(const std::string &target, const std::string &suffix);
 

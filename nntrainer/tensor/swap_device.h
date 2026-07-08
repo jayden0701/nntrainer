@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2022 Jiho Chu <jiho.chu@samsung.com>
  *
- * @file   swap_device.cpp
+ * @file   swap_device.h
  * @date   01 July 2022
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jiho Chu <jiho.chu@samsung.com>
@@ -151,7 +151,7 @@ private:
   ml::train::ExecutionMode execution_mode;
 #ifdef USE_MMAP
   std::map<void *, std::tuple<void *, size_t, off_t, ssize_t>>
-    mapped; /**< <pointer, <orig_pointer, size, offset, origianl size>> */
+    mapped; /**< <pointer, <orig_pointer, size, offset, original size>> */
 #else
   std::map<void *, std::pair<off_t, ssize_t>>
     allocated; /**< <pointer, <offset, size>> */

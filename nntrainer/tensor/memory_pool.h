@@ -253,7 +253,7 @@ private:
   size_t calcMinMemoryRequirement();
 
   /**
-   * @brief Get sorted permuation for the memory requests
+   * @brief Get sorted permutation for the memory requests
    *
    * @return sorted permutation
    *

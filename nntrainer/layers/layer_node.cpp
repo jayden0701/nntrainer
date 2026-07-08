@@ -252,7 +252,7 @@ void LayerNode::setWeights(const std::vector<float *> weights) {
     << __func__ << " layer needs to be finalized first!";
 
   NNTR_THROW_IF(getNumWeights() != weights.size(), std::runtime_error)
-    << __func__ << " Number of Weights dismatch!";
+    << __func__ << " Number of Weights mismatch!";
 
   // Needs Deep copy
   for (unsigned int idx = 0; idx < getNumWeights(); ++idx) {
@@ -591,7 +591,7 @@ InitLayerContext LayerNode::finalize(const std::vector<TensorDim> &input_dims,
                     (prop_dims.size() != 1 || !prop_in_layers.empty()),
                   std::invalid_argument)
       << "input shapes must be one if connection is not given but given "
-         "dimesions size of: "
+         "dimensions size of: "
       << prop_dims.size();
     actual_input_dims =
       std::vector<TensorDim>(prop_dims.begin(), prop_dims.end());
@@ -717,7 +717,7 @@ LayerNode::refinalize(const std::vector<TensorDim> &input_dims) {
                     (prop_dims.size() != 1 || !prop_in_layers.empty()),
                   std::invalid_argument)
       << "input shapes must be one if connection is not given but given "
-         "dimesions size of: "
+         "dimensions size of: "
       << prop_dims.size();
     actual_input_dims =
       std::vector<TensorDim>(prop_dims.begin(), prop_dims.end());

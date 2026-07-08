@@ -217,8 +217,9 @@ size_t OptimizedV2Planner::planLayout(
   }
 
   if (wgrad_requests.size()) {
-    /** TODO: We donot need to start from memeory_req. We might find proper
-     * offset considering execution order */
+    /** TODO: We do not need to start from memory_req. We might find proper
+
+     * * offset considering execution order */
     size_t last_offset = memory_req;
 
     /* sort the memory request with ascending order of size */

@@ -47,7 +47,7 @@ public:
 
   /**
    * @brief Move assignment operator.
-   * @parma[in] rhs TangentLayer to be moved.
+   * @param[in] rhs TangentLayer to be moved.
    */
   TangentLayer &operator=(TangentLayer &&rhs) = default;
 
@@ -107,7 +107,7 @@ public:
   const std::string getType() const final { return TangentLayer::type; };
 
   std::tuple<props::Print, props::InPlaceProp> tangent_props;
-  bool support_backwarding; /**< support backwarding */
+  bool support_backwarding; /**< support backward pass */
 
   inline static const std::string type = "tan";
 };

@@ -830,14 +830,14 @@ void FloatTensor::dot(std::vector<Tensor *> input, std::vector<Tensor *> output,
 
 Tensor &FloatTensor::dotFloat(Tensor const &input, Tensor &output, bool trans,
                               bool trans_in, float beta) const {
-  // Comment out with intension to support the calculation wrt. batch and
-  // height direction. It supposes to have this->dim as [ BxCxH,W ] and
+  // Intentionally commented out to support the calculation wrt. batch and
+  // height direction. It assumes this->dim is [ BxCxH,W ] and
   // input.dim is [BxCxH,W] as well if (input.dim.rank() > 2) {
   //   throw exception::not_supported("Error: support only for rank of dot "
   //                                  "matrix <= 2");
   // }
 
-  // Comment out with intension to support the calculation wrt. batch and
+  // Intentionally commented out to support the calculation wrt. batch and
   // height direction of this tensor. It is OK as long as input is 2D
   if (trans && dim.rank() > 2) {
     ml_logw("Warning: support only for rank of dot matrix <= 2 with trans");
@@ -894,14 +894,14 @@ Tensor &FloatTensor::dotFloat32Float16(Tensor const &input, Tensor &output,
 /// @todo remove #ifdef ENABLE_FP16
 #ifdef ENABLE_FP16
 
-  // Comment out with intension to support the calculation wrt. batch and
-  // height direction. It supposes to have this->dim as [ BxCxH,W ] and
+  // Intentionally commented out to support the calculation wrt. batch and
+  // height direction. It assumes this->dim is [ BxCxH,W ] and
   // input.dim is [BxCxH,W] as well if (input.dim.rank() > 2) {
   //   throw exception::not_supported("Error: support only for rank of dot "
   //                                  "matrix <= 2");
   // }
 
-  // Comment out with intension to support the calculation wrt. batch and
+  // Intentionally commented out to support the calculation wrt. batch and
   // height direction of this tensor. It is OK as long as input is 2D
   if (trans && dim.rank() > 2) {
     ml_logw("Warning: support only for rank of dot matrix <= 2 with trans");

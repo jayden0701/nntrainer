@@ -2,10 +2,11 @@
 /**
  * Copyright (C) 2025 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   TensorLayer.h
+ * @file   tensor_layer.h
  * @date   17 Jan 2025
- * @brief  This is QNN Tensor Layer Class of Neural Network
+ * @brief  Tensor layer
  * @see    https://github.com/nntrainer/nntrainer
+ *
  * @author Jijoong Moon <jijoong.moon@samsung.com>
  * @bug    No known bugs except for NYI items
  *
@@ -21,10 +22,8 @@
 namespace nntrainer {
 
 /**
- * @class   Input Layer
- * @note    input layers requires to be only single input, consider making the
- * class deal with multiple inputs
- * @brief   Just Handle the Input of Network
+ * @class   TensorLayer
+ * @brief   Tensor forwarding layer
  */
 class TensorLayer : public Layer {
 public:
@@ -39,14 +38,14 @@ public:
   ~TensorLayer() = default;
 
   /**
-   *  @brief  Move constructor of Pooling 2D Layer.
-   *  @param[in] Input &&
+   *  @brief  Move constructor of TensorLayer.
+   *  @param[in] rhs
    */
   TensorLayer(TensorLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs TensorLayer to be moved.
+   * @param[in] rhs TensorLayer to be moved.
    */
   TensorLayer &operator=(TensorLayer &&rhs) = default;
 

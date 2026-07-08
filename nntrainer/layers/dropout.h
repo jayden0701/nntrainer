@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs DropOutLayer to be moved.
+   * @param[in] rhs DropOutLayer to be moved.
    */
   DropOutLayer &operator=(DropOutLayer &&rhs) = default;
 

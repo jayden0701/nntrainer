@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs GRUCellLayer to be moved.
+   * @param[in] rhs GRUCellLayer to be moved.
    */
   GRUCellLayer &operator=(GRUCellLayer &&rhs) = default;
 

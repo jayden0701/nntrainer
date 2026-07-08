@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs PowLayer to be moved.
+   * @param[in] rhs PowLayer to be moved.
    */
   PowLayer &operator=(PowLayer &&rhs) = default;
 
@@ -113,7 +113,7 @@ public:
   const std::string getType() const final { return PowLayer::type; };
 
   std::tuple<props::Print, props::InPlaceProp, props::Exponent> pow_props;
-  bool support_backwarding; /**< support backwarding */
+  bool support_backwarding; /**< support backward pass */
 
   static constexpr const char *type = "pow";
 };

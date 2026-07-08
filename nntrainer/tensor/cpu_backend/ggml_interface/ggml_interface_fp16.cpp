@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2025 Sungsik Kong <ss.kong@samsung.com>
  *
- * @file   ggml_impl_fp16.cpp
+ * @file   ggml_interface_fp16.cpp
  * @date   23 July 2025
  * @see    https://github.com/nntrainer/nntrainer
  * @author Sungsik Kong <ss.kong@samsung.com>

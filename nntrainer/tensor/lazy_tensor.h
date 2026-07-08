@@ -23,12 +23,13 @@ namespace nntrainer {
 /**
  * @class   LazyTensor a wrapper class for lazy calculation of tensor
  * @brief   calculation is delayed until Tensor LazyTensor::run() is
- *          called, can be contructed by Tensor::chain() method
+ *          called, can be constructed by Tensor::chain() method
  */
 class LazyTensor {
 public:
   /**
-   * @brief Constructor of Lazy Tensor, Tensor is copied to gaurantee
+   * @brief Constructor of Lazy Tensor, Tensor is copied to guarantee
+   *
    * immutability
    */
   LazyTensor(const Tensor &from) { target.copy(from); };

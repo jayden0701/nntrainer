@@ -265,8 +265,8 @@ void Exporter::saveTflResult(
     new_inputs.reserve(inputs.size() + 1 /** perm **/);
     new_inputs.push_back(*inputs[0]);
     // create "perm" tensor for Transpose operator
-    // @todo : This NCHW format setting is just temporal, it needs to be set by
-    //  global configuration
+    // @todo : This NCHW format setting is temporary and needs to be set by the
+    // global configuration.
     TensorDim perm_dim{inputs[0]->getTensorType(), std::bitset<4>(0b0001)};
     perm_dim.setTensorDim(3 /** index **/,
                           4 /** value **/); // effective dimension = {4}

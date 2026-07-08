@@ -284,7 +284,7 @@ void LSTMLayer::calcGradientBatchFirstLSTM(
             (reverse ? max_timestep - 1 - t : t) * NUM_GATE * unit);
 
           // Temporary variable for d_prev_hidden_state. d_prev_hidden_state
-          // already have precalculated values from incomming derivatives
+          // already have precalculated values from incoming derivatives
           Tensor d_prev_hidden_state_temp =
             Tensor("d_prev_hidden_state_temp", tensor_type.format,
                    tensor_type.data_type);
@@ -389,7 +389,7 @@ void LSTMLayer::calcGradientBatchFirstLSTM(
           (reverse ? max_timestep - 1 - t : t) * NUM_GATE * unit);
 
         // Temporary variable for d_prev_hidden_state. d_prev_hidden_state
-        // already have precalculated values from incomming derivatives
+        // already have precalculated values from incoming derivatives
         Tensor d_prev_hidden_state_temp =
           Tensor("d_prev_hidden_state_temp", tensor_type.format,
                  tensor_type.data_type);
@@ -476,7 +476,7 @@ void LSTMLayer::finalize(InitLayerContext &context) {
                              activation_tensor_type);
   context.setOutputDimensions({output_dim});
 
-  // weight_initializer can be set seperately. weight_ih initializer,
+  // weight_initializer can be set separately. weight_ih initializer,
   // weight_hh initializer kernel initializer & recurrent_initializer in
   // keras for now, it is set same way.
 
@@ -538,7 +538,7 @@ void LSTMLayer::finalize(InitLayerContext &context) {
                           TensorLifespan::ITERATION_LIFESPAN);
 
   if (bidirectional) {
-    // weight_initializer can be set seperately. weight_ih initializer,
+    // weight_initializer can be set separately. weight_ih initializer,
     // weight_hh initializer kernel initializer & recurrent_initializer in
     // keras for now, it is set same way.
 

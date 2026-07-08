@@ -100,7 +100,7 @@ public:
   std::vector<std::byte> GetProgramBinary(cl_device_id device_id);
 
   /**
-   * @brief Calculate te hash of given kernel source given compiler options
+   * @brief Calculate the hash of a kernel source with compiler options
    *
    * @param code kernel source code string
    * @param compiler_options string compiler options

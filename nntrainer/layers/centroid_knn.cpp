@@ -46,7 +46,7 @@ void CentroidKNN::setProperty(const std::vector<std::string> &values) {
 void CentroidKNN::finalize(nntrainer::InitLayerContext &context) {
   auto const &input_dim = context.getInputDimensions()[0];
   if (input_dim.channel() != 1 || input_dim.height() != 1) {
-    ml_logw("centroid nearest layer is designed for flattend feature for now, "
+    ml_logw("centroid nearest layer is designed for flattened feature for now, "
             "please check");
   }
 

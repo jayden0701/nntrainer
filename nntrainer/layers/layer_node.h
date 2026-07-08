@@ -195,20 +195,19 @@ public:
    */
   const Connection *getOutputConnection(unsigned nth) const;
 
+  // clang-format off
   /**
    * @brief Set the Output Connection
    * @note Each output must be identified only ONCE.
-   * @note when nth comes, getNumOutput() expends to nth + 1 as resize occurs.
-   * Please also notice none identified intermediate output (or mismatch between
-   * actual number of out tensors and output) is allowed but will produce
-   * warning, this implies that the output is not used else where.
-   * @throw std::invalid_argument when trying to identify output
-   * more then once
+   * @note nth resizes output connections to nth + 1.
+   * @note Unidentified intermediate outputs are allowed but warn.
+   * @throw std::invalid_argument if output is identified more than once
    *
    * @param nth nth output
    * @param name name of the output bound connection
    * @param index index of the output bound connection
    */
+  // clang-format on
   void setOutputConnection(unsigned nth, const std::string &name,
                            unsigned index);
 
@@ -336,7 +335,7 @@ public:
 
   /**
    * @brief this function helps exporting the layer in a predefined format,
-   * while workarounding issue caused by templated function type eraser
+   * while working around issue caused by templated function type eraser
    *
    * @param     exporter exporter that contains exporting logic
    * @param     method enum value to identify how it should be exported to
@@ -634,7 +633,8 @@ public:
 
   /**
    * @brief     Get weight data of the layer
-   * @param[out]    weights : float * arrary to store weight data
+   * @param[out]    weights : float * array to store weight data
+   *
    * @param[out]    weights_dim : TensorDim for each weights
    * @note      nntrainer assign the vector and if there is no weights, the size
    * of vector is zero
@@ -674,7 +674,8 @@ public:
 
   /**
    * @brief     Get weight data of the layer
-   * @param[out]    weights : float * arrary to store weight data
+   * @param[out]    weights : float * array to store weight data
+   *
    * @param[out]    weights_dim : TensorDim for each weights
    * @note      nntrainer assign the vector and if there is no weights, the size
    * of vector is zero
@@ -774,7 +775,7 @@ public:
 
   /**
    * @brief read layer Weight & Bias data from file
-   * @param src input file/mmaped stream
+   * @param src input file/mapped stream
    * @param fsu fsu type
    * @param mode Execution mode
    * @param opt_var read optimizer variables
@@ -944,19 +945,19 @@ public:
   /**
    * @brief Set if the layer needs to do derivative calculation
    *
-   * @param nb true if the layer needs to do backwarding, else false
+   * @param nb true if the layer needs derivative calculation, else false
    */
   void needsCalcDerivative(bool nb) {
     NNTR_THROW_IF(nb && !supportBackwarding(), std::invalid_argument)
       << "[Layer] " << getName()
-      << " does not support backwarding but is needed";
+      << " does not support the backward pass but needs derivative calculation";
     needs_calc_derivative = nb;
   }
 
   /**
-   * @brief Set if the layer output needs reinitialization @mixed precsion
+   * @brief Set if the layer output needs reinitialization @mixed precision
    *
-   * @param nb true if the layer needs to do reinitialization, eles false
+   * @param nb true if the layer needs to do reinitialization, else false
    */
   void reStoreData(bool nb) {
     needs_restore_data = nb;
@@ -966,28 +967,28 @@ public:
   /**
    * @brief Set if the layer needs to do calculation of gradients
    *
-   * @param nb true if the layer needs to do backwarding, else false
+   * @param nb true if the layer needs gradient calculation, else false
    */
   void needsCalcGradient(bool nb) { needs_calc_gradient = nb; }
 
   /**
-   * @brief Get the layer needs to do calculation of derivatives
+   * @brief Check if the layer needs derivative calculation
    *
-   * @return true if the layer needs to do backwarding, else false
+   * @return true if the layer needs derivative calculation, else false
    */
   bool needsCalcDerivative() { return needs_calc_derivative; }
 
   /**
-   * @brief Set if the layer needs to do calculation of gradient
+   * @brief Check if the layer needs gradient calculation
    *
-   * @param nb true if the layer needs to do backwarding, else false
+   * @return true if the layer needs gradient calculation, else false
    */
   bool needsCalcGradient() { return needs_calc_gradient; }
 
   /**
-   * @brief Set if the layer needs to reinitialization @mixed precsion
+   * @brief Set if the layer needs to reinitialization @mixed precision
    *
-   * @param nb true if the layer needs reinitialization, eles false
+   * @param nb true if the layer needs reinitialization, else false
    */
   bool reStoreData() { return needs_restore_data; }
 
@@ -1074,7 +1075,8 @@ properties in the context/graph unless intended. */
     layer_node_props_realization;    /**< properties for the node */
   std::unique_ptr<props::Loss> loss; /**< loss */
   ExecutionOrder exec_order; /**< order/location of execution for this node
-                                   in forward and backwarding operations */
+ in
+                                forward and backward operations */
 
   bool needs_restore_data; /**< cache if this layer needs reinitialization
                                  output  */

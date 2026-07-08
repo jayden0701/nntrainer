@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   dir_data_producers.h
+ * @file   dir_data_producers.cpp
  * @date   24 Feb 2023
  * @brief  This file contains dir data producers, reading from the files in
  * directory
@@ -26,15 +26,13 @@
 #include <node_exporter.h>
 #include <util_func.h>
 
+// clang-format off
 /**
- * @brief this function helps to read the image
- * currently only bmp image is supported and extend the image type will be
- * remain as TODO. ( BGR --> RGB )
- * @param     path file path
- * @param     inputs float data for image pixel
- * @param     width width
- * @param     height height
+ * @brief Read a BMP image
+ *
+ * Only BMP images are supported. TODO: add other image types. (BGR --> RGB)
  */
+// clang-format on
 static void readImage(const std::string path, float *input, unsigned int width,
                       unsigned int height) {
   FILE *f = fopen(path.c_str(), "rb");

@@ -21,7 +21,7 @@ namespace nntrainer::opencl {
 /**
  * @brief Loading OpenCL libraries and required function
  *
- * @return true if successfull or false otherwise
+ * @return true if successful or false otherwise
  */
 bool LoadOpenCL();
 
@@ -212,8 +212,8 @@ typedef cl_int(CL_API_CALL *PFN_clEnqueueSVMUnmap)(
   cl_uint /**< num_events_in_wait_list */,
   const cl_event * /**< event_wait_list */, cl_event * /**< event */);
 
-typedef cl_int (CL_API_CALL *PFN_clWaitForEvents)(cl_uint num_events,
-    const cl_event* event_list);
+typedef cl_int(CL_API_CALL *PFN_clWaitForEvents)(cl_uint num_events,
+                                                 const cl_event *event_list);
 
 extern PFN_clGetPlatformIDs clGetPlatformIDs;
 extern PFN_clGetDeviceIDs clGetDeviceIDs;

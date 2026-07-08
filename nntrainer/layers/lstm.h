@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs LSTMLayer to be moved.
+   * @param[in] rhs LSTMLayer to be moved.
    */
   LSTMLayer &operator=(LSTMLayer &&rhs);
 
@@ -118,7 +118,7 @@ private:
   std::array<unsigned int, 17> wt_idx; /**< indices of the weights */
 
   /**
-   * @brief run lstm fowarding for batch_first input
+   * @brief run lstm forwarding for batch_first input
    *
    * @param NUM_GATE Number of gate which is 4 for lstm
    * @param batch_size batch size
@@ -168,8 +168,9 @@ private:
    * @param acti_func activation function for memory cell, cell state
    * @param recurrent_acti_func activation function for input/output/forget
    * gate
-   * @param return_sequences return sequeces
-   * @param bidirectional bidirectional lstm
+   * @param return_sequences return sequences
+   * @param bidirectional
+   * bidirectional lstm
    * @param enable_dropout whether to apply dropout
    * @param dropout_rate dropout rate
    * @param max_timestep maximum timestep for lstm

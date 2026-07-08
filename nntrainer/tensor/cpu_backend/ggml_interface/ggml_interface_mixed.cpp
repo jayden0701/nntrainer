@@ -9,7 +9,7 @@
  * @author Sungsik Kong <ss.kong@samsung.com>
  * @bug    No known bugs except for NYI items
  * @brief  Function interface to use ggml lib from cpu_backend. This file is
- * knowned to be optimized for GB devices on Windows
+ * known to be optimized for GB devices on Windows
  */
 
 #include <algorithm>

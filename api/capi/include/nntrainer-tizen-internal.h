@@ -4,8 +4,9 @@
  *
  * @file   nntrainer-tizen-internal.h
  * @date   30 June 2021
- * @brief  NNTrainer CAPI header for tizen interanl api.
- * @note   This header is designed to be used only in Tizen
+ * @brief  NNTrainer CAPI header for tizen internal api.
+ * @note   This header
+ * is designed to be used only in Tizen
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jihoon Lee <jhoon.it.lee@samsung.com>
  * @author Parichay Kapoor <pk.kapoor@samsung.com>

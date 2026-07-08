@@ -466,9 +466,10 @@ extern void compute_rotary_emb_value(unsigned int width, unsigned int dim,
  * @param n N length of the matrix
  * @param k K length of the matrix
  * @param rhs_native_mtx_f32 matrix data before quantization to load
- * @param rhs_native_mtx_qs4cx matrix data after quantization to stroe
- * @param rhs_scales_f32 matrix quant scale after quantization to stroe
- * @param transB
+ * @param rhs_native_mtx_qs4cx matrix data after quantization to store
+ *
+ * @param[out] rhs_scales_f32 scales
+ * @param transB true for transposed B
  */
 extern void nntr_quant_qs4cx_f32(size_t n, size_t k, void *rhs_native_mtx_f32,
                                  void *rhs_native_mtx_qs4cx,
@@ -999,7 +1000,7 @@ extern void cosine(const unsigned int N, T *X, T *Y, float alpha = 1.f,
                    float beta = 1.f);
 
 /**
- * @brief inversed squared root transformation inplace : X = 1 / sqrt(X)
+ * @brief inverse square root transformation inplace : X = 1 / sqrt(X)
  *
  * @param N size of X
  * @param X float * for Vector X
@@ -1085,7 +1086,7 @@ extern bool is_valid(const unsigned int N, const float *X);
  * @param A Input activation to be online-runtime quantized to q8_0 format
  * @param lda Leading dimension of A
  * @param B Offline-quantized transposed weight in block_q4_0x4, block_q4_0x8
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C T* output
  * @param ldc Leading dimension of C
  */
@@ -1104,7 +1105,7 @@ extern void gemm_q4_0(const unsigned int M, const unsigned int N,
  * @param A Input activation to be online-runtime quantized to q8_K_MxN format
  * @param lda Leading dimension of A
  * @param B (void*) (block_q4_K*) for Offline-quantized transposed weight
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C float* output
  * @param ldc Leading dimension of C
  */
@@ -1122,7 +1123,7 @@ extern void gemm_q4_K(const unsigned int M, const unsigned int N,
  * @param A Input activation to be online-runtime quantized to q6_K_MxN format
  * @param lda Leading dimension of A
  * @param B (void*) (block_q6_K*) for Offline-quantized transposed weight
- * @param ldb Leading dimenstion of B
+ * @param ldb Leading dimension of B
  * @param C T* output
  * @param ldc Leading dimension of C
  */
@@ -1280,7 +1281,8 @@ extern void repack_q4_K(void *dst, void *src, size_t data_size,
                         const unsigned int M, const unsigned int N);
 
 /**
- * @brief unpack q40x8 or q40x4 (for ARM backend) to q40 - invers method:
+ * @brief unpack q40x8 or q40x4 (for ARM backend) to q40 - inverse method:
+ *
  * repack_q4_0
  *
  * @param in_q4_0x input q40x
@@ -1426,8 +1428,8 @@ extern void compute_kcaches(const float *in, const BType *kcache, float *output,
  * @param[in] width current w value from b, c, h, w
  * @param[in] dim unit length of simd computation
  * @param[in] half_ criterion for rotational direction of embedding
- * @param[in/out] inout float* uesed also as output when expected output float*
- * values
+ * @param[in/out] inout input buffer; also used as output for float outputs
+ *
  * @param[out] output void* output values, used when expected output __fp16*
  * values
  * @param[in] cos_ float* input con values

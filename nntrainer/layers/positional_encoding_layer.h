@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs PositionalEncodingLayer to be moved.
+   * @param[in] rhs PositionalEncodingLayer to be moved.
    */
   PositionalEncodingLayer &operator=(PositionalEncodingLayer &&rhs) = default;
 

@@ -82,14 +82,14 @@ void IniSection::setEntry(const std::string &entry_str) {
 
 void IniWrapper::updateSection(const std::string &s) {
 
-  auto seperator_pos = s.find('/');
+  auto separator_pos = s.find('/');
 
-  NNTR_THROW_IF(seperator_pos == std::string::npos, std::invalid_argument)
+  NNTR_THROW_IF(separator_pos == std::string::npos, std::invalid_argument)
     << "invalid string format is given, please "
        "pass format of sectionKey/properties format";
 
-  auto section_key = s.substr(0, seperator_pos);
-  auto properties = s.substr(seperator_pos + 1);
+  auto section_key = s.substr(0, separator_pos);
+  auto properties = s.substr(separator_pos + 1);
 
   IniSection target(section_key, properties);
 

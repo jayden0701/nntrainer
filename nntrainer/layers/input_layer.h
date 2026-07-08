@@ -48,14 +48,14 @@ public:
   ~InputLayer() = default;
 
   /**
-   *  @brief  Move constructor of Pooling 2D Layer.
-   *  @param[in] Input &&
+   *  @brief  Move constructor of InputLayer.
+   *  @param[in] rhs
    */
   InputLayer(InputLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs InputLayer to be moved.
+   * @param[in] rhs InputLayer to be moved.
    */
   InputLayer &operator=(InputLayer &&rhs) = default;
 

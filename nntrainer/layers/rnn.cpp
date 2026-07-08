@@ -87,7 +87,7 @@ void RNNLayer::finalize(InitLayerContext &context) {
 
   context.setOutputDimensions({output_dim});
 
-  // weight_initializer can be set seperately. weight_ih initializer,
+  // weight_initializer can be set separately. weight_ih initializer,
   // weight_hh initializer kernel initializer & recurrent_initializer in keras
   // for now, it is set same way.
 
@@ -122,9 +122,10 @@ void RNNLayer::finalize(InitLayerContext &context) {
     }
   }
 
-  // We do not need this if we reuse net_hidden[0]. But if we do, then the unit
-  // test will fail. Becuase it modifies the data during gradient calculation
-  // TODO : We could control with something like #define test to save memory
+  // This is unnecessary if net_hidden[0] is reused, but doing so modifies data
+  // during gradient calculation and fails the unit test.
+  // TODO: Make this controllable, for example with a test-only define, to save
+  // memory.
 
   // hidden_state_dim : [ batch_size, 1, max_timestep, unit ]
   const TensorDim hidden_state_dim(batch_size, 1, max_timestep, unit);

@@ -3,10 +3,11 @@
 /**
  * Copyright (C) 2025 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
- * @file   mman_windows.h
+ * @file   mman_windows.cpp
  * @date   8 April 2025
- * @brief  Windows implementation of posix mman
- * @see    https://github.com/nntrainer/nntrainer
+ * @brief  Windows implementation of POSIX mman
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author Grzegorz Kisala <g.kisala@samsung.com>
  * @bug    No known bugs except for NYI items
  *
@@ -67,16 +68,18 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off) {
   const DWORD desired_access = selectDesiredAccess(prot);
   const DWORD file_offset_low =
     (sizeof(off_t) <= sizeof(DWORD)) ? (DWORD)off : (DWORD)(off & 0xFFFFFFFFL);
-  const DWORD file_offset_high = (sizeof(off_t) <= sizeof(DWORD))
-                                   ? (DWORD)0
-                                   : (DWORD)(((uint64_t)off >> 32) & 0xFFFFFFFFL);
+  const DWORD file_offset_high =
+    (sizeof(off_t) <= sizeof(DWORD))
+      ? (DWORD)0
+      : (DWORD)(((uint64_t)off >> 32) & 0xFFFFFFFFL);
   const off_t max_size = off + (off_t)len;
   const DWORD max_size_low = (sizeof(off_t) <= sizeof(DWORD))
                                ? (DWORD)max_size
                                : (DWORD)(max_size & 0xFFFFFFFFL);
-  const DWORD max_size_high = (sizeof(off_t) <= sizeof(DWORD))
-                                ? (DWORD)0
-                                : (DWORD)(((uint64_t)max_size >> 32) & 0xFFFFFFFFL);
+  const DWORD max_size_high =
+    (sizeof(off_t) <= sizeof(DWORD))
+      ? (DWORD)0
+      : (DWORD)(((uint64_t)max_size >> 32) & 0xFFFFFFFFL);
   errno = 0;
 
   if (len == 0 || prot == PROT_EXEC) {

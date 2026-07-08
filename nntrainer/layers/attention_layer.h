@@ -46,7 +46,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs AttentionLayer to be moved.
+   * @param[in] rhs AttentionLayer to be moved.
    */
   AttentionLayer &operator=(AttentionLayer &&rhs) = default;
 

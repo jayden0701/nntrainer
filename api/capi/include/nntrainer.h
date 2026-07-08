@@ -38,7 +38,7 @@
  * @since_tizen 6.5
  *
  */
-#define TIZEN_DEPRECATED_API \
+#define TIZEN_DEPRECATED_API                                                   \
   __attribute__((__visibility__("default"), deprecated))
 #endif
 
@@ -335,7 +335,8 @@ int ml_train_layer_destroy(ml_train_layer_h layer);
  * // Many of these hyperparameters are optional
  * status = ml_train_layer_set_property(handle, "input_shape=1:1:6270",
  *      "unit=10", "bias_initializer=zeros", "activation=sigmoid",
- *      "weight_regularizer=l2_norm", "weight_initializer=he_uniform", NULL);
+ *      "weight_regularizer=l2norm", "weight_initializer=he_uniform", NULL);
+ *
  * if (status != ML_ERROR_NONE) {
  *    // Handle error case
  *    ml_train_layer_destroy(handle);

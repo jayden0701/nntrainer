@@ -60,7 +60,7 @@ bool ReshapeLayerCl::registerClKernels(ClContext &cl_context) {
 
   } while (false);
 
-  // claer all registered kernels if any error occurs during registration
+  // clear all registered kernels if any error occurs during registration
   layer_kernel_ptrs.clear();
 
   return false;

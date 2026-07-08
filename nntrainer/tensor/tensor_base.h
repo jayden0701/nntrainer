@@ -61,7 +61,7 @@ using TStorageOrder = ml::train::TensorDim::StorageOrder;
 
 /**
  * @brief     Enumeration of Weight Initialization Type
- * @todo      support intialization from file
+ * @todo      support initialization from file
  */
 enum class Initializer {
   ZEROS,          /** Zero initialization */
@@ -956,8 +956,8 @@ protected:
   BroadcastInfo computeBroadcastInfo(const Tensor &m) const;
 
   /**
-   * @brief Calcuates variables needed to perform tensor flatten dot product
-   *
+   * @brief Calculates variables needed to perform tensor flatten dot product
+ *
    * @param[in]  input Tensor
    * @param[in]  output output Tensor
    * @param[in]  trans Transpose

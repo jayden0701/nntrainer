@@ -75,7 +75,7 @@ public:
 };
 
 /**
- * @brief Create a Dataset object with given arguements
+ * @brief Create a Dataset object with given arguments
  *
  * @param type dataset type
  * @param properties property representations

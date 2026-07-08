@@ -1092,7 +1092,7 @@ Tensor &Tensor::dotBatched(Tensor const &m, Tensor &result, bool trans,
   size_t m_group_size = lcm / m.batch();
 
   NNTR_THROW_IF(!((lcm == batch() || lcm == m.batch())), std::invalid_argument)
-    << "The batch size of the given twon tensors must be the same"
+    << "The batch size of the given two tensors must be the same"
        "or the bigger one should be a multiple of the smaller one";
 
   for (unsigned int b = 0; b < lcm; b++) {

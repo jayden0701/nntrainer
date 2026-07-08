@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs ReshapeLayer to be moved.
+   * @param[in] rhs ReshapeLayer to be moved.
    */
   ReshapeLayerCl &operator=(ReshapeLayerCl &&rhs) = default;
 

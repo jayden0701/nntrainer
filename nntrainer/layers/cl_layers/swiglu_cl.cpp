@@ -173,7 +173,7 @@ void SwiGLULayerCl::swiglu_cl(float *matAdata, float *vecXdata, float *vecYdata,
       }
     }
 
-    // NOTE(mwlasiuk) : local size can not be larger than global
+    // NOTE(mwlasiuk) : local size cannot be larger than global
     const int32_t desired_local = 64;
     const bool can_use_desired = dim >= desired_local;
     const int32_t chosen_local = can_use_desired ? desired_local : dim;
@@ -249,7 +249,7 @@ void SwiGLULayerCl::swiglu_cl_fp16(_FP16 *matAdata, _FP16 *vecXdata,
       break;
     }
 
-    // NOTE(mwlasiuk) : local size can not be larger than global
+    // NOTE(mwlasiuk) : local size cannot be larger than global
     const int32_t desired_local = 64;
     const bool can_use_desired = dim >= desired_local;
     const int32_t chosen_local = can_use_desired ? desired_local : dim;

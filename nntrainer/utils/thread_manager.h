@@ -144,8 +144,9 @@ public:
   ~ThreadManager();
 
   /**
-   * @brief parallize loop for given function
-   * @param begin loop start index
+   * @brief parallelize loop for given function
+   * @param begin loop start
+   * index
    * @param end loop end index
    * @param fn callback to run in parallel
    * @details This method parallelizes the following for loop.
@@ -210,7 +211,7 @@ private:
   }
 
   /**
-   * @brief checkin current thread for initialization and finishing job
+   * @brief Mark the current thread as initialized or finished
    */
   void checkin();
 

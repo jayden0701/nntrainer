@@ -144,10 +144,9 @@ void TensorPool::finalize(const MemoryPlanner &planner,
     for (unsigned int idx = 0; idx < details->exec_order.size(); idx++) {
       if (details->exec_order[idx] >= start_order)
         validity_start = std::min(validity_start, details->exec_order[idx]);
-      /** This is to enforce not to reach if the execution order is greater
-       * than backwarding end order. e.g., for the input layer, the
-       * backwarding is not reached but the exeuction order is assigned.
-       * */
+      // This prevents the execution order from exceeding the backward pass end
+      // order. For example, the input layer is not reached during the backward
+      // pass, but the execution order is assigned.
       if (details->exec_order[idx] > old_end_order &&
           details->exec_order[idx] != PERSIST_END_ORDER) {
         details->exec_order[idx] = PERSIST_END_ORDER - 1;
@@ -186,8 +185,8 @@ void TensorPool::finalize(const MemoryPlanner &planner,
 
     /**
      * 3. requestMemory for all the tensors and set their tokens
-     * @note +1 is to make the validity_end exlusive in the interval range
-     */
+     * @note +1 is to make the validity_end exclusive in the interval range
+ */
     details->token = mem_pool->requestMemory(
       spec.tensor->getMemoryBytes(), validity_start, validity_end + 1,
       details->exec_order, details->lifespan, spec.is_weight_grad);

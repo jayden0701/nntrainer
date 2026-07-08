@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   conv1d_layer.h
+ * @file   conv1d_layer.cpp
  * @date   13 Oct 2021
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>

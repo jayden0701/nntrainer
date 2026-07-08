@@ -82,7 +82,7 @@ enum class ReferenceLayersType {
 };
 
 /**
- * @brief Model saving options
+ * @brief Model file format options
  *
  */
 enum class ModelFormat {

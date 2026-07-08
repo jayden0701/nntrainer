@@ -32,17 +32,17 @@ class PropsTflModelPath;
 
 /**
  * @class   TfLiteLayer
- * @brief   Tensorflow Lite layer
+ * @brief   TensorFlow Lite layer
  */
 class TfLiteLayer : public Layer {
 public:
   /**
-   * @brief     Constructor of NNStreamer Layer
+   * @brief     Constructor of TfLiteLayer
    */
   TfLiteLayer();
 
   /**
-   * @brief     Destructor of NNStreamer Layer
+   * @brief     Destructor of TfLiteLayer
    */
   ~TfLiteLayer();
 

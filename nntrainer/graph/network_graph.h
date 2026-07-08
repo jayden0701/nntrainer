@@ -254,16 +254,13 @@ public:
       [](void *user_data) { return false; },
     void *user_data = nullptr);
 
-  /**
-   * @brief     backwarding the network graph
-   * @param[in] iteration current iteration number
-   * @param[in] forwarding_op operation for the forwarding
-   * @param[in] backwarding_op operation for the backwarding
-   * @param[in] lazy_apply_grad_op operation for applying the lazy gradients
-   * @retval ret it is false then the gradient has NaN valude in mixed precision
-   * training. If it is, then we need to control the loss scale factor and
-   * compute again the derivatives.
-   */
+  /// @brief Run the backward pass for the network graph.
+  /// @param[in] iteration Current iteration number.
+  /// @param[in] forwarding_op Operation for the forward pass.
+  /// @param[in] backwarding_op Operation for the backward pass.
+  /// @param[in] lazy_apply_grad_op Operation for applying lazy gradients.
+  /// @retval ret False when gradients have NaN values during mixed precision.
+  /// If false, loss scaling is adjusted and derivatives are recomputed.
   bool backwarding(
     int iteration,
     std::function<void(std::shared_ptr<LayerNode>, bool)> &forwarding_op,
@@ -305,18 +302,14 @@ public:
     return graph.crend<LayerNode>();
   }
 
-  /**
-   * @brief     get begin iterator for the backwarding
-   * @retval    const reverse iterator marking the begin of backwarding
-   */
+  /// @brief Get begin iterator for the backward pass.
+  /// @retval const reverse iterator at backward pass begin.
   graph_const_reverse_iterator<LayerNode> getBackwardingBeginIter() const {
     return crbegin();
   }
 
-  /**
-   * @brief     get end iterator for the backwarding
-   * @retval    const reverse iterator marking the end of backwarding
-   */
+  /// @brief Get end iterator for the backward pass.
+  /// @retval const reverse iterator at backward pass end.
   graph_const_reverse_iterator<LayerNode> getBackwardingEndIter() const {
     return crend();
   }
@@ -343,7 +336,7 @@ public:
   /**
    * @brief     Copy the graph
    * @param[in] from Graph Object to copy
-   * @retval    Graph Object copyed
+   * @retval    Graph Object copied
    */
   NetworkGraph &copy(NetworkGraph &from) {
     graph.copy(from.graph);
@@ -602,20 +595,21 @@ private:
                  input and output layer name of subgraph */
   std::shared_ptr<Manager> tensor_manager;       /**< tensors manager */
 
-  GraphCore graph;              /** core graph object */
-  bool compiled;                /**< if the model graph is compiled */
-  unsigned int batch_size;      /**< current batch_size */
-  unsigned int graph_exec_end;  /**< Inclusive, last execution order of the
-                                 given graph */
-  LayerNode *backward_iter_end; /**< inclusive end node of the valid backward
-                                         execution when initialized, nodes after
-                                   this node does not required backwarding thus
-                                   making it noop */
-  LayerNode *forward_iter_end;  /**< inclusive end node of the forward execution
-                                 when initialize */
+  /** core graph object */
+  GraphCore graph;
+  /** whether the model graph is compiled */
+  bool compiled;
+  /** current batch size */
+  unsigned int batch_size;
+  /** inclusive last execution order of the graph */
+  unsigned int graph_exec_end;
+  /** inclusive end node of backward execution; later nodes are no-op */
+  LayerNode *backward_iter_end;
+  /** inclusive end node of forward execution */
+  LayerNode *forward_iter_end;
 
-  /// @note *_list and *_dims must be synced at all times. Consider put it as a
-  /// structure
+  /// @note *_list and *_dims must be synced at all times. Consider putting them
+  /// in a structure.
   std::vector<std::string> label_list;  /**< identifier for the model labels */
   std::vector<std::string> input_list;  /**< identifier for the model inputs */
   std::vector<std::string> output_list; /**< identifier for the model outputs */
@@ -663,7 +657,7 @@ private:
   int checkCompiledGraph();
 
   /**
-   * @brief     mark nodes required for backwarding.
+   * @brief     mark nodes required for the backward pass.
    */
   void markNodesForBackwarding();
 
@@ -706,14 +700,12 @@ private:
    */
   void finalizeLossLayer();
 
-  /**
-   * @brief Set the order of execution for all the nodes in the graph
-   *
-   * @details This sets the order of execution using the order from the
-   * topological sort. The order of forwarding matches the topological sort. The
-   * order for backwarding is in the exact reverse order. The calcDerivative()
-   * is expected to be called right after calcGradient().
-   */
+  /// @brief Set the order of execution for all the nodes in the graph.
+  ///
+  /// @details This sets the order of execution using the order from the
+  /// topological sort. The order of forwarding matches the topological sort.
+  /// The order for the backward pass is the exact reverse order.
+  /// calcDerivative() is expected to be called right after calcGradient().
   void setExecutionOrder();
 
 public:

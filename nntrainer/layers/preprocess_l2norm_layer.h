@@ -41,7 +41,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs PreprocessL2NormLayer to be moved.
+   * @param[in] rhs PreprocessL2NormLayer to be moved.
    */
   PreprocessL2NormLayer &operator=(PreprocessL2NormLayer &&rhs) = default;
 

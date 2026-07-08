@@ -139,7 +139,7 @@ std::vector<uint32_t> getCoresByPerformance() {
       cores.push_back(p.second);
     return cores;
   } else {
-    // ARM cores does not have SMT
+    // ARM cores do not have SMT
     uint32_t hw_threads = std::thread::hardware_concurrency();
     std::vector<std::pair<uint32_t, uint32_t>> freq_core;
     freq_core.reserve(hw_threads);

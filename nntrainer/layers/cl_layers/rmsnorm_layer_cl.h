@@ -2,10 +2,11 @@
 /**
  * Copyright (C) 2020
  *
- * @file   rmsnorm_layer.h
+ * @file   rmsnorm_layer_cl.h
  * @date   8 June 2024
- * @brief  This is RMS Norm Layer Class of Neural Network
- * @see    https://github.com/nntrainer/nntrainer
+ * @brief  This is OpenCL RMSNorm Layer Class of Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author Thummala Pallavi <t.pallavi@samsung.com>
  * @bug    No known bugs except for NYI items
  *
@@ -50,7 +51,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs RMS Norm to be moved.
+   * @param[in] rhs RMS Norm to be moved.
    */
   RMSNormLayerCl &operator=(RMSNormLayerCl &&rhs) = default;
 

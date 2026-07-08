@@ -62,7 +62,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs Pooling2DLayer to be moved.
+   * @param[in] rhs Pooling2DLayer to be moved.
    */
   Pooling2DLayer &operator=(Pooling2DLayer &&rhs) = default;
 

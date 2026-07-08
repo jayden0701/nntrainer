@@ -64,8 +64,8 @@ void TimeDistLayer::transposeInOut(RunLayerContext &context) {
   // Position[3] : net_hidden.gradient
   bool trans = true;
 
-  /// @fixme: below will be propably wrong as this changes incoming derivative.
-  /// other layer referring to this will have wrong output grad information.
+  /// @fixme: This is probably wrong because it mutates the incoming derivative.
+  /// Other layers referring to this tensor will see incorrect output gradients.
   Tensor &derivative_ = context.getOutputGradUnsafe(SINGLE_INOUT_IDX);
   for (unsigned int i = 0; i < 3; ++i) {
     if (derivative_.getData() == positions[i]) {
@@ -81,14 +81,14 @@ void TimeDistLayer::transposeInOut(RunLayerContext &context) {
 
 Tensor TimeDistLayer::transposeTensor(Tensor &m) {
   TensorDim dim = m.getDim();
-  // Assume the channel is 1. Time Dimension is h. It transpose [b, 1, h, w] to
-  // [h, 1, b, w ] and nntrainer only support 1,2,3 transpose. So we do reshape
-  // first to make [1, b,h, w]
+  // Assume the channel is 1. The time dimension is h. This transposes
+  // [b, 1, h, w] to [h, 1, b, w], and nntrainer supports only 1D/2D/3D
+  // transpose. So reshape first to make [1, b, h, w].
   // TODO:
   // If we do {1, dim[0]*dim[1], dim[2], dim[3]} and transpose to {1, dim[2],
-  // dim[0]*dim[1], dim[3]}. Then reshpae to {dim[2], dim[0], dim[1], dim[3]}
-  // then we could support the case which dim[1] is not 1. But we need to change
-  // some other places of code to support.
+  // dim[0]*dim[1], dim[3]}, then reshape to {dim[2], dim[0], dim[1], dim[3]},
+  // we could support the case where dim[1] is not 1. But we need to change some
+  // other parts of the code to support it.
   //
   if (dim[1] != 1)
     throw std::invalid_argument(
@@ -126,9 +126,9 @@ void TimeDistLayer::finalize(InitLayerContext &context) {
   InitLayerContext dist_context({dist_dim}, {}, context.getInPlace(),
                                 context.getName());
 
-  // During forwarding and backwarding, it set the input and output buffer of
-  // dist_layer properly
-  // dist_layer will use forwarding_with_val and backwarding_with_val
+  // During forward and backward passes, TimeDistLayer sets the input and output
+  // buffers for dist_layer.
+  // dist_layer will use forwarding_with_val and backwarding_with_val.
   dist_layer->finalize(dist_context);
 
   TensorDim output_dim = dist_context.getOutSpecs()[0].variable_spec.dim;
@@ -202,7 +202,7 @@ void TimeDistLayer::forwarding(RunLayerContext &context, bool training) {
   const TensorDim &ho_dim = hidden_.getDim();
   const TensorDim &in_dim = input_.getDim();
 
-  // TODO: This transposed Input Tensor could be resued for backwarding
+  // TODO: This transposed input tensor could be reused for the backward pass
   Tensor in = transposeTensor(input_);
 
   Tensor out = Tensor({ho_dim[2], 1, ho_dim[0], ho_dim[3]}, true,
@@ -267,8 +267,8 @@ void TimeDistLayer::forwarding(RunLayerContext &context, bool training) {
 }
 
 void TimeDistLayer::calcDerivative(RunLayerContext &context) {
-  /// @fixme: this will be probably wrong as this mutates incoming derivative,
-  /// we will need the layer to copy and paste instead of transpose and override
+  /// @fixme: This is probably wrong because it mutates the incoming derivative.
+  /// Copy into a separate tensor instead of transposing and overwriting it.
   Tensor &derivative_ = context.getOutputGradUnsafe(SINGLE_INOUT_IDX);
   Tensor &hval_ = context.getOutput(SINGLE_INOUT_IDX);
   Tensor &ret_ = context.getOutgoingDerivative(SINGLE_INOUT_IDX);
@@ -311,9 +311,9 @@ void TimeDistLayer::calcDerivative(RunLayerContext &context) {
   }
 
   ret_.copy(transposeTensor(ret_));
-  // We are not going to transpose the data. The Date is not used anymore.
-  // It will be overwritten at next iteration
-  // Just reshpae the tensors
+  // We are not going to transpose the data. The data is not used anymore.
+  // It will be overwritten at the next iteration.
+  // Just reshape the tensors.
   hval_.reshape({der_dim[2], 1, der_dim[0], der_dim[3]});
   derivative_.reshape({der_dim[2], 1, der_dim[0], der_dim[3]});
   input_.reshape({ret_dim[2], 1, ret_dim[0], ret_dim[3]});

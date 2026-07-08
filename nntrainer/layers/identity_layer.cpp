@@ -2,10 +2,11 @@
 /**
  * Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file   identity.cpp
+ * @file   identity_layer.cpp
  * @date   16 Dec 2021
- * @brief  This is identity layer flows everything as it is
- * @see	   https://github.com/nntrainer/nntrainer
+ * @brief  Identity layer
+ * @see    https://github.com/nntrainer/nntrainer
+ *
  * @author Jihoon Lee <jhoon.it.lee@samsung.com>
  * @bug    No known bugs except for NYI items
  *

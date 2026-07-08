@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs AddLayer to be moved.
+   * @param[in] rhs AddLayer to be moved.
    */
   AddLayer &operator=(AddLayer &&rhs) = default;
 

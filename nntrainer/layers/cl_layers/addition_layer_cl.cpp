@@ -7,8 +7,7 @@
  * @see    https://github.com/nntrainer/nntrainer
  * @author Yash Singh yash.singh@samsung.com>
  * @bug    No known bugs except for NYI items
- * @brief	 This is Addition Layer Class Class for Neural Network with OpenCl
- * implementation
+ * @brief	 OpenCL Addition Layer implementation
  */
 
 #include <addition_layer_cl.h>

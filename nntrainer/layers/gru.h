@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs GRULayer to be moved.
+   * @param[in] rhs GRULayer to be moved.
    */
   GRULayer &operator=(GRULayer &&rhs) = default;
 

@@ -383,7 +383,7 @@ private:
   };
 
   /**
-   * @brief Dependent tensor detaild specification
+   * @brief Dependent tensor detailed specification
    *
    */
   struct DependentDetails {

@@ -2,12 +2,12 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file   optimizer_context.h
+ * @file   optimizer_context.cpp
  * @date   30 July 2021
  * @see    https://github.com/nntrainer/nntrainer
  * @author Parichay Kapoor <pk.kapoor@samsung.com>
  * @bug    No known bugs except for NYI items
- * @brief  This is the layer context for each layer
+ * @brief  This is the optimizer context for each optimizer
  */
 
 #include <optimizer_context.h>
@@ -65,7 +65,7 @@ void RunOptimizerContext::applyLossScale(Tensor &fp32_grad) {
     return;
   if (fp32_grad.getDataType() != ml::train::TensorDim::DataType::FP32)
     throw std::invalid_argument(
-      "gradient should be fullprecsion to maintain accuracy");
+      "gradient should be full precision to maintain accuracy");
   float loss_scale = weight->getLossScale();
   fp32_grad.divide_i(loss_scale);
 }

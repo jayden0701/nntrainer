@@ -26,8 +26,7 @@ namespace nntrainer {
 class LayerNode;
 class RunLayerContext;
 /**
- * @brief tensorflow operational node representation. This class contains,
- * information to build operation flatbuffer
+ * @brief TensorFlow Lite operation node representation.
  *
  */
 class TfOpNode {
@@ -51,7 +50,7 @@ public:
   void finalize();
 
   /**
-   * @brief Set common informations from layer node
+   * @brief Set common information from layer node
    *
    * @param layer node layer node
    */
@@ -344,8 +343,9 @@ private:
   /// why? the addresses of existing tensors in the vector could become invalid
   /// due to memory reallocation
   std::vector<Tensor>
-    node_owned_variable; /**< when node should be transformed it's own type, it
-                          * needs to be owned by someone, so @a TfOpNode owns
+    node_owned_variable; /**< when node should be transformed its own type, it
+
+                          * * needs to be owned by someone, so @a TfOpNode owns
                           * those orphaned tensors until the instance is
                           * destroyed */
 

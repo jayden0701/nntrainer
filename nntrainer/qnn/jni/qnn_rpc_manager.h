@@ -4,8 +4,9 @@
  *
  * @file    qnn_rpc_manager.h
  * @date    06 Jan 2025
- * @see     https://github.com/nnstreamer/nntrainer
- * @author  Jijoong Moon <jijoong.moon@samsung.com>
+ * @see     https://github.com/nntrainer/nntrainer
+ * @author  Jijoong Moon,
+ * jijoong.moon@samsung.com
  * @bug     No known bugs except for NYI items
  * @brief   This file contains qnn rpc memory manager
  */
@@ -51,7 +52,7 @@ public:
 private:
   QNN_INTERFACE_VER_TYPE qnnInterface_;
 
-  // memHandle set, to check if the ptr is allocted by rpcmem_alloc
+  // memHandle set, to check if the ptr is allocated by rpcmem_alloc
   std::set<void *> qnnMemPtrMap_;
 
   std::map<void *,

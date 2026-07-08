@@ -445,17 +445,17 @@ iterate_prop(Callable &&c, std::tuple<Ts...> &tup) {
 template <typename Tuple>
 std::vector<std::string>
 loadProperties(const std::vector<std::string> &string_vector, Tuple &&props) {
-  std::vector<std::string> string_vector_splited;
-  string_vector_splited.reserve(string_vector.size());
+  std::vector<std::string> split_string_vector;
+  split_string_vector.reserve(string_vector.size());
   for (auto &item : string_vector) {
-    auto splited = split(item, std::regex("\\|"));
-    string_vector_splited.insert(string_vector_splited.end(), splited.begin(),
-                                 splited.end());
+    auto split_items = split(item, std::regex("\\|"));
+    split_string_vector.insert(split_string_vector.end(), split_items.begin(),
+                               split_items.end());
   }
 
   std::vector<std::pair<std::string, std::string>> left;
-  left.reserve(string_vector_splited.size());
-  std::transform(string_vector_splited.begin(), string_vector_splited.end(),
+  left.reserve(split_string_vector.size());
+  std::transform(split_string_vector.begin(), split_string_vector.end(),
                  std::back_inserter(left), [](const std::string &property) {
                    std::string key, value;
                    int status = getKeyValue(property, key, value);

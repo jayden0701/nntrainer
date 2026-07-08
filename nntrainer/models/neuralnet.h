@@ -205,17 +205,13 @@ public:
    */
   int deallocate();
 
-  /**
-   * @brief     Update graph to make batch normalization in-place
-   * @note      This assumes that the batch normalization implementation does
-   * not need input/output of itself while backwarding. The reason is that the
-   * batch normalization layer caches a processed form of its own input than the
-   * input tensor itself.
-   * @note      This optimization might break the working when some other
-   * implementation of batch normalization layer is used or delegated to some
-   * other backend. Ensure to verify this optimization with other
-   * implementations once added.
-   */
+  /// @brief Update graph to make batch normalization in-place.
+  /// @note This assumes that batch normalization does not need its input/output
+  /// during the backward pass. Batch normalization caches a processed form of
+  /// its own input rather than the input tensor itself.
+  /// @note This optimization might break when another batch normalization
+  /// implementation is used or delegated to another backend. Verify this
+  /// optimization with other implementations once added.
   void inPlaceOptimization(const std::string &layer_type);
 
   /**
@@ -305,19 +301,21 @@ public:
   /**
    * @brief     Copy Neural Network
    * @param[in] from NeuralNetwork Object to copy
-   * @retval    NeuralNewtork Object copyed
-   * @todo Need to implement the copy of graph core
+   * @retval    NeuralNetwork Object copied
+   * @todo Need to implement the
+   * copy of graph core
    */
   NeuralNetwork &copy(NeuralNetwork &from);
 
   /**
    * @brief     Copy Neural Network Configuration
    * @param[in] from NeuralNetwork Object to copy
-   * @retval    NeuralNewtork Object copyed
-   * @note This does not copy the context of neural network model. It only
-   * copies the configuration of the network model. Therefore, it needs the
-   * compile and initialization to run the model. Also if you need the
-   * initialized the weight, load call is required.
+   * @retval    NeuralNetwork Object copied
+   * @note This does not copy the
+   * context of neural network model. It only copies the configuration of the
+   * network model. Therefore, it needs the compile and initialization to run
+   * the model. Also if you need the initialized the weight, load call is
+   * required.
    */
   NeuralNetwork &copyConfiguration(NeuralNetwork &from);
 
@@ -509,13 +507,10 @@ public:
   int getLayer(const char *name,
                std::shared_ptr<ml::train::Layer> *layer) override;
 
-  /**
-   * @brief this function helps exporting the layer in a predefined format,
-   * while workarounding issue caused by templated function type eraser
-   *
-   * @param     exporter exporter that conatins exporting logic
-   * @param     method enum value to identify how it should be exported to
-   */
+  /// @brief Export the network in a predefined format while working around an
+  /// issue caused by the templated function type eraser.
+  /// @param exporter Exporter that contains exporting logic.
+  /// @param method Enum value to identify how it should be exported.
   void exportTo(Exporter &exporter,
                 const ml::train::ExportMethods &method) const;
 

@@ -25,7 +25,7 @@ namespace nntrainer {
 constexpr const unsigned int DEPTHWISE_CONV2D_DIM = 2;
 
 /**
- * @class   Depthwise Convolution 2D Layer
+ * @class   DepthwiseConv2DLayer
  * @brief   Depthwise Convolution 2D Layer
  */
 class DepthwiseConv2DLayer : public LayerImpl {
@@ -43,13 +43,13 @@ public:
 
   /**
    *  @brief  Move constructor of Depthwise Convolution 2D Layer
-   *  @param[in] Conv2dLayer &&
+   *  @param[in] rhs
    */
   DepthwiseConv2DLayer(DepthwiseConv2DLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs DepthwiseConv2DLayer to be moved.
+   * @param[in] rhs
    */
   DepthwiseConv2DLayer &operator=(DepthwiseConv2DLayer &&rhs) = default;
 

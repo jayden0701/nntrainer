@@ -3,7 +3,7 @@
  * Copyright (C) 2024 Debadri Samaddar <s.debadri@samsung.com>
  * Copyright (C) 2025 Michal Wlasiuk <testmailsmtp12345@gmail.com>
  *
- * @file	blas_kernels_templates.hpp
+ * @file	blas_kernels_templates.h
  * @date	07 July 2025
  * @brief	Common blas OpenCL kernels (common templates used by
  * blas_kernels_fp16.cpp and blas_kernels.cpp)

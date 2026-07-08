@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file    network_graph.h
+ * @file    network_graph.cpp
  * @date    19 Oct 2020
  * @see     https://github.com/nntrainer/nntrainer
  * @author  Jijoong Moon <jijoong.moon@samsung.com>
@@ -237,7 +237,7 @@ int NetworkGraph::checkCompiledGraph() {
 }
 
 void NetworkGraph::markNodesForBackwarding() {
-  /** accumulate all the nodes which must support backwarding */
+  /** accumulate all nodes that must support the backward pass */
   std::unordered_set<std::string> must_support_backwarding;
   if (exec_mode == ExecutionMode::INFERENCE) {
     for (auto iter = cbegin(); iter != cend(); iter++) {
@@ -249,8 +249,8 @@ void NetworkGraph::markNodesForBackwarding() {
   }
 
   /**
-   * if a node is trainable, then all the nodes ahead of it must support
-   * backwarding operation
+   * If a node is trainable, all nodes ahead of it must support
+   * backpropagation.
    */
   for (auto iter = cbegin(); iter != cend(); iter++) {
     auto lnode = (*iter);
@@ -278,7 +278,7 @@ void NetworkGraph::markNodesForBackwarding() {
     }
   }
 
-  /** mark all the required nodes support backwarding */
+  /** mark all required nodes as needing derivative calculation */
   for (auto const &node_name : must_support_backwarding) {
     auto ln = LNODE(graph.getNode(node_name)).get();
     ln->needsCalcDerivative(true);
@@ -377,13 +377,10 @@ void NetworkGraph::applyGradients(
     }
 
     if (rc.isGradientClipByGlobalNorm(i) || rc.isMixedPrecision(i)) {
-      /**
-       * @note the weights whose gradient are to be clipped by global norm will
-       * be clipped at once at the end of iteration and applied then.
-       * For those weights where mixed precision is uesed, their gradient
-       * updates might be delayed until they confirm whether their loss scales
-       * are appropeiate.
-       */
+      // Weights with global-norm gradient clipping are clipped and applied
+      // together at the end of the iteration. For mixed precision weights,
+      // gradient updates can be delayed until their loss scales are confirmed
+      // to be appropriate.
       continue;
     }
 
@@ -445,13 +442,13 @@ bool NetworkGraph::backwarding(
   std::function<void(Weight &, int)> &lazy_apply_grad_op,
   std::function<bool(void *userdata)> stop_cb, void *userdata) {
   /**
-   * last layer backwarding is run out of this loop
+   * The last layer backward pass runs outside this loop.
    */
   auto iter_begin = getBackwardingBeginIter();
   auto iter_end = getBackwardingEndIter();
   bool is_valid = true;
 
-  /// there is no layer to train, so backwarding is essentially noop
+  /// There is no layer to train, so the backward pass is a no-op.
   if (iter_begin == iter_end) {
     return true;
   }
@@ -479,7 +476,7 @@ bool NetworkGraph::backwarding(
     /** if has NaN
      * 1. reset the loss scale. : @todo Backoff_factor : default --> 0.5
      * 2. run forwarding from cur_iter to cend() && !stop_cb(userdata);
-     * 3. return false --> run backwarding again;
+     * 3. return false --> run the backward pass again.
      */
     float scale = (*iter_)->getRunContext().getLossScale();
 
@@ -603,14 +600,11 @@ void NetworkGraph::allocateTensors(ExecutionMode exec_mode_) {
     tensor_manager->allocateTensors(
       std::get<0>((*(cend() - 1))->getExecutionOrder()));
   else {
-    /**
-     * get the order of execution/usage order for the backwarding of the first
-     * layer (as that will be the last layer to executed in the backwarding)
-     * and pass that as the max_exec_order ensuring that all tensors with
-     * usage less than the max_exec_order are allocated.
-     * @todo if model is gradient clipping, we have to add last execution order
-     * + 1
-     */
+    // Get the execution/usage order for the backward pass of the first layer.
+    // This is the last layer executed in the backward pass. Pass it as
+    // max_exec_order to allocate all tensors whose usage is less than
+    // max_exec_order.
+    // @todo If model has gradient clipping, add last execution order + 1.
     tensor_manager->allocateTensors(
       std::get<3>(backward_iter_end->getExecutionOrder()));
   }
@@ -910,9 +904,9 @@ NetworkGraph::finalizeContext(const std::shared_ptr<LayerNode> &lnode,
     // NNTR_THROW_IF(shared_node->getType() != lnode->getType(),
     //               std::invalid_argument)
     //   << " shared_node and lnode type mismatch, source node type: "
-    //   << shared_node->getType() << " depedent node type: " <<
+    //   << shared_node->getType() << " dependent node type: " <<
     //   lnode->getType()
-    //   << " depedent node name: " << lnode->getName();
+    //   << " dependent node name: " << lnode->getName();
     // NNTR_THROW_IF(!shared_node->isFinalized(), std::invalid_argument)
     //   << "shared node must be prior to the dependent node and it should
     //   be
@@ -1078,9 +1072,9 @@ NetworkGraph::refinalizeContext(const std::shared_ptr<LayerNode> &lnode,
     // NNTR_THROW_IF(shared_node->getType() != lnode->getType(),
     //               std::invalid_argument)
     //   << " shared_node and lnode type mismatch, source node type: "
-    //   << shared_node->getType() << " depedent node type: " <<
+    //   << shared_node->getType() << " dependent node type: " <<
     //   lnode->getType()
-    //   << " depedent node name: " << lnode->getName();
+    //   << " dependent node name: " << lnode->getName();
     // NNTR_THROW_IF(!shared_node->isFinalized(), std::invalid_argument)
     //   << "shared node must be prior to the dependent node and it should
     //   be
@@ -1259,8 +1253,8 @@ int NetworkGraph::initialize(ExecutionMode mode,
     auto last_grad_access = std::get<3>(lnode->getExecutionOrder());
     for (unsigned i = 0; i < rc.getNumWeights(); ++i) {
       if (!rc.weightHasGradient(i)) {
-        /// @todo this is duck taping that MUST BE REMOVED. We will need to
-        /// have, is weight first access kind of concept.
+        /// @todo this is a temporary workaround that MUST BE REMOVED. We will
+        /// need to have a weight first access concept.
         if (tensor_manager->isFirstAccess(
               rc.getWeight(i).getName(),
               std::get<0>(lnode->getExecutionOrder()), true)) {
@@ -1369,8 +1363,7 @@ int NetworkGraph::initialize(ExecutionMode mode,
     markNodesForBackwarding();
     backward_iter_end = computeBackwardEnd();
   } catch (std::exception &e) {
-    ml_loge("Backwarding required from layer which doesn't support "
-            "backwarding: %s",
+    ml_loge("Backward pass required from a layer that does not support it: %s",
             e.what());
     return ML_ERROR_INVALID_PARAMETER;
   }
@@ -1472,8 +1465,8 @@ int NetworkGraph::reinitialize(
     auto last_grad_access = std::get<3>(lnode->getExecutionOrder());
     for (unsigned i = 0; i < rc.getNumWeights(); ++i) {
       if (!rc.weightHasGradient(i)) {
-        /// @todo this is duck taping that MUST BE REMOVED. We will need to
-        /// have, is weight first access kind of concept.
+        /// @todo this is a temporary workaround that MUST BE REMOVED. We will
+        /// need to have a weight first access concept.
         if (tensor_manager->isFirstAccess(
               rc.getWeight(i).getName(),
               std::get<0>(lnode->getExecutionOrder()), true)) {

@@ -45,7 +45,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs FlattenLayer to be moved.
+   * @param[in] rhs FlattenLayer to be moved.
    */
   FlattenLayer &operator=(FlattenLayer &&rhs) = default;
 

@@ -2,20 +2,21 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file   optimzied_v1_planner.h
+ * @file   optimized_v1_planner.h
  * @date   2 September 2021
  * @see    https://github.com/nntrainer/nntrainer
  * @author Parichay Kapoor <pk.kapoor@samsung.com>
  * @bug    No known bugs except for NYI items
  * @brief  This is Optimized V1 Memory Planner
  *
- * @note This planner has been design to give reduced memory usage for training
+ * @note This planner has been designed to give reduced memory usage for
+ * training
  * and might not perform very well for inference.
  *
  * @details The principle for this planner is to give memory to the requests in
  * the order of the start of their validity.
  * This takes advantage of the pattern that the outputs of the layer nodes
- * allocated during forwarding are also used during backwarding as well.
+ * allocated during the forward pass are also used during the backward pass.
  *
  * If two memory requests have the same start time, then the memory request with
  * higher end is allocated first. This is to minimize the fragmentation once the

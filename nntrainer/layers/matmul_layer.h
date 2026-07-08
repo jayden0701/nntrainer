@@ -47,7 +47,7 @@ public:
 
   /**
    * @brief Move assignment operator.
-   * @parma[in] rhs MatMulLayer to be moved.
+   * @param[in] rhs MatMulLayer to be moved.
    */
   MatMulLayer &operator=(MatMulLayer &&rhs) = default;
 

@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file    network_graph.h
+ * @file    graph_core.cpp
  * @date    12 May 2020
  * @see     https://github.com/nntrainer/nntrainer
  * @author  Jijoong Moon <jijoong.moon@samsung.com>
@@ -82,10 +82,10 @@ void GraphCore::topologicalSort() {
   makeAdjacencyList(adj);
   Sorted.clear();
 
-  // Quite likely this is not needed - verify this
-  // TODO : After make node list of graph, we have to find root. (That means it
-  // should be the only one input for now.). Need to support multiple input and
-  // support search.
+  // This is likely unnecessary; verify whether root discovery is still needed.
+  // TODO: After building the graph node list, find the root. For now this means
+  // there should be only one input. Multiple inputs and search should be
+  // supported later.
 
   for (int i = adj.size() - 1; i >= 0; --i) {
     if (!visited[i]) {

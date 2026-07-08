@@ -269,7 +269,7 @@ avx2_approx_exp_e2lookup(__m256 xs) noexcept {
     auto tbl = _mm256_load_si256((__m256i *)EXP2_TBL.data());
     s_ints = _mm256_permutevar8x32_epi32(tbl, exp2_idxs);
   } else {
-    // Falback for not fitting number of vector elements
+    // Fallback for not fitting number of vector elements
     s_ints = _mm256_i32gather_epi32(EXP2_TBL.data(), exp2_idxs, 1);
   }
 
@@ -1273,7 +1273,7 @@ static inline __m256 exp256_ps(__m256 x) {
 
     return _mm256_mul_ps(y, pow2n);
   */
-  /* Low-Precision Versino III */
+  /* Low-Precision Version III */
   const __m256 LOG2EF = _mm256_set1_ps(1.44269504088896341f); // 1 / ln(2)
   const __m256 LN2 = _mm256_set1_ps(0.6931471805599453f);     // ln(2)
 
@@ -2190,9 +2190,9 @@ void transform_int4_osv32_isv2_to_q4_0x8(size_t N, size_t K,
                 std::invalid_argument)
     << "Scale group size must be 32/64/128";
   NNTR_THROW_IF(K % QK4_0 != 0, std::invalid_argument)
-    << "K size must be divisable by QK4_0 (32)";
+    << "K size must be divisible by QK4_0 (32)";
   NNTR_THROW_IF(N % 8 != 0, std::invalid_argument)
-    << "N size must be divisable by 8";
+    << "N size must be divisible by 8";
 
   static constexpr const size_t NUM_Q4_0_BLOCKS = 8;
   static constexpr const size_t ROW_BLOCK_SIZE = 32;

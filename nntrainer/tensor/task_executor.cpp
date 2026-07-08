@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2025 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   task_executor.h
+ * @file   task_executor.cpp
  * @date   04 April 2025
  * @brief  This file contains a task executor
  * @see    https://github.com/nntrainer/nntrainer

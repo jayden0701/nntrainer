@@ -15,9 +15,9 @@
 #define __OPENCL_BUFFER_H__
 
 #include "CL/cl.h"
+#include "noncopyable.h"
 #include "opencl_command_queue_manager.h"
 #include "opencl_context_manager.h"
-#include "noncopyable.h"
 
 namespace nntrainer::opencl {
 
@@ -82,7 +82,7 @@ public:
   /**
    * @brief Get the Buffer object
    *
-   * @return cl_mem& refrence to cl_mem
+   * @return cl_mem& reference to cl_mem
    */
   cl_mem &GetBuffer();
 
@@ -150,7 +150,7 @@ public:
                   bool async = false);
 
   /**
-   * @brief Un-mapping buffer from host memeory
+   * @brief Un-mapping buffer from host memory
    *
    * @param command_queue_inst reference of command queue instance
    * @param mapped_ptr pointer to the mapped region

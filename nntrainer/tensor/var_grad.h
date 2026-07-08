@@ -143,7 +143,7 @@ public:
   Var_Grad(Var_Grad &&rhs) = default;
 
   /**
-   * @brief copy assigment
+   * @brief copy assignment
    *
    * @param rhs copy from
    * @return Var_Grad& Updated Var_Grad
@@ -325,7 +325,8 @@ public:
   static constexpr const char *grad_suffix = ":grad";
 
 protected:
-  bool is_dependent; /**< check if the weight tensor is burrowed from somewhere
+  bool is_dependent; /**< check if the weight tensor is borrowed from somewhere
+
                         thus it is dependent */
   bool is_first_access_gradient; /**< check if current weight tensor is first
                                     access */

@@ -2,16 +2,14 @@
 /**
  * Copyright (C) 2024 Debadri Samaddar <s.debadri@samsung.com>
  *
- * @file    cl_context.h
+ * @file    cl_context.cpp
  * @date    23 Feb 2024
  * @see     https://github.com/nntrainer/nntrainer
  * @author  Debadri Samaddar <s.debadri@samsung.com>
  * @author  Niket Agarwal <niket.a@samsung.com>
  * @author  Thummala Pallavi <t.pallavi@samsung.com>
  * @bug     No known bugs except for NYI items
- * @brief   This file contains app context related functions and classes that
- * manages the global configuration of the current OpenCL environment. It also
- * creates the OpenCL command queue and context.
+ * @brief   OpenCL context functions and classes
  */
 
 #include <addition_layer_cl.h>

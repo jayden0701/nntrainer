@@ -23,7 +23,7 @@
 namespace nntrainer {
 
 /**
- * @brief A tranpose layer.
+ * @brief A transpose layer.
  *
  */
 class TransposeLayerCl final : public LayerImplCl {

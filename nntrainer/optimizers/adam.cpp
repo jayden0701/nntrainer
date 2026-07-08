@@ -37,7 +37,8 @@ enum AdamParams { wm, wv };
 
 std::vector<TensorDim> Adam::getOptimizerVariableDim(const TensorDim &dim) {
   /**
-   * @note We assume the optimizer parameters should be full precsion to
+   * @note We assume the optimizer parameters should be full precision to
+   *
    * maintain the accuracy even in mixed precision training.
    */
   TensorDim wm_dim(dim);

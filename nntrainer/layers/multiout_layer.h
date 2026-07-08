@@ -42,7 +42,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs MultiOutLayer to be moved.
+   * @param[in] rhs MultiOutLayer to be moved.
    */
   MultiOutLayer &operator=(MultiOutLayer &&rhs) = default;
 

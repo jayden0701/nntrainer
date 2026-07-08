@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs SQRTLayer to be moved.
+   * @param[in] rhs SQRTLayer to be moved.
    */
   SQRTLayer &operator=(SQRTLayer &&rhs) = default;
 
@@ -113,7 +113,7 @@ public:
   const std::string getType() const final { return SQRTLayer::type; };
 
   std::tuple<props::Print, props::InPlaceProp> sqrt_props;
-  bool support_backwarding; /**< support backwarding */
+  bool support_backwarding; /**< support backward pass */
 
   inline static const std::string type = "sqrt";
 };

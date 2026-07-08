@@ -24,7 +24,7 @@ namespace nntrainer {
 class Conv2DLayer;
 
 /**
- * @class   Convolution 1D Layer
+ * @class   Conv1DLayer
  * @brief   Convolution 1D Layer
  */
 class Conv1DLayer : public LayerImpl {
@@ -41,13 +41,13 @@ public:
 
   /**
    *  @brief  Move constructor of Conv 1D Layer.
-   *  @param[in] Conv1dLayer &&
+   *  @param[in] rhs
    */
   Conv1DLayer(Conv1DLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs Conv1DLayer to be moved.
+   * @param[in] rhs
    */
   Conv1DLayer &operator=(Conv1DLayer &&rhs) = default;
 

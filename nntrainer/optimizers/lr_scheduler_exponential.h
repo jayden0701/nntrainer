@@ -22,8 +22,9 @@
 namespace nntrainer {
 
 /**
- * @class   Constant Learning Rate Scheduler class
- * @brief   class for constant Learning Rate Schedulers
+ * @class   Exponential Learning Rate Scheduler class
+ * @brief   Exponential
+ * learning rate scheduler
  */
 class ExponentialLearningRateScheduler final
   : public ConstantLearningRateScheduler {

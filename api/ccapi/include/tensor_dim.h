@@ -272,14 +272,14 @@ public:
   ~TensorDim() = default;
 
   /**
-   *  @brief  Move constructor of Conv 2D Layer.
-   *  @param[in] Conv2dLayer &&
+   *  @brief  Move constructor of TensorDim.
+   *  @param[in] rhs
    */
   TensorDim(TensorDim &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs Optimizer to be moved.
+   * @param[in] rhs
    */
   TensorDim &operator=(TensorDim &&rhs) noexcept;
 
@@ -331,9 +331,10 @@ public:
   const std::bitset<MAXDIM> &getDynDimFlag() const;
 
   /**
-   * @brief  swap variable of Conv2D Layer
-   * @parma[out] lhs Optimizer
-   * @parma[in] rhs Optimizer
+   * @brief  swap TensorDim variables
+   * @param[out] lhs
+   * @param[in] rhs
+
    */
   friend void swap(TensorDim &lhs, TensorDim &rhs) noexcept;
 
@@ -415,8 +416,9 @@ public:
   const size_t *getDim() const;
 
   /**
-   * @brief calculate tranposed dimension
-   * @note In this function, batch direction is not considered, so channel is 0
+   * @brief calculate transposed dimension
+   * @note In this function, batch
+   * direction is not considered, so channel is 0
    * @todo make batch 0
    *
    * @param direction  direction to transpose
@@ -425,8 +427,9 @@ public:
   TensorDim transpose(const std::string &direction) const;
 
   /**
-   * @brief calculate trasposed dimension
-   * @note In this function, batch direction is considered 0
+   * @brief calculate transposed dimension
+   * @note In this function, batch
+   * direction is considered 0
    *
    * @param axes axes to be transposed
    * @return TensorDim calculated dimension
@@ -454,7 +457,7 @@ public:
    *
    * @param input_shape input_shape
    * @param fm NCHW | NHWC
-   * @return int ML_ERROR_NONE if successs
+   * @return ML_ERROR_NONE on success, error code otherwise
    */
   int setTensorDim(const std::string &input_shape,
                    TensorType t_type_ = TensorType());
@@ -532,8 +535,9 @@ public:
    * @brief Get the Effective Dimension of the current
    * @note dynamic dimension is returned as -1
    *
-   * @param dynamic if dimension has to be considering dynamic set this to ture
-   * @return std::vector<int> integer vector
+   * @param dynamic if dimension has to be considering dynamic set this to true
+
+   * * @return std::vector<int> integer vector
    */
   std::vector<int> getEffectiveDimension(bool dynamic = false) const;
 

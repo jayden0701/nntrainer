@@ -181,7 +181,7 @@ public:
   Weight(Weight &&rhs) = default;
 
   /**
-   * @brief copy assigment
+   * @brief copy assignment
    *
    * @param rhs copy from
    * @return Weight& Updated weight
@@ -197,7 +197,7 @@ public:
   Weight &operator=(Weight &&rhs) = default;
 
   /**
-   * @brief Clone the currnet object
+   * @brief Clone the current object
    *
    * @return Cloned copy
    */
@@ -322,7 +322,7 @@ public:
   /**
    * @brief Check if the variable type is not full precision
    *
-   * @return true if it is not full precsion
+   * @return true if it is not full precision
    * @return false otherwise
    */
   bool isMixedPrecision() const { return is_mixed; }
@@ -376,7 +376,7 @@ private:
   float loss_scale;
   bool is_mixed;
   std::vector<Tensor *>
-    opt_vars; /**< optimizer variables : We assume it is always full-precsion*/
+    opt_vars; /**< optimizer variables : We assume it is always full-precision*/
   std::shared_ptr<Tensor> var32;
 
   /**

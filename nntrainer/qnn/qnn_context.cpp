@@ -2,10 +2,11 @@
 /**
  * Copyright (C) 2024 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file    qnn_context.h
+ * @file    qnn_context.cpp
  * @date    10 Dec 2024
- * @see     https://github.com/nnstreamer/nntrainer
- * @author  Jijoong Moon <jijoong.moon@samsung.com>
+ * @see     https://github.com/nntrainer/nntrainer
+ * @author  Jijoong Moon,
+ * jijoong.moon@samsung.com
  * @bug     No known bugs except for NYI items
  * @brief   This file contains qnn context related functions and classes that
  * manages the global configuration of the current QNN environment.
@@ -174,8 +175,8 @@ int QNNContext::init() {
   qnn::tools::sample_app::split(m_opPackagePaths, opPackagePaths, ',');
 
   if (backEndPath.empty()) {
-    LOGE("init: Cannot find backend Path : libQnnHtp.so");
-    ml_loge("ERROR: Cannot fine backend Path : libQnnHtp.so");
+    LOGE("init: Cannot find backend path: libQnnHtp.so");
+    ml_loge("ERROR: Cannot find backend path: libQnnHtp.so");
     return -1;
   }
   LOGD("init: calling dynamicloadutil::getQnnFunctionPointers");
@@ -541,7 +542,7 @@ StatusCode QNNContext::freeDevice() {
       qnn_data->m_deviceHandle);
     if (QNN_SUCCESS != qnnStatus &&
         QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE != qnnStatus) {
-      ml_loge("Failed to free devcie");
+      ml_loge("Failed to free device");
       return verifyFailReturnStatus(qnnStatus);
     }
   }

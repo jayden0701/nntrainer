@@ -107,7 +107,7 @@ void LSTMCellLayer::finalize(InitLayerContext &context) {
                               TensorLifespan::FORWARD_GRAD_LIFESPAN));
   context.requestOutputs(std::move(out_specs));
 
-  // weight_initializer can be set seperately. weight_ih initializer,
+  // weight_initializer can be set separately. weight_ih initializer,
   // weight_hh initializer kernel initializer & recurrent_initializer in keras
   // for now, it is set same way.
 

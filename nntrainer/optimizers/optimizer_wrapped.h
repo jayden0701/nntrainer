@@ -30,8 +30,9 @@ namespace nntrainer {
 using OptimizerCore = nntrainer::Optimizer;
 
 /**
- * @class   Optimizer Base class for optimizers
- * @brief   Base class for all optimizers
+ * @class   OptimizerWrapped
+ * @brief   Optimizer and learning rate scheduler
+ * wrapper
  */
 class OptimizerWrapped : public ml::train::Optimizer {
 public:
@@ -109,7 +110,7 @@ public:
 
   /**
    * @brief this function helps exporting the optimizer in a predefined format,
-   * while workarounding issue caused by templated function type eraser
+   * while working around issue caused by templated function type eraser
    *
    * @param     exporter exporter that contains exporting logic
    * @param     method enum value to identify how it should be exported to

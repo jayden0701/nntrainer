@@ -21,7 +21,7 @@
 namespace nntrainer {
 
 /**
- * @class   FullyConnecedLayer
+ * @class   FullyConnectedLayer
  * @brief   fully connected layer
  */
 class FullyConnectedLayer : public LayerImpl {
@@ -38,13 +38,13 @@ public:
 
   /**
    *  @brief  Move constructor.
-   *  @param[in] FullyConnected &&
+   *  @param[in] rhs
    */
   FullyConnectedLayer(FullyConnectedLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs FullyConnectedLayer to be moved.
+   * @param[in] rhs
    */
   FullyConnectedLayer &operator=(FullyConnectedLayer &&rhs) = default;
 

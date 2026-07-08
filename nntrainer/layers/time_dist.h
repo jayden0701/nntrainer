@@ -48,7 +48,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs TimeDistLayer to be moved.
+   * @param[in] rhs TimeDistLayer to be moved.
    */
   TimeDistLayer &operator=(TimeDistLayer &&rhs) = default;
 
@@ -152,10 +152,11 @@ private:
   float *positions[4];
 
   /**
-   * @brief  Transpose Input and Output Tensors to avoid duplicatation becuase
-   * of memory optimization
-   * It transpose the net_input.getVariableRef, net_input.getGradientRef,
-   * net_hidden.getVariableRef and net_hidden.getGradientRef.
+   * @brief  Transpose Input and Output Tensors to avoid duplication because
+
+   * * of memory optimization It transpose the net_input.getVariableRef,
+   * net_input.getGradientRef, net_hidden.getVariableRef and
+   * net_hidden.getGradientRef.
    *
    * @param context Run layer context
    */

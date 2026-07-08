@@ -300,7 +300,7 @@ void swiglu(const unsigned int N, float *X, float *Y, float *Z, float alpha) {
 }
 
 void tanh_gelu(const unsigned int N, const float *X, float *Y) {
-  // AVX implmenetation will be implemented, now fallback instead
+  // AVX implementation will be implemented, now fallback instead
   __fallback_tanh_gelu(N, X, Y);
 }
 
