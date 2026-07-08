@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 @file	bitmap_helpers.h
 @brief  bitmap_helpers from tensorflow
+@author TensorFlow Authors
+@bug there are no known bugs
 
 ==============================================================================*/
 
