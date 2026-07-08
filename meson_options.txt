@@ -74,6 +74,10 @@ option('nnstreamer-subplugin-install-path', type: 'string', value: 'lib/nnstream
 
 # application related options
 option('enable-transformer', type: 'boolean', value: false)
+# Builds libquick_dot_ai_api.so (+ quick_dot_ai_test smoke exe) from this
+# submodule's own CausalLM tree (E4). CPU/public-only: no QNN model wiring
+# (ENABLE_QNN_MODELS is never defined here). Requires enable-transformer.
+option('enable-api', type: 'boolean', value: false)
 option('causallm-tokenizer-lib', type: 'string', value: '',
        description: 'Windows-only path to tokenizers_c.lib for CausalLM. The default is generated under <builddir>/tokenizers_c_win/target.')
 
