@@ -44,9 +44,9 @@ for file in `cat $files`; do
           *.c|*.h|*.cc|*.hh|*.cpp|*.hpp )
               echo "[DEBUG] ( $file ) file is source code with the text format." >> $report_path
               doxygen_lang="doxygen-cncpp"
-              # Append a doxgen rule step by step
+              # Append a doxygen rule step by step
               doxygen_basic_rules="@file @brief" # @file and @brief to inspect file
-              doxygen_advanced_rules="@author @bug" # @author, @bug to inspect file, @brief for to inspect function
+              doxygen_advanced_rules="@author @bug" # @author and @bug inspect files; @brief inspects functions
 
               # Apply advanced doxygen rule if pr_doxygen_check_level=1 in config-environment.sh
               if [[ $advanced == 1 ]]; then
@@ -110,7 +110,7 @@ for file in `cat $files`; do
                           failed=1
                       fi
 
-                      # Find brief or copydoc tag in the comments between the codes.
+                      # Find brief or copydoc tags in comments between code blocks.
                       if [[ $line =~  "@brief" || $line =~ "@copydoc" ]]; then
                           brief=1
                       # Doxygen tags become zero in code section.
@@ -139,7 +139,7 @@ for file in `cat $files`; do
           # In case of Python code
           *.py )
               doxygen_lang="doxygen-python"
-              # Append a Doxgen rule step by step
+              # Append a Doxygen rule step by step
               doxygen_rules="@package @brief"
               doxygen_rule_num=0
               doxygen_rule_all=0

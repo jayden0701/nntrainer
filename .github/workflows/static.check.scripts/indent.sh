@@ -9,7 +9,7 @@
 
 ##
 # @file indent.sh
-# @brief Check the code formatting style with GNU indent. Orignally pr-prebuild-indent.sh
+# @brief Check the code formatting style with GNU indent. Originally pr-prebuild-indent.sh
 # @see      https://www.gnu.org/software/indent
 # @see      https://github.com/nnstreamer/TAOS-CI
 # @see      https://github.com/nnstreamer/nnstreamer

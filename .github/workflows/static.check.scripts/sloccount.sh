@@ -55,7 +55,7 @@ sloc_data_folder=$(mktemp -d)
 sloc_analysis_rules="--wide --multiproject --datadir $sloc_data_folder"
 sloc_check_result=$(mktemp)
 
-# Inspect all files that contributor modifed.
+# Inspect all files that the contributor modified.
 for file in `cat $files`; do
   # skip obsolete folder
   if [[ $file =~ ^obsolete/.* ]]; then
@@ -67,7 +67,7 @@ for file in `cat $files`; do
   fi
   # Handle only text files in case that there are lots of files in one commit.
   if [[ `file $file | grep "ASCII text" | wc -l` -gt 0 ]]; then
-    # Run a SLOCCount module in case that a PR includes source codes.
+    # Run a SLOCCount module when a PR includes source code.
     case $file in
       *.c | *.cpp | *.py | *.sh | *.php )
       sloc_target_dir=${SRC_PATH}

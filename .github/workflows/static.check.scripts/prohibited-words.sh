@@ -13,7 +13,7 @@
 # @brief    Check if there are prohibited words in the text files.
 #           Originally, pr-prebuild-prohibited-words.sh
 #
-# It to check a prohibited word if there are unnecessary words in the source codes.
+# Check prohibited words in source code comments and documents.
 #
 # @see      https://github.com/nnstreamer/TAOS-CI
 # @see      https://github.com/nnstreamer/nnstreamer
@@ -46,7 +46,7 @@ check git
 check grep
 check wc
 
-# Inspect all files that contributor modifed.
+# Inspect all files that the contributor modified.
 target_files=""
 for file in `cat $files`; do
   # Skip obsolete folder

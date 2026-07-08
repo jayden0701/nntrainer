@@ -24,10 +24,10 @@ fi
 
 tolerable=0
 if [ -z $2 ]; then
-  echo "Tolarable rpmlint errors = 0"
+  echo "Tolerable rpmlint errors = 0"
 else
   tolerable=$2
-  echo "Tolarable rpmlint errors = $2"
+  echo "Tolerable rpmlint errors = $2"
 fi
 
 files=$1

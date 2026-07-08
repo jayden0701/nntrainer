@@ -56,7 +56,7 @@ shell_syntax_analysis_sw="shellcheck"
 shell_syntax_analysis_rules="-s bash"
 shell_syntax_check_result=$(mktemp)
 
-# Inspect all files that contributor modifed.
+# Inspect all files that the contributor modified.
 for file in `cat $files`; do
   # Skip obsolete folder
   if [[ $file =~ ^obsolete/.* ]]; then

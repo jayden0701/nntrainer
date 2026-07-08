@@ -10,7 +10,7 @@
 
 ##
 # @file     cppcheck.sh
-# @brief    Check dangerous coding constructs in source codes (*.c, *.cpp) with a cppcheck tool
+# @brief    Check dangerous coding constructs in source code (*.c, *.cpp) with cppcheck
 #           Originally pr-prebuild-cppcheck.sh
 #
 # The possible severities (e.g., --enable=warning,unusedFunction) for messages are as following:
@@ -85,7 +85,7 @@ elif [[ $2 -eq 1 ]]; then
   echo "cppcheck: --enable=warning,performance added."
   static_analysis_rules="--enable=warning,performance $default_cmd"
 else
-  echo "cppcheck: $2 is an incorrect optiona. Overriding it as 0"
+  echo "cppcheck: $2 is an incorrect option. Overriding it as 0"
   static_analysis_rules="$default_cmd"
 fi
 

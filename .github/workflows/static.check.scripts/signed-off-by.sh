@@ -46,7 +46,7 @@ for i in $(seq 0 $[$1 - 1]); do
     git show --stat HEAD~$i
     echo "============================================"
     echo ""
-    echo "::error This commit does not have a proper Signed-off-by. Refer to https://ltsi.linuxfoundation.org/software/signed-off-process/ for some information about Signed-off-by. We require Signed-off-by: NAME <EMAIL> signed by indivisual contributors."
+    echo "::error This commit does not have a proper Signed-off-by. Refer to https://ltsi.linuxfoundation.org/software/signed-off-process/ for some information about Signed-off-by. We require Signed-off-by: NAME <EMAIL> signed by individual contributors."
     exit 1
   else
     id=`git show --pretty="format:%h" --no-notes -s HEAD~$i`
