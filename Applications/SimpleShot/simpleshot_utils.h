@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file   utils.h
+ * @file   simpleshot_utils.h
  * @date   08 Jan 2021
  * @brief  This file contains simple utilities used across the application
  * @see    https://github.com/nntrainer/nntrainer

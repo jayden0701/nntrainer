@@ -24,7 +24,7 @@ class Image {
 public:
   friend class ImageFactory;
   /**
-   * @brief Image Ojbect with ImageFactory from Android
+   * @brief Image Object with ImageFactory from Android
    *
    * @param width width of image
    * @param height height of image
@@ -32,10 +32,7 @@ public:
    * @param stride stride of image
    */
   Image(int width, int height, int channels, int stride) :
-    width_(width),
-    height_(height),
-    channels_(channels),
-    stride_(stride) {
+    width_(width), height_(height), channels_(channels), stride_(stride) {
     this->pixels_ = std::make_unique<uint8_t[]>(width * height * channels);
   }
 

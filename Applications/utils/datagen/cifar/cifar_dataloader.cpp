@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file   cifar_dataloader.h
+ * @file   cifar_dataloader.cpp
  * @date   24 Jun 2021s
  * @brief  dataloader for cifar
  * @see    https://github.com/nntrainer/nntrainer

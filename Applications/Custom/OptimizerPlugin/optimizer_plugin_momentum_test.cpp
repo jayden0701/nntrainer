@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   optimizer_plugin_momentun_test.cpp
+ * @file   optimizer_plugin_momentum_test.cpp
  * @date   30 March 2023
  * @brief  This file contains the execution part of momentum optimizer in
  * LayerPlugin example

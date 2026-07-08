@@ -55,7 +55,7 @@ def save(filename, *data):
             pass
 
 ##
-# @brief input data generater with batch_size
+# @brief input data generator with batch_size
 #        ( 128 x 32 x 32 x 3 :training & 128 x 1000 : labels )
 # @param[in] x_data : total input data
 # @param[in] y_data : total label data

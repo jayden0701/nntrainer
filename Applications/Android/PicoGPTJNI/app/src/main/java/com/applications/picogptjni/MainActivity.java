@@ -185,7 +185,7 @@ public class MainActivity extends AppCompatActivity {
 				EditText in_text = (EditText)findViewById(R.id.input_text);		
 				String path=getApplicationContext().getFilesDir().getPath().toString();
 
-				Infer_log = "NNTrainer Infering: \n\n";
+				Infer_log = "NNTrainer Inferring: \n\n";
 
 				Infer_log+=inferPicoGPT(path, in_text.getText().toString(), model_pointer);
 				training_finished=true;
@@ -226,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
 
 		    model_pointer = createModel();
 
-		    Infer_log = "NNTrainer Infering: \n\n";
+		    Infer_log = "NNTrainer Inferring: \n\n";
 
 		    Infer_log+=inferPicoGPT(path, in_text.getText().toString(), model_pointer);
 		    

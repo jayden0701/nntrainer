@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2022 hyeonseok Lee <hs89.lee@samsung.com>
  *
- * @file   multi_head_attention_layer.h
+ * @file   custom_multi_head_attention_layer.h
  * @date   08 July 2022
  * @see    https://github.com/nntrainer/nntrainer
  *         https://arxiv.org/abs/1706.03762
@@ -26,9 +26,8 @@ namespace custom {
 using namespace nntrainer;
 
 /**
- * @class   Multi Head Attention Layer
- * @brief   Implementation of multi head attention which is described in paper
- * "Attention is all you need"
+ * @class   MultiHeadAttentionLayer
+ * @brief   LLaMA MHA layer
  */
 class MultiHeadAttentionLayer : public LayerImpl {
 public:
@@ -44,13 +43,13 @@ public:
 
   /**
    *  @brief  Move constructor of MultiHeadAttentionLayer.
-   *  @param[in] MultiHeadAttentionLayer &&
+   *  @param[in] rhs
    */
   MultiHeadAttentionLayer(MultiHeadAttentionLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs MultiHeadAttentionLayer to be moved.
+   * @param[in] rhs
    */
   MultiHeadAttentionLayer &operator=(MultiHeadAttentionLayer &&rhs) = default;
 

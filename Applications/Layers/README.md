@@ -37,9 +37,9 @@ In "nntrainer/build dir"
 ./Applications/Layers/jni/nntrainer_Layers ../Applications/Layers/res/{ini file}
 ```
 
-### 2. Pytorch, Tensorflow
+### 2. PyTorch, TensorFlow
 
-We Provide Pytorch, Tensorflow example with same model code, you can test model in ```./PyTorch```, ```./Tensorflow``` dir and you can Run with 
+We provide PyTorch and TensorFlow examples with the same model code. You can test the model in the ```./PyTorch``` and ```./Tensorflow``` directories and run with:
 ```.bash
 python3 ./PyTorch/{LayerName}.py
 python3 ./Tensorflow/{LayerName}.py

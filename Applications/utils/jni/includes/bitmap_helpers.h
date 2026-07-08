@@ -11,7 +11,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-@file	bitmat_helpers.h
+@file	bitmap_helpers.h
 @brief  bitmap_helpers from tensorflow
 
 ==============================================================================*/
@@ -23,8 +23,8 @@ limitations under the License.
 #include <vector>
 namespace tflite {
 namespace label_image {
-std::vector<uint8_t> read_bmp(const std::string &input_bmp_name, int *width, int *height,
-                  int *channels);
+std::vector<uint8_t> read_bmp(const std::string &input_bmp_name, int *width,
+                              int *height, int *channels);
 } // namespace label_image
 } // namespace tflite
 

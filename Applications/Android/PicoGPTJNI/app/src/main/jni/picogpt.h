@@ -3,7 +3,7 @@
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  * Copyright (C) 2022 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   main.cpp
+ * @file   picogpt.h
  * @date   24 Jun 2021
  * @todo   move picogpt model creating to separate sourcefile
  * @brief  task runner for the picogpt
@@ -34,11 +34,11 @@
 #endif
 
 #include <android/log.h>
-#define ANDROID_LOG_E(fmt, ...) \
+#define ANDROID_LOG_E(fmt, ...)                                                \
   __android_log_print(ANDROID_LOG_ERROR, "nntrainer", fmt, ##__VA_ARGS__)
-#define ANDROID_LOG_I(fmt, ...) \
+#define ANDROID_LOG_I(fmt, ...)                                                \
   __android_log_print(ANDROID_LOG_INFO, "nntrainer", fmt, ##__VA_ARGS__)
-#define ANDROID_LOG_D(fmt, ...) \
+#define ANDROID_LOG_D(fmt, ...)                                                \
   __android_log_print(ANDROID_LOG_DEBUG, "nntrainer", fmt, ##__VA_ARGS__)
 
 using LayerHandle = std::shared_ptr<ml::train::Layer>;
@@ -85,12 +85,11 @@ ml::train::Model *createPicogpt();
  */
 std::string displayProgress(const int count, float loss, int batch_size);
 
-
 /**
  * @brief this is main for android jni interface to train
  *
  * @param argc number of argument
- * @param argv argment list
+ * @param argv argument list
  * @param model model pointer
  */
 int init(int argc, char *argv[], ml::train::Model *model);
@@ -99,8 +98,9 @@ std::string inferModel(std::string path, std::string sentence,
                        ml::train::Model *model_);
 
 /**
- * @brief check if the model is properly destoryed
- * @return true for destoryed.
+ * @brief check if the model is properly destroyed
+ * @return true for
+ * destroyed.
  *
  */
 bool modelDestroyed();

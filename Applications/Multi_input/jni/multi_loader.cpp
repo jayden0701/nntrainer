@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   multi_loader.h
+ * @file   multi_loader.cpp
  * @date   5 July 2023
  * @brief  multi data loader
  * @see    https://github.com/nntrainer/nntrainer
@@ -56,9 +56,9 @@ MultiDataLoader::MultiDataLoader(const std::vector<TensorDim> &input_shapes,
   NNTR_THROW_IF(output_shapes.size() > 1, std::invalid_argument)
     << "output_shape size > 1 is not supported";
 
-  indicies = std::vector<unsigned int>(data_size_);
-  std::iota(indicies.begin(), indicies.end(), 0);
-  std::shuffle(indicies.begin(), indicies.end(), rng);
+  indices = std::vector<unsigned int>(data_size_);
+  std::iota(indices.begin(), indices.end(), 0);
+  std::shuffle(indices.begin(), indices.end(), rng);
 }
 
 void MultiDataLoader::next(float **input, float **label, bool *last) {
@@ -81,7 +81,7 @@ void MultiDataLoader::next(float **input, float **label, bool *last) {
   const auto num_input = input_shapes.size() - 1;
   for (unsigned int i = 0; i < input_shapes.size(); ++i) {
     fill_input(*cur_input_tensor, input_shapes.at(i).getFeatureLen(),
-               indicies[count]);
+               indices[count]);
     ++cur_input_tensor;
   }
 
@@ -92,7 +92,7 @@ void MultiDataLoader::next(float **input, float **label, bool *last) {
   }
 
   if (updateIteration(iteration, data_size)) {
-    std::shuffle(indicies.begin(), indicies.end(), rng);
+    std::shuffle(indices.begin(), indices.end(), rng);
     *last = true;
     count = 0;
   } else {

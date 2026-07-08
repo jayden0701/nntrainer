@@ -9,7 +9,7 @@ if [ $# -eq 0 ]; then
 fi
 
 if [ ! -d "$TARGET_PATH" ]; then
-  echo "given arugment is not directory, aborting!"
+  echo "given argument is not directory, aborting!"
   exit 1
 fi
 

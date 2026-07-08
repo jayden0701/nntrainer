@@ -38,12 +38,12 @@ This example has two options to train.
 
 ### Preparing NNTrainer
 
-<https://github.com/nntrainer/nntrainer/blob/master/docs/getting-started.md>
+<https://github.com/nntrainer/nntrainer/blob/main/docs/getting-started.md>
 
 ### Write Configuration file
 
 you can find detail explanation about each keyword in
-<https://github.com/nntrainer/nntrainer/blob/master/docs/configuration-ini.md>
+<https://github.com/nntrainer/nntrainer/blob/main/docs/configuration-ini.md>
 
 ```ini
 [Model]
@@ -85,7 +85,7 @@ If you want to use generator (option #2), then remove [DataSet] section, and pro
 
 ## How to execute
 
-With `-Denable-app=true` and `-Dinstall-app=true` set in meson_options, execution files are built in build/Applications/TransferLearning/CIFAR_Classification/jni and installed $(NNTRAINER_ROOT}/bin/applications directory.
+With `-Denable-app=true` and `-Dinstall-app=true` set in meson_options, execution files are built in build/Applications/TransferLearning/CIFAR_Classification/jni and installed in the ${NNTRAINER_ROOT}/bin/applications directory.
 
 Resources are in build/res/CIFAR_Classification or ${NNTRAINER_ROOT}/bin/applications/res directory
 

@@ -66,7 +66,7 @@ class History_LAW(Callback):
         self.weights.append(self.model.layers[0].get_weights())
 
 ##
-# @brief input data generater with batch_size
+# @brief input data generator with batch_size
 #        ( 32 x 62720 :training & 32 x 10 : labels )
 # @param[in] x_data : total input data
 # @param[in] y_data : total label data

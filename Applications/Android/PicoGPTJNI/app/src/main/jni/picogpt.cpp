@@ -35,7 +35,7 @@ unsigned int init_input_seq_len;
 const unsigned int MAX_TOKEN_LEN = 10 + NUM_TOKENS_TO_GENERATE;
 
 bool fsu = false;
-bool optimize = false;
+bool optimize = true;
 bool optimize_attention = false;
 
 template <typename T>

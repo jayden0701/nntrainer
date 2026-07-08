@@ -526,10 +526,10 @@ std::string testModel(int argc, char *argv[], ml::train::Model *model_) {
       right++;
     }
 
-    std::vector<std::string> splited = split(file_name, '/');
-    test_result += " " + std::to_string(count) + " ] " + (splited.rbegin()[1]) +
-                   "/" + (splited.rbegin()[0]) + " : correct? " +
-                   (answer ? "RIGHT" : "WRONG") + "\n";
+    std::vector<std::string> path_parts = split(file_name, '/');
+    test_result += " " + std::to_string(count) + " ] " +
+                   (path_parts.rbegin()[1]) + "/" + (path_parts.rbegin()[0]) +
+                   " : correct? " + (answer ? "RIGHT" : "WRONG") + "\n";
 
     in.clear();
     l.clear();

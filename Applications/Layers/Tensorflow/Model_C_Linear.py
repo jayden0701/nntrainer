@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (C) 2023 DongHak Park <donghak.park@samsung.com>
 #
-# @file   main.cpp
+# @file   Model_C_Linear.py
 # @date   01 Feb 2023
 # @see    https://github.com/nntrainer/nntrainer
 # @author Donghak Park <donghak.park@samsung.com>
@@ -12,7 +12,7 @@
 import tensorflow as tf
 import numpy as np
 
-print("Tensorflow Verison : ", tf.__version__)
+print("Tensorflow Version : ", tf.__version__)
 print("Keras Version      : ", tf.keras.__version__)
 
 NUM_EPOCHS = 100

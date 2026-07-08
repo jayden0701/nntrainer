@@ -1,4 +1,4 @@
-This is a pratical demonstration of SimpleShot with [cifar100](https://www.cs.toronto.edu/~kriz/cifar.html) data.
+This is a practical demonstration of SimpleShot with [cifar100](https://www.cs.toronto.edu/~kriz/cifar.html) data.
 
 # What is a SimpleShot and What Does This Application Do?
 SimpleShot is a nearest neighbor based few-shot learner with a simple
@@ -9,7 +9,7 @@ The application takes number of parameters and do the fewshot learning, inferenc
 Reference. [Wang, Yan, et al. 2019](https://arxiv.org/abs/1911.04623)
 
 # How to run
-Build nntrainer with `-Denable_application=true`
+Build nntrainer with `-Denable-app=true`
 
 `$./executable model method train_file validation_file app_path`
 

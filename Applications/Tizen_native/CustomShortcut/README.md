@@ -55,7 +55,7 @@ spend time for pkgcmd is [343]ms
 Tizen application is successfully installed.
 Total time: 00:00:00.959
 $ tizen run -p "org.example.nntrainer-custom-shortcut" -t "TW3"
-result: App isnt running
+result: App isn't running
 ... successfully launched pid = 24563 with debug 0
 Tizen application is successfully launched.
 ```

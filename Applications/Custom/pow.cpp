@@ -103,7 +103,7 @@ void PowLayer::forwarding(nntrainer::RunLayerContext &context, bool training) {
 }
 
 void PowLayer::calcDerivative(nntrainer::RunLayerContext &context) {
-/// intended here to demonstrate that PowLayer::backwarding is being called
+  // Intended here to demonstrate that PowLayer::backwarding() is called.
 #ifdef DEBUG
   std::cout << "pow layer backward is called\n";
 #endif

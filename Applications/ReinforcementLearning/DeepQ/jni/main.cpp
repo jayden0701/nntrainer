@@ -430,7 +430,7 @@ int main(int argc, char **argv) {
             next_inbatch;
 
           /**
-           * @brief     Generate Lable with next state
+           * @brief     Generate Label with next state
            */
           for (unsigned int i = 0; i < in_Exp.size(); i++) {
             STATE state, next_state;
@@ -492,7 +492,7 @@ int main(int argc, char **argv) {
           }
 
           /**
-           * @brief     Update Q values & udpate mainNetwork
+           * @brief     Update Q values & update mainNetwork
            */
           nntrainer::Tensor tempQ = *Q;
           for (unsigned int i = 0; i < in_Exp.size(); i++) {
@@ -524,7 +524,7 @@ int main(int argc, char **argv) {
             mainNet.forwarding({MAKE_SHARED_TENSOR(in_tensor)}, {Q});
             mainNet.backwarding(iter);
           } catch (...) {
-            std::cerr << "Error during backwarding the network" << std::endl;
+            std::cerr << "Error during the network backward pass" << std::endl;
             return -1;
           }
         }
@@ -532,7 +532,7 @@ int main(int argc, char **argv) {
         try {
           writeFile << "mainNet Loss : " << mainNet.getLoss()
                     << " : targetNet Loss : " << targetNet.getLoss() << "\n";
-          std::cout << "\n\n =================== TRAINIG & COPY NET "
+          std::cout << "\n\n =================== TRAINING & COPY NET "
                        "==================\n\n";
           std::cout << "mainNet Loss : ";
           std::cout.width(15);

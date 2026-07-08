@@ -70,7 +70,7 @@ float mse(nntrainer::Tensor &pred, nntrainer::Tensor &ground_truth) {
 }
 
 /**
- * @brief backwarding of mse
+ * @brief MSE backward pass
  *
  * @param pred prediction
  * @param ground_truth ground truth

@@ -3,7 +3,7 @@
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  * Copyright (C) 2022 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   main.cpp
+ * @file   resnet.h
  * @date   24 Jun 2021
  * @todo   move resnet model creating to separate sourcefile
  * @brief  task runner for the resnet
@@ -36,11 +36,11 @@
 #endif
 
 #include <android/log.h>
-#define ANDROID_LOG_E(fmt, ...) \
+#define ANDROID_LOG_E(fmt, ...)                                                \
   __android_log_print(ANDROID_LOG_ERROR, "nntrainer", fmt, ##__VA_ARGS__)
-#define ANDROID_LOG_I(fmt, ...) \
+#define ANDROID_LOG_I(fmt, ...)                                                \
   __android_log_print(ANDROID_LOG_INFO, "nntrainer", fmt, ##__VA_ARGS__)
-#define ANDROID_LOG_D(fmt, ...) \
+#define ANDROID_LOG_D(fmt, ...)                                                \
   __android_log_print(ANDROID_LOG_DEBUG, "nntrainer", fmt, ##__VA_ARGS__)
 
 using LayerHandle = std::shared_ptr<ml::train::Layer>;
@@ -128,7 +128,7 @@ int validData_cb(float **input, float **label, bool *last, void *user_data);
  * @param epochs number of epochs
  * @param batch size batch size
  * @param train_user_data userdata for train
- * @param train_user_data userdata for validataion
+ * @param train_user_data userdata for validation
  * @param model  model
  */
 /// @todo maybe make num_class also a parameter
@@ -154,9 +154,11 @@ createFakeDataGenerator(unsigned int batch_size,
  *
  * @param string directory path , within this, train and test directory should
  * exist.
- * @param split_ratio split ratio (validation / total traing data)
- * @param label_len length of label (it usally equals with num class)
- * @param channel channel
+ * @param split_ratio split ratio (validation / total training data)
+ * @param
+ * label_len length of label (it usually equals with num class)
+ * @param
+ * channel channel
  * @param width width
  * @param height height
  * @param is train true for training, false for validation
@@ -170,7 +172,7 @@ createDirDataGenerator(const std::string dir, float split_ratio,
  * @brief this is main for android jni interface to train
  *
  * @param argc number of argument
- * @param argv argment list
+ * @param argv argument list
  * @param model model pointer
  */
 int init(int argc, char *argv[], ml::train::Model *model);
@@ -220,8 +222,9 @@ std::string inferModel(int argc, char *argv[], uint8_t *pBmp,
 std::string getTestingStatus();
 
 /**
- * @brief check if the model is properly destoryed
- * @return true for destoryed.
+ * @brief check if the model is properly destroyed
+ * @return true for
+ * destroyed.
  *
  */
 bool modelDestroyed();

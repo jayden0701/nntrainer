@@ -67,7 +67,7 @@ int constant_generator_cb(float **outVec, float **outLabel, bool *last,
  * @brief run from a ini model
  *
  * @param ini_path ini_path to load configuration
- * @return int 0 if successfully ran
+ * @return 0 on success
  */
 static int ini_model_run(const std::string &ini_path) {
   auto model = ml::train::createModel(ml::train::ModelType::NEURAL_NET);
@@ -87,7 +87,7 @@ static int ini_model_run(const std::string &ini_path) {
   }
 
   if (model->setDataset(ml::train::DatasetModeType::MODE_TRAIN, dataset) != 0) {
-    std::cerr << "failed to set datatset";
+    std::cerr << "failed to set dataset";
     return 1;
   }
 
@@ -113,7 +113,7 @@ static int ini_model_run(const std::string &ini_path) {
 /**
  * @brief run from an api
  *
- * @return int 0 if successfully ran
+ * @return 0 on success
  */
 int api_model_run() {
   auto model =
@@ -132,7 +132,7 @@ int api_model_run() {
   }
 
   if (model->setDataset(ml::train::DatasetModeType::MODE_TRAIN, dataset) != 0) {
-    std::cerr << "failed to set datatset";
+    std::cerr << "failed to set dataset";
     return 1;
   }
 

@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file    image.cc
+ * @file    image.cpp
  * @date    28 Feb 2023
  * @see     https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>

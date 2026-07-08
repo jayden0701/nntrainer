@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (C) 2023 DongHak Park <donghak.park@samsung.com>
 #
-# @file   main.cpp
+# @file   Conv.py
 # @date   01 Feb 2023
 # @see    https://github.com/nntrainer/nntrainer
 # @author Donghak Park <donghak.park@samsung.com>

@@ -180,7 +180,7 @@ int util_get_emoji(LABEL label, char **emoji_str) {
   return APP_ERROR_INVALID_CONTEXT;
 }
 
-/************** data releated methods **********************/
+/************** data related methods **********************/
 
 static void on_feature_receive_(ml_tensors_data_h data,
                                 const ml_tensors_info_h info, void *user_data) {
@@ -193,7 +193,7 @@ static void on_feature_receive_(ml_tensors_data_h data,
 
   pthread_mutex_lock(&ad->pipe_lock);
 
-  /// @note data_size written here will be overriden and it is intended.
+  /// @note data_size written here will be overridden and it is intended.
   int status = ml_tensors_data_get_tensor_data(data, 0, &raw_data, &data_size);
   if (status != ML_ERROR_NONE) {
     LOG_E("get tensor data failed %d", status);
@@ -214,7 +214,7 @@ static void on_feature_receive_(ml_tensors_data_h data,
   }
 
   if ((write_result = fwrite(raw_data, 1, data_size, file)) < 0) {
-    LOG_E("write error happend");
+    LOG_E("write error happened");
   }
 
   if (write_result < data_size) {
@@ -229,12 +229,12 @@ static void on_feature_receive_(ml_tensors_data_h data,
   LOG_D("writing one-hot encoded label");
   label = target_label;
   if (fwrite(&label, sizeof(float), 1, file) < 0) {
-    LOG_E("write error happend");
+    LOG_E("write error happened");
   };
 
   label = !target_label;
   if (fwrite(&label, sizeof(float), 1, file) < 0) {
-    LOG_E("write error happend");
+    LOG_E("write error happened");
   };
 
   LOG_I("file dst: %s size: %ld", ad->pipe_dst, ftell(file));
@@ -521,7 +521,7 @@ int util_parse_result_string(const char *src, train_result_s *train_result) {
     LOG_E("Nothing matches for given string");
     goto CLEAN;
   default:
-    LOG_E("Could not excuted regex, reason: %d", status);
+    LOG_E("Could not execute regex, reason: %d", status);
     goto CLEAN;
   }
 

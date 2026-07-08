@@ -300,7 +300,7 @@ detect_objects(float *input, ml::train::Model *det_model,
         break;
       }
 
-      // Update mask for non-maximum supression
+      // Update mask for non-maximum suppression
       bool non_zero_mask = false;
       std::vector<unsigned int> inds_to_erase;
       for (const unsigned int &cand_i : candidate_inds) {
@@ -382,7 +382,7 @@ DirDataLoader::DirDataLoader(const char *directory_, int label_len_,
  * @param det_labels vector of detected labels
  * @param det_score_thr threshold of score
  * @param det_iou_thr threshold of IoU
- * @param det_max_bb_num maxium number of detection bounding box
+ * @param det_max_bb_num maximum number of detection bounding box
  */
 void DirDataLoader::runDetector(ml::train::Model *det_model,
                                 unsigned int &det_input_img_dim_,

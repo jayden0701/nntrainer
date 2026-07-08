@@ -19,8 +19,9 @@
  * @bug		No known bugs except for NYI items
  * @brief	This is Binary Logistic Regression Example
  *
- *              Trainig set (dataset1.txt) : two colume data + result (1.0 or
- * 0.0) Configuration file : ../../res/LogisticRegression.ini Test set
+ *              Training set (dataset1.txt) : two column data + result (1.0 or
+
+ * * 0.0) Configuration file : ../../res/LogisticRegression.ini Test set
  * (test.txt)
  */
 

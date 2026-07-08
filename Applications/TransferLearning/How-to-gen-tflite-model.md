@@ -14,7 +14,7 @@ $ tensorboard --logdir=./
 ```
 
 
-If you do not have logdir, then you need to create it with ```import_pb_to_tensorboard.py``` from tensorflow.
+If you do not have logdir, create it with ```import_pb_to_tensorboard.py``` from TensorFlow.
 
 
 ```
@@ -22,13 +22,13 @@ $ python ./import_pb_to_tensorboard.py --model_dir ./frozen.pb --log_dir=./tenso
 ```
 
 
-Once it save the data in ```log_dir```, then you can visulaize the newtork with tensorboard,
+Once it saves the data in ```log_dir```, then you can visualize the network with tensorboard,
 
 ```
 $tensorboard --logdir=./tensorboard/
 ```
 
-After execute the this command, open ```localhost:6006``` with your prefered brower. Then you have.
+After executing this command, open ```localhost:6006``` with your preferred browser.
 
 > 6006 is the default port for tensorboard. If you set different port number, then use it.
 
@@ -44,7 +44,7 @@ Now you can choose the layer removed from tensorboard. Let's say we want to use 
 
 
 ### Convert pb to tflite
-In order to convert, we need to use ```toco``` from tensorflow.
+Use TensorFlow's ```toco``` to convert the pb file to TFLite.
 
 
 ```

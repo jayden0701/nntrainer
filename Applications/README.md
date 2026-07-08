@@ -43,7 +43,7 @@ An example to demonstrate how to create custom layers, optimizers or other suppo
 <!-- #### Tizen CAPI Example -->
 
 <!-- An example to demonstrate c api for Tizen. It is same transfer learing but written with tizen c api.~ -->
-<!-- Deleted instead moved to a [test](https://github.com/nntrainer/nntrainer/blob/master/test/tizen_capi/unittest_tizen_capi.cpp) -->
+<!-- Deleted instead moved to a [test](https://github.com/nntrainer/nntrainer/blob/main/test/tizen_capi/unittest_tizen_capi.cpp) -->
 
 #### [KNN Example](https://github.com/nntrainer/nntrainer/tree/main/Applications/KNN)
 

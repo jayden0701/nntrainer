@@ -2,12 +2,12 @@
 /**
  * Copyright (C) 2021 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file    NNTrianer.cpp
+ * @file    NNTrainer.cpp
  * @date    08 Sept 2021
  * @see     https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>
  * @bug    No known bugs except for NYI items
- * @brief  This is simple nntrainer implementaiton with JNI
+ * @brief  This is simple nntrainer implementation with JNI
  *
  */
 

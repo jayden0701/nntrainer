@@ -11,7 +11,7 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-@file	bitmat_helpers.cpp
+@file	bitmap_helpers.cpp
 @brief  bitmap_helpers from tensorflow
 @author TensorFlow Authors
 @bug there are no known bugs
@@ -72,8 +72,8 @@ uint8_t *decode_bmp(const uint8_t *input, int row_size, uint8_t *const output,
   return output;
 }
 
-std::vector<uint8_t> read_bmp(const std::string &input_bmp_name, int *width, int *height,
-                  int *channels) {
+std::vector<uint8_t> read_bmp(const std::string &input_bmp_name, int *width,
+                              int *height, int *channels) {
   int begin, end;
 
   std::ifstream file(input_bmp_name, std::ios::in | std::ios::binary);
@@ -110,8 +110,8 @@ std::vector<uint8_t> read_bmp(const std::string &input_bmp_name, int *width, int
 
   const uint8_t *bmp_pixels = &img_bytes[header_size];
 
-  decode_bmp(bmp_pixels, row_size, output.data(), *width, abs(*height), *channels,
-             top_down);
+  decode_bmp(bmp_pixels, row_size, output.data(), *width, abs(*height),
+             *channels, top_down);
 
   delete[] img_bytes;
 

@@ -9,8 +9,8 @@ hand-drawn image dataset efficiently.
 
 Below are the steps to perform transfer learning in this application:
 
-1. The pre-trained model is converted from pb format (Tensorflow trained model file) to TFLite format (Tensorflow-Lite frozen model). The last layer of the model is removed in this conversion to allow transfer learning to be done.
-2. The training data is passed through the tflite model and the outputs are cached. As the transfer learning only trains the last few layers, the outputs from the non-trainable layers are cached to save computation. This is achieved using the single-shot C-API of NNStreamer for TIZEN. In case of non-tizen OS, Tensorflow-Lite framework c++ API are directly used.
+1. The pre-trained model is converted from pb format (TensorFlow trained model file) to TFLite format (TensorFlow Lite frozen model). The last layer of the model is removed in this conversion to allow transfer learning to be done.
+2. The training data is passed through the TFLite model and the outputs are cached. As the transfer learning only trains the last few layers, the outputs from the non-trainable layers are cached to save computation. This is achieved using the single-shot C-API of NNStreamer for Tizen. In case of non-Tizen OS, TensorFlow Lite framework C++ APIs are directly used.
 3. The cached outputs from the step above act as the inputs for the NNTrainer model. The NNTrainer model consists of 2 fully connected layers with Softmax along with training loss and optimizer. The training for this added layer is performed over the cached data for multiple epochs.
 
 Once the training has been performed, the TFLite model (with the last layer removed) and the NNTrainer model (with the newly trained last layer) combined forms the new trained model for the classification of the hand-drawn images.
@@ -19,7 +19,7 @@ Once the training has been performed, the TFLite model (with the last layer remo
 
 Two fully connected layers are added to classify the features obtained from pre-trained Mobilenet-V2 model. The number of classes are reduced to 3 while the number of input features remains same with Mobilenet-V2. Training and test set contains 5 training images and 2 test images per class, totalling to 15 training images and 6 test images respectively.
 
-A Softmax activation is added to the fully connected layer. Mean Squared Error loss function and Stochastic Gradient Decent is used as the loss function and optimizer respectively. Training is performed for 1000 epochs with the training configuration described below.
+A Softmax activation is added to the fully connected layer. Mean Squared Error loss function and Stochastic Gradient Descent is used as the loss function and optimizer respectively. Training is performed for 1000 epochs with the training configuration described below.
 
 ### NNTrainer Model Configuration
 

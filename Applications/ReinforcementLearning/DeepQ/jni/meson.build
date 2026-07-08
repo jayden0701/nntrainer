@@ -27,7 +27,7 @@ deepq_deps=[
 ]
 
 if get_option('use_gym')
-   message('[Applications/ReinforcementLearning] Eabling OpenAI/Gym using gym-http-api')
+   message('[Applications/ReinforcementLearning] Enabling OpenAI/Gym using gym-http-api')
    deepq_deps += dependency('gym-http-api')
    deepq_deps += dependency('boost')
 endif

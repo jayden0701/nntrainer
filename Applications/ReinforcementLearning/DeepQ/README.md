@@ -1,6 +1,6 @@
 # Reinforcement Learning with DeepQ
 
-In this toy example, Reinforcement Learning with DeepQ Learning is implemented without any neural network framework like tensorflow or tensorflow-lite. In order to do that, some algorithms are implemented and  tested on Galaxy 9 & Ubuntu 16.04 PC. All codes are written in C++.
+This toy example implements reinforcement learning with Deep Q-learning without a neural network framework such as TensorFlow or TensorFlow Lite. Some algorithms are implemented and tested on a Galaxy S9 and Ubuntu 16.04 PC. All code is written in C++.
 
 - Implement DeepQ Learning Algorithm
 . Experience Replay

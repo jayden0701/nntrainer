@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Seungbaek Hong <sb92.hong@samsung.com>
  *
- * @file   reorganization.cpp
+ * @file   reorg_layer.cpp
  * @date   06 April 2023
  * @todo support in-place operation. we can get channel, height, width
  * coordinate from index of buffer memory. then we can use reorganizePos and
@@ -105,9 +105,7 @@ nntrainer::Layer *create_reorg_layer() {
   return layer;
 }
 
-void destroy_reorg_layer(nntrainer::Layer *layer) {
-  delete layer;
-}
+void destroy_reorg_layer(nntrainer::Layer *layer) { delete layer; }
 
 extern "C" {
 nntrainer::LayerPluggable ml_train_layer_pluggable{create_reorg_layer,

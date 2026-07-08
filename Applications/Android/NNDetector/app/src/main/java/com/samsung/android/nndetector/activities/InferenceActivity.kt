@@ -2,9 +2,9 @@
 /**
  * Copyright 2023. HS.Kim <hs0207.kim@samsung.com>
  * 
- * @file   InferenceViewActivity.kt
+ * @file   InferenceActivity.kt
  * @date   24 Oct 2023
- * @brief  demontrate object detection with personal object
+ * @brief  demonstrate object detection with personal object
  * @author HS.Kim (hs0207.kim@samsung.com)
  * @bug    No known bugs
  */

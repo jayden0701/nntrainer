@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Seungbaek Hong <sb92.hong@samsung.com>
  *
- * @file   det_dataloader.h
+ * @file   det_dataloader.cpp
  * @date   22 March 2023
  * @brief  dataloader for object detection dataset
  * @see    https://github.com/nntrainer/nntrainer

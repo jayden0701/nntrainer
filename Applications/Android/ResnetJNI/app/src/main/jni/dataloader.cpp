@@ -7,7 +7,7 @@
  * @see     https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>
  * @bug    No known bugs except for NYI items
- * @brief  This is simple nntrainer implementaiton with JNI
+ * @brief  This is simple nntrainer implementation with JNI
  *
  */
 
@@ -169,8 +169,12 @@ void RandomDataLoader::next(float **input, float **label, bool *last) {
 DirDataLoader::DirDataLoader(const char *directory_, float split_ratio,
                              int label_len_, int c, int w, int h,
                              bool is_train_) :
-  label_len(label_len_), width(w), height(h), is_train(is_train_),
-  channel(c), total_image_num(0) {
+  label_len(label_len_),
+  width(w),
+  height(h),
+  is_train(is_train_),
+  channel(c),
+  total_image_num(0) {
 
   dir_path.assign(directory_);
   LOGI("Dir : %s", dir_path.c_str());

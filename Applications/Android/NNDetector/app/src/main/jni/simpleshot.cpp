@@ -45,7 +45,7 @@ int train_det_max_bb_num = 1;
 int test_det_max_bb_num = 10;
 int run_det_max_bb_num = 5;
 
-// IOU threshold to filter detection boxes in non-maximum supression.
+// IOU threshold to filter detection boxes in non-maximum suppression.
 float det_iou_threshold = 0.4;
 
 // If the distance from the new sample to the learned prototypes

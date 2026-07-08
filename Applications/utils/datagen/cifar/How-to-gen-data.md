@@ -42,6 +42,6 @@ $ cd cifar2png
 $ python3 ./cifar2png cifar10 ${SAVED DIR}
 ```
 
-Then it automatically download tar.gz file and start convert it and save bmp iamges into ${SAVED DIR}
+Then it automatically downloads the tar.gz file, converts it, and saves bmp images into ${SAVED DIR}
 
 

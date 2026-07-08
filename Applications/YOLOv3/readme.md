@@ -38,4 +38,4 @@ After building, execute the build_dir/Applications/YOLOv3/jni/nntrainer_yolov3 f
 In both YOLO v2 and v3, an "uncaught error while running! details:  is not allocated" error message occurs when the program is terminated after training. It does not affect the training result, but debugging is still required.
 
 The inference code is not prepared in this example, so please refer to other application examples.
-In addition, It does not support the importing pre-trained models from other frameworks.
+In addition, it does not support importing pre-trained models from other frameworks.

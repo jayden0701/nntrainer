@@ -298,7 +298,7 @@ public class MainActivity extends AppCompatActivity {
 					if(!modelDestroyed() && stop){
 					    s="... Stopping \n";
 					} else if(modelDestroyed() && stop){
-					    s="Training Stoped\n";
+					    s="Training Stopped\n";
 					} else {
 					    s=getTrainingStatus(model_pointer,cur_iter, Integer.parseInt(batch_size));
 					}
@@ -340,7 +340,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onClick(View v) {
-		Log.d("nntrainer", "Training Fished : "+String.valueOf(training_finished));
+		Log.d("nntrainer", "Training Finished : "+String.valueOf(training_finished));
 		testing_done=false;
 		stop = false;
                 String program_name = "nntrainer_resnet";
@@ -423,7 +423,7 @@ public class MainActivity extends AppCompatActivity {
 
 		    String in_file = getFileName(data.getData());
 
-		    Infer_log = "NNTrainer Infering: \n"+in_file+"\n\n";
+		    Infer_log = "NNTrainer Inferring: \n"+in_file+"\n\n";
 
 		    Bitmap bmp = BitmapFactory.decodeFile(in_file);
 		    Bitmap resizedBmp = Bitmap.createScaledBitmap(bmp, 256,256, true);

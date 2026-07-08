@@ -37,7 +37,7 @@ class NNImageAnalyzer(detModelPointer: Long, recModelPointer: Long,
         private const val TAG = "NNImageAnalyzer"
         private const val widthCalib = -0.19
         private const val heightCalib = -0.008
-        private const val heightWidthRatio = 48.0/64.0 // widht/height of image input to nntrainer
+        private const val heightWidthRatio = 48.0/64.0 // width/height of image input to nntrainer
     }
 
     private lateinit var mDetFolder: String

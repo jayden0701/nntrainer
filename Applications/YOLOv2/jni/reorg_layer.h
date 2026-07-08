@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2023 Seungbaek Hong <sb92.hong@samsung.com>
  *
- * @file   reorganization.h
+ * @file   reorg_layer.h
  * @date   4 April 2023
  * @brief  This file contains the mean absolute error loss as a sample layer
  * @see    https://github.com/nntrainer/nntrainer

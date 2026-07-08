@@ -88,7 +88,7 @@ def load_data():
     return InputVector, InputLabel, ValVector, ValLabel
 
 ##
-# @brief input data generater with batch_size
+# @brief input data generator with batch_size
 #        ( 32 x 62720 :training & 32 x 10 : labels )
 # @param[in] x_data : total input data
 # @param[in] y_data : total label data

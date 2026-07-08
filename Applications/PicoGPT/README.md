@@ -1,4 +1,4 @@
-This is NNTrainer implements of https://github.com/jaymody/picoGPT
+This is the NNTrainer implementation of https://github.com/jaymody/picoGPT
 
 Used model: 124M
 

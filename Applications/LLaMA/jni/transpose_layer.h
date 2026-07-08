@@ -23,7 +23,7 @@
 namespace custom {
 
 /**
- * @brief A tranpose layer.
+ * @brief A transpose layer.
  *
  */
 class TransposeLayer final : public nntrainer::Layer {

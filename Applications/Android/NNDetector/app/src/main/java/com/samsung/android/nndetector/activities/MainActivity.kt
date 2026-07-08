@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         trainTestCtrlBtn = viewBinding.fabTrainTest
         trainTestCtrlBtn.setOnClickListener {
             cameraController.clearImageAnalysisAnalyzer() // clear analyzer
-            synchronized(sLock) { // waiting ending of analizing
+            synchronized(sLock) { // wait for analysis to finish
                 (sLock as Object).wait()
             }
 
@@ -115,7 +115,7 @@ class MainActivity : AppCompatActivity() {
         resetCtrlBtn = viewBinding.fabReset
         resetCtrlBtn.setOnClickListener{
             cameraController.clearImageAnalysisAnalyzer() // clear analyzer
-            synchronized(sLock) { // waiting ending of analizing
+            synchronized(sLock) { // wait for analysis to finish
                 (sLock as Object).wait()
             }
 
@@ -155,7 +155,7 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.getMainExecutor(this),
             NNImageAnalyzer(DataShared.detModelPointer, DataShared.recModelPointer, DataShared.detFolder,
                                 DataShared.recFolder, DataShared.dispMaxHeight) { results ->
-                synchronized(sLock) { // notifying ending of analizing
+                synchronized(sLock) { // notify analysis completion
                     (sLock as Object).notify()
                 }
 

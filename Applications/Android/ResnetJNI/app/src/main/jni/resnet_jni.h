@@ -3,7 +3,7 @@
  * Copyright (C) 2022 Hyeonseok Lee <hs89.lee@samsung.com>
  * Copyright (C) 2022 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   main.cpp
+ * @file   resnet_jni.h
  * @date   24 Jun 2021
  * @todo   move resnet model creating to separate sourcefile
  * @brief  task runner for the resnet
@@ -99,8 +99,9 @@ Java_com_applications_resnetjni_MainActivity_getTestingResult(JNIEnv *,
                                                               jobject);
 
 /**
- * @brief check model destoryed
- * @return bool true if model is destoryed successfully
+ * @brief check model destroyed
+ * @return bool true if model is destroyed
+ * successfully
  */
 JNIEXPORT jboolean JNICALL
 Java_com_applications_resnetjni_MainActivity_modelDestroyed(JNIEnv *, jobject);

@@ -120,7 +120,7 @@ Activation = softmax                # activation : sigmoid, softmax
 ```
 
 ### How to run
-Once you compile the codes, you can run with
+Once you compile the code, you can run with
 
 ``` bash
 
@@ -129,7 +129,7 @@ $ export MNIST_RES=${build_dir}/res/app/MNIST
 $ ./Applications/MNIST/jni/nntrainer_mnist .${MNIST_RES}/mnist.ini ${MNIST_RES}/mnist_trainingSet.dat
 ```
 
-For the comparison, we provide Tensorflow code for same model and dataset in ```Tensorflow/Training_Keras.py```.
+For comparison, we provide TensorFlow code for the same model and dataset in ```Tensorflow/Training_Keras.py```.
 
 ```dataset.py``` is for the data generation from the input data file, ```mnist_trainingSet.dat```.
 
@@ -143,7 +143,7 @@ $ python3 Training_Keras.py
 ```mnist_trainingSet.dat``` must be in the same directory with ```Training_Keras.py```.
 
 
-### Comparison with Tensorflow
-This is the comparison with tensorflow-1.14.0 for the two cases. One is with zero initialization of weight and bias and the other is random weight initialization data using the default intializers for each layer from tensorflow. As can be seen with the result below, the results are same within the margin of error.
+### Comparison with TensorFlow
+This is the comparison with TensorFlow 1.14.0 for two cases: zero initialization of weights and biases, and random weight initialization using the default initializer for each TensorFlow layer. As shown below, the results are the same within the margin of error.
 
 ![image](/docs/images/image2020-9-1_8-23-40.png?raw=true)

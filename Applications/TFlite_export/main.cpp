@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2025 Donghak Park <donghak.park@samsung.com>
  *
- * @file   TFLite_export.cpp
+ * @file   main.cpp
  * @date   18 July 2025
  * @see    https://github.com/nntrainer/nntrainer
  * @author Donghak Park <donghak.park@samsung.com>

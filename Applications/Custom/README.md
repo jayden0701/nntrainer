@@ -16,7 +16,7 @@ There are two ways to apply custom object to the code.
 #### Related Folders:
 
 1. `LayerClients/` has a demo about how to write a custom layer and register it.
-2. `LayerPlugin/` contains test and build scripts to show how to build a custom layer and object as a seperate library(`.so`) and register it.
+2. `LayerPlugin/` contains test and build scripts to show how to build a custom layer and object as a separate library(`.so`) and register it.
 
 #### Related Custom Objects:
 

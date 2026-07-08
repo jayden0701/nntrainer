@@ -3,7 +3,7 @@
 ##
 # Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
 #
-# @file resnet18.py.py
+# @file resnet18.py
 # @date 02 November 2020
 # @brief Resnet 18 model file
 # @author Jihoon lee <jhoon.it.lee@samsung.com>

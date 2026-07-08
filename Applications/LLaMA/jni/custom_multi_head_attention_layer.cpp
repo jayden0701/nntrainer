@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2022 hyeonseok Lee <hs89.lee@samsung.com>
  *
- * @file   multi_head_attention_layer.cpp
+ * @file   custom_multi_head_attention_layer.cpp
  * @date   08 July 2022
  * @see    https://github.com/nntrainer/nntrainer
  *         https://arxiv.org/abs/1706.03762

@@ -3,7 +3,7 @@
 
 2. you need to make Dataset(.dat file) with this page --> [Datagen](https://github.com/nntrainer/nntrainer/blob/main/Applications/utils/datagen/cifar/How-to-gen-data.md)
 
-Once you compile the codes, you can run with
+Once you compile the code, you can run with
 ``` bash
 $ cd ${nntrainer_dir}
 $ meson ${build_dir}

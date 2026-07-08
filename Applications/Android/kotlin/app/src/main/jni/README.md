@@ -1,12 +1,12 @@
 # kotlin example for nntrainer
 
 In order to train Resnet network model, nntrainer is used.
-Please be aware, this is simple demo and you need to improve for your own purpose such as error exception and remove hard codded string, parameters, save file format, etc.
+Please be aware that this is a simple demo, and you need to improve it for your own purpose, such as error handling, hard-coded strings, parameters, and save file format.
 
 
 ### Build
-Inorder to build, you need nntrainer setup.
-please see https://github.com/nntstreamer/nntrainer/tree/main/docs
+In order to build, you need nntrainer setup.
+Please see https://github.com/nntrainer/nntrainer/tree/main/docs
 
 Also you need to set NNTRAINER_ROOT parameter.
 
@@ -48,7 +48,7 @@ $ ./prepare_android.sh
 then, you can build nntrainer_kotlin as in:
 
 ``` bash
-cd $NNTRAINER_KOTLINE_HOME
+cd $NNTRAINER_KOTLIN_HOME
 ./gradlew build
 ```
 

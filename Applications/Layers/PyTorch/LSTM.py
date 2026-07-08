@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (C) 2023 Seungbaek Hong <sb92.hong@samsung.com>
 #
-# @file   main.cpp
+# @file   LSTM.py
 # @date   30 Jan 2023
 # @see    https://github.com/nntrainer/nntrainer
 # @author Seungbaek Hong <sb92.hong@samsung.com>

@@ -1,9 +1,9 @@
 ---
-title: Android NNtrainer Applicaiton Sample
+title: Android NNTrainer Application Sample
 ...
 
-# Adnroid NNtrainer Application Sample
-This is a pratical demonstration of Android NNTrainer Resnet Application with [cifar100](https://www.cs.toronto.edu/~kriz/cifar.html) data.
+# Android NNTrainer Application Sample
+This is a practical demonstration of the Android NNTrainer ResNet application with [cifar100](https://www.cs.toronto.edu/~kriz/cifar.html) data.
 
 ## How to run
 Build nntrainer with `${NNTRAINER_HOME}/tools/package_android.sh` as in [Document](https://github.com/nntrainer/nntrainer/blob/main/docs/how-to-run-example-android.md)
@@ -21,12 +21,12 @@ $ ls builddir/android_build_result/libs/arm64-v8a
 libcapi-nntrainer.so  libccapi-nntrainer.so  libc++_shared.so  libnnstreamer-native.so  libnntrainer.so
 ```
 
-Build the jni with `{$APP_HOME}/app/src/main/jni/prepare_android_deps.sh`
+Build the JNI with `${APP_HOME}/app/src/main/jni/prepare_android_deps.sh`
 ```bash
-$cd {$APP_HOME}/app/src/main/jni
+$ cd ${APP_HOME}/app/src/main/jni
 
 ./prepare_android_deps.sh 
-{$APP_HOME}/ResnetJNI/app/src/main/jni/nntrainer
+${APP_HOME}/app/src/main/jni/nntrainer
 [arm64-v8a] Prebuilt       : libccapi-nntrainer.so <= jni/nntrainer/lib/arm64-v8a/
 [arm64-v8a] Install        : libccapi-nntrainer.so => libs/arm64-v8a/libccapi-nntrainer.so
 [arm64-v8a] Prebuilt       : libnntrainer.so <= jni/nntrainer/lib/arm64-v8a/
@@ -41,11 +41,12 @@ $cd {$APP_HOME}/app/src/main/jni
 [arm64-v8a] Install        : libc++_shared.so => libs/arm64-v8a/libc++_shared.so
 ```
 
-Prepare the training data set. you can download the cifar100 and place it into asset directory.
+Prepare the training data set. You can download cifar100 and place it into the assets directory.
 
 ```bash
-$cd {$APP_HOME}/app/src/main/asset
-$ls
+$ mkdir -p ${APP_HOME}/app/src/main/assets
+$ cd ${APP_HOME}/app/src/main/assets
+$ ls
 test  train
 $ cd train/
 $ ls
@@ -68,8 +69,8 @@ boy            cloud        girl       maple_tree  pine_tree     sea        swee
 Build Application with gradlew.
 
 ``` bash
-$cd {$APP_HOME}
-$./gradlew build
+$ cd ${APP_HOME}
+$ ./gradlew build
 
 > Configure project :app
 
@@ -86,9 +87,9 @@ BUILD SUCCESSFUL in 10s
 Install the application and run
 
 ``` bash
-$adb install {$APP_HOME}/app/build/outputs/apk/debug/app-debug.apk
+$ adb install ${APP_HOME}/app/build/outputs/apk/debug/app-debug.apk
 
 ```
 
-After run the application, you can run the applicaiton.
+After installing the application, run ResNet from the Android device.
 ![Application](/docs/images/app_resnet.jpg?raw=true)

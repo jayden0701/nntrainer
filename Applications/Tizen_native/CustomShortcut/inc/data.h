@@ -166,7 +166,7 @@ int data_update_label(appdata_s *ad);
  *
  * This function runs a mobilnetv2 last layer detached and saves an output
  * vector. input for this model is png file drawn to the canvas(stored in
- * appdata) output can be pased to nntrainer and used.
+ * appdata) output can be passed to nntrainer and used.
  */
 int data_extract_feature(appdata_s *ad);
 
@@ -182,7 +182,7 @@ void *data_run_model(void *ad);
  *
  * @param[in] ad appdata
  * @param[in] buf buffer hooked from stdout
- * @return APP_ERROR_NONE if suceess
+ * @return APP_ERROR_NONE if success
  */
 int data_update_train_progress(appdata_s *ad, const char *buf);
 
@@ -214,24 +214,24 @@ int data_run_inference(appdata_s *ad);
 #endif
 
 #if !defined(_D)
-#define LOG_D(fmt, arg...)                                                 \
-  dlog_print(DLOG_DEBUG, LOG_TAG, "[%s:%d] " fmt "\n", __func__, __LINE__, \
+#define LOG_D(fmt, arg...)                                                     \
+  dlog_print(DLOG_DEBUG, LOG_TAG, "[%s:%d] " fmt "\n", __func__, __LINE__,     \
              ##arg)
 #endif
 
 #if !defined(_I)
-#define LOG_I(fmt, arg...) \
+#define LOG_I(fmt, arg...)                                                     \
   dlog_print(DLOG_INFO, LOG_TAG, "[%s:%d] " fmt "\n", __func__, __LINE__, ##arg)
 #endif
 
 #if !defined(_W)
-#define LOG_W(fmt, arg...) \
+#define LOG_W(fmt, arg...)                                                     \
   dlog_print(DLOG_WARN, LOG_TAG, "[%s:%d] " fmt "\n", __func__, __LINE__, ##arg)
 #endif
 
 #if !defined(_E)
-#define LOG_E(fmt, arg...)                                                 \
-  dlog_print(DLOG_ERROR, LOG_TAG, "[%s:%d] " fmt "\n", __func__, __LINE__, \
+#define LOG_E(fmt, arg...)                                                     \
+  dlog_print(DLOG_ERROR, LOG_TAG, "[%s:%d] " fmt "\n", __func__, __LINE__,     \
              ##arg)
 #endif
 

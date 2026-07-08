@@ -3,7 +3,7 @@
  * Copyright (C) 2022 Hyeonseok Lee <hs89.lee@samsung.com>
  * Copyright (C) 2022 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   main.cpp
+ * @file   resnet_jni.cpp
  * @date   24 Jun 2021
  * @todo   move resnet model creating to separate sourcefile
  * @brief  task runner for the resnet

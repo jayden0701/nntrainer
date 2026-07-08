@@ -27,7 +27,7 @@ function _download_encoder {
     echo "[Encoder] Download failed, please check url\n"
     exit $?
   fi
-  echo "[Encoder] Finish downloading openblas\n"
+  echo "[Encoder] Finish downloading encoder\n"
 }
 
 function _untar_encoder {

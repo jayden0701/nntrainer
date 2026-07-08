@@ -2,10 +2,11 @@
 /**
  * Copyright (C) 2023 Seungbaek Hong <sb92.hong@samsung.com>
  *
- * @file   upsample_layer.h
+ * @file   upsample_layer.cpp
  * @date   8 June 2023
- * @brief  It is a implementation of upsample layer for 2x upsample.
- * @see    https://github.com/nntrainer/nntrainer
+ * @brief  It is an implementation of upsample layer for 2x upsample.
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author Seungbaek Hong <sb92.hong@samsung.com>
  * @bug    No known bugs except for NYI items
  */

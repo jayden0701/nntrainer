@@ -29,7 +29,7 @@ This example uses the ```DataBufferFromCallback``` to get the training data and 
 Type = Regression	    # Network Type : Regression, KNN, NeuralNetwork
 Learning_rate = 0.001 	# Learning Rate
 Epochs = 500		    # Epochs
-Optimizer = sgd		    # Optimizer : sgd (stochastic gradient decent),
+Optimizer = sgd		    # Optimizer : sgd (stochastic gradient descent),
 Loss = cross    	    #                       cross ( cross entropy )
 Save_Path = "model.bin" # model path to save / read
 batch_size = 16		    # batch size

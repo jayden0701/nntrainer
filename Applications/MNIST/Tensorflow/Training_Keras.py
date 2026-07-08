@@ -3,7 +3,7 @@
 #
 # Copyright (C) 2020 Jijoong Moon <jijoong.moon@samsung.com>
 #
-# @file   mnist_Keras.py
+# @file   Training_Keras.py
 # @date   13 July 2020
 # @brief  This is Simple Classification Example using Keras
 # @see    https://github.com/nntrainer/nntrainer

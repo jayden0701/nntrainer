@@ -34,7 +34,7 @@
 namespace Env {
 /**
  * @brief     State Data Type
- *            ovservation : state variables
+ *            observation : state variables
  *            reward : reward
  *            done : boolean for end of episode
  */
@@ -61,23 +61,21 @@ public:
    */
   ~CartPole(){};
 
-  /**
-   * @brief     Initialization fo CarPole variables
-   *            Set hyper parameters & set observation zero
-   */
+  /// @brief Initialize CartPole hyperparameters and zero observations.
   void init();
 
   /**
    * @brief     Run Env with action
    * @param[in] action input action
-   * @param[in] rendering boolean variable to redering. (It is not used)
-   * @param[out]s State Output calculated by Env
+   * @param[in] rendering rendering flag. (It is not used)
+   * @param[out] s
+   * output state
    */
   void step(const std::vector<float> &action, bool rendering, State *s);
 
   /**
    * @brief     reset Env
-   * @param[out] initial_s copy inialize State from this->S
+   * @param[out] initial_s copy initialized State from this->S
    */
   void reset(State *initial_s);
 

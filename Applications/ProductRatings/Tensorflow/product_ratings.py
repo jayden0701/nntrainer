@@ -5,7 +5,7 @@
 #
 # @file	  product_ratings.py
 # @date	  15 March 2021
-# @brief  This is a simple recommentation system Example
+# @brief  This is a simple recommendation system example
 # @see    https://github.com/nntrainer/nntrainer
 # @author Parichay Kapoor <pk.kapoor@samsung.com>
 # @author Jijoong Moon <jijoong.moon@samsung.com>

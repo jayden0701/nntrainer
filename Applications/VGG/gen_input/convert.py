@@ -92,21 +92,21 @@ if __name__ == "__main__":
 
     if val == "val":
         filename = os.path.join("vgg_valSet.dat")
-        indexs = np.zeros(num_class*num_val, dtype=np.int)
+        indices = np.zeros(num_class*num_val, dtype=np.int)
         for i in range(num_class*num_val):
-            indexs[i] = i
+            indices[i] = i
         validation = True
     else:
         filename = os.path.join("vgg_trainingSet.dat")
-        indexs = np.zeros(num_class*num_train, dtype=np.int)
+        indices = np.zeros(num_class*num_train, dtype=np.int)
         for i in range(num_class*num_train):
-            indexs[i] = i
+            indices[i] = i
         validation = False
 
     count = 0
 
     with open(filename, 'ab+') as outfile:
-        for i in indexs:
+        for i in indices:
             data, label = extract_features(path, i, validation)
             np.array(data, dtype=np.float32).tofile(outfile)
             np.array(label, dtype=np.float32).tofile(outfile)

@@ -76,7 +76,7 @@ private:
   unsigned int iteration;
   unsigned int data_size;
   unsigned int count;
-  std::vector<unsigned int> indicies;
+  std::vector<unsigned int> indices;
 
   std::vector<TensorDim> input_shapes;
   std::vector<TensorDim> output_shapes;

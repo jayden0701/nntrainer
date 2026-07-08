@@ -86,14 +86,14 @@ class YoloV2_LOSS(nn.Module):
         self.bbox_loss, self.iou_loss, self.cls_loss = None, None, None
 
     ##
-    # @brief function to track gradients of non-leaf varibles.
+    # @brief function to track gradients of non-leaf variables.
     def hook_variable(self, name, var):
         """Do not use this function when training. It is for debugging."""
         self.hook[name] = var
         self.hook[name].requires_grad_().retain_grad()
 
     ##
-    # @brief function to print gradients of non-leaf varibles.
+    # @brief function to print gradients of non-leaf variables.
     def print_hook_variables(self):
         """Do not use this function when training. It is for debugging."""
         for k, var in self.hook.items():

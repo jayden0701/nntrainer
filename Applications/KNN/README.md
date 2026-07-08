@@ -24,6 +24,6 @@ Simple euclidean distance is calculated and the result is quite good. All the te
 Due to the simplicity of this toy example, all the test results are collect.
 
 There are two more random pictures which little bit differ from right image. As you can see, it is little bit hard to tell which class it is. First image could be classified as "happy" but the red zone is across with sad and the variance is quite small. Second image is more confused. Cause the smallest distance is all over the classes.
-May be should be define the threshold which is not implemented yet.
+Maybe a threshold should be defined, but it is not implemented yet.
 
 <img src="../../docs/images/33552000-ef36-11e9-88f6-ea6a35ccdf6b.png" width="640">

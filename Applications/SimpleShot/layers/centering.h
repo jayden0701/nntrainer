@@ -50,7 +50,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs CenteringLayer to be moved.
+   * @param[in] rhs CenteringLayer to be moved.
    */
   CenteringLayer &operator=(CenteringLayer &&rhs) = default;
 

@@ -40,7 +40,7 @@ TEST_P(OptimizerPluginCommonTest, DlRegisterDirectory_n) {
 
 // TODO: Re-enable after resolving engine context issue
 // TEST_P(OptimizerPluginCommonTest, DefaultEnvironmentPath_p) {
-//   /// as NNTRAINER_PATH is fed to the test, this should success without an
+//   /// as NNTRAINER_PATH is fed to the test, this should succeed without an
 //   /// error
 //   std::shared_ptr<ml::train::Optimizer> opt =
 //     ml::train::createOptimizer(optimizer_type_name);
