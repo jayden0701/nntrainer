@@ -171,7 +171,7 @@ TEST_P(MemoryPoolTest, allocate_02_p) {
 }
 
 /**
- * @brief allocate aftrer allocate
+ * @brief allocate after allocate
  */
 TEST_P(MemoryPoolTest, allocate_03_n) {
   nntrainer::MemoryPool pool;

@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2022 hyeonseok Lee <hs89.lee@samsung.com>
  *
- * @file unittest_layers_loss.cpp
+ * @file unittest_layers_layer_normalization.cpp
  * @date 29 July 2022
  * @brief Layer Normalization Layer Test
  * @see	https://github.com/nntrainer/nntrainer
@@ -98,7 +98,6 @@ auto ln_axis_1_2_3_w16a16 = LayerGoldenTestParamType(
 GTEST_PARAMETER_TEST(LayerNormalization16, LayerGoldenTest,
                      ::testing::Values(ln_axis_1_w16a16, ln_axis_2_w16a16,
                                        ln_axis_3_w16a16, ln_axis_1_2_w16a16,
-                                       ln_axis_2_3_w16a16,
-                                       ln_axis_1_3_w16a16,
+                                       ln_axis_2_3_w16a16, ln_axis_1_3_w16a16,
                                        ln_axis_1_2_3_w16a16));
 #endif

@@ -56,7 +56,7 @@ void DataProducerSemantics::SetUp() {
 
   if (result != DataProducerSemanticsExpectedResult::SUCCESS) {
     ASSERT_EQ(validator, nullptr)
-      << "Given expected result of not success, validator must be empty!";
+      << "Given an expected failure result, validator must be empty!";
   }
 }
 

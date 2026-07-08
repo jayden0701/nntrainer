@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2022 hyeonseok Lee <hs89.lee@samsung.com>
  *
- * @file unittest_layers_mol_attention.cpp
+ * @file unittest_layers_multi_head_attention.cpp
  * @date 13 July 2022
  * @brief Multi Head Attention Layer Test
  * @see	https://github.com/nntrainer/nntrainer

@@ -4,8 +4,8 @@ SPDX-License-Identifier: Apache-2.0
 #
 Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
 
-@file getLayerTests.py
-@date 13 Se 2020
+@file gen_layer_tests.py
+@date 13 Sep 2020
 @brief Generate *.nnlayergolden file
 *.nnlayergolden file is expected to contain following information **in order**
 - Initial Weights
@@ -37,8 +37,8 @@ with warnings.catch_warnings():
     import tensorflow.keras as K
 
 ##
-# @brief inpsect if file is created correctly
-# @note this just checks if offset is corretly set, The result have to inspected
+# @brief inspect if file is created correctly
+# @note this just checks if offset is correctly set. The result has to be inspected
 # manually
 
 

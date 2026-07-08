@@ -5,8 +5,9 @@
  * @file	unittest_opencl_kernels_blas.cpp
  * @date	6 June 2024
  * @brief	Test setup for blas OpenCL kernels
- * @see		https://github.com/nnstreamer/nntrainer
- * @author	Debadri Samaddar <s.debadri@samsung.com>
+ * @see		https://github.com/nntrainer/nntrainer
+ * @author	Debadri Samaddar,
+ * s.debadri@samsung.com
  * @bug		No known bugs except for NYI items
  */
 
@@ -577,7 +578,7 @@ TEST(blas_kernels, rmsnorm_fp32) {
   auto *blas_cc =
     static_cast<ClContext *>(Engine::Global().getRegisteredContext("gpu"));
 
-  /// Initialize GPU input/ouput data
+  /// Initialize GPU input/output data
   void *in_fp32_svm = allocateSVM(in_fp32.size() * sizeof(float));
   void *gamma_fp32_svm = allocateSVM(gamma_fp32.size() * sizeof(float));
   void *out_fp32_svm = allocateSVM(out_cl_fp32.size() * sizeof(float));

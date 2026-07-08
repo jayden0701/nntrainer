@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file unittest_realizer.h
+ * @file unittest_realizer.cpp
  * @date 09 October 2021
  * @brief NNTrainer graph realizer related tests
  * @see	https://github.com/nntrainer/nntrainer
@@ -18,7 +18,6 @@
 #include <connection.h>
 #include <flatten_realizer.h>
 #include <input_realizer.h>
-#include <tflite_export_realizer.h>
 #include <multiout_realizer.h>
 #include <nntrainer_error.h>
 #include <previous_input_realizer.h>
@@ -26,6 +25,7 @@
 #include <recurrent_realizer.h>
 #include <remap_realizer.h>
 #include <slice_realizer.h>
+#include <tflite_export_realizer.h>
 
 #include <compiler_test_util.h>
 #include <nntrainer_test_util.h>
@@ -200,7 +200,7 @@ TEST(RecurrentRealizer, recurrent_multi_inout_return_seq_p) {
 
   /// @note for below graph,
   /// 1. fc_out feds back to lstmcell
-  /// 2. ouput_dummy feds back to source2_dummy
+  /// 2. output_dummy feeds back to source2_dummy
   /// ========================================================
   /// lstmcell        -------- addition - split ---- fc_out (to_lstmcell)
   /// source2_dummy   --/                  \----- (to addition 3)
@@ -263,7 +263,7 @@ TEST(RecurrentRealizer, recurrent_multi_inout_using_connection_p) {
 
   /// @note for below graph,
   /// 1. fc_out feds back to lstmcell
-  /// 2. ouput_dummy feds back to source2_dummy
+  /// 2. output_dummy feeds back to source2_dummy
   /// ========================================================
   /// lstmcell        -------- addition - split ---- fc_out (to_lstmcell)
   /// source2_dummy   --/                  \----- (to addition 3)
@@ -333,7 +333,7 @@ TEST(RecurrentRealizer, recurrent_multi_inout_multi_connection_end_p) {
 
   /// @note for below graph,
   /// 1. fc_out feds back to lstmcell
-  /// 2. ouput_dummy feds back to source2_dummy
+  /// 2. output_dummy feeds back to source2_dummy
   /// ========================================================
   /// lstmcell        -------- addition - split ---- fc_out (to_lstmcell)
   /// source2_dummy   --/                  \----- (to addition 3)

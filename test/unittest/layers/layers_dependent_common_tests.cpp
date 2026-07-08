@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file layer_common_tests.cpp
+ * @file layers_dependent_common_tests.cpp
  * @date 02 July 2021
  * @brief Common test for nntrainer layers (Param Tests)
  * @see	https://github.com/nntrainer/nntrainer

@@ -78,7 +78,7 @@ public:
    * @brief Construct a new Scoped Ini object
    *
    * @param name_ name
-   * @param sections_ sequenes of sections to save
+   * @param sections_ sequence of sections to save
    */
   ScopedIni(const std::string &name_,
             const nntrainer::IniWrapper::Sections &sections_) :
@@ -192,7 +192,7 @@ private:
   } while (0)
 
 /**
- * @brief return a tensor filled with contant value with dimension
+ * @brief return a tensor filled with constant value with dimension
  */
 nntrainer::Tensor
 constant(float value, unsigned int d0, unsigned d1, unsigned d2, unsigned d3,
@@ -219,7 +219,7 @@ randUniform(unsigned int batch, unsigned channel, unsigned height,
 /**
  * @brief replace string and save in file
  * @param[in] from string to be replaced
- * @param[in] to string to repalce with
+ * @param[in] to string to replace with
  * @param[in] n file name to save
  * @retval void
  */
@@ -254,7 +254,7 @@ public:
 DataInformation createTrainData();
 
 /**
- * @brief Create a user data for validataion
+ * @brief Create a user data for validation
  *
  * @return DataInformation
  */

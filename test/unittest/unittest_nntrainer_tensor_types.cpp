@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * @file unittest_tensor_types.cpp
+ * @file unittest_nntrainer_tensor_types.cpp
  * @date 11 December 2025
  * @brief Unit tests for various tensor types (CharTensor, ShortTensor,
  * UIntTensor, Int4QTensor)

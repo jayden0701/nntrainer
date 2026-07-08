@@ -24,7 +24,7 @@
  * @see nntrainer::getResPath(const std::string&path) for how this works
  *
  * @param path model path
- * @return const std::string calcaulted path
+ * @return const std::string calculated path
  */
 const std::string compilerPathResolver(const std::string &path);
 

@@ -80,7 +80,7 @@ private:
 };
 
 /**
- * @brief check given ini is failing/suceeding at load
+ * @brief check given ini is failing/succeeding at load
  */
 TEST_P(nntrainerIniTest, loadConfig) {
   std::cout << std::get<0>(GetParam()) << std::endl;
@@ -411,7 +411,7 @@ GTEST_PARAMETER_TEST(
     mkIniTc("unknown_layer_type_n", {nw_base_cross, adam, input + "Type = asdf", out+"input_layers=inputlayer"}, ALLFAIL),
     mkIniTc("unknown_layer_type2_n", {nw_base_cross, adam, input, out + "Type = asdf"+"input_layers=inputlayer", I(out, "outlayer", "")}, ALLFAIL),
 
-  /**< negative: little bit of tweeks to check determinancy (5 negative cases) */
+  /**< negative: small tweaks to check determinism (5 negative cases) */
     mkIniTc("wrong_nw_dataset_n", {nw_base_cross, adam, input, out+"input_layers=inputlayer", dataset + "-TrainData"}, ALLFAIL),
     mkIniTc("wrong_nw_dataset2_n", {nw_base_cross, adam, dataset + "-TrainData", input, out+"input_layers=inputlayer"}, ALLFAIL),
     mkIniTc("wrong_nw_train_set_no_typen", {nw_base_cross, adam, train_set + "-type", input, out+"input_layers=inputlayer"}, ALLFAIL),
@@ -794,7 +794,7 @@ int main(int argc, char **argv) {
   }
 
 #if defined(__TIZEN__)
-  /** ignore tizen feature check while running the testcases */
+  /** Ignore Tizen feature checks while running the test cases. */
   set_feature_state(ML_FEATURE, SUPPORTED);
   set_feature_state(ML_FEATURE_INFERENCE, SUPPORTED);
   set_feature_state(ML_FEATURE_TRAINING, SUPPORTED);

@@ -5,8 +5,9 @@
  * @file	unittest_opencl_kernels_int4.cpp
  * @date	3 December 2025
  * @brief	Test setup for int4 OpenCL kernels
- * @see		https://github.com/nnstreamer/nntrainer
- * @author	Donghyeon Jeong <dhyeon.jeong@samsung.com>
+ * @see		https://github.com/nntrainer/nntrainer
+ * @author	Donghyeon Jeong,
+ * dhyeon.jeong@samsung.com
  * @bug		No known bugs except for NYI items
  */
 

@@ -5,8 +5,9 @@
  * @file        unittest_thread_manager.cpp
  * @date        20 March 2026
  * @brief       Unit test for ThreadManager
- * @see         https://github.com/nnstreamer/nntrainer
- * @author      Jijoong Moon <jijoong.moon@samsung.com>
+ * @see         https://github.com/nntrainer/nntrainer
+ * @author      Jijoong
+ * Moon <jijoong.moon@samsung.com>
  * @bug         No known bugs
  */
 

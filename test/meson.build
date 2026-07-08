@@ -38,7 +38,7 @@ nntrainer_test_deps = [
   nntrainer_testutil_dep
 ]
 
-# this is depedency is for the gtest with main included
+# this dependency is for the gtest with main included
 nntrainer_test_main_deps = [
   gmock_dep,
   gtest_main_dep,

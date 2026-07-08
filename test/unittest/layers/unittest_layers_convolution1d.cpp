@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file unittest_layers_convolution.cpp
+ * @file unittest_layers_convolution1d.cpp
  * @date 18 October 2021
  * @brief Conv1d Layer Test
  * @see	https://github.com/nntrainer/nntrainer

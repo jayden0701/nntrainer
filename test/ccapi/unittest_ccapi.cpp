@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file        unittest_ccapi.cc
+ * @file        unittest_ccapi.cpp
  * @date        19 October 2020
  * @brief       cc API Unit tests.
  * @see         https://github.com/nntrainer/nntrainer
@@ -53,7 +53,7 @@ TEST(ccapi_layer, construct_01_n) {
 }
 
 /**
- * @brief Neural Network Layer Contruct Test
+ * @brief Neural Network Layer Construct Test
  */
 TEST(ccapi_layer, construct_02_p) {
   std::shared_ptr<ml::train::Layer> layer;
@@ -127,7 +127,7 @@ TEST(ccapi_layer, construct_02_p) {
 }
 
 /**
- * @brief Neural Network Loss Layer Contruct Test
+ * @brief Neural Network Loss Layer Construct Test
  */
 TEST(ccapi_layer, construct_03_p) {
   std::shared_ptr<ml::train::Layer> layer;
@@ -143,7 +143,7 @@ TEST(ccapi_layer, construct_03_p) {
 }
 
 /**
- * @brief Neural Network Optimizer Contruct Test
+ * @brief Neural Network Optimizer Construct Test
  */
 TEST(ccapi_optimizer, construct_01_n) {
   EXPECT_THROW(ml::train::createOptimizer("Not existing type"),
@@ -151,7 +151,7 @@ TEST(ccapi_optimizer, construct_01_n) {
 }
 
 /**
- * @brief Neural Network Optimizer Contruct Test
+ * @brief Neural Network Optimizer Construct Test
  */
 TEST(ccapi_optimizer, construct_02_p) {
   EXPECT_NO_THROW(ml::train::optimizer::Adam());
@@ -161,7 +161,7 @@ TEST(ccapi_optimizer, construct_02_p) {
 }
 
 /**
- * @brief Neural Network Dataset Contruct Test
+ * @brief Neural Network Dataset Construct Test
  */
 TEST(ccapi_dataset, construct_01_n) {
   EXPECT_THROW(ml::train::createDataset(ml::train::DatasetType::UNKNOWN),
@@ -169,7 +169,7 @@ TEST(ccapi_dataset, construct_01_n) {
 }
 
 /**
- * @brief Neural Network Dataset Contruct Test
+ * @brief Neural Network Dataset Construct Test
  */
 TEST(ccapi_dataset, construct_02_n) {
   EXPECT_THROW(ml::train::createDataset(ml::train::DatasetType::GENERATOR),

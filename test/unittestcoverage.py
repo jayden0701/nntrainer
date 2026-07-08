@@ -16,23 +16,23 @@
 
 ##
 # @file unittestcoverage.py
-# @brief Calculate and show unit test coverate rate.
+# @brief Calculate and show unit test coverage rate.
 # @author MyungJoo Ham <myungjoo.ham@samsung.com>
 # @note
 # Precondition:
-#  The user must have executed cmake/make build for all compoennts with -fprofile-arcs -ftest-coverage enabled
+#  The user must have executed cmake/make build for all components with -fprofile-arcs -ftest-coverage enabled
 #  All the unit tests binaries should have been executed.
 #  Other than the unit test binaries, no other built binaries should be executed, yet
 #
-# Usage: (for the case of STAR/AuDri.git)
+# Usage:
 #
-#  $ unittestcoverage module /home/abuild/rpmbuild/BUILD/audri-1.1.1/ROS/autodrive/
+#  $ test/unittestcoverage.py module /path/to/nntrainer/nntrainer
 #  Please use absolute path to the module directory.
 #
-#  $ unittestcoverage all /home/abuild/rpmbuild/BUILD/audri-1.1.1/ROS/
-#  Please use absolute path to the ROS module root dir
+#  $ test/unittestcoverage.py all /path/to/nntrainer
+#  Please use absolute path to the nntrainer repository root.
 #
-# Limitation of this version: supports c/c++ only (.c, .cc, .h, .hpp)
+# Limitation of this version: supports C/C++ only (.c, .cc, .cpp, .h, .hpp)
 #
 
 from __future__ import print_function
@@ -51,7 +51,7 @@ def dprint(str):
   if debugprint == 1:
     print(str)
 
-## @brief Search for c/c++ files not being detected by gcov
+## @brief Search for C/C++ files not detected by gcov
 #
 # @param gcovOutput output of gcov
 # @param path Path to be audited
@@ -63,17 +63,18 @@ def auditEvaders(gcovOutput, path):
   dprint("Walking in " + path)
   for root, dirs, files in os.walk(path):
     for file in files:
-      # TODO 1 : Support other than C/C++
+      # TODO 1 : Support languages other than C/C++
       # TODO 2 : case insensitive
-      if file.endswith(".cc") or file.endswith(".c") or \
-         file.endswith(".h") or file.endswith(".hpp"):
+      if file.endswith((".c", ".cc", ".cpp", ".h", ".hpp")):
         dprint(file)
 
+        relroot = os.path.relpath(root, path)
         # exclude unittest itself
-        if (re.match("^unittest\/", root[len(path)+1:])):
+        if relroot == "unittest" or relroot.startswith(
+            os.path.join("unittest", "")):
           continue
         # exclude files from build directory (auto generated)
-        if (re.match("^build\/", root[len(path)+1:])):
+        if relroot == "build" or relroot.startswith(os.path.join("build", "")):
           continue
         # exclude CMake artifacts
         if file.startswith("CMakeCCompilerId") or file.startswith("CMakeCXXCompilerId"):
@@ -84,7 +85,7 @@ def auditEvaders(gcovOutput, path):
         dprint("Registered: " + os.path.join(root, file)[len(path)+1:])
 
 
-  # From the begging, read each line and process "targetFiles"
+  # From the beginning, read each line and process "targetFiles"
   parserStatus = 0 # Nothing / Completed Session
   parsingForFile = ""
   lastlines = 0
@@ -92,7 +93,7 @@ def auditEvaders(gcovOutput, path):
     m = re.match("File '(.+)'$", line)
     if m:
       if parserStatus == 1:
-        sys.exit("[CRITIAL BUG] Status Mismatch: need to be 0")
+        sys.exit("[CRITICAL BUG] Status Mismatch: need to be 0")
 
       parsingForFile = m.group(1)
       if parsingForFile not in targetFiles:
@@ -100,7 +101,8 @@ def auditEvaders(gcovOutput, path):
           continue
         if re.match("^CMakeCXXCompilerId", parsingForFile): # ignore cmake artifacts
           continue
-        print("[CRITICAL BUG] Hey! File " + parsingForFile + " is not being found?")
+        print("[CRITICAL BUG] File " + parsingForFile +
+              " was not found in the target file list")
         targetFiles[parsingForFile] = (-1, -1)
       elif targetFiles[parsingForFile] == (-1, -1):
         dprint("Matching new file: " + parsingForFile)
@@ -110,7 +112,7 @@ def auditEvaders(gcovOutput, path):
       parserStatus = 1 # File name parsed
       continue
 
-    m = re.match("Lines executed:(\d+.\d+)% of (\d+)$", line)
+    m = re.match(r"Lines executed:(\d+\.\d+)% of (\d+)$", line)
     if m:
       if parserStatus == 0:
         continue
@@ -125,14 +127,16 @@ def auditEvaders(gcovOutput, path):
         sys.exit("[CRITICAL BUG] targetFiles broken: not found: " + parsingForFile)
       (oldrate, oldlines) = targetFiles[parsingForFile]
 
-      if oldlines == -1: # new instancfe
+      if oldlines == -1: # new instance
         targetFiles[parsingForFile] = (rate, lines)
       elif lines == oldlines and rate > oldrate: # overwrite
         targetFiles[parsingForFile] = (rate, lines)
-        # anyway, in this mechanis, this can't happen
-        sys.exit("[CRITICAL BUG] file " + parsingForFile + " occurs twice??? case 1")
+        # anyway, in this mechanism, this can't happen
+        sys.exit("[CRITICAL BUG] file " + parsingForFile +
+                 " appears more than once (case 1)")
       else:
-        sys.exit("[CRITICAL BUG] file " + parsingForFile + " occurs twice??? case 2")
+        sys.exit("[CRITICAL BUG] file " + parsingForFile +
+                 " appears more than once (case 2)")
       continue
 
     if re.match("Creating '", line):
@@ -141,7 +145,7 @@ def auditEvaders(gcovOutput, path):
       parserStatus = 0
       continue
 
-    if re.match("^\s*$", line):
+    if re.match(r"^\s*$", line):
       continue
 
     sys.exit("[CRITICAL BUG] incorrect gcov output: " + line)
@@ -150,12 +154,12 @@ def auditEvaders(gcovOutput, path):
   totalAllLine = 0
 
   # For each "targetFiles", check if they are covered.
-  for filename, (rate, lines) in targetFiles.iteritems():
+  for filename, (rate, lines) in targetFiles.items():
     if lines == -1: # untracked file
       # CAUTION! wc does line count of untracked files. it counts lines differently
       # TODO: Count lines with the policy of gcov
       linecount = os.popen("wc -l " + os.path.join(path, filename)).read()
-      m = re.match("^(\d+)", linecount)
+      m = re.match(r"^(\d+)", linecount)
       if not m:
         sys.exit("Cannot read proper wc results for " + filename)
       lines = int(m.group(1))
@@ -174,7 +178,7 @@ def auditEvaders(gcovOutput, path):
 ## @brief Do the check for unit test coverage on the given path
 #
 # @param path The path to be audited
-# @return (number of lines counted, ratio of unittested lines)
+# @return (number of lines counted, ratio of unit-tested lines)
 def check_component(path):
   # Remove last trailing /
   if path[-1:] == '/':
@@ -200,7 +204,7 @@ def check_component(path):
   total_rate = 0.0
   # Calculate a line coverage per file
   for each_line in out.splitlines():
-    m = re.match("Lines executed:(\d+.\d+)% of (\d+)$", each_line)
+    m = re.match(r"Lines executed:(\d+\.\d+)% of (\d+)$", each_line)
     if m:
       rate = float(m.group(1))
       lines = int(m.group(2))
@@ -216,7 +220,7 @@ def check_component(path):
 
 ## @brief Check unit test coverage for a specific path. (every code in that path, recursively)
 #
-# @param The audited path.
+# @param paths The audited paths.
 def cmd_module(paths):
   lines = 0
   rate = 0
@@ -227,9 +231,9 @@ def cmd_module(paths):
     lines = lines + l
     countrated = countrated + (rate * l)
 
-  rate = countrated / lines
-  if lines < 0:
+  if lines <= 0:
     return -1
+  rate = countrated / lines
 
   print("\n\n===========================================================")
   print("Paths for test coverage " + str(paths))
@@ -254,7 +258,7 @@ def analyzeEveryFirstCMakeListsTxt(path):
       coveredLines = int((rate * float(lines) + 0.5) / 100.0)
       countLines = countLines + lines
       countCoveredLines = countCoveredLines + coveredLines
-      print("[ROS Component]" + str(path) + ": " + str(lines) + " Lines with " + str(rate) + "% unit test coverage")
+      print("[Coverage Component]" + str(path) + ": " + str(lines) + " Lines with " + str(rate) + "% unit test coverage")
       return 0
     print("[Warning] " + str(path) + " has CMakeLists.txt but not build directory. This may occur if you build with app option")
     return 0
@@ -266,11 +270,18 @@ def analyzeEveryFirstCMakeListsTxt(path):
       analyzeEveryFirstCMakeListsTxt(fullname)
   return 0
 
-## @brief Check all subdirectories with CMakeLists.txt and thier children, skipping subdirectories without it.
+## @brief Check all subdirectories with CMakeLists.txt and their children, skipping subdirectories without it.
 #
-# @path The search target
-def cmd_all(path):
-  analyzeEveryFirstCMakeListsTxt(path)
+# @param paths The search targets.
+def cmd_all(paths):
+  if not paths:
+    return cmd_help('all')
+
+  for path in paths:
+    analyzeEveryFirstCMakeListsTxt(path)
+  if countLines <= 0:
+    return -1
+
   print("\n\n===========================================================")
   print("Total Lines = " + str(countLines) + " / Covered Lines = " + str(countCoveredLines) + " ( " + str(100.0 * countCoveredLines / countLines) + "% )")
   print("===========================================================\n\n\n")
@@ -278,7 +289,7 @@ def cmd_all(path):
 
 help_messages = {
   'all':
-    'python unittestcoverage.py all [PATH to the Audri ROS directory] {additional options}\n'
+    'python unittestcoverage.py all [PATH to the nntrainer root] {additional options}\n'
     '',
   'module':
     'python unittestcoverage.py module [PATH to the component] {additional options}\n'
@@ -286,7 +297,7 @@ help_messages = {
   'help':
     'python unittestcoverage.py [command] [command specific options]\n'
     '\n'
-    'Comamnds:\n'
+    'Commands:\n'
     '    all\n'
     '    module\n'
     '    help\n'

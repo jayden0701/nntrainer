@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2024 heka1024 <heka1024@gmail.com>
  *
- * @file unittest_layers_upsample2d.cppp
+ * @file unittest_layers_upsample2d.cpp
  * @date 15 June 2024
  * @brief Unit test for upsample2d layer
  * @see	https://github.com/nntrainer/nntrainer

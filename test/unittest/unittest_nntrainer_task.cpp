@@ -316,7 +316,7 @@ TEST_F(TaskExecutorTest, timeout_01_p) {
   auto task = std::make_shared<nntrainer::TaskAsync<>>(
     work, static_cast<void *>(&user_data));
 
-  // timeout will be occurs
+  // timeout will occur
   task->setTimeout(100);
 
   ASSERT_EQ(executor->run(task, complete), 1);
@@ -365,7 +365,7 @@ TEST_F(TaskExecutorTest, timeout_all_01_p) {
   auto task3 = std::make_shared<nntrainer::TaskAsync<>>(
     work, static_cast<void *>(&user_data));
 
-  // timeout will be occurs
+  // timeout will occur
   task1->setTimeout(100);
   task2->setTimeout(200);
   task3->setTimeout(300);

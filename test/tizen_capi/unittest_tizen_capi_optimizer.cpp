@@ -222,7 +222,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  /** ignore tizen feature check while running the testcases */
+  /** Ignore Tizen feature checks while running the test cases. */
   set_feature_state(ML_FEATURE, SUPPORTED);
   set_feature_state(ML_FEATURE_INFERENCE, SUPPORTED);
   set_feature_state(ML_FEATURE_TRAINING, SUPPORTED);

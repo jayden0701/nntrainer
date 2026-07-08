@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file unittest_layers_pooling.cpp
+ * @file unittest_layers_activation.cpp
  * @date 7 July 2021
  * @brief Activation Layer Test
  * @see	https://github.com/nntrainer/nntrainer

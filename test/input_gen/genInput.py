@@ -4,7 +4,7 @@
 # Copyright (C) 2020 Jijoong Moon <jijoong.moon@samsung.com>
 # Copyright (C) 2020 Parichay Kapoor <pk.kapoor@samsung.com>
 #
-# @file genTestInput.py
+# @file genInput.py
 # @brief Generate test input
 # @author Jijoong Moon <jijoong.moon@samsung.com>
 # @author Parichay Kapoor <pk.kapoor@samsung.com>
@@ -66,7 +66,7 @@ def gen_tensor_bound(shape, bound, dtype=np.float32):
 # @param[in] outfile_name outfile_name
 # @param[in] input_shape shape of input
 # @param[in] savefile boolean save file
-# @return data generted data
+# @return generated data
 
 def gen_input(outfile_name, input_shape, savefile=True):
     x = gen_tensor(input_shape)
@@ -84,7 +84,7 @@ def gen_input_bound(outfile_name, input_shape, bound, savefile=True):
 ##
 # @brief conv2d layer forwarding with tensorflow
 # @param[in] x input data
-# @param[in] kerenl weight data
+# @param[in] kernel weight data
 # @param[in] batch batch size of x
 # @param[in] channel channel size of x
 # @param[in] height height size of x

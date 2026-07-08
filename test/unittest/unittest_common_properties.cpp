@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file unittest_common_properties.h
+ * @file unittest_common_properties.cpp
  * @date 15 May 2021
  * @brief This file contains test and specification of properties and exporter
  * @see	https://github.com/nntrainer/nntrainer

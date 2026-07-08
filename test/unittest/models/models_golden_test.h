@@ -225,7 +225,7 @@ mkModelIniTc(const nntrainer::IniWrapper &ini, const std::string &label_dim,
  *
  * @param generator generator
  * @param name name
- * @param label_dim label dimenion
+ * @param label_dim label dimension
  * @param iteration iteration
  * @param options options
  * @return ModelGoldenTestParamType

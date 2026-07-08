@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file layer_common_tests.h
+ * @file layers_common_tests.h
  * @date 15 June 2021
  * @brief Common test for nntrainer layers (Param Tests)
  * @see	https://github.com/nntrainer/nntrainer

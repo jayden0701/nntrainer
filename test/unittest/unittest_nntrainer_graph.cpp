@@ -90,7 +90,7 @@ private:
 };
 
 /**
- * @brief check given ini is failing/suceeding at load
+ * @brief check given ini is failing/succeeding at load
  */
 TEST_P(nntrainerGraphTest, loadConfig) {
   std::cout << std::get<0>(GetParam()) << std::endl;

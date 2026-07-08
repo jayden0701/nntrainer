@@ -127,9 +127,9 @@ public:
   bool supportInPlace() { return node->supportInPlace(); }
 
   /**
-   * @brief needs backwarding operation
+   * @brief needs backward pass
    *
-   * @return true if needs backwarding else false
+   * @return true if the backward pass is needed, else false
    */
   bool needsCalcDerivative() { return node->needsCalcDerivative(); }
 
@@ -149,7 +149,7 @@ private:
 
 /**
  * @brief GraphWatcher monitors and checks the graph operation like
- * forwarding & backwarding
+ * forwarding and backward pass
  */
 class GraphWatcher {
 public:
@@ -167,12 +167,11 @@ public:
    */
   GraphWatcher(std::unique_ptr<nntrainer::NeuralNetwork> &&net, const bool opt);
 
-  /**
-   * @brief check forwarding & backwarding & inference throws or not
-   * @param reference model file name
-   * @param label_shape shape of label tensor
-   * @param iterations tensor dimension of label
-   */
+  /// @brief Check whether forwarding, backward pass, and inference throw.
+  ///
+  /// @param reference model file name
+  /// @param label_shape shape of label tensor
+  /// @param iterations tensor dimension of label
   void compareFor(const std::string &reference,
                   const nntrainer::TensorDim &label_shape,
                   unsigned int iterations);

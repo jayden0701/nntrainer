@@ -207,8 +207,8 @@ def record_v2(
 
 
 ##
-# @brief inpsect if file is created correctly
-# @note this just checks if offset is corretly set, The result have to inspected
+# @brief inspect if file is created correctly
+# @note this just checks if offset is correctly set. The result has to be inspected
 # manually
 def inspect_file(file_name, show_content=True):
     with open(file_name, "rb") as f:

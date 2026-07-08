@@ -2,10 +2,11 @@
 /**
  * Copyright (C) 2020 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file        unittest_nntrainer_tensor.cpp
+ * @file        unittest_nntrainer_tensor_nhwc.cpp
  * @date        03 June 2020
- * @brief       Unit test utility for tensor.
- * @see         https://github.com/nntrainer/nntrainer
+ * @brief       Unit test utility for NHWC tensor.
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author      Jijoong Moon <jijoong.moon@samsung.com>
  * @bug         No known bugs
  */
@@ -67,7 +68,7 @@ TEST(nntrainer_TensorDim, default_constructor_with_tensor_type_nhwc_p) {
   EXPECT_EQ(nntrainer::TensorDim(b, h, w, c, tensor_type), t);
 }
 
-TEST(nntrianer_TensorDim, effective_dimension_nhwc_p) {
+TEST(nntrainer_TensorDim, effective_dimension_nhwc_p) {
   nntrainer::TensorDim t(3, 2, 4, 5, NHWC_, FP32_);
   EXPECT_EQ(t.getEffectiveDimension(), std::vector<int>({3, 2, 4, 5}));
 
@@ -3244,7 +3245,7 @@ TEST(nntrainer_Tensor, fill_p) {
 
   /// same dimension, buffer size is different (not tested)
   {
-    /// there is no way to make non contiguous tensor publicily yet
+    /// there is no way to make non contiguous tensor publicly yet
     EXPECT_TRUE(true);
   }
 
@@ -3274,13 +3275,13 @@ TEST(nntrainer_Tensor, fill_different_dimension_n) {
 }
 
 TEST(nntrainer_Tensor, DISABLED_fill_non_contiguous_n) {
-  /// there is no way to make non contiguous tensor publicily yet
+  /// there is no way to make non contiguous tensor publicly yet
   EXPECT_TRUE(false);
 }
 
 TEST(nntrainer_Tensor, DISABLED_fill_different_buffer_size_n) {
-  /// there is no way to make same dimension, diffrent buffersized tensor
-  /// publicily yet
+  /// there is no way to make same dimension, different buffer-sized tensor
+  /// publicly yet
   EXPECT_TRUE(false);
 }
 
@@ -3723,7 +3724,7 @@ TEST(nntrainer_Tensor, save_read_01_nhwc_p) {
   int height = 5;
   int width = 6;
   nntrainer::Tensor target(3, 4, 5, 6, NHWC_, FP32_);
-  nntrainer::Tensor readed(3, 4, 5, 6, NHWC_, FP32_);
+  nntrainer::Tensor loaded(3, 4, 5, 6, NHWC_, FP32_);
 
   GEN_TEST_INPUT_NHWC(target, i * (height * width * channel) +
                                 j * (width * channel) + k * channel + 1);
@@ -3733,10 +3734,10 @@ TEST(nntrainer_Tensor, save_read_01_nhwc_p) {
   save_file.close();
 
   std::ifstream read_file("save.bin");
-  readed.read(read_file);
+  loaded.read(read_file);
   read_file.close();
 
-  EXPECT_EQ(target, readed);
+  EXPECT_EQ(target, loaded);
 
   int status = std::remove("save.bin");
 
@@ -3749,7 +3750,7 @@ TEST(nntrainer_Tensor, save_read_02_nhwc_n) {
   int height = 5;
   int width = 6;
   nntrainer::Tensor target(3, 4, 5, 6, NHWC_, FP32_);
-  nntrainer::Tensor readed(3, 4, 1, 1, NHWC_, FP32_);
+  nntrainer::Tensor loaded(3, 4, 1, 1, NHWC_, FP32_);
 
   GEN_TEST_INPUT_NHWC(target, i * (height * width * channel) +
                                 j * (width * channel) + k * channel + 1);
@@ -3759,10 +3760,10 @@ TEST(nntrainer_Tensor, save_read_02_nhwc_n) {
   save_file.close();
 
   std::ifstream read_file("save.bin");
-  readed.read(read_file);
+  loaded.read(read_file);
   read_file.close();
 
-  EXPECT_NE(target, readed);
+  EXPECT_NE(target, loaded);
 
   int status = std::remove("save.bin");
 

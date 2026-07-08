@@ -257,8 +257,9 @@ TEST_F(CachePoolTest, validate_invalidate_02_n) {
    * The data wrote on valid addr is equal to the data after
    * swap out(invalidate) and in(validate).
    *
-   * Three mems' start-end are not overlaped, so same
-   * memory can be used for all.
+   * Three mems' start-end are not overlapped, so same
+   * memory can be used
+   * for all.
    */
   mem1->validate();
   EXPECT_NE(mem1->getAddr<float>(), nullptr);
@@ -321,8 +322,9 @@ TEST_F(CachePoolTest, validate_invalidate_03_p) {
    * The data wrote on valid addr is equal to the data after
    * swap out(invalidate) and in(validate).
    *
-   * Three mems' start-end are overlaped, so all target memory
-   * addr are different.
+   * Three mems' start-end are overlapped, so all target memory
+   * addr are
+   * different.
    */
   mem1->validate();
   EXPECT_NE(mem1->getAddr<float>(), nullptr);

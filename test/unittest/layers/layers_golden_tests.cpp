@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file layer_golden_tests.cpp
+ * @file layers_golden_tests.cpp
  * @date 09 Sept 2021
  * @brief Common golden test for nntrainer layers (Param Tests)
  * @see	https://github.com/nntrainer/nntrainer
@@ -26,8 +26,8 @@
 
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 
-#define EXPECT_IN_RANGE(VAL, MIN, MAX) \
-  EXPECT_GE((VAL), (MIN));             \
+#define EXPECT_IN_RANGE(VAL, MIN, MAX)                                         \
+  EXPECT_GE((VAL), (MIN));                                                     \
   EXPECT_LE((VAL), (MAX))
 
 using namespace nntrainer;

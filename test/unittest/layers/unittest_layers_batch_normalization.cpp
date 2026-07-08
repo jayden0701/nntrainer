@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file unittest_layers_loss.cpp
+ * @file unittest_layers_batch_normalization.cpp
  * @date 15 June 2021
  * @brief Batch Normalization Layer Test
  * @see	https://github.com/nntrainer/nntrainer

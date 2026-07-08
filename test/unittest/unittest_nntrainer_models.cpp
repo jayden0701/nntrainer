@@ -4,8 +4,9 @@
  *
  * @file   unittest_nntrainer_models.cpp
  * @date   19 Oct 2020
- * @brief  Model multi iteration, itegrated test
- * @see    https://github.com/nntrainer/nntrainer
+ * @brief  Model multi iteration, integrated test
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author Jihoon Lee <jhoon.it.lee@samsung.com>
  * @bug    No known bugs except for NYI items
  *
@@ -888,7 +889,7 @@ auto mkResNet18Tc(const unsigned int iteration,
   /** get unique name for a layer */
   auto getName = [&count]() -> std::string {
     if (count == 21)
-      std::cout << "mimatch" << std::endl;
+      std::cout << "mismatch" << std::endl;
     return "layer" + std::to_string(++count);
     };
   auto getPreviousName = [&count]() -> std::string { return "layer" + std::to_string(count); };

@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 /**
- * @file        unittest_tizen_capi.cc
+ * @file        unittest_tizen_capi.cpp
  * @date        03 April 2020
  * @brief       Unit test utility.
  * @see         https://github.com/nntrainer/nntrainer
@@ -100,7 +100,7 @@ static void nntrainer_capi_model_comp_metrics(ml_train_model_h model,
 }
 
 /**
- * @brief Neural Network Model Contruct / Destruct Test (possitive test )
+ * @brief Neural Network Model Construct / Destruct Test (positive test )
  */
 TEST(nntrainer_capi_nnmodel, construct_destruct_01_p) {
   ml_train_model_h handle;
@@ -1634,7 +1634,7 @@ int main(int argc, char **argv) {
     ml_loge("Failed to init gtest\n");
   }
 
-  /** ignore tizen feature check while running the testcases */
+  /** Ignore Tizen feature checks while running the test cases. */
   set_feature_state(ML_FEATURE, SUPPORTED);
   set_feature_state(ML_FEATURE_INFERENCE, SUPPORTED);
   set_feature_state(ML_FEATURE_TRAINING, SUPPORTED);

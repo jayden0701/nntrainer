@@ -236,7 +236,7 @@ TEST_F(CacheLoaderTest, load_async_01_p) {
   EXPECT_NE(mem->getAddr(), nullptr);
 }
 
-// This will commented out intentionally. Currently all the task exection is
+// This is intentionally commented out. Currently all task execution is
 // working asynchronously. All of the tests above are tested asynchronously. We
 // do not need to test once again.
 //
@@ -478,7 +478,7 @@ TEST_F(CacheLoaderTest, load_async_01_p) {
 // }
 
 // /**
-//  * @brief load asynchronously (discontinous order)
+//  * @brief load asynchronously (discontinuous order)
 //  */
 // TEST_F(CacheLoaderTest, load_async_03_p) {
 //   std::shared_ptr<nntrainer::MemoryData> mem1, mem2, mem3;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * @file unittest_tensor_utils.cpp
+ * @file unittest_nntrainer_tensor_utils.cpp
  * @date 11 December 2025
  * @brief Unit tests for tensor utility functions and classes
  * @see https://github.com/nntrainer/nntrainer

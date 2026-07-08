@@ -3,7 +3,7 @@
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  * Copyright (C) 2022 Jiho Chu <jiho.chu@samsung.com>
  *
- * @file unittest_memory_planning.cpp
+ * @file unittest_memory_planner.cpp
  * @date 11 August 2021
  * @brief Memory Planner Test
  * @see	https://github.com/nntrainer/nntrainer

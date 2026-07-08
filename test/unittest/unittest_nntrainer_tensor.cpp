@@ -54,7 +54,7 @@ TEST(nntrainer_TensorDim, default_constructor_1_sized_dimShapes_p) {
   EXPECT_EQ(nntrainer::TensorDim(1, h, w, c), nntrainer::TensorDim(h, w, c));
 }
 
-TEST(nntrianer_TensorDim, effective_dimension_p) {
+TEST(nntrainer_TensorDim, effective_dimension_p) {
   nntrainer::TensorDim t(3, 2, 4, 5, nntrainer::Tformat::NCHW,
                          nntrainer::Tdatatype::FP32);
   EXPECT_EQ(t.getEffectiveDimension(), std::vector<int>({3, 2, 4, 5}));
@@ -781,40 +781,40 @@ TEST(nntrainer_Tensor, QTensor_14_p) {
   save_file_fp.close();
 
   /** read q4kx8 */
-  nntrainer::Tensor W_q4k_readed(
+  nntrainer::Tensor W_q4k_loaded(
     {1, 1, K, N, nntrainer::Tformat::NCHW, nntrainer::Tdatatype::Q4_K}, true,
     nntrainer::Initializer::NONE, "q4_k_tensor", nntrainer::QScheme::Q4_Kx8);
   std::ifstream read_file("fc_q4kx8.bin", std::ios::in | std::ios::binary);
-  W_q4k_readed.read(read_file);
+  W_q4k_loaded.read(read_file);
   read_file.close();
 
   /** read fp32 */
-  nntrainer::Tensor W_fp32_readed(
+  nntrainer::Tensor W_fp32_loaded(
     1, 1, K, N,
     {ml::train::TensorDim::Format::NCHW, ml::train::TensorDim::DataType::FP32});
   std::ifstream read_file_float("fc_float.bin",
                                 std::ios::in | std::ios::binary);
-  W_fp32_readed.read(read_file_float);
+  W_fp32_loaded.read(read_file_float);
   read_file_float.close();
 
   /** dot test */
   nntrainer::Tensor out_q4k(
     1, 1, M, N, {nntrainer::Tformat::NCHW, nntrainer::Tdatatype::FP32});
   A_fp32.dot(W_q4k, out_q4k);
-  nntrainer::Tensor out_readed_q4k(
+  nntrainer::Tensor out_loaded_q4k(
     1, 1, M, N, {nntrainer::Tformat::NCHW, nntrainer::Tdatatype::FP32});
-  A_fp32.dot(W_q4k_readed, out_readed_q4k);
-  nntrainer::Tensor out_readed_fp32(
+  A_fp32.dot(W_q4k_loaded, out_loaded_q4k);
+  nntrainer::Tensor out_loaded_fp32(
     1, 1, M, N, {nntrainer::Tformat::NCHW, nntrainer::Tdatatype::FP32});
-  A_fp32.dot(W_fp32_readed, out_readed_fp32);
+  A_fp32.dot(W_fp32_loaded, out_loaded_fp32);
 
   const float eps = 1e-5;
   auto mean_squared_error = mse<float, float>(
-    out_q4k.getData<float>(), out_readed_q4k.getData<float>(), M * N);
+    out_q4k.getData<float>(), out_loaded_q4k.getData<float>(), M * N);
   EXPECT_NEAR(mean_squared_error, 0., eps * M * N);
-  auto mean_squared_error_readed = mse<float, float>(
-    out_readed_fp32.getData<float>(), out_readed_q4k.getData<float>(), M * N);
-  EXPECT_NEAR(mean_squared_error, 0., eps * M * N);
+  auto mean_squared_error_loaded = mse<float, float>(
+    out_loaded_fp32.getData<float>(), out_loaded_q4k.getData<float>(), M * N);
+  EXPECT_NEAR(mean_squared_error_loaded, 0., eps * M * N);
 
   int status = std::remove("fc_float.bin");
   ASSERT_EQ(status, 0);
@@ -855,10 +855,11 @@ TEST(nntrainer_Tensor, QTensor_16_p) {
 
 TEST(nntrainer_Tensor, Q_Tensor_17_p) {
 
-  ///@note this unittest check quantization and dequantization with Q6_K tensor
+  ///@note this unit test checks quantization and dequantization with Q6_K
+  /// tensor
   /// format
-  ///      this is not a desirable form.
-  ///@todo this unittest should be removed once the quantizer is implemented
+  ///      this is not the desirable form.
+  ///@todo this unit test should be removed once the quantizer is implemented
   /// with Q6_K tensor format
 
   const unsigned int M = 1;
@@ -897,14 +898,14 @@ TEST(nntrainer_Tensor, Q_Tensor_17_p) {
   std::cout << W_fp32 << std::endl;
   std::cout << W_dequant << std::endl;
   const float eps = 1e-5;
-  ///@todo Find proper metric and standard to assess
+  ///@todo Find a proper metric and standard to assess
   EXPECT_NEAR(mean_squared_error, 0, eps * K * N);
   EXPECT_NEAR(cos_sim, 0., eps * K * N);
 }
 
 TEST(nntrainer_Tensor, QTensor_18_p) {
 
-  ///@note this unittest verify Q6_K tensor dot
+  ///@note this unit test verifies Q6_K tensor dot
   nntrainer::init_backend();
 
   const unsigned int M = 1;
@@ -968,7 +969,7 @@ TEST(nntrainer_Tensor, QTensor_18_p) {
 
 TEST(nntrainer_Tensor, QTensor_19_p) {
 
-  ///@note this unittest verify Q6_K tensor dot
+  ///@note this unit test verifies Q6_K tensor dot
 
   const unsigned int M = 1;
   uint32_t K = 5120;
@@ -2052,7 +2053,8 @@ TEST(nntrainer_Tensor, multiply_08_n) {
 
 /**
  * @brief Test elementwise multiplication of qint8
- * @note Compare quantized int 8 mutiplication result with float multiplication
+ * @note Compare quantized int 8 multiplication result with float
+ * multiplication
  */
 TEST(nntrainer_Quantizer, multiply_09_p) {
   size_t batch = 1;
@@ -4721,7 +4723,7 @@ TEST(nntrainer_Tensor, save_read_01_p) {
   int height = 5;
   int width = 6;
   nntrainer::Tensor target(3, 4, 5, 6);
-  nntrainer::Tensor readed(3, 4, 5, 6);
+  nntrainer::Tensor loaded(3, 4, 5, 6);
 
   GEN_TEST_INPUT(target, i * (channel * width * height) + j * (height * width) +
                            k * (width) + l + 1);
@@ -4731,10 +4733,10 @@ TEST(nntrainer_Tensor, save_read_01_p) {
   save_file.close();
 
   std::ifstream read_file("save.bin", std::ios::in | std::ios::binary);
-  readed.read(read_file);
+  loaded.read(read_file);
   read_file.close();
 
-  EXPECT_EQ(target, readed);
+  EXPECT_EQ(target, loaded);
 
   int status = std::remove("save.bin");
 
@@ -4748,7 +4750,7 @@ TEST(nntrainer_Tensor, save_read_02_p) {
   int width = 6;
   nntrainer::Tensor target(3, 4, 5, 6, nntrainer::Tformat::NCHW,
                            nntrainer::Tdatatype::QINT16);
-  nntrainer::Tensor readed(3, 4, 5, 6, nntrainer::Tformat::NCHW,
+  nntrainer::Tensor loaded(3, 4, 5, 6, nntrainer::Tformat::NCHW,
                            nntrainer::Tdatatype::QINT16);
 
   GEN_TEST_INPUT(target, i * (channel * width * height) + j * (height * width) +
@@ -4759,10 +4761,10 @@ TEST(nntrainer_Tensor, save_read_02_p) {
   save_file.close();
 
   std::ifstream read_file("save_qint16.bin", std::ios::in | std::ios::binary);
-  readed.read(read_file);
+  loaded.read(read_file);
   read_file.close();
 
-  EXPECT_EQ(target, readed);
+  EXPECT_EQ(target, loaded);
 
   int status = std::remove("save_qint16.bin");
 
@@ -4776,7 +4778,7 @@ TEST(nntrainer_Tensor, save_read_03_p) {
   int width = 6;
   nntrainer::Tensor target(3, 4, 5, 6, nntrainer::Tformat::NCHW,
                            nntrainer::Tdatatype::UINT16);
-  nntrainer::Tensor readed(3, 4, 5, 6, nntrainer::Tformat::NCHW,
+  nntrainer::Tensor loaded(3, 4, 5, 6, nntrainer::Tformat::NCHW,
                            nntrainer::Tdatatype::UINT16);
 
   GEN_TEST_INPUT(target, i * (channel * width * height) + j * (height * width) +
@@ -4790,10 +4792,10 @@ TEST(nntrainer_Tensor, save_read_03_p) {
   save_file.close();
 
   std::ifstream read_file("save_quint16.bin", std::ios::in | std::ios::binary);
-  readed.read(read_file);
+  loaded.read(read_file);
   read_file.close();
 
-  EXPECT_EQ(target, readed);
+  EXPECT_EQ(target, loaded);
 
   int status = std::remove("save_quint16.bin");
 
@@ -4806,7 +4808,7 @@ TEST(nntrainer_Tensor, save_read_04_p) {
     true, nntrainer::Initializer::NONE, "q4_k_tensor",
     nntrainer::QScheme::Q4_Kx8);
 
-  nntrainer::Tensor readed(
+  nntrainer::Tensor loaded(
     {1, 1, 512, 768, nntrainer::Tformat::NCHW, nntrainer::Tdatatype::UINT4},
     true, nntrainer::Initializer::NONE, "q4_k_tensor",
     nntrainer::QScheme::Q4_Kx8);
@@ -4816,10 +4818,10 @@ TEST(nntrainer_Tensor, save_read_04_p) {
   save_file.close();
 
   std::ifstream read_file("save_q4kx8.bin", std::ios::in | std::ios::binary);
-  readed.read(read_file);
+  loaded.read(read_file);
   read_file.close();
 
-  EXPECT_EQ(target, readed);
+  EXPECT_EQ(target, loaded);
 
   int status = std::remove("save_q4kx8.bin");
 
@@ -4832,7 +4834,7 @@ TEST(nntrainer_Tensor, save_read_01_n) {
   int height = 5;
   int width = 6;
   nntrainer::Tensor target(3, 4, 5, 6);
-  nntrainer::Tensor readed(3, 4, 1, 1);
+  nntrainer::Tensor loaded(3, 4, 1, 1);
 
   GEN_TEST_INPUT(target, i * (channel * width * height) + j * (height * width) +
                            k * (width) + l + 1);
@@ -4842,10 +4844,10 @@ TEST(nntrainer_Tensor, save_read_01_n) {
   save_file.close();
 
   std::ifstream read_file("save.bin", std::ios::in | std::ios::binary);
-  readed.read(read_file);
+  loaded.read(read_file);
   read_file.close();
 
-  EXPECT_NE(target, readed);
+  EXPECT_NE(target, loaded);
 
   int status = std::remove("save.bin");
 
@@ -5160,7 +5162,7 @@ TEST(nntrainer_Tensor, min_element_03_p) {
 
   EXPECT_EQ(target.minValue(), -8);
 
-  // Add 2 to mininum element. next minimum value is -7
+  // Add 2 to minimum element. next minimum value is -7
   // [ 0   5  -6  -1   4]    [ 0   5  -6  -1   4]
   // [ 5  -7  -3   1   5]    [ 5  -7  -3   1   5]
   // [-6  -3   0   3   6] -> [-6  -3   0   3   6]
@@ -5170,7 +5172,7 @@ TEST(nntrainer_Tensor, min_element_03_p) {
 
   EXPECT_EQ(target.minValue(), -7);
 
-  // Add 2 to mininum element. next minimum value is -6
+  // Add 2 to minimum element. next minimum value is -6
   // [ 0   5  -6  -1   4]    [ 0   5  -6  -1   4]
   // [ 5  -7  -3   1   5]    [ 5  -5  -3   1   5]
   // [-6  -3   0   3   6] -> [-6  -3   0   3   6]
@@ -5483,13 +5485,13 @@ TEST(nntrainer_Tensor, fill_different_dimension_n) {
 }
 
 TEST(nntrainer_Tensor, DISABLED_fill_non_contiguous_n) {
-  /// there is no way to make non contiguous tensor publicily yet
+  /// there is no way to make non contiguous tensor publicly yet
   EXPECT_TRUE(false);
 }
 
 TEST(nntrainer_Tensor, DISABLED_fill_different_buffer_size_n) {
-  /// there is no way to make same dimension, diffrent buffersized tensor
-  /// publicily yet
+  /// there is no way to make same dimension, different buffer-sized tensor
+  /// publicly yet
   EXPECT_TRUE(false);
 }
 

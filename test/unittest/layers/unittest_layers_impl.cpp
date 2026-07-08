@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file unittest_layer_impl.cpp
+ * @file unittest_layers_impl.cpp
  * @date 16 June 2021
  * @brief Layer Impl test
  * @see	https://github.com/nntrainer/nntrainer

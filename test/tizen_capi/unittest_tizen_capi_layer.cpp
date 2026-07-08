@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 /**
- * @file        unittest_tizen_capi_layer.cc
+ * @file        unittest_tizen_capi_layer.cpp
  * @date        03 April 2020
  * @brief       Unit test utility for layer.
  * @see         https://github.com/nntrainer/nntrainer
@@ -185,7 +185,7 @@ TEST(nntrainer_capi_nnlayer, setproperty_08_p) {
 }
 
 /**
- * @brief Neural Network Layer Set Property Test (negitive test )
+ * @brief Neural Network Layer Set Property Test (negative test )
  */
 TEST(nntrainer_capi_nnlayer, setproperty_09_n) {
   ml_train_layer_h handle;
@@ -385,16 +385,19 @@ TEST(nntrainer_capi_nnlayer, setproperty_with_single_param_06_n) {
 
 /**
  * @brief CapiLayerPropertyTester
- * @tparam ml_train_layer_type_e layer type to create
+ * @tparam ml_train_layer_type_e layer type to
+ * create
  * @tparam const char * valid property
- * @tparam bool if setting property should success or fail
+ * @tparam bool whether setting
+ * properties should succeed or fail
  */
 class nntrainerCapiLayerTester
   : public ::testing::TestWithParam<std::tuple<
       ml_train_layer_type_e, const std::vector<const char *>, bool>> {};
 
 /**
- * @brief layer creating and setting property, this is eithr positive or
+ * @brief layer creating and setting property, this is either positive or
+ *
  * negative
  */
 TEST_P(nntrainerCapiLayerTester, layer_create_and_set_property) {
@@ -461,7 +464,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  /** ignore tizen feature check while running the testcases */
+  /** Ignore Tizen feature checks while running the test cases. */
   set_feature_state(ML_FEATURE, SUPPORTED);
   set_feature_state(ML_FEATURE_INFERENCE, SUPPORTED);
   set_feature_state(ML_FEATURE_TRAINING, SUPPORTED);

@@ -18,7 +18,7 @@ __all__ = ["params_translated"]
 handler_book = []
 
 ##
-# Decorater to register class mapping to a function.
+# Decorator to register class mapping to a function.
 # This is to imitate function overloadding
 def register_for_(classes):
     for already_registered_classes, _ in handler_book:

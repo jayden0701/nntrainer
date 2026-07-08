@@ -36,7 +36,7 @@ protected:
 
   // virtual void TearDown()
   /**
-   * @brief return a tensor filled with contant value
+   * @brief return a tensor filled with constant value
    */
   nntrainer::Tensor constant_(float value) {
     nntrainer::Tensor t(batch, channel, height, width);

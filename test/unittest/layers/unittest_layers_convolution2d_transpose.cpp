@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2024 UGyeong Song <thddnrud@snu.ac.kr>
  *
- * @file unittest_layers_convolution.cpp
+ * @file unittest_layers_convolution2d_transpose.cpp
  * @date 21 November 2024
  * @brief Conv2dTranspose Layer Test
  * @see	https://github.com/nntrainer/nntrainer

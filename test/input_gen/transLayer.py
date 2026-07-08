@@ -222,7 +222,7 @@ class MultiOutLayer(IdentityTransLayer):
 
         super().__init__(tf_layer, *args, **kwargs)
 
-        # this enables seperating gradient one by one
+        # this enables separating gradient one by one
         self.stub_layers = [K.layers.Lambda(lambda x: x + 0) for i in range(num_output)]
 
     ##

@@ -5,8 +5,9 @@
  * @file	unittest_opencl_kernels_qk_k.cpp
  * @date	6 June 2024
  * @brief	Test setup for Q4_0 and Q6_K OpenCL kernels
- * @see		https://github.com/nnstreamer/nntrainer
- * @author	Debadri Samaddar <s.debadri@samsung.com>
+ * @see		https://github.com/nntrainer/nntrainer
+ * @author	Debadri Samaddar,
+ * s.debadri@samsung.com
  * @bug		No known bugs except for NYI items
  */
 

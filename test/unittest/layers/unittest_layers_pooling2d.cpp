@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Parichay Kapoor <pk.kapoor@samsung.com>
  *
- * @file unittest_layers_pooling.cpp
+ * @file unittest_layers_pooling2d.cpp
  * @date 6 July 2021
  * @brief Pooling2d Layer Test
  * @see	https://github.com/nntrainer/nntrainer
