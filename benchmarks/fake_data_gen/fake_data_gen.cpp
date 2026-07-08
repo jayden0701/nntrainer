@@ -2,9 +2,10 @@
 /**
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file   cifar_dataloader.h
- * @date   24 Jun 2021s
- * @brief  dataloader for cifar
+ * @file   fake_data_gen.cpp
+ * @date   24 Jun 2021
+ * @brief  Data loaders for
+ * benchmark inputs
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jihoon Lee <jhoon.it.lee@samsung.com>
  * @bug    No known bugs except for NYI items

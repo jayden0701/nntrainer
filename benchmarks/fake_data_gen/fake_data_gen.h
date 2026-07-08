@@ -2,10 +2,11 @@
 /**
  * Copyright (C) 2020 Jihoon Lee <jhoon.it.lee@samsung.com>
  *
- * @file   cifar_dataloader.h
+ * @file   fake_data_gen.h
  * @date   24 Jun 2021
- * @brief  dataloader for cifar 100
- * @see    https://github.com/nntrainer/nntrainer
+ * @brief  Data loaders for benchmark inputs
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author Jihoon Lee <jhoon.it.lee@samsung.com>
  * @bug    No known bugs except for NYI items
  */
@@ -21,7 +22,7 @@ namespace nntrainer::util {
 using TensorDim = ml::train::TensorDim;
 
 /**
- * @brief DataLoader interface used to load cifar data
+ * @brief DataLoader interface used to load benchmark data
  */
 class DataLoader {
 public:

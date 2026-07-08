@@ -2,7 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2025 Samsung Electronics Co., Ltd. All Rights Reserved.
 
-@file build_windows_resources.py
+@file generate_def.py
 @date 16 July 2025
 @brief Extract symbols from obj files to build def file
 @author Grzegorz Kisala <gkisala@gmail.com>

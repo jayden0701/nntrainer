@@ -3,7 +3,7 @@
 ##
 # Copyright (C) 2021 Jihoon Lee <jhoon.it.lee@samsung.com>
 #
-# @file transLayer_v2.py
+# @file torchconverter.py
 # @date 19 October 2021
 # @brief Rewrite parameters in the order consistent with nntrainer for the torch model
 # @author Jihoon lee <jhoon.it.lee@samsung.com>
@@ -18,8 +18,8 @@ __all__ = ["params_translated"]
 handler_book = []
 
 ##
-# Decorater to register class mapping to a function.
-# This is to imitate function overloadding
+# Decorator to register class mapping to a function.
+# This is to imitate function overloading
 def register_for_(classes):
     for already_registered_classes, _ in handler_book:
         if not isinstance(classes, Iterable):
