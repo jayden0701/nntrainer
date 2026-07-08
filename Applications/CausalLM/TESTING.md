@@ -1,6 +1,6 @@
 # CausalLM Model Unit Test Guide
 
-`unittest_causallm_models` is the CausalLM reference test suite — 55 tests covering:
+`unittest_causallm_models` is the CausalLM reference test suite covering:
 
 - **Tiny-model deterministic tests**: argmax, logit, and weight round-trip checks with random weights
 - **FP32 differential tests**: compare nntrainer outputs against HuggingFace reference logits
@@ -27,6 +27,7 @@ sudo apt-get install -y libgtest-dev meson ninja-build
 meson setup builddir \
   -Denable-test=true \
   -Denable-app=true \
+  -Denable-transformer=true \
   -Denable-fp16=false \
   -Dopenblas-num-threads=1
 
@@ -57,8 +58,8 @@ The script handles meson setup, ninja build, fixture extraction, and sets
 ### Expected result
 
 ```
-[==========] 55 tests from 22 test suites ran.
-[  PASSED  ] 55 tests.
+[==========] <N> tests from <M> test suites ran.
+[  PASSED  ] <N> tests.
 ```
 
 ### Common failures
@@ -161,8 +162,8 @@ the nntrainer build and ndk-build when only the test execution needs to be re-ru
 ### Expected result
 
 ```
-[==========] 55 tests from 22 test suites ran.
-[  PASSED  ] 55 tests.
+[==========] <N> tests from <M> test suites ran.
+[  PASSED  ] <N> tests.
 ```
 
 ### Required environment variables

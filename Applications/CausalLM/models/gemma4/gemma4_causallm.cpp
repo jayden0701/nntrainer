@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
+// clang-format off
 /**
  * Copyright (C) 2026 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
  * @file   gemma4_causallm.cpp
  * @date   07 Apr 2026
  * @brief  This defines a Gemma4 causal language model.
- * @see    https://github.com/nnstreamer/
+ * @see    https://github.com/nntrainer/nntrainer
  * @author Joonseok Oh <jrock.oh@samsung.com>
  * @bug    No known bugs except for NYI items
  */
+// clang-format on
 
 #include <gemma4_causallm.h>
 
@@ -303,7 +305,7 @@ std::pair<Tensor, Tensor> Gemma4Transformer::constructModel() {
   Tensor per_layer_sum_out =
     per_layer_sum({per_layer_embedding_out, normalized_projection});
 
-  // TODO : change per_layer_input_scale to non hard-coded way
+  // TODO: Replace the hard-coded per_layer_input_scale.
 
   float per_layer_input_scale = std::sqrt(0.5f);
 
@@ -540,7 +542,7 @@ Tensor Gemma4Transformer::createSharedAttention(const int layer_id,
   // mha_core backend applies 1/sqrt(head_dim) to QK, so pre-scale Q by
   // sqrt(head_dim) to preserve Gemma4 semantics.
 
-  // TODO : fix AVX kernel to not make it divide by 1/sqrt(head_dim) on gemma4
+  // TODO: Fix the AVX kernel so Gemma4 does not divide by 1/sqrt(head_dim).
   LayerHandle q_scale(createLayer(
     "scalar_multiply",
     {withKey("name", Q_scaled), withKey("packed", "false"),

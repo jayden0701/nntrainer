@@ -20,7 +20,6 @@ namespace causallm {
 
 /**
  * @brief Qwen3MoECausalLM class
- * @note  This class inherits Qwewn3CaUSALlm
  */
 class Qwen3MoECausalLM : public Qwen3CausalLM {
 

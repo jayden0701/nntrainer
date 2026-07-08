@@ -1,3 +1,4 @@
+// clang-format off
 /**
  * Copyright (C) 2020 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
@@ -12,15 +13,16 @@
  * limitations under the License.
  *
  *
- * @file	qwen_moe_layer_fsu.cpp
+ * @file	qwen_moe_layer_cached.cpp
  * @date	09 June 2025
- * @brief	This is a Mixture of Expert Layer Class for Neural Network
- * @see		https://github.com/nnstreamer/
+ * @brief	This is a cached slim Mixture-of-Experts layer for Qwen3 MoE.
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  * @note    MoE layer with on-the-fly expert FSU
  *
  */
+// clang-format on
 
 #include <acti_func.h>
 #include <algorithm>
@@ -98,7 +100,7 @@ void CachedSlimMoELayer::finalize(nntrainer::InitLayerContext &context) {
     throw std::runtime_error("Unsupported activation data type for MoE layer");
   }
 
-  // 4. Initialie gate layer (router)
+  // 4. Initialize gate layer (router)
   nntrainer::TensorDim gate_dim(
     1, is_nchw ? 1 : num_experts, is_nchw ? hidden_size : 1,
     is_nchw ? num_experts : hidden_size,

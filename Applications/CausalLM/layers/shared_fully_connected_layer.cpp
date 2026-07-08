@@ -49,7 +49,7 @@ void SharedFullyConnectedLayer::finalize(nntrainer::InitLayerContext &context) {
   auto bias_initializer = nntrainer::props::InitializerInfo::Enum::NONE;
   std::vector<nntrainer::TensorDim> output_dims(1);
 
-  /// @todo fc actaully supports multidimensions. EffDimFlag shouldn't be fixed
+  /// @todo fc actually supports multidimensions. EffDimFlag shouldn't be fixed
   /// like this.
   context.setEffDimFlagInputDimension(0, 0b1001);
   context.setDynDimFlagInputDimension(0, 0b1000);
@@ -66,8 +66,8 @@ void SharedFullyConnectedLayer::finalize(nntrainer::InitLayerContext &context) {
   context.setOutputDimensions(output_dims);
 
   /** set weight specifications */
-  // @todo : This NCHW format setting is just temporal, it needs to be set by
-  // global configuration
+  // @todo : This NCHW format setting is temporary and needs to be set by the
+  // global configuration.
 
   /** Weight Dimension : (1, 1, in_dim.width(), unit)*/
   nntrainer::TensorDim weight_dim(

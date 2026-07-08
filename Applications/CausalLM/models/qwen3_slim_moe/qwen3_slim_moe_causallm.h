@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2025 Eunju Yang <ej.yang@samsung.com>
  *
- * @file   qwen3_moe_causallm.h
+ * @file   qwen3_slim_moe_causallm.h
  * @date   15 July 2025
  * @see    https://github.com/nntrainer/nntrainer
  * @author Eunju Yang <ej.yang@samsung.com>
@@ -20,7 +20,6 @@ namespace causallm {
 
 /**
  * @brief Qwen3SlimMoECausalLM class
- * @note  This class inherits Qwewn3CaUSALlm
  */
 class Qwen3SlimMoECausalLM : public Qwen3CausalLM {
 
@@ -49,4 +48,4 @@ private:
 };
 }; // namespace causallm
 
-#endif /* __QWEN_MOE_CAUSAL_LM_H__ */
+#endif /* __QWEN_SLIM_MOE_CAUSAL_LM_H__ */

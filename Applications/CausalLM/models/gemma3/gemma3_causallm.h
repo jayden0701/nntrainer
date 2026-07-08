@@ -4,8 +4,9 @@
  *
  * @file   gemma3_causallm.h
  * @date   24 Dec 2025
- * @see    https://github.com/nnstreamer/nntrainer
- * @author Seungbaek Hong <sb92.hong@samsung.com>
+ * @see    https://github.com/nntrainer/nntrainer
+ * @author Seungbaek Hong,
+ * sb92.hong@samsung.com
  * @bug    No known bugs except for NYI items
  */
 

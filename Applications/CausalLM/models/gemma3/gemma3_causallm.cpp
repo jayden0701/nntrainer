@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
+// clang-format off
 /**
  * Copyright (C) 2025 Seungbaek Hong <sb92.hong@samsung.com>
  *
  * @file	gemma3_causallm.cpp
  * @date	24 Dec 2025
  * @brief	This defines a gemma3 causal language model.
- * @see		https://github.com/nnstreamer/
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Seungbaek Hong <sb92.hong@samsung.com>
  * @bug		No known bugs except for NYI items
  *
  */
+// clang-format on
 #include <gemma3_causallm.h>
 
 #include <app_context.h>

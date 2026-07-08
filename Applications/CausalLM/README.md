@@ -318,7 +318,7 @@ The model directory must contain the following files:
 The quantization utility is built automatically with the CausalLM application:
 
 ```bash
-meson build && ninja -C build
+meson setup build -Denable-transformer=true && ninja -C build
 # The executable is: build/Applications/CausalLM/nntr_quantize
 ```
 

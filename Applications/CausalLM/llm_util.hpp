@@ -27,7 +27,7 @@ using ml::train::createLayer;
 
 /****************** UTIL *******************/
 /**
- * @brief util functio to make "key=value" from key and value
+ * @brief util function to make "key=value" from key and value
  *
  * @tparam T type of a value
  * @param key key

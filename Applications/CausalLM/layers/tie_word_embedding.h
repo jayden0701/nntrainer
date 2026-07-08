@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   custom_tie_word_embedding_layer.h
+ * @file   tie_word_embedding.h
  * @date   21 May 2025
  * @brief  This is Tie_Word_Embedding Layer Class of Neural Network
  * @see    https://github.com/nntrainer/nntrainer
@@ -36,24 +36,24 @@ namespace causallm {
 WIN_EXPORT class TieWordEmbedding : public nntrainer::LayerImpl {
 public:
   /**
-   * @brief     Constructor of Embedding Layer
+   * @brief     Constructor of TieWordEmbedding
    */
   WIN_EXPORT TieWordEmbedding();
 
   /**
-   * @brief     Destructor of Embedding Layer
+   * @brief     Destructor of TieWordEmbedding
    */
   WIN_EXPORT ~TieWordEmbedding() = default;
 
   /**
    *  @brief  Move constructor.
-   *  @param[in] TieWordEmbedding &&
+   *  @param[in] rhs
    */
   WIN_EXPORT TieWordEmbedding(TieWordEmbedding &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs TieWordEmbedding to be moved.
+   * @param[in] rhs TieWordEmbedding to be moved.
    */
   WIN_EXPORT TieWordEmbedding &operator=(TieWordEmbedding &&rhs) = default;
 

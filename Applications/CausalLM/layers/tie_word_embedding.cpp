@@ -127,7 +127,7 @@ void TieWordEmbedding::finalize_lmhead(nntrainer::InitLayerContext &context) {
 
   std::vector<ml::train::TensorDim> output_dims(1);
 
-  /// @todo fc actaully supports multidimensions.
+  /// @todo fc actually supports multidimensions.
   /// EffDimFlag shouldn't be fixed like this.
   context.setEffDimFlagInputDimension(0, 0b1001);
   context.setDynDimFlagInputDimension(0, 0b1000);
@@ -223,7 +223,7 @@ void TieWordEmbedding::incremental_forwarding_embedding(
         weight.getDataType() == nntrainer::TensorDim::DataType::Q6_K ||
         weight.getDataType() == nntrainer::TensorDim::DataType::FP32))
     throw std::invalid_argument(
-      "Tieword embedding is not supported yet for the data type");
+      "TieWordEmbedding is not supported yet for the data type");
 
   size_t b_size = input_.batch();
 
@@ -405,7 +405,7 @@ void TieWordEmbedding::incremental_forwarding_lmhead(
 
 void TieWordEmbedding::calcDerivative(nntrainer::RunLayerContext &context) {
   throw nntrainer::exception::not_supported(
-    "calcDerivative for Embedding layer is not supported");
+    "calcDerivative for TieWordEmbedding layer is not supported");
 }
 
 void TieWordEmbedding::calcGradient(nntrainer::RunLayerContext &context) {}
@@ -444,7 +444,7 @@ void TieWordEmbedding::read(
   // Only read when mode is embedding
   if (mode_ == mode::embedding) {
     for (unsigned int i = 0; i < context.getNumWeights(); ++i) {
-      /// @note shared weights are only be read at the first acecss
+      /// @note shared weights are read only on first access
       if (context.isGradientFirstAccess(i)) {
         context.getWeight(i).read(file, start_offset, read_from_offset);
         if (context.isMixedPrecision(i) && trainable &&
@@ -465,7 +465,7 @@ void TieWordEmbedding::read(
   // Only read when mode is embedding
   if (mode_ == mode::embedding) {
     for (unsigned int i = 0; i < context.getNumWeights(); ++i) {
-      /// @note shared weights are only be read at the first acecss
+      /// @note shared weights are read only on first access
       if (context.isGradientFirstAccess(i)) {
         context.getWeight(i).read(src, start_offset, read_from_offset, file_fd);
         if (context.isMixedPrecision(i) && trainable &&
@@ -483,9 +483,9 @@ void TieWordEmbedding::save(std::ofstream &file,
                             bool trainable,
                             nntrainer::TensorDim::DataType dtype,
                             ml::train::ISA target_isa) const {
-  // Only read when mode is embedding
+  // Only save when mode is embedding
   if (mode_ == mode::embedding) {
-    // @note shared weights are only be saved at the first access
+    // @note shared weights are saved only on first access
     for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
       if (run_context.isGradientFirstAccess(i)) {
         auto &weight = run_context.getWeight(i);
@@ -496,8 +496,8 @@ void TieWordEmbedding::save(std::ofstream &file,
           NNTR_THROW_IF(weight.getDataType() !=
                           nntrainer::TensorDim::DataType::FP32,
                         std::runtime_error)
-            << "Save with quantization only supports for FP32 weight.";
-          ///@note The codelines below can be replaced with quantizer's
+            << "Save with quantization supports only FP32 weights.";
+          ///@note The code lines below can be replaced with quantizer's
           /// quantize()
           nntrainer::TensorDim dim = weight.getDim();
           unsigned int K = dim.height();

@@ -35,24 +35,24 @@ namespace causallm {
 WIN_EXPORT class LmHeadLayer : public nntrainer::LayerImpl {
 public:
   /**
-   * @brief     Constructor of Embedding Layer
+   * @brief     Constructor of LmHeadLayer
    */
   WIN_EXPORT LmHeadLayer();
 
   /**
-   * @brief     Destructor of Embedding Layer
+   * @brief     Destructor of LmHeadLayer
    */
   WIN_EXPORT ~LmHeadLayer() = default;
 
   /**
    *  @brief  Move constructor.
-   *  @param[in] LmHeadLayer &&
+   *  @param[in] rhs
    */
   WIN_EXPORT LmHeadLayer(LmHeadLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs LmHeadLayer to be moved.
+   * @param[in] rhs LmHeadLayer to be moved.
    */
   WIN_EXPORT LmHeadLayer &operator=(LmHeadLayer &&rhs) = default;
 

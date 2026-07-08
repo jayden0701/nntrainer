@@ -4,8 +4,9 @@
  *
  * @file   timm_vit_transformer.cpp
  * @date   28 Jan 2026
- * @see    https://github.com/nnstreamer/nntrainer
- * @author Seungbaek Hong <sb92.hong@samsung.com>
+ * @see    https://github.com/nntrainer/nntrainer
+ * @author Seungbaek Hong,
+ * sb92.hong@samsung.com
  * @bug    No known bugs except for NYI items
  * @brief   This timm_vit_transformer.cpp constructs a class for timm ViT model
  * compatible with the PyTorch timm library.

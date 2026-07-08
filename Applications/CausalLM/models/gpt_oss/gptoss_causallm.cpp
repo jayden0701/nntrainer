@@ -1,3 +1,4 @@
+// clang-format off
 /**
  * Copyright (C) 2025 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
@@ -13,13 +14,14 @@
  *
  *
  * @file	gptoss_causallm.cpp
- * @brief	This defines a gpt_oss causal language model.
+ * @brief	This defines a GPT-OSS causal language model.
  * @date    26 Aug 2025
- * @see		https://github.com/nnstreamer/
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  *
  */
+// clang-format on
 
 #include <gptoss_causallm.h>
 #include <llm_util.hpp>

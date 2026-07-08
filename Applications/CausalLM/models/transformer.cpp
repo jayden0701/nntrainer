@@ -129,7 +129,7 @@ Transformer::Transformer(json &cfg, json &generation_cfg, json &nntr_cfg,
 void Transformer::setupParameters(json &cfg, json &generation_cfg,
                                   json &nntr_cfg) {
 
-  /** Initialize nntr prameters */
+  /** Initialize nntr parameters */
   BATCH_SIZE = nntr_cfg["batch_size"].get<unsigned int>();
   MODEL_TENSOR_TYPE = nntr_cfg["model_tensor_type"].get<std::string>();
   INIT_SEQ_LEN = nntr_cfg["init_seq_len"];

@@ -1,3 +1,4 @@
+// clang-format off
 /**
  * Copyright (C) 2025 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
@@ -12,14 +13,15 @@
  * limitations under the License.
  *
  *
- * @file	gptoss_causallm.cpp
- * @brief	This defines a gpt_oss causal language model.
+ * @file	gptoss_cached_slim_causallm.cpp
+ * @brief	This defines a GPT-OSS cached slim causal language model.
  * @date    26 Aug 2025
- * @see		https://github.com/nnstreamer/
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  *
  */
+// clang-format on
 
 #include <gptoss_cached_slim_causallm.h>
 #include <llm_util.hpp>

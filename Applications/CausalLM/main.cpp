@@ -1,3 +1,4 @@
+// clang-format off
 /**
  * Copyright (C) 2025 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
@@ -15,11 +16,12 @@
  * @file	main.cpp
  * @date	23 July 2025
  * @brief	This is a main file for CausalLM application
- * @see		https://github.com/nnstreamer/
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  *
  */
+// clang-format on
 #include <algorithm>
 #include <fstream>
 #include <iostream>

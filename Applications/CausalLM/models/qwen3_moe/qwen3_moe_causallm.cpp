@@ -1,3 +1,4 @@
+// clang-format off
 /**
  * Copyright (C) 2025 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
@@ -14,12 +15,13 @@
  *
  * @file	qwen3_moe_causallm.cpp
  * @date	23 July 2025
- * @brief	This defines a qwen3_moe causal language model.
- * @see		https://github.com/nnstreamer/
+ * @brief	This defines a Qwen3 MoE causal language model.
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  *
  */
+// clang-format on
 #include <llm_util.hpp>
 #include <model.h>
 #include <qwen3_moe_causallm.h>

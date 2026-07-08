@@ -4,8 +4,9 @@
  *
  * @file   qkv_layer.h
  * @date   14 May 2020
- * @brief  This is Fully Connected Layer Class of Neural Network
- * @see    https://github.com/nntrainer/nntrainer
+ * @brief  This is QKV Layer Class of Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>
  * @author Eunju Yang <ej.yang@samsung.com>
  * @bug    No known bugs except for NYI items
@@ -51,30 +52,30 @@ public:
 } // namespace props
 
 /**
- * @class   FullyConnecedLayer
- * @brief   fully connected layer
+ * @class   QKVLayer
+ * @brief   QKV projection layer
  */
 WIN_EXPORT class QKVLayer : public nntrainer::LayerImpl {
 public:
   /**
-   * @brief     Constructor of Fully Connected Layer
+   * @brief     Constructor of QKVLayer
    */
   WIN_EXPORT QKVLayer();
 
   /**
-   * @brief     Destructor of Fully Connected Layer
+   * @brief     Destructor of QKVLayer
    */
   WIN_EXPORT ~QKVLayer() = default;
 
   /**
    *  @brief  Move constructor.
-   *  @param[in] FullyConnected &&
+   *  @param[in] rhs
    */
   WIN_EXPORT QKVLayer(QKVLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs QKVLayer to be moved.
+   * @param[in] rhs QKVLayer to be moved.
    */
   WIN_EXPORT QKVLayer &operator=(QKVLayer &&rhs) = default;
 

@@ -4,7 +4,8 @@
  *
  * @file    model_config.cpp
  * @date    22 Jan 2026
- * @brief   This is a sample code for internal regitration of model_config.
+ * @brief   This is a sample code for internal registration of model_config.
+ *
  * @see     https://github.com/nntrainer/nntrainer
  * @author  Eunju Yang <ej.yang@samsung.com>
  * @bug     No known bugs except for NYI items

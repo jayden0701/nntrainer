@@ -18,7 +18,7 @@
  *         For inference, incremental_forwarding is called,
  *         which takes inputs of seq_len = 1 via `from` / `to` param.
  *         For training, forwarding is called,
- *         which takes all input seqences at once.
+ *         which takes all input sequences at once.
  */
 
 #ifndef __MHA_CORE_H__
@@ -219,25 +219,25 @@ public:
   WIN_EXPORT MHACoreLayer();
 
   /**
-   * @brief Destructor of MhaPost Layer
+   * @brief Destructor of MHACoreLayer
    */
   WIN_EXPORT ~MHACoreLayer();
 
   /**
-   *  @brief  Move constructor of CustomMultiHeadAttentionLayer.
-   *  @param[in] CustomMultiHeadAttentionLayer &&
+   *  @brief  Move constructor of MHACoreLayer.
+   *  @param[in] rhs
    */
   WIN_EXPORT
   MHACoreLayer(MHACoreLayer &&rhs) noexcept = default;
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs CustomMultiHeadAttentionLayer to be moved.
+   * @param[in] rhs
    */
   WIN_EXPORT MHACoreLayer &operator=(MHACoreLayer &&rhs) = default;
 
   /**
-   * @brief Finalize funciton of MhaCore Layer
+   * @brief Finalize function of MhaCore Layer
    */
   WIN_EXPORT void finalize(nntrainer::InitLayerContext &context) override;
 
@@ -286,7 +286,8 @@ public:
 
   /**
    * @copydoc bool supportBackwarding() const
-   * @note In current version, we do not support backwarding yet.
+   * @note In current version, we do not support backward propagation yet.
+   *
    * It will be updated ASAP.
    */
   WIN_EXPORT bool supportBackwarding() const override { return true; };

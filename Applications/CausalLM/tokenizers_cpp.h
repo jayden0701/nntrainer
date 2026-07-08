@@ -82,7 +82,7 @@ public:
 
   //---------------------------------------------------
   // Factory functions from byte-blobs
-  // These factory function takes in in-memory blobs
+  // These factory functions take in in-memory blobs
   // so the library can be independent from filesystem
   //---------------------------------------------------
   /**

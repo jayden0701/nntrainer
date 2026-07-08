@@ -12,7 +12,7 @@
  */
 
 #ifndef __GPTOSS_CAUSALLM_H__
-#define __GPTOSS_CAUSALLM_H__ __GPTOSS_CAUSALLM_H__
+#define __GPTOSS_CAUSALLM_H__
 
 #include <causal_lm.h>
 
@@ -54,7 +54,7 @@ public:
                        json &nntr_cfg) override;
 
   /**
-   * @brief registerCutomLayers
+   * @brief registerCustomLayers
    */
   void registerCustomLayers() override;
 

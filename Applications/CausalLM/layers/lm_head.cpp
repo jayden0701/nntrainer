@@ -59,7 +59,7 @@ void LmHeadLayer::finalize(nntrainer::InitLayerContext &context) {
 
   std::vector<ml::train::TensorDim> output_dims(1);
 
-  /// @todo fc actaully supports multidimensions.
+  /// @todo fc actually supports multidimensions.
   /// EffDimFlag shouldn't be fixed like this.
   context.setEffDimFlagInputDimension(0, 0b1001);
   context.setDynDimFlagInputDimension(0, 0b1000);

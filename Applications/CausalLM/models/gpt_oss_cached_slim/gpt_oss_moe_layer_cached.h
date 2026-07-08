@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
+// clang-format off
 /**
  * Copyright (C) 2025 Eunju Yang <ej.yang@samsung.com>
  *
  * @file   gpt_oss_moe_layer_cached.h
  * @date   05 Sep 2025
- * @brief  Gpt Oss MoE layer with cached fsu
+ * @brief  GPT-OSS cached slim MoE layer.
  * @see    https://github.com/nntrainer/nntrainer
  * @author Eunju Yang <ej.yang@samsung.com>
  * @bug    No known bugs except for NYI items
- * @todo   This layer does not support backwarding yet.
+ * @todo   This layer does not support backward propagation yet.
  */
+// clang-format on
 
 #ifndef __GPT_OSS_MOE_LAYER_CACHED_H__
 #define __GPT_OSS_MOE_LAYER_CACHED_H__
@@ -33,18 +35,18 @@
 namespace causallm {
 
 /**
- * @class   GptOssMoELayer
- * @brief   Mixture of Expert Layer
+ * @class   CachedSlimGptOssMoELayer
+ * @brief   Cached slim MoE layer.
  */
 class WIN_EXPORT CachedSlimGptOssMoELayer : public nntrainer::LayerImpl {
 public:
   /**
-   * @brief     Constructor of Mixture of Expert Layer
+   * @brief     Constructor of cached slim Mixture-of-Experts layer
    */
   CachedSlimGptOssMoELayer();
 
   /**
-   * @brief     Destructor of Mixture of Expert Layer
+   * @brief     Destructor of cached slim Mixture-of-Experts layer
    */
   ~CachedSlimGptOssMoELayer() = default;
 
@@ -121,7 +123,7 @@ private:
              nntrainer::props::Unit>
     moe_props;
 
-  // weight indeices
+  // weight indices
   std::vector<unsigned int> expert_gate_proj_indices;
   std::vector<unsigned int> expert_gate_bias_indices;
   std::vector<unsigned int> expert_up_proj_indices;
@@ -145,20 +147,7 @@ private:
   float alpha = 1.702;
   float limit = 7.0;
 
-  /**
-   * @brief expert forward computation without critical section
-   * @param input Input tensor (reshaped to [total_tokens, 1, 1, hidden_size])
-   * @param expert_output Expert-specific output tensor
-   * @param token_assignments Vector of (token_index, weight) pairs for this
-   * expert
-   * @param gate_proj Gate projection weight tensor
-   * @param up_proj Up projection weight tensor
-   * @param down_proj Down projection weight tensor
-   * @param gate_bias Gate projection weight tensor
-   * @param up_bias Up projection weight tensor
-   * @param down_bias Down projection weight tensor
-   * @param hidden_size Hidden dimension size
-   */
+  /// Expert forward computation without critical section.
   inline void compute_expert_forward(
     const nntrainer::Tensor &input, nntrainer::Tensor &expert_output,
     const std::vector<std::pair<unsigned, float>> &token_assignments,

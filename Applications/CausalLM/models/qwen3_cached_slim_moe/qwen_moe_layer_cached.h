@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
+// clang-format off
 /**
  * Copyright (C) 2025 Eunju Yang <ej.yang@samsung.com>
  *
- * @file   qwen_moe_layer_fsu.h
+ * @file   qwen_moe_layer_cached.h
  * @date   09 June 2025
- * @brief  This is Mixture of Expert Layer Class of Neural Network
+ * @brief  Cached slim Mixture-of-Experts layer for Qwen3 MoE.
  * @see    https://github.com/nntrainer/nntrainer
  * @author Eunju Yang <ej.yang@samsung.com>
  * @bug    No known bugs except for NYI items
- * @note   This file is part of the Mixture of Expert Layer implementation.
+ * @note   This file is part of the Mixture-of-Experts implementation.
  *         It does not support shared experts.
- *         This layer is implemented based on the LLama-MoE.
- *         For more information, please refer to the following link:
+ *         This layer is implemented based on LLaMA-MoE.
+ *         For more information, please refer to:
  *         https://arxiv.org/pdf/2406.16554
- * @todo   This layer does not support backwarding yet.
+ * @todo   This layer does not support backward propagation yet.
  */
+// clang-format on
 
-#ifndef __MOE_LAYER_H__
-#define __MOE_LAYER_H__
+#ifndef __QWEN3_CACHED_SLIM_MOE_LAYER_H__
+#define __QWEN3_CACHED_SLIM_MOE_LAYER_H__
 #ifdef __cplusplus
 
 #pragma once
@@ -38,18 +40,18 @@
 namespace causallm {
 
 /**
- * @class   SlimMoELayer
- * @brief   Mixture of Expert Layer
+ * @class   CachedSlimMoELayer
+ * @brief   Cached slim MoE layer.
  */
 class WIN_EXPORT CachedSlimMoELayer : public nntrainer::LayerImpl {
 public:
   /**
-   * @brief     Constructor of Mixture of Expert Layer
+   * @brief     Constructor of cached slim Mixture-of-Experts layer
    */
   CachedSlimMoELayer();
 
   /**
-   * @brief     Destructor of Mixture of Expert Layer
+   * @brief     Destructor of cached slim Mixture-of-Experts layer
    */
   ~CachedSlimMoELayer() = default;
 
@@ -131,7 +133,7 @@ private:
              nntrainer::props::Unit, props::MoEActivation>
     moe_props;
 
-  // weight indeices
+  // weight indices
   std::vector<unsigned int> expert_gate_proj_indices;
   std::vector<unsigned int> expert_up_proj_indices;
   std::vector<unsigned int> expert_down_proj_indices;
@@ -147,17 +149,7 @@ private:
   // Intermediate tensor indices
   unsigned int router_logits_idx;
   unsigned int expert_mask_idx;
-  /**
-   * @brief expert forward computation without memory copies
-   * @param input Input tensor (reshaped to [total_tokens, 1, 1, hidden_size])
-   * @param output Output tensor to accumulate results
-   * @param token_assignments Vector of (token_index, weight) pairs for this
-   * expert
-   * @param gate_proj Gate projection weight tensor
-   * @param up_proj Up projection weight tensor
-   * @param down_proj Down projection weight tensor
-   * @param hidden_size Hidden dimension size
-   */
+  /// Expert forward computation without memory copies.
   inline void compute_expert_forward(
     const nntrainer::Tensor &input, nntrainer::Tensor &output,
     const std::vector<std::pair<unsigned, float>> &token_assignments,
@@ -167,4 +159,4 @@ private:
 } // namespace causallm
 
 #endif /* __cplusplus */
-#endif /* __MOE_LAYER_H__ */
+#endif /* __QWEN3_CACHED_SLIM_MOE_LAYER_H__ */

@@ -1,3 +1,4 @@
+// clang-format off
 /**
  * Copyright (C) 2020 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
@@ -14,12 +15,13 @@
  *
  * @file	gpt_oss_moe_layer.cpp
  * @date	02 Sep 2025
- * @brief	This is a Mixture of Expert Layer Class for Gpt-Oss model
- * @see		https://github.com/nnstreamer/
+ * @brief	This is a Mixture-of-Experts layer for GPT-OSS.
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  *
  */
+// clang-format on
 
 #include <acti_func.h>
 #include <algorithm>
@@ -79,7 +81,7 @@ void GptOssMoELayer::finalize(nntrainer::InitLayerContext &context) {
     std::get<nntrainer::props::Unit>(moe_props).get();
   const unsigned int hidden_size = in_dim.width(); // Feature dimension
 
-  // 4. Initialie gate layer (router)
+  // 4. Initialize gate layer (router)
   nntrainer::TensorDim gate_dim(
     1, is_nchw ? 1 : num_experts, is_nchw ? hidden_size : 1,
     is_nchw ? num_experts : hidden_size,

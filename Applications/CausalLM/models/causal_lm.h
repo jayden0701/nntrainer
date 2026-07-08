@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// clang-format off
 /**
  * Copyright (C) 2025 Jijoong Moon <jijoong.moon@samsung.com>
  * Copyright (C) 2025 Seungback Hong <sb92.hong@samsung.com>
@@ -13,17 +14,14 @@
  * @author Hyeonseok Lee <hs89.lee@samsung.com>
  * @author Eunju Yang <ej.yang@samsung.com>
  * @bug    No known bugs except for NYI items
- * @note   This causal_lm.h constructs a class for Transformer-based Causal
- * Language Model (CausalLM). It aims to support AutoModelForCausalLM with
- * nntrainer. It supports the following models:
- *          - Qwen3
- *          - Qwen3-MoE
- * @note   This CausalLM assumes the Decoder-based model, which structure is
+ * @note   Base class for Transformer-based causal language models.
+ * @note   This CausalLM assumes a decoder-based model structure:
  *
  *        [Transformer]
  *              |
  *           [LMHead]
  */
+// clang-format on
 
 #ifndef __CAUSAL_LM_H__
 #define __CAUSAL_LM_H__
@@ -164,7 +162,7 @@ protected:
                                      unsigned int NUM_INPUT_IDS = 0);
 
   /**
-   * @brief registerCutomLayers
+   * @brief registerCustomLayers
    */
   void registerCustomLayers() override;
 

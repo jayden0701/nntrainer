@@ -1,3 +1,4 @@
+// clang-format off
 /**
  * Copyright (C) 2025 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
@@ -12,14 +13,15 @@
  * limitations under the License.
  *
  *
- * @file	qwen3_moe_causallm.cpp
+ * @file	qwen3_slim_moe_causallm.cpp
  * @date	23 July 2025
- * @brief	This defines a qwen3_moe causal language model.
- * @see		https://github.com/nnstreamer/
+ * @brief	This defines a Qwen3 Slim MoE causal language model.
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  *
  */
+// clang-format on
 #include <llm_util.hpp>
 #include <model.h>
 #include <qwen3_slim_moe_causallm.h>
@@ -34,7 +36,7 @@ void Qwen3SlimMoECausalLM::setupParameters(json &cfg, json &generation_cfg,
                                            json &nntr_cfg) {
   Qwen3CausalLM(cfg, generation_cfg, nntr_cfg);
 
-  // parameters for Qwen3MoE model
+  // parameters for Qwen3 Slim MoE model
   try {
     NUM_EXPERTS = cfg["num_experts"];
     NUM_EXPERTS_PER_TOK = cfg["num_experts_per_tok"];

@@ -5,8 +5,9 @@
  * @file   embedding_normalize_layer.cpp
  * @date   06 Jan 2026
  * @brief  This is Embedding Normalize Layer Class
- * @see    https://github.com/nnstreamer/nntrainer
- * @author Eunju Yang <ej.yang@samsung.com>
+ * @see    https://github.com/nntrainer/nntrainer
+ * @author Eunju Yang,
+ * ej.yang@samsung.com
  * @bug    No known bugs except for NYI items
  *
  */

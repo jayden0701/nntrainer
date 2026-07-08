@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// clang-format off
 /**
  * Copyright (C) 2025 Jijoong Moon <jijoong.moon@samsung.com>
  * Copyright (C) 2025 Seungback Hong <sb92.hong@samsung.com>
@@ -14,11 +15,8 @@
  * @author Eunju Yang <ej.yang@samsung.com>
  * @bug    No known bugs except for NYI items
  * @brief  This file defines CausalLM's basic actions
- * @note   This causal_lm.h constructs a class for Transformer-based Causal
- * Language Model (CausalLM). It aims to support AutoModelForCausalLM with
- * nntrainer. It supports the following models:
- *          - Llama
  */
+// clang-format on
 
 #include <algorithm>
 #include <app_context.h>
@@ -505,7 +503,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
   if (SAVE_KVCACHE) {
     //@note This is for the save the kv cache. precomputed kv cache should be
-    // always located at the begining of the prompt.
+    // always located at the beginning of the prompt.
     // Therefore, it start from 0. and system prompt should be saved in the
     // init_input, so that we can compute system prompt size properly
     //

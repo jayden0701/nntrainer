@@ -12,7 +12,7 @@
  */
 
 #ifndef __QWEN_CAUSAL_LM_H__
-#define __QWEN_CAUSAL_LM_H__ __QWEN_CAUSAL_LM_H__
+#define __QWEN_CAUSAL_LM_H__
 
 #include <causal_lm.h>
 

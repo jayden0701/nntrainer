@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2021 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   embedding.h
+ * @file   embedding_layer.h
  * @date   04 March 2021
  * @brief  This is Embedding Layer Class of Neural Network
  * @see    https://github.com/nntrainer/nntrainer
@@ -139,7 +139,7 @@ public:
 
   /**
    * @brief  Move assignment operator.
-   * @parma[in] rhs EmbeddingLayer to be moved.
+   * @param[in] rhs EmbeddingLayer to be moved.
    */
   WIN_EXPORT EmbeddingLayer &operator=(EmbeddingLayer &&rhs) = default;
 

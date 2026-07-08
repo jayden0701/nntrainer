@@ -1,3 +1,4 @@
+// clang-format off
 /**
  * Copyright (C) 2025 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
@@ -14,12 +15,13 @@
  *
  * @file	causallm_common_properties.h
  * @date	23 July 2025
- * @brief	This defines a qwen3 causal language model.
- * @see		https://github.com/nnstreamer/
+ * @brief	This defines common CausalLM properties.
+ * @see		https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  *
  */
+// clang-format on
 #ifndef __CAUSALLM_COMMON_PROPERTIES_H__
 #define __CAUSALLM_COMMON_PROPERTIES_H__
 

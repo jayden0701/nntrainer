@@ -14,8 +14,9 @@
  *
  * @file	qkv_layer.cpp
  * @date	14 May 2020
- * @brief	This is Fully Connected Layer Class for Neural Network
- * @see		https://github.com/nntrainer/nntrainer
+ * @brief	This is QKV Layer Class for Neural Network
+ * @see
+ * https://github.com/nntrainer/nntrainer
  * @author	Eunju Yang <ej.yang@samsung.com>
  * @bug		No known bugs except for NYI items
  *
@@ -44,7 +45,7 @@ QKVLayer::QKVLayer() :
 
 void QKVLayer::finalize(nntrainer::InitLayerContext &context) {
   NNTR_THROW_IF(context.getNumInputs() != 1, std::invalid_argument)
-    << "Fully connected layer takes only one input";
+    << "QKV layer takes only one input";
 
   auto &weight_regularizer =
     std::get<nntrainer::props::WeightRegularizer>(*layer_impl_props);
@@ -60,7 +61,7 @@ void QKVLayer::finalize(nntrainer::InitLayerContext &context) {
 
   std::vector<nntrainer::TensorDim> output_dims(3);
 
-  /// @todo fc actaully supports multidimensions. EffDimFlag shouldn't be fixed
+  /// @todo fc actually supports multidimensions. EffDimFlag shouldn't be fixed
   /// like this.
   context.setEffDimFlagInputDimension(0, 0b1001);
   context.setDynDimFlagInputDimension(0, 0b1000);

@@ -2,7 +2,7 @@
 /**
  * Copyright (C) 2020 Jijoong Moon <jijoong.moon@samsung.com>
  *
- * @file   embedding.cpp
+ * @file   embedding_layer.cpp
  * @date   04 March 2021
  * @brief  This is Embedding Layer Class of Neural Network
  * @see    https://github.com/nntrainer/nntrainer
@@ -741,7 +741,7 @@ void EmbeddingLayer::save(std::ofstream &file,
                           ml::train::ExecutionMode mode, bool trainable,
                           nntrainer::TensorDim::DataType dtype,
                           ml::train::ISA target_isa) const {
-  // @note shared weights are only be saved at the first access
+  // @note shared weights are saved only on first access
   for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
     if (run_context.isGradientFirstAccess(i)) {
       auto &weight = run_context.getWeight(i);
@@ -752,8 +752,8 @@ void EmbeddingLayer::save(std::ofstream &file,
         NNTR_THROW_IF(weight.getDataType() !=
                         nntrainer::TensorDim::DataType::FP32,
                       std::runtime_error)
-          << "Save with quantization only supports for FP32 weight.";
-        ///@note The codelines below can be replaced with quantizer's
+          << "Save with quantization supports only FP32 weights.";
+        ///@note The code lines below can be replaced with quantizer's
         /// quantize()
         nntrainer::TensorDim dim = weight.getDim();
         unsigned int K = dim.height();

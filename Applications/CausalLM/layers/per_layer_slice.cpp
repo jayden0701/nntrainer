@@ -4,8 +4,9 @@
  *
  * @file   per_layer_slice.cpp
  * @date   07 Apr 2026
- * @see    https://github.com/nnstreamer/nntrainer
- * @author Joonseok Oh <jrock.oh@samsung.com>
+ * @see    https://github.com/nntrainer/nntrainer
+ * @author Joonseok Oh,
+ * jrock.oh@samsung.com
  * @bug    No known bugs except for NYI items
  * @brief  Selects per-layer input chunk from packed per-layer embedding tensor.
  */

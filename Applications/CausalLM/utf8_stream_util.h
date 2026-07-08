@@ -4,8 +4,9 @@
  * @brief  Helpers for holding incomplete multi-byte UTF-8 characters during
  *         streaming detokenization.
  * @date   24 June 2026
- * @see    https://github.com/nnstreamer/nntrainer
- * @author Joonseok Oh <jrock.oh@samsung.com>
+ * @see    https://github.com/nntrainer/nntrainer
+ * @author Joonseok Oh,
+ * jrock.oh@samsung.com
  * @bug    No known bugs except for NYI items
  *
  * A multi-byte UTF-8 character (e.g. a Korean syllable like '똻', 3 bytes) can
