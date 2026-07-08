@@ -115,7 +115,7 @@ public:
    *            28. random_translate
    *            29. in_dim : int ( input dimension for embedding layer )
    *            30. out_dim : int ( output dimension for embedding layer )
- *
+   *
    * 31. recurrent_activation :  string (type) - lstm
    *            32. distribute : bool
    *            33. axis : string (type)

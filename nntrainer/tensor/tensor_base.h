@@ -957,7 +957,7 @@ protected:
 
   /**
    * @brief Calculates variables needed to perform tensor flatten dot product
- *
+   *
    * @param[in]  input Tensor
    * @param[in]  output output Tensor
    * @param[in]  trans Transpose

@@ -186,7 +186,7 @@ void TensorPool::finalize(const MemoryPlanner &planner,
     /**
      * 3. requestMemory for all the tensors and set their tokens
      * @note +1 is to make the validity_end exclusive in the interval range
- */
+     */
     details->token = mem_pool->requestMemory(
       spec.tensor->getMemoryBytes(), validity_start, validity_end + 1,
       details->exec_order, details->lifespan, spec.is_weight_grad);
