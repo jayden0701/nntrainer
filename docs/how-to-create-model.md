@@ -69,7 +69,7 @@ Here, 1:1:10 means channel, height, and width in order, respectively, which is e
 ### Dataset
 In this tutorial, we will use the random data generator as a training dataset.
 
-Here, a random data generator is used only for example, so you don't need to understand this part in detail. Howerver, keep in mind that the length of input data is 10 and the length of output data is 1.
+Here, a random data generator is used only for example, so you don't need to understand this part in detail. However, keep in mind that the length of input data is 10 and the length of output data is 1.
 ```cpp
 std::unique_ptr<nntrainer::util::DataLoader> getRandomDataGenerator() {
     std::unique_ptr<nntrainer::util::DataLoader> random_db(
@@ -154,9 +154,9 @@ e = executable('nntrainer_myapp',
 
 ### Build "MyApp"
 
-To build MyApp application, execute the following command on the NNTrainer directory: "meson build & ninja -C build".
+To build MyApp application, execute the following command on the NNTrainer directory: "meson setup build && ninja -C build".
 ```bash
-meson build & ninja -C build
+meson setup build && ninja -C build
 ```
 Then, it will create the build directory and compile your app to "build/Applications/MyApp/jni".
 

@@ -29,15 +29,15 @@
 
 ## Background
 
-The `test/reference` branch adds `unittest_causallm_models` (55 gtest tests). These tests were **not reachable on Android** before this work:
+The `test/reference` branch added `unittest_causallm_models` (55 gtest tests). The regular Meson Android path still does not build this target:
 
-- Root `meson.build:736` skips `subdir('Applications')` entirely when `platform == 'android'`, so the meson test target never builds.
-- `Applications/CausalLM/meson.build:250` lists `'android'` in `model_unittest_platforms`, but that code is **dead** — it is never reached from a meson Android build.
-- `jni/Android.mk` only builds `causallm_core`, `nntr_quantize`, `test_api`, and `nntr_safetensors_info` — no gtest, no test sources.
+- Root `meson.build` skips `subdir('Applications')` entirely when `platform == 'android'`, so the meson test target never builds.
+- `Applications/CausalLM/meson.build` lists `'android'` in `model_unittest_platforms`, but that code is unreachable from a Meson Android build because the root build skips `Applications`.
+- `Applications/CausalLM/jni/Android.mk` now provides the Android `unittest_causallm_models` target used by the test script.
 
 To run the tests on Android, three changes were required:
 
-1. Vendor `googletest` into `jni/` and add a `unittest_causallm_models` ndk-build target to `jni/Android.mk`.
+1. Vendor `googletest` into `jni/` and build the `unittest_causallm_models` ndk-build target from `jni/Android.mk`.
 2. Fix a DeBERTa-v2 FP16 overflow bug in `nntrainer/layers/layer_normalization_layer.cpp`.
 3. Fix a tokenizer path resolution bug in `Applications/CausalLM/quantize.cpp`.
 

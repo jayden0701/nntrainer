@@ -8,19 +8,20 @@ title: Coding Convention
 
 You may indent differently from what clang-format does. You may also break the 80-column rule with header files.
 
-Except the two, you are required to follow the general coding styles mandated by clang-format.
+Except for those two allowances, follow the general coding styles mandated by clang-format.
+Pull requests are checked by the `C++ Format Checker`, which runs clang-format 14 on changed lines only.
 
 ## C/C++ files (.cpp, .c)
 
 Use .h for headers and .cpp / .c for source.
-You have to use clang-format with the given [.clang-format](https://github.com/nntrainer/nntrainer/blob/main/.clang-format) file
+You have to use clang-format 14 with the given [.clang-format](https://github.com/nntrainer/nntrainer/blob/main/.clang-format) file.
+Run `clang-format-14 -i <changed .c/.cpp/.h files>` before submitting C/C++ changes.
 
 
 ## Other files
 
-- [Java] TBD
-- [Python] TBD
-- [Bash] TBD
+Project-specific Java, Python, and Bash conventions are not documented yet.
+Follow the style of nearby files and keep scripts readable and portable.
 
 
 # File Locations
@@ -30,14 +31,14 @@ You have to use clang-format with the given [.clang-format](https://github.com/n
 - **api**: API definitions and implementations
     - **capi**: C-APIs (Tizen and others)
     - **ccapi**: C++-APIs
-- **Applications**: Examples for NNtrainer
+- **Applications**: Examples for NNTrainer
 - **debian**: Debian/Ubuntu packaging files
-- **docs**: Documentations
+- **docs**: Documentation
 - **jni**: Android/Java build scripts.
-- **nnstreamer**: NNStreamer sub-filter codes for NNTrainer
-- **nntrainer**: All core NNTrainer codes are located here
-- **packaging**: Tizen RPM build scripts. OpenSUSE/Redhat Linux may reuse this.
-- **test**: Unit test cases. We have GTEST test cases. There are subdirectories, which are groups of unit test cases.
+- **nnstreamer**: NNStreamer sub-filter code for NNTrainer
+- **nntrainer**: All core NNTrainer code is located here
+- **packaging**: Tizen RPM build scripts. openSUSE/Red Hat Linux may reuse this.
+- **test**: Unit tests, grouped by subdirectory. Most tests use GTest.
 - **tools**: Various developmental tools and scripts of NNTrainer.
 
 ## Related git repositories

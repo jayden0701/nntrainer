@@ -26,14 +26,14 @@ Package: nntrainer-dev
 Architecture: any
 Multi-Arch: same
 Depends: nntrainer, ccapi-ml-training-dev, capi-ml-training-dev
-Description: NNtrainer development package
- This is development package for nntrainer.
+Description: NNTrainer development package
+ This is development package for NNTrainer.
 
 Package: nntrainer-applications
 Architecture: any
 Multi-Arch: same
 Depends: nntrainer, ${shlibs:Depends}, ${misc:Depends}
-Description: NNTrainer Applications pacakge
+Description: NNTrainer Applications package
  This is nntrainer applications package.
 
 Package: ccapi-ml-training
@@ -76,7 +76,7 @@ Architecture: any
 Multi-Arch: same
 Depends: nnstreamer-nntrainer, ${shlibs:Depends}, ${misc:Depends}
 Description: Development package for nntrainer tensor filter
- This is a developement package of nntrainer's tensor filter.
+ This is a development package of nntrainer's tensor filter.
 
 Package: nnstreamer-nntrainer-trainer
 Architecture: any
@@ -90,4 +90,4 @@ Architecture: any
 Multi-Arch: same
 Depends: nnstreamer-nntrainer-trainer, ${shlibs:Depends}, ${misc:Depends}
 Description: Development package for nntrainer tensor trainer
- This is a developement package of nntrainer's tensor trainer.
+ This is a development package of nntrainer's tensor trainer.

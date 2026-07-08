@@ -169,7 +169,7 @@ BuildRequires:	nnstreamer-devel
 Requires:	nntrainer-core = %{version}-%{release}
 
 %description
-NNtrainer Meta package for tizen
+NNTrainer meta package for Tizen
 
 %package core
 Summary:	Software framework for training neural networks
@@ -177,10 +177,10 @@ Requires:	iniparser >= 4.1
 Requires:	libopenblas_pthreads0
 
 %description core
-NNtrainer is Software Framework for Training Neural Network Models on Devices.
+NNTrainer is a software framework for training neural network models on devices.
 
 %package devel
-Summary:	Development package for custom nntrainer developers
+Summary:	Development package for custom NNTrainer developers
 Requires:	nntrainer = %{version}-%{release}
 Requires:	openblas-devel
 
@@ -697,7 +697,7 @@ cp -r result %{buildroot}%{_datadir}/nntrainer/unittest/
 %{_includedir}/nntrainer/nntrainer_logger.h
 %{_libdir}/pkgconfig/nntrainer.pc
 # update this to enable external applications
-# @todo filter out headers that should be hidden, and classifiy in the appropriate place if not
+# @todo filter out headers that should be hidden, and classify in the appropriate place if not
 %{_includedir}/nntrainer/util_func.h
 %{_includedir}/nntrainer/noncopyable.h
 %{_includedir}/nntrainer/nonmovable.h

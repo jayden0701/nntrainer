@@ -21,10 +21,10 @@
       - New Features
       	- New Layers
 	  - Attention Layer
-	  - Eanble Weight / Tensor Sharing
+	  - Enable Weight / Tensor Sharing
 	  - Implement Realizer to manipulate the network graph
 	    - Flatten Realizer, Recurrent Realizer with in/out property
-	    - Privious Input Realizer, Attach Activation Layer Realizer
+	    - Previous Input Realizer, Attach Activation Layer Realizer
 	  - Support Conv1D Layer
 	    - Support Dilation Property
 	  - Support multi-label/input for model
@@ -79,7 +79,7 @@
 	- Multi-Output Layer
 	- Split Layer
       - Support Custom Layer with Container (AppContext)
-      - Introdue Network Graph Structure & Optimization Scheme
+      - Introduce Network Graph Structure & Optimization Scheme
       - Introduce Techniques to Maximize Buffer Reusability
       - Introduce Dynamic Fine-Tuning
       - Support In/Out-Place & Lazy Tensor Computation

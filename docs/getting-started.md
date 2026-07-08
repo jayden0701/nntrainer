@@ -14,8 +14,8 @@ The following dependencies are needed to compile/build/run.
 * libopenblas-dev and base
 * tensorflow-lite >= 2.3.0
 * libiniparser
-* libjsoncpp >=0.6.0 ( if you want to use open AI )
-* libcurl3 >=7.47 ( if you want to use open AI )
+* libjsoncpp >=0.6.0 (if you want to use OpenAI/Gym)
+* libcurl >=7.47 (if you want to use OpenAI/Gym)
 * libgtest >=1.10 ( for testing )
 
 ## Install via PPA repository (Debian/Ubuntu)
@@ -32,7 +32,7 @@ sudo apt install nntrainer
 > [!WARNING]  
 > Ubuntu 18.04 is deprecated! Information below may be outdated.
 
-Use the NNStreamer PPA to resolve additional build-dependencies (Tensorflow/Tensorflow-Lite).
+Use the NNStreamer PPA to resolve additional build-dependencies (TensorFlow/TensorFlow Lite).
 
 Install build tools:
 
@@ -134,7 +134,7 @@ Install the required packages.
 
 ```bash
 sudo apt install meson ninja-build
-sudo apt install gcc g++ pkg-config libopenblas-dev libiniparser-dev libjsoncpp-dev libcurl3-dev tensorflow2-lite-dev nnstreamer-dev libglib2.0-dev libgstreamer1.0-dev libgtest-dev ml-api-common-dev flatbuffers-compiler ml-inference-api-dev
+sudo apt install gcc g++ pkg-config libopenblas-dev libiniparser-dev libjsoncpp-dev libcurl4-openssl-dev tensorflow2-lite-dev nnstreamer-dev libglib2.0-dev libgstreamer1.0-dev libgtest-dev ml-api-common-dev flatbuffers-compiler ml-inference-api-dev
 ```
 
 Install submodules.

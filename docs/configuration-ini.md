@@ -67,7 +67,7 @@ Start with "[Optimizer]"
 
    Optimizer type to apply the gradients to weights. The default value is adam if the type is not used.
      * adam : Adaptive Moment Estimation
-     * sgd : stochastic gradient decent
+     * sgd : stochastic gradient descent
 
 2. ```beta1 = <float>```
 
@@ -95,40 +95,48 @@ epsilon = 1e-7
 
 ### Learning Rate Scheduler Section
 
-Define the type, learning rate, decay steps and decay rate.
+Define the type and scheduler-specific learning rate properties.
 
 Start with "[LearningRateScheduler]"
 
 1. ```type = <string>```
 
-   constant, exponential and step are supported.
+   constant, exponential, step, cosine, and linear are supported.
       * constant : constant learning rate
       * exponential : exponential decay
       * step: step decay
+      * cosine : cosine annealing decay
+      * linear : linear decay
 
 2. ```learning_rate = <float>```
 
-   Initial learning rate to decay.
+   Learning rate. Valid for constant and exponential.
 
-   Constant and exponential receive only one float value.
-
-   However, step must receive two or more float values separated by commas.
+   Step must receive two or more float values separated by commas.
 
    ```learning_rate = <float>, <float>, ..., <float>```
 
 
 3. ```decay_steps = <float>```
 
-   Decay steps. Only valid for exponential.
+   Decay steps. Required for exponential, cosine, and linear.
 
 4. ```decay_rate = <float>```
 
-   Decay rate
+   Decay rate. Only valid for exponential.
 
 5. ```iteration = <unsigned int>, <unsigned int>, ..., <unsigned int>```
 
-   Iteration, Only valid for step.
-   Step receive one or more unsigned int value separated by commas.
+   Iteration. Only valid for step.
+   Step receives one or more unsigned int values separated by commas.
+
+6. ```max_learning_rate = <float>```
+
+   Maximum learning rate. Required for cosine and linear.
+
+7. ```min_learning_rate = <float>```
+
+   Minimum learning rate. Required for cosine and linear.
 
 Below is a sample Learning Rate scheduler Section.
 
@@ -141,7 +149,7 @@ learning_rate = 1e-4 	# Learning Rate
 
 ### Train Set Section
 
-Define the type and path of the traing data file.
+Define the type and path of the training data file.
 
 Start with "[train_set]"
 
@@ -217,22 +225,49 @@ Start with "[ ${layer name} ]". This layer name must be unique throughout networ
 
    Type of Layer
      * input : input layer
+     * add : add layer
+     * subtract : subtract layer
+     * multiply : multiply layer
+     * divide : divide layer
+     * pow : power operation layer
+     * sqrt : square-root operation layer
+     * sin : sine operation layer
+     * cos : cosine operation layer
+     * tan : tangent operation layer
+     * matmul : matrix multiplication layer
+     * cast : cast layer
+     * gather : gather layer
+     * slice : slice layer
+     * negative : negative operation layer
+     * weight : weight layer
      * fully_connected : fully connected layer
      * batch_normalization : batch normalization layer
+     * layer_normalization : layer normalization layer
      * conv2d : convolution 2D layer
+     * conv2dtranspose : transposed convolution 2D layer
      * pooling2d : pooling 2D layer
      * flatten : flatten layer
+     * reshape : reshape layer
      * activation : activation layer
      * addition : addition layer
+     * attention : attention layer
+     * mol_attention : mixture of logits attention layer
+     * multi_head_attention : multi-head attention layer
      * concat : concat layer
      * multiout : multiout layer
      * embedding : embedding layer
+     * positional_encoding : positional encoding layer
+     * identity : identity layer
+     * upsample2d : upsample 2D layer
+     * reduce_mean : reduce mean layer
+     * reduce_sum : reduce sum layer
      * rnn : RNN layer
      * lstm : LSTM layer
      * split : split layer
      * gru : GRU layer
      * permute : permute layer
      * dropout : dropout layer
+     * channel_shuffle : channel shuffle layer
      * backbone_nnstreamer : backbone layer using nnstreamer
      * backbone_tflite : backbone layer using tflite
      * centroid_knn : centroid KNN layer
@@ -247,6 +282,7 @@ Start with "[ ${layer name} ]". This layer name must be unique throughout networ
      * mse : MSE loss layer
      * cross_sigmoid : cross entropy with sigmoid loss layer
      * cross_softmax : Cross entropy with softmax loss layer
+     * constant_derivative : constant derivative loss layer
 
 2. ```key = value```
 
@@ -265,27 +301,42 @@ Type | Key | Value | Default value | Description
 &#xfeff;                                                     |                             | tanh                        |                         | Hyperbolic tangent
 &#xfeff;                                                     |                             | sigmoid                     |                         | Sigmoid function
 &#xfeff;                                                     |                             | relu                        |                         | Relu function
+&#xfeff;                                                     |                             | swish                       |                         | Swish function
+&#xfeff;                                                     |                             | gelu                        |                         | GELU function
+&#xfeff;                                                     |                             | tanh_gelu                   |                         | Tanh GELU function
+&#xfeff;                                                     |                             | sigmoid_gelu                |                         | Sigmoid GELU function
 &#xfeff;                                                     |                             | softmax                     |                         | Softmax function
+&#xfeff;                                                     |                             | softplus                    |                         | Softplus function
+&#xfeff;                                                     |                             | leaky_relu                  |                         | Leaky ReLU function
+&#xfeff;                                                     |                             | elu                         |                         | ELU function
+&#xfeff;                                                     |                             | selu                        |                         | SELU function
+&#xfeff;                                                     |                             | mish                        |                         | Mish function
+&#xfeff;                                                     |                             | none                        |                         | No activation
 &#xfeff;                                                     | loss                        | (float)                     | 0                       | Loss
 &#xfeff;                                                     | weight_initializer          | (categorical)               | xavier_uniform          | Weight initializer
 &#xfeff;                                                     |                             | zeros                       |                         | Zero initialization
+&#xfeff;                                                     |                             | ones                        |                         | One initialization
 &#xfeff;                                                     |                             | lecun_normal                |                         | LeCun normal initialization
 &#xfeff;                                                     |                             | lecun_uniform               |                         | LeCun uniform initialization
 &#xfeff;                                                     |                             | xavier_normal               |                         | Xavier normal initialization
 &#xfeff;                                                     |                             | xavier_uniform              |                         | Xavier uniform initialization
 &#xfeff;                                                     |                             | he_normal                   |                         | He normal initialization
 &#xfeff;                                                     |                             | he_uniform                  |                         | He uniform initialization
+&#xfeff;                                                     |                             | none                        |                         | No initialization
 &#xfeff;                                                     | bias_initializer            | (categorical)               | zeros                   | Bias initializer
 &#xfeff;                                                     |                             | zeros                       |                         | Zero initialization
+&#xfeff;                                                     |                             | ones                        |                         | One initialization
 &#xfeff;                                                     |                             | lecun_normal                |                         | LeCun normal initialization
 &#xfeff;                                                     |                             | lecun_uniform               |                         | LeCun uniform initialization
 &#xfeff;                                                     |                             | xavier_normal               |                         | Xavier normal initialization
 &#xfeff;                                                     |                             | xavier_uniform              |                         | Xavier uniform initialization
 &#xfeff;                                                     |                             | he_normal                   |                         | He normal initialization
 &#xfeff;                                                     |                             | he_uniform                  |                         | He uniform initialization
+&#xfeff;                                                     |                             | none                        |                         | No initialization
 &#xfeff;                                                     | weight_regularizer          | (categorical)               |                         | Weight regularizer. Currently, only l2norm is supported
 &#xfeff;                                                     |                             | l2norm                      |                         | L2 weight regularizer
 &#xfeff;                                                     | weight_regularizer_constant | (float)                     | 1                       | Weight regularizer constant
+`weight`                                                     |                             |                             |                         | Weight layer
 `fully_connected`                                            |                             |                             |                         | Fully connected layer
 &#xfeff;                                                     | unit                        | (unsigned integer)          |                         | Number of outputs
 `conv1d`                                                     |                             |                             |                         | 1D Convolution layer
@@ -307,9 +358,10 @@ Type | Key | Value | Default value | Description
 &#xfeff;                                                     |                             | (unsigned integer)          |                         | Size of padding applied uniformly to all side
 &#xfeff;                                                     |                             | (array of unsigned integer of size 2) |                         | Padding for height, width
 &#xfeff;                                                     |                             | (array of unsigned integer of size 4) |                         | Padding for top, bottom, left, right
+`conv2dtranspose`                                            |                             |                             |                         | Transposed 2D convolution layer
 `embedding`                                                  |                             |                             |                         | Embedding layer
 &#xfeff;                                                     | in_dim                      | (unsigned integer)          |                         | Vocabulary size
-&#xfeff;                                                     | out_dim                     | (unsigned integer)          |                         | Word embeddeing size
+&#xfeff;                                                     | out_dim                     | (unsigned integer)          |                         | Word embedding size
 `rnn`                                                        |                             |                             |                         | RNN layer
 &#xfeff;                                                     | unit                        | (unsigned integer)          |                         | Number of output neurons
 &#xfeff;                                                     | hidden_state_activation     | (categorical)               | tanh                    | Activation type
@@ -422,54 +474,87 @@ Type | Key | Value | Default value | Description
 &#xfeff;                                                     |                             | tanh                        |                         | Hyperbolic tangent
 &#xfeff;                                                     |                             | sigmoid                     |                         | Sigmoid function
 &#xfeff;                                                     |                             | relu                        |                         | Relu function
+&#xfeff;                                                     |                             | swish                       |                         | Swish function
+&#xfeff;                                                     |                             | gelu                        |                         | GELU function
+&#xfeff;                                                     |                             | tanh_gelu                   |                         | Tanh GELU function
+&#xfeff;                                                     |                             | sigmoid_gelu                |                         | Sigmoid GELU function
 &#xfeff;                                                     |                             | softmax                     |                         | Softmax function
+&#xfeff;                                                     |                             | softplus                    |                         | Softplus function
+&#xfeff;                                                     |                             | leaky_relu                  |                         | Leaky ReLU function
+&#xfeff;                                                     |                             | elu                         |                         | ELU function
+&#xfeff;                                                     |                             | selu                        |                         | SELU function
+&#xfeff;                                                     |                             | mish                        |                         | Mish function
+&#xfeff;                                                     |                             | none                        |                         | No activation
 &#xfeff;                                                     | loss                        | (float)                     | 0                       | Loss
 `input`                                                      |                             |                             |                         | Input layer
 &#xfeff;                                                     | normalization               | (boolean)                   | false                   | Normalize input if true
 &#xfeff;                                                     | standardization             | (boolean)                   | false                   | Standardize input if true
+`add`                                                        |                             |                             |                         | Add layer
+`subtract`                                                   |                             |                             |                         | Subtract layer
+`multiply`                                                   |                             |                             |                         | Multiply layer
+`divide`                                                     |                             |                             |                         | Divide layer
+`pow`                                                        |                             |                             |                         | Power operation layer
+`sqrt`                                                       |                             |                             |                         | Square-root operation layer
+`sin`                                                        |                             |                             |                         | Sine operation layer
+`cos`                                                        |                             |                             |                         | Cosine operation layer
+`tan`                                                        |                             |                             |                         | Tangent operation layer
+`matmul`                                                     |                             |                             |                         | Matrix multiplication layer
+`cast`                                                       |                             |                             |                         | Cast layer
+`gather`                                                     |                             |                             |                         | Gather layer
+`slice`                                                      |                             |                             |                         | Slice layer
+`negative`                                                   |                             |                             |                         | Negative operation layer
 `batch_normalization`                                        |                             |                             |                         | Batch normalization layer
 &#xfeff;                                                     | epsilon                     | (float)                     | 0.001                   | Small value to avoid divide by zero
 &#xfeff;                                                     | moving_mean_initializer     | (categorical)               | zeros                   | Moving mean initializer
 &#xfeff;                                                     |                             | zeros                       |                         | Zero initialization
+&#xfeff;                                                     |                             | ones                        |                         | One initialization
 &#xfeff;                                                     |                             | lecun_normal                |                         | LeCun normal initialization
 &#xfeff;                                                     |                             | lecun_uniform               |                         | LeCun uniform initialization
 &#xfeff;                                                     |                             | xavier_normal               |                         | Xavier normal initialization
 &#xfeff;                                                     |                             | xavier_uniform              |                         | Xavier uniform initialization
 &#xfeff;                                                     |                             | he_normal                   |                         | He normal initialization
 &#xfeff;                                                     |                             | he_uniform                  |                         | He uniform initialization
+&#xfeff;                                                     |                             | none                        |                         | No initialization
 &#xfeff;                                                     | moving_variance_initializer | (categorical)               | ones                    | Moving variance initializer
 &#xfeff;                                                     |                             | zeros                       |                         | Zero initialization
+&#xfeff;                                                     |                             | ones                        |                         | One initialization
 &#xfeff;                                                     |                             | lecun_normal                |                         | LeCun normal initialization
 &#xfeff;                                                     |                             | lecun_uniform               |                         | LeCun uniform initialization
 &#xfeff;                                                     |                             | xavier_normal               |                         | Xavier normal initialization
 &#xfeff;                                                     |                             | xavier_uniform              |                         | Xavier uniform initialization
 &#xfeff;                                                     |                             | he_normal                   |                         | He normal initialization
 &#xfeff;                                                     |                             | he_uniform                  |                         | He uniform initialization
+&#xfeff;                                                     |                             | none                        |                         | No initialization
 &#xfeff;                                                     | gamma_initializer           | (categorical)               | ones                    | Gamma initializer
 &#xfeff;                                                     |                             | zeros                       |                         | Zero initialization
+&#xfeff;                                                     |                             | ones                        |                         | One initialization
 &#xfeff;                                                     |                             | lecun_normal                |                         | LeCun normal initialization
 &#xfeff;                                                     |                             | lecun_uniform               |                         | LeCun uniform initialization
 &#xfeff;                                                     |                             | xavier_normal               |                         | Xavier normal initialization
 &#xfeff;                                                     |                             | xavier_uniform              |                         | Xavier uniform initialization
 &#xfeff;                                                     |                             | he_normal                   |                         | He normal initialization
 &#xfeff;                                                     |                             | he_uniform                  |                         | He uniform initialization
+&#xfeff;                                                     |                             | none                        |                         | No initialization
 &#xfeff;                                                     | beta_initializer            | (categorical)               | zeros                   | Beta initializer
 &#xfeff;                                                     |                             | zeros                       |                         | Zero initialization
+&#xfeff;                                                     |                             | ones                        |                         | One initialization
 &#xfeff;                                                     |                             | lecun_normal                |                         | LeCun normal initialization
 &#xfeff;                                                     |                             | lecun_uniform               |                         | LeCun uniform initialization
 &#xfeff;                                                     |                             | xavier_normal               |                         | Xavier normal initialization
 &#xfeff;                                                     |                             | xavier_uniform              |                         | Xavier uniform initialization
 &#xfeff;                                                     |                             | he_normal                   |                         | He normal initialization
 &#xfeff;                                                     |                             | he_uniform                  |                         | He uniform initialization
+&#xfeff;                                                     |                             | none                        |                         | No initialization
 &#xfeff;                                                     | momentum                    | (float)                     | 0.99                    | Momentum for moving average in batch normalization
+`layer_normalization`                                        |                             |                             |                         | Layer normalization layer
 `pooling2d`                                                  |                             |                             |                         | Pooling layer
 &#xfeff;                                                     | pooling                     | (categorical)               |                         | Pooling type
 &#xfeff;                                                     |                             | max                         |                         | Max pooling
 &#xfeff;                                                     |                             | average                     |                         | Average pooling
 &#xfeff;                                                     |                             | global_max                  |                         | Global max pooling
 &#xfeff;                                                     |                             | global_average              |                         | Global average pooling
-&#xfeff;                                                     | pool_size                   | (array of unsigned integer) |                         | Comma-separated unsigned intergers for pooling size, `height, width`  respectively
-&#xfeff;                                                     | stride                      | (array of unsigned integer) | 1, 1                    | Comma-separated unsigned intergers for stride, `height, width`  respectively
+&#xfeff;                                                     | pool_size                   | (array of unsigned integer) |                         | Comma-separated unsigned integers for pooling size, `height, width`  respectively
+&#xfeff;                                                     | stride                      | (array of unsigned integer) | 1, 1                    | Comma-separated unsigned integers for stride, `height, width`  respectively
 &#xfeff;                                                     | padding                     | (categorical)               | valid                   | Padding type
 &#xfeff;                                                     |                             | valid                       |                         | No padding
 &#xfeff;                                                     |                             | same                        |                         | Preserve height/width dimension
@@ -477,20 +562,40 @@ Type | Key | Value | Default value | Description
 &#xfeff;                                                     |                             | (array of unsigned integer of size 2) |                         | Padding for height, width
 &#xfeff;                                                     |                             | (array of unsigned integer of size 4) |                         | Padding for top, bottom, left, right
 `flatten`                                                    |                             |                             |                         | Flatten layer
+`reshape`                                                    |                             |                             |                         | Reshape layer
+`reduce_mean`                                                |                             |                             |                         | Reduce mean layer
+`reduce_sum`                                                 |                             |                             |                         | Reduce sum layer
 `activation`                                                 |                             |                             |                         | Activation layer
 &#xfeff;                                                     | activation                  | (categorical)               |                         | Activation type
 &#xfeff;                                                     |                             | tanh                        |                         | Hyperbolic tangent
 &#xfeff;                                                     |                             | sigmoid                     |                         | Sigmoid function
 &#xfeff;                                                     |                             | relu                        |                         | Relu function
+&#xfeff;                                                     |                             | swish                       |                         | Swish function
+&#xfeff;                                                     |                             | gelu                        |                         | GELU function
+&#xfeff;                                                     |                             | tanh_gelu                   |                         | Tanh GELU function
+&#xfeff;                                                     |                             | sigmoid_gelu                |                         | Sigmoid GELU function
 &#xfeff;                                                     |                             | softmax                     |                         | Softmax function
+&#xfeff;                                                     |                             | softplus                    |                         | Softplus function
+&#xfeff;                                                     |                             | leaky_relu                  |                         | Leaky ReLU function
+&#xfeff;                                                     |                             | elu                         |                         | ELU function
+&#xfeff;                                                     |                             | selu                        |                         | SELU function
+&#xfeff;                                                     |                             | mish                        |                         | Mish function
+&#xfeff;                                                     |                             | none                        |                         | No activation
 `addition`                                                   |                             |                             |                         | Addition layer
+`attention`                                                  |                             |                             |                         | Attention layer
+`mol_attention`                                              |                             |                             |                         | Mixture of logits attention layer
+`multi_head_attention`                                       |                             |                             |                         | Multi-head attention layer
 `concat`                                                     |                             |                             |                         | Concat layer
 `multiout`                                                   |                             |                             |                         | Multiout layer
+`positional_encoding`                                        |                             |                             |                         | Positional encoding layer
+`identity`                                                   |                             |                             |                         | Identity layer
+`upsample2d`                                                 |                             |                             |                         | Upsample 2D layer
 `split`                                                      |                             |                             |                         | Split layer
 &#xfeff;                                                     | split_dimension             | (unsigned integer)          |                         | Which dimension to split. Split batch dimension is not allowed
 `permute`                                                    |                             |                             |                         | Permute layer
 `dropout`                                                    |                             |                             |                         | Dropout layer
 &#xfeff;                                                     | dropout                     | (float)                     | 0                       | Dropout rate
+`channel_shuffle`                                            |                             |                             |                         | Channel shuffle layer
 `backbone_nnstreamer`                                        |                             |                             |                         | NNStreamer layer
 &#xfeff;                                                     | model_path                  | (string)                    |                         | NNStreamer model path
 `backbone_tflite`                                            |                             |                             |                         | TensorFlow Lite layer
@@ -500,14 +605,16 @@ Type | Key | Value | Default value | Description
 `preprocess_flip`                                            |                             |                             |                         | Preprocess flip layer
 &#xfeff;                                                     | flip_direction              | (categorical)               |                         | Flip direction
 &#xfeff;                                                     |                             | horizontal                  |                         | Horizontal direction
-&#xfeff;                                                     |                             | vertical                    |                         | Vertiacl direction
+&#xfeff;                                                     |                             | vertical                    |                         | Vertical direction
 &#xfeff;                                                     |                             | horizontal_and_vertical     | horizontal_and_vertical | Horizontal_and vertical direction
 `preprocess_translate`                                       |                             |                             |                         | Preprocess translate layer
 &#xfeff;                                                     | random_translate            | (float)                     |                         | Translate factor value
 `preprocess_l2norm`                                          |                             |                             |                         | Preprocess l2norm layer
+`time_dist`                                                  |                             |                             |                         | Time distributed layer
 `mse`                                                        |                             |                             |                         | MSE loss layer
 `cross_sigmoid`                                              |                             |                             |                         | Cross entropy with sigmoid loss layer
 `cross_softmax`                                              |                             |                             |                         | Cross entropy with softmax loss layer
+`constant_derivative`                                        |                             |                             |                         | Constant derivative loss layer
 
 
 Below is sample for layers to define a model.
@@ -535,7 +642,7 @@ activation = softmax
 
 This allows to describe another model, termed as backbone, to be used in the model described by the current ini file.
 The backbone to be used can be described with another ini configuration file path, or with model file for external frameworks.
-Support for backbones of external framework for Tensorflow-Lite is provided natively with Tensorflow-Lite framework.
+Support for TensorFlow Lite external framework backbones is provided natively.
 Support for backbones of other external frameworks is done using nnstreamer and its plugin.
 When using nnstreamer for external framework, ensure to add the corresponding baseline ML framework and its corresponding nnstreamer plugin as a dependency or install manually.
 For example, when using PyTorch based model as a backbone, both the packages *PyTorch* and *nnstreamer-pytorch* must be installed.
@@ -546,13 +653,13 @@ It is possible to describe a backbone inside a backbone ini configuration file, 
 For backbone ini configuration file, Model and Dataset sections are ignored.
 
 Describing a backbone is very similar to describing a layer.
-Start with a "[ ${layer name} ]" which must be unique throughtout the model. In case of backbone, the name of the backbone is prepended to the name of all the layers inside the backbone.
+Start with a "[ ${layer name} ]" which must be unique throughout the model. In case of backbone, the name of the backbone is prepended to the name of all the layers inside the backbone.
 
 1. ```backbone = <string>```
 
    Path of the backbone file. Supported model files:
     * .ini - NNTrainer models
-    * .tflite - Tensorflow-Lite models
+    * .tflite - TensorFlow Lite models
     * .pb / .pt / .py / .circle etc via NNStreamer (corresponding nnstreamer plugin required)
 
 2. ```trainable = <bool>```
@@ -601,8 +708,8 @@ It takes 1 x 28 x 28 gray data (0~255) as an input. Adam optimizer is used to ap
 [Model]
 type = NeuralNetwork          # Network Type : Regression, KNN, NeuralNetwork
 epochs = 1500                 # Epochs
-loss = cross                  # Loss function : mse (mean squared error)
-                              #                 cross ( for cross entropy )
+loss = cross                  # Loss function : cross (for cross entropy)
+                              #                 mse (mean squared error)
 save_path = "mnist_model.bin" # model path to save / read
 batch_size = 32               # batch size
 

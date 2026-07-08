@@ -12,8 +12,9 @@ Consistent code conventions are important for several reasons:
 
 For more information, please refer to [coding-convention.md](https://github.com/nntrainer/nntrainer/blob/main/docs/coding-convention.md).
 
-For C/C++ code, you may apply clang-format with the given [.clang-format](https://github.com/nntrainer/nntrainer/blob/main/.clang-format) file.
-For C/C++ header files, we do not require strict style rules, but it is recommended to apply such rules.
+For C/C++ code, apply clang-format 14 with the given [.clang-format](https://github.com/nntrainer/nntrainer/blob/main/.clang-format) file.
+The `C++ Format Checker` runs clang-format 14 on changed lines only.
+For C/C++ header files, we do not require strict indentation or the 80-column rule everywhere, but changed lines still need to satisfy the format checker.
 
 We do not have explicit and strict styling rules for other programming languages, yet.
 
@@ -26,12 +27,12 @@ However, even if you are not a reviewer (designated by committer or submitter), 
 
 The submitter has the first responsibility of keeping the created PR clean and neat (rebase whenever there are merge conflicts), following up the feedback, testing when needed.
 
-### Additional requirements for codes
-* Each feature should come with a rich set of test cases that can be executed as unit tests during build. If the feature is more invasive or richer, you need more and richer test cases. Refer to other test cases in /tests directory, which use either GTest or SSAT.
+### Additional requirements for code
+* Each feature should come with a rich set of test cases that can be executed as unit tests during build. If the feature is more invasive or richer, you need more and richer test cases. Refer to other test cases in the `test/` directory, which use either GTest or SSAT.
 * When new test cases are introduced, the number of new negative test cases should be larger than or equal to the number of new positive test cases.
 * For C-code, try to stick with C89.
 * For C++-code, try to be compatible with C++17. C++ code should be able to be built optionally. In other words, by disabling C++ build option, we should be able to build the whole system without C++ compilers.
-* Avoid introducing additional dependencies of libraries. If you are going to use additional libraries, your codes may be located at /ext/* so that they can be "optional" features.
+* Avoid introducing additional library dependencies. If you are going to use additional libraries, keep the related code optional and guarded by build options.
 * If your functions or structs/classes are going to be accessed by other modules or NNStreamer users, provide full descriptions of all entries with Doxygen.
 * Passing all the tests of TAOS-CI is a necessary condition, but not a satisfying condition.
 
@@ -43,9 +44,9 @@ A PR is required to meet the following criteria.
     - Note that one of the tests includes the "Signed-off-by" check, which means that the author has agreed with [Code of Conduct](https://github.com/nntrainer/nntrainer/blob/main/CODE_OF_CONDUCT.md). You may need to refer to later section.
 * At least TWO committers (reviewers with voting rights) have approved the PR.
     - This is a necessary condition, not sufficient.
-    - If the PR touches sensitive codes or may affect wide ranges of components, reviewers will wait for other reviewers to back them up.
+    - If the PR touches sensitive code or may affect wide ranges of components, reviewers will wait for other reviewers to back them up.
     - If the PR is messy, you will need to wait indefinitely to get reviews.
-        - Apply general rules of git commits and common senses.
+        - Apply general rules of git commits and common sense.
         - Do not write a lengthy commit. Apply a single commit per PR if you are new to the community. Have a single topic per commit. Provide enough background information and references. And so on.
 * There is no rejections from any official reviewers.
 * There is no pending negative feedbacks (unresolved issues) from reviewers.

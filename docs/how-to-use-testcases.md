@@ -1,15 +1,15 @@
 ---
-title: How to run Test Cases
+title: How to Run Test Cases
 ...
 
 
-# How to run Test Cases
+# How to Run Test Cases
 
 - Use the built library
 
-- Unit Test
+- Unit tests
 
-For gtest based test cases (common library)
+For GTest-based test cases (common library)
 
 ```bash
 $ cd build
@@ -17,10 +17,10 @@ $ ninja test
 ...
 ```
 
-### run test cases on Android
+### Run test cases on Android
 
-- In order to run unittest on android, please set the environment following [[docs] how-to-run-example-android.md](how-to-run-example-android.md).
-- Then, you can run the unittest on Android as follows:
+- To run unit tests on Android, follow [How to Run Android Examples](how-to-run-example-android.md) to set up the environment.
+- Then, you can run the unit tests on Android as follows:
 
 ```
 (nntrainer) $ ./tools/android_test.sh
@@ -31,4 +31,4 @@ $ ninja test
 ```
 
 - For more information, please refer to [tools](../tools/README.md)
-- [**Note**] Android unittest script builds NNTrainer to support GPU by default.
+- [**Note**] The Android unit test script builds NNTrainer with GPU support by default.

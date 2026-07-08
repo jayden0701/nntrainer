@@ -35,7 +35,7 @@ With FSU, NNTrainer loads only the active experts during inference — reducing 
 | ![](./docs/videos/moe-full.gif) | ![](./docs/videos/moe-on-the-fly.gif) |
 | Memory: **16.5 GB** | Memory: **1.3 GB** |
 
-> Try it yourself with `Applications/CausalLM/models/*-slim` models.
+> Try it yourself with `qwen3_slim_moe`, `qwen3_cached_slim_moe`, and `gpt_oss_cached_slim` under `Applications/CausalLM/models/`.
 
 ---
 
@@ -51,6 +51,7 @@ With FSU, NNTrainer loads only the active experts during inference — reducing 
 | **Qwen3-MoE** | 30B-A3B | Full / Slim (FSU) / Cached-Slim |
 | **GPT-OSS** | 20B-A3.6B, 120B-5.1B | Full / Cached-Slim |
 | **Gemma3** | - | Standard |
+| **Gemma4** | - | Standard |
 | **Qwen2** | - | Standard |
 
 ### Core Optimizations
@@ -65,13 +66,11 @@ With FSU, NNTrainer loads only the active experts during inference — reducing 
 CausalLM supports multiple deployment targets with ready-to-use build scripts:
 
 ```bash
-cd Applications/CausalLM
-
 # Android
-./build_android.sh && ./install_android.sh
+(cd Applications/CausalLM && ./build_android.sh && ./install_android.sh)
 
-# Linux / PC
-meson build && ninja -C build
+# Linux / PC (from repository root)
+meson setup build -Denable-transformer=true && ninja -C build
 ```
 
 Includes benchmark tools with thermal monitoring, performance metrics (prefill/generation speed, peak memory), and Android JNI bindings.
@@ -113,15 +112,15 @@ Complete Deep Q-Learning with experience replay and dual network architecture �
 
 | Component | Details |
 |-----------|---------|
-| **Optimizers** | SGD, Adam, AdamW |
+| **Optimizers** | SGD, Adam, AdamW, Lion |
 | **LR Schedulers** | Constant, Exponential, Step, Cosine Annealing, Linear Decay |
-| **Loss Functions** | Cross-Entropy (Softmax/Sigmoid), MSE, KL Divergence |
+| **Loss Functions** | Cross-Entropy (Softmax/Sigmoid), MSE |
 | **Regularization** | L2 Regularization, Dropout, Batch Normalization, Gradient Clipping |
-| **Weight Init** | Xavier, He, LeCun (Normal/Uniform), Zeros |
+| **Weight Init** | Zeros, Ones, Xavier, He, LeCun (Normal/Uniform), None |
 | **Activations** | ReLU, GELU, Swish, Sigmoid, Tanh, Softmax, Mish, ELU, SELU, and more |
 | **Data Loading** | File-based datasets or generator callbacks for streaming/augmentation |
 | **Augmentation** | Random flip, translate, L2 normalization (built-in preprocessing layers) |
-| **Export Formats** | Binary, INI, FlatBuffer, ONNX, TFLite |
+| **Save / Interop Formats** | Binary, INI, FlatBuffer, Safetensors, ONNX/QNN load, TFLite export |
 
 ### Why Train On-Device?
 
@@ -138,7 +137,7 @@ Complete Deep Q-Learning with experience replay and dual network architecture �
 |---------|-------------|
 | **Qwen3 / Qwen3-MoE Support** | Full support for Qwen3 family including 30B MoE with on-device expert loading |
 | **GPT-OSS 120B-5.1B** | Run 120B-parameter MoE models with cached-slim expert loading |
-| **Gemma3 Support** | Google's Gemma3 architecture added to CausalLM |
+| **Gemma3 / Gemma4 Support** | Google's Gemma architectures added to CausalLM |
 | **GGML Quantizer** | Quantize models to reduced precision for smaller footprint and faster inference |
 | **AVX2 GELU / Tanh-GELU** | SIMD-optimized activation kernels for x86_64 |
 | **NEON SwiGLU / GELU** | ARM NEON SIMD optimizations with loop unrolling for mobile performance |
@@ -155,7 +154,7 @@ Complete Deep Q-Learning with experience replay and dual network architecture �
 - **Run Locally, Fully Offline** — Training and inference on edge devices with zero cloud dependency. Data stays on the device.
 - **On-Device Training & Personalization** — Fine-tune models on-device with private user data. Supports Transfer Learning, Few-Shot Learning, and Continuous Learning.
 - **Efficient LLM Inference** — Run LLMs up to 120B parameters on memory-constrained devices with FSU and MoE caching.
-- **Broad Model Support** — CNNs (ResNet, VGG, AlexNet, YOLO), RNNs (LSTM, GRU), Transformers (Qwen3, GPT-OSS, Gemma3, LLaMA), and Reinforcement Learning.
+- **Broad Model Support** — CNNs (ResNet, VGG, AlexNet, YOLO), RNNs (LSTM, GRU), Transformers (Qwen3, GPT-OSS, Gemma3, Gemma4, LLaMA), and Reinforcement Learning.
 - **High Performance** — NEON/AVX2 SIMD, OpenCL GPU, cuBLAS, and NPU acceleration. Optimized memory pool and lazy tensor computation.
 - **Cross-Platform** — Tizen, Android, Linux, Windows with consistent C/C++ APIs.
 
@@ -196,7 +195,7 @@ NNTrainer provides **20+ ready-to-run example applications**:
 - **[Create Your Model](https://github.com/nntrainer/nntrainer/blob/main/docs/how-to-create-model.md)** — Tutorial for building custom models
 - **[Run Examples](https://github.com/nntrainer/nntrainer/blob/main/docs/how-to-run-examples.md)** — Step-by-step guide for running applications
 - **[Supported Components](https://github.com/nntrainer/nntrainer/blob/main/docs/components.md)** — Full list of layers, optimizers, loss functions, and activations
-- **[C API Reference](https://github.com/nntrainer/nntrainer/blob/master/api/capi/include/nntrainer.h)** | **[C++ API Reference](https://github.com/nntrainer/nntrainer/blob/master/api/ccapi/include)**
+- **[C API Reference](https://github.com/nntrainer/nntrainer/blob/main/api/capi/include/nntrainer.h)** | **[C++ API Reference](https://github.com/nntrainer/nntrainer/blob/main/api/ccapi/include)**
 
 ---
 
