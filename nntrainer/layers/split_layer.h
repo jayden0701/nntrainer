@@ -110,8 +110,8 @@ private:
    * @param batch update batch size
    */
   void setBatch(unsigned int batch) {
-    input_reshape_helper.batch(batch * leading_helper_dim);
-    output_reshape_helper.batch(batch * leading_helper_dim);
+    input_reshape_helper.batch((size_t)batch * leading_helper_dim);
+    output_reshape_helper.batch((size_t)batch * leading_helper_dim);
   }
 };
 

@@ -192,8 +192,8 @@ void ZoneoutLSTMCellLayer::finalize(InitLayerContext &context) {
 
   // hidden_state_zoneout_mask_dim = [ max_timestep
   // * batch_size, 1, 1, unit ]
-  const TensorDim hidden_state_zoneout_mask_dim(max_timestep * batch_size, 1, 1,
-                                                unit);
+  const TensorDim hidden_state_zoneout_mask_dim(
+    (size_t)max_timestep * batch_size, 1, 1, unit);
   if (test) {
     wt_idx[ZoneoutLSTMParams::hidden_state_zoneout_mask] =
       context.requestWeight(hidden_state_zoneout_mask_dim, Initializer::NONE,
@@ -207,8 +207,8 @@ void ZoneoutLSTMCellLayer::finalize(InitLayerContext &context) {
   }
 
   // cell_state_zoneout_mask_dim = [ max_timestep * batch_size, 1, 1, unit ]
-  const TensorDim cell_state_zoneout_mask_dim(max_timestep * batch_size, 1, 1,
-                                              unit);
+  const TensorDim cell_state_zoneout_mask_dim((size_t)max_timestep * batch_size,
+                                              1, 1, unit);
   if (test) {
     wt_idx[ZoneoutLSTMParams::cell_state_zoneout_mask] = context.requestWeight(
       cell_state_zoneout_mask_dim, Initializer::NONE, WeightRegularizer::NONE,

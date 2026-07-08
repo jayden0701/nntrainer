@@ -200,10 +200,10 @@ void RNNLayer::forwarding(RunLayerContext &context, bool training) {
     Tensor hidden_state_slice = hidden_state.getBatchSlice(batch, 1);
 
     for (unsigned int timestep = 0; timestep < max_timestep; ++timestep) {
-      Tensor in = input_slice.getSharedDataTensor({feature_size},
-                                                  timestep * feature_size);
+      Tensor in = input_slice.getSharedDataTensor(
+        {feature_size}, (size_t)timestep * feature_size);
       Tensor hs =
-        hidden_state_slice.getSharedDataTensor({unit}, timestep * unit);
+        hidden_state_slice.getSharedDataTensor({unit}, (size_t)timestep * unit);
 
       in.dot(weight_ih, hs);
       if (!disable_bias) {
@@ -216,8 +216,8 @@ void RNNLayer::forwarding(RunLayerContext &context, bool training) {
       }
 
       if (timestep) {
-        Tensor prev_hs =
-          hidden_state_slice.getSharedDataTensor({unit}, (timestep - 1) * unit);
+        Tensor prev_hs = hidden_state_slice.getSharedDataTensor(
+          {unit}, (size_t)(timestep - 1) * unit);
         prev_hs.dot(weight_hh, hs, false, false, 1.0);
       }
 
@@ -228,7 +228,7 @@ void RNNLayer::forwarding(RunLayerContext &context, bool training) {
         Tensor dropout_mask = context.getTensor(wt_idx[RNNParams::dropout_mask])
                                 .getBatchSlice(batch, 1);
         Tensor dropout_mask_t =
-          dropout_mask.getSharedDataTensor({unit}, timestep * unit);
+          dropout_mask.getSharedDataTensor({unit}, (size_t)timestep * unit);
         dropout_mask_t.dropout_mask(dropout_rate);
         hs.multiply_i(dropout_mask_t);
       }

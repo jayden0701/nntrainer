@@ -70,13 +70,13 @@ void Q4_0Utils::dequantizeQ4_0x4(const void *q4_weight_repacked, int N, int K,
                                  float *dequantized_weights) {
   assert(K % QK4_0 == 0);
   assert(N % 4 == 0);
-  size_t data_size = (K / QK4_0) * (N / 4) * sizeof(block_q4_0x4);
+  size_t data_size = (size_t)(K / QK4_0) * (N / 4) * sizeof(block_q4_0x4);
   std::vector<uint8_t> q4_weight_out(data_size);
   unpackBlocksQ4_0x4((block_q4_0x4 *)q4_weight_repacked, data_size, N, K,
                      (block_q4_0 *)q4_weight_out.data());
 
   nntrainer::dequantize_row_q4_0((const void *)q4_weight_out.data(),
-                                 dequantized_weights, K * N);
+                                 dequantized_weights, (int64_t)K * N);
 }
 
 void Q4_0Utils::unpackOneBlockQ4_0x8(const block_q4_0x8 *in, block_q4_0 *dst) {
@@ -129,13 +129,13 @@ void Q4_0Utils::dequantizeQ4_0x8(const void *q4_weight_repacked, int N, int K,
                                  float *dequantized_weights) {
   assert(K % QK4_0 == 0);
   assert(N % 8 == 0);
-  size_t data_size = (K / QK4_0) * (N / 8) * sizeof(block_q4_0x8);
+  size_t data_size = (size_t)(K / QK4_0) * (N / 8) * sizeof(block_q4_0x8);
   std::vector<uint8_t> q4_weight_out(data_size);
   unpackBlocksQ4_0x8((block_q4_0x8 *)q4_weight_repacked, data_size, N, K,
                      (block_q4_0 *)q4_weight_out.data());
 
   nntrainer::dequantize_row_q4_0((const void *)q4_weight_out.data(),
-                                 dequantized_weights, K * N);
+                                 dequantized_weights, (int64_t)K * N);
 }
 
 inline static void nntr_make_block_q4_0x4(const block_q4_0 *in,
