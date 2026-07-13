@@ -144,6 +144,21 @@ public:
   ~ThreadManager();
 
   /**
+   * @brief   Get the single process-wide ThreadManager instance.
+   * @note    Hides Singleton<ThreadManager>::Global() with an out-of-line
+   *          definition in thread_manager.cpp (compiled into libnntrainer.so)
+   *          so there is exactly ONE ThreadManager across all shared
+   *          libraries. The inherited template Global() is an inline method,
+   *          which under Android's per-namespace loading gets instantiated
+   *          separately in each consumer .so (libnntrainer, libcausallm, any
+   *          model plugin, ...), producing multiple independent thread pools
+   *          that each pin workers to the same physical cores. A single
+   *          out-of-line definition makes every ThreadManager::Global() caller
+   *          share one instance. Mirrors Engine::Global() (see engine.h).
+   */
+  static ThreadManager &Global();
+
+  /**
    * @brief parallize loop for given function
    * @param begin loop start index
    * @param end loop end index
