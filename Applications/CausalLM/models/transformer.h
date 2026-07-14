@@ -200,7 +200,9 @@ public:
 
   /** Embedding-CONSUMER (LLM): bytes of one token embedding (0 ⇒ no table). */
   /** Whether this model accepts precomputed embeddings for generation. */
-  virtual bool supportsEmbeddingInput() const { return false; }
+  virtual bool supportsEmbeddingInput() const {
+    return embeddingBytesPerToken() != 0;
+  }
 
   virtual size_t embeddingBytesPerToken() const { return 0; }
 

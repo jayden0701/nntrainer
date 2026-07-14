@@ -177,18 +177,12 @@ if get_option('enable-fp16') and is_android
   extra_defines += ['-DENABLE_FP16=1', '-DUSE__FP16=1']
 endif
 
-# Single QNN switch. enable-qnn on → QNN infra + QNN models (gemma4-e2b-qnn
-# folded into libcausallm) + the OpenAI multimodal path (implemented through
-# base Transformer::run_image; vision encoders like gauss-3.8-vit are overlaid
-# by the internal-models plugin). The multimodal api code is model-agnostic
-# (base-class virtuals only, no proprietary headers) and unreachable without a
-# 2-model vision+LLM handle, so it is harmless on a QNN build with no vision
-# model present. All three move together — there is no separate qnn-models or
-# experimental-multimodal gate.
+# Single QNN switch. enable-qnn enables QNN infra and the bundled QNN models.
+# The OpenAI multimodal dispatcher itself is backend-independent so CPU models
+# and extension plugins can use the same API without this build option.
 if enable_qnn
   extra_defines += '-DENABLE_QNN=1'
   extra_defines += '-DENABLE_QNN_MODELS=1'
-  extra_defines += '-DQUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API=1'
 endif
 
 foreach d : extra_defines

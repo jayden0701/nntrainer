@@ -335,9 +335,9 @@ e_safetensors_info = executable('nntr_safetensors_info',
 # Mirrors QuickAI's api/meson.build: xgrammar is compiled once into
 # libcausallm.so (see the xgrammar block above causallm_src) and this target
 # borrows the single XGrammarManager singleton from it via causallm_dep,
-# instead of compiling its own copy. QNN and the model-agnostic multimodal
-# composer are enabled together, matching app_build/meson.build. The composer
-# remains unreachable unless a compatible two-model vision/LLM handle loads.
+# instead of compiling its own copy. The backend-independent multimodal
+# dispatcher also supports fused or composite models registered by an
+# extension plugin; QNN support only adds QNN-specific grammar integration.
 if get_option('enable-api')
   quick_dot_ai_api_inc = [
     causallm_inc,
@@ -360,7 +360,6 @@ if get_option('enable-api')
     ]
     quick_dot_ai_api_cpp_args += [
       '-DENABLE_QNN_MODELS=1',
-      '-DQUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API=1',
     ]
   endif
 

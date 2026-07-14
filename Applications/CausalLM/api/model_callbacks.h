@@ -15,7 +15,35 @@
 
 namespace causallm {
 class Transformer;
+class XGrammar;
+namespace openai {
+struct Request;
 }
+} // namespace causallm
+
+/// Versioned borrowed view of the models loaded in one handle.
+struct OpenAIMultimodalModelViewV1 {
+  /// Set to sizeof(OpenAIMultimodalModelViewV1).
+  uint32_t struct_size;
+  /// Borrowed model pointer array for this synchronous call.
+  causallm::Transformer *const *models;
+  size_t model_count;
+  /// Architecture index that owns the registered callback.
+  size_t callback_model_index;
+  /// Conventional text-generation model index.
+  size_t text_model_index;
+};
+
+/// OpenAI multimodal callback with full sidecar and xgrammar input.
+/// Every pointer is borrowed for the synchronous call.
+/// The result is final, including CAUSAL_LM_ERROR_UNSUPPORTED.
+/// A non-null grammar must be honored or rejected.
+/// Implementations retain no pointers and detach temporary hooks.
+using OpenAIMultimodalStreamingCallback = std::function<ErrorCode(
+  const OpenAIMultimodalModelViewV1 *model_view,
+  const causallm::openai::Request *request, const std::string *formatted_prompt,
+  const QuickAiImageTensorV1 *images, size_t image_count,
+  causallm::XGrammar *grammar, CausalLmTokenCallback cb, void *user_data)>;
 
 /**
  * @brief Per-architecture callbacks registered by proprietary model TU files.
@@ -47,11 +75,10 @@ struct ModelCallbacks {
    */
   std::function<std::string(const std::string &full_prompt)> incremental_prompt;
 
-  /**
-   * Streaming multimodal execution.
-   * `handle` is CausalLmHandle (= CausalLmModel*).
-   * The registering TU casts it to CausalLmModel* and accesses h.models[0]/[1].
-   */
+  /// Legacy streaming multimodal execution on h.models[0]/[1].
+  /// The OpenAI adapter permits one unconstrained RGB image.
+  /// Patches must be 512x512; CHW is converted to HWC.
+  /// Other tensor contracts require the V2 registry.
   std::function<ErrorCode(CausalLmHandle handle, const float *pixel_values,
                           int num_patches, int orig_h, int orig_w,
                           const std::string &prompt, CausalLmTokenCallback cb,
@@ -108,4 +135,21 @@ private:
   ModelCallbackRegistry &operator=(const ModelCallbackRegistry &) = delete;
 
   std::unordered_map<std::string, ModelCallbacks> by_arch_;
+};
+
+/// Separate V2 registry for OpenAI multimodal callbacks.
+/// Keeping V2 out of ModelCallbacks preserves the legacy object's size.
+/// It also preserves the by-value registration calling contract.
+class OpenAIMultimodalCallbackRegistry {
+public:
+  static OpenAIMultimodalCallbackRegistry &instance();
+
+  void register_for(const std::string &architecture,
+                    OpenAIMultimodalStreamingCallback callback);
+
+  const OpenAIMultimodalStreamingCallback *
+  lookup(const std::string &architecture) const;
+
+private:
+  std::unordered_map<std::string, OpenAIMultimodalStreamingCallback> by_arch_;
 };

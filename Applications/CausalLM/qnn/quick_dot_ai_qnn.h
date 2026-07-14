@@ -75,6 +75,9 @@ public:
 
   void save_weight(const std::string &weight_path) override;
 
+  /** QNN subclasses are generative unless a vision-only subclass opts out. */
+  bool supportsTextGeneration() const override { return true; }
+
   virtual bool supportsKvCachePersistence() const { return false; }
   int getKvLen() const override { return 0; }
   std::string getOutput(int batch_idx = 0) const override {

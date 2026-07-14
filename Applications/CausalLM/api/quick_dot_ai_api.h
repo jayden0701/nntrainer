@@ -160,6 +160,10 @@ WIN_EXPORT ErrorCode loadModelHandle(BackendType compute, ModelType modeltype,
 /**
  * Load a catalog model into a new independent handle.
  *
+ * A registered model id may describe a text model, a fused multimodal model,
+ * or a plugin-owned composite. Callers use the same loader and generation
+ * entry points for each topology.
+ *
  * @param model_base_path Non-empty directory containing model directories.
  * @param out_handle Receives a new handle on success and NULL on failure.
  */
@@ -176,8 +180,12 @@ WIN_EXPORT ErrorCode configureSpeculativeDecoding(CausalLmHandle handle,
 
 /**
  * Load a compatible [vision encoder, text model] composition.
- * Returns CAUSAL_LM_ERROR_UNSUPPORTED when the experimental composition path
- * is unavailable in the current build.
+ *
+ * This is a low-level handle-construction helper. Generation still uses
+ * quickAiRunOpenAI(); an extension may instead register a fused or composite
+ * model behind one catalog id and load it with loadModelHandleByName().
+ * Returns CAUSAL_LM_ERROR_UNSUPPORTED when the selected descriptors or runtime
+ * model interfaces cannot form the requested composition.
  */
 WIN_EXPORT ErrorCode loadMultimodalHandleByName(
   BackendType compute, const char *embedding_model_id, const char *llm_model_id,
@@ -201,9 +209,21 @@ WIN_EXPORT ErrorCode quickAiRunText(CausalLmHandle handle, const char *input,
  * template. Explicit response_format constraints and required/named function
  * tools use xgrammar. For text-only requests pass NULL and zero for @p images
  * and @p image_count. Multimodal callers provide one tensor per image_url
- * occurrence in the same order. The sidecar format is multi-image ready, but
- * the current fused native runner supports exactly one image and returns
- * CAUSAL_LM_ERROR_UNSUPPORTED for larger image counts.
+ * occurrence in the same order. The loaded descriptor must advertise
+ * QDA_CAP_MULTIMODAL; image_count greater than one additionally requires
+ * QDA_CAP_MULTI_IMAGE.
+ *
+ * Image requests first use an architecture callback registered by a fused or
+ * plugin-owned composite model. If no such hook is registered, a compatible
+ * [vision encoder, embedding-input LLM] handle uses the generic composer.
+ * Once a full sidecar/grammar-aware callback is invoked, its return code is
+ * authoritative and no fallback path is attempted.
+ * That callback also receives the validated request and may apply its own
+ * model-specific template when no compatible core template is available.
+ * Incompatible capabilities, image counts/layouts, hooks, or model interfaces
+ * return CAUSAL_LM_ERROR_UNSUPPORTED instead of dropping image inputs.
+ * Extension callbacks share the C++ model ABI and must be rebuilt from the
+ * same source revision as the core/API libraries.
  *
  * The loaded handle, not the optional JSON model field, selects the model.
  * Unsupported per-request generation controls are rejected instead of being

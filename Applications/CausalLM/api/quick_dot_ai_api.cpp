@@ -113,6 +113,8 @@ struct CausalLmModel {
   std::vector<std::optional<causallm::ChatTemplate>> chat_templates;
   std::unique_ptr<causallm::XGrammarManager> grammar_manager;
   std::unordered_map<std::string, std::string> dynamic_grammar_schemas;
+  std::string descriptor_id;
+  unsigned int descriptor_capabilities = 0;
   std::string last_output;
   std::string native_lib_dir;
   std::vector<double> initialization_duration_ms;
@@ -315,7 +317,7 @@ static bool set_model_streamer(causallm::Transformer *model,
 }
 
 static bool request_model_stop(causallm::Transformer *model) {
-  if (!model_supports_text_output(model))
+  if (model == nullptr)
     return false;
   model->requestStop();
   return true;
@@ -1018,6 +1020,8 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     h.chat_templates.clear();
     h.grammar_manager = std::make_unique<causallm::XGrammarManager>();
     h.dynamic_grammar_schemas.clear();
+    h.descriptor_id.clear();
+    h.descriptor_capabilities = 0;
     h.last_output.clear();
     h.initialization_duration_ms.clear();
     h.initialized = false;
@@ -1711,6 +1715,8 @@ ErrorCode loadModelHandleByName(BackendType compute, const char *model_id,
     if (ec != CAUSAL_LM_ERROR_NONE) {
       return ec;
     }
+    h->descriptor_id = d.id != nullptr && d.id[0] != '\0' ? d.id : model_id;
+    h->descriptor_capabilities = d.capabilities;
     *out_handle = h.release();
     return CAUSAL_LM_ERROR_NONE;
   } catch (const std::exception &e) {
@@ -1758,15 +1764,6 @@ ErrorCode loadMultimodalHandleByName(
       !is_valid_backend(compute) || !is_valid_quantization(quant_type))
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
-#ifndef QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API
-  (void)compute;
-  (void)quant_type;
-  (void)native_lib_dir;
-  (void)model_base_path;
-  LOGE("loadMultimodalHandleByName: experimental multimodal nntrainer API is "
-       "not enabled");
-  return CAUSAL_LM_ERROR_UNSUPPORTED;
-#else
   try {
     register_models();
 
@@ -1842,6 +1839,9 @@ ErrorCode loadMultimodalHandleByName(
       h->native_lib_dir = native_lib_dir;
     h->verbose = tmp_llm.verbose;
     h->chat_template_name = tmp_llm.chat_template_name;
+    h->descriptor_id = std::string(embedding_model_id) + "+" + llm_model_id;
+    h->descriptor_capabilities =
+      QDA_CAP_STREAMING | QDA_CAP_OPENAI_API | QDA_CAP_MULTIMODAL;
     if (!initialize_handle_grammar(*h, 1)) {
       LOGE("loadMultimodalHandleByName: grammar unavailable for the LLM");
     }
@@ -1857,7 +1857,6 @@ ErrorCode loadMultimodalHandleByName(
     LOGE("loadMultimodalHandleByName: unknown exception");
     return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
   }
-#endif
 }
 
 ErrorCode saveQnnKvCacheHandle(CausalLmHandle handle, const char *cache_path) {
@@ -2021,6 +2020,10 @@ ErrorCode quickAiRunText(CausalLmHandle handle, const char *input,
   if (!h.initialized || h.models.empty()) {
     return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
+  if (!h.descriptor_id.empty() &&
+      (h.descriptor_capabilities & QDA_CAP_STREAMING) == 0) {
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
   ScopedRunRequest run_request(h);
 
   try {
@@ -2116,6 +2119,8 @@ ErrorCode unloadModelHandle(CausalLmHandle handle) {
   handle->chat_templates.clear();
   handle->grammar_manager.reset();
   handle->dynamic_grammar_schemas.clear();
+  handle->descriptor_id.clear();
+  handle->descriptor_capabilities = 0;
   handle->last_output.clear();
   handle->initialization_duration_ms.clear();
   handle->initialized = false;
@@ -2139,6 +2144,8 @@ ErrorCode destroyModelHandle(CausalLmHandle handle) {
     handle->chat_templates.clear();
     handle->grammar_manager.reset();
     handle->dynamic_grammar_schemas.clear();
+    handle->descriptor_id.clear();
+    handle->descriptor_capabilities = 0;
     handle->last_output.clear();
     handle->initialization_duration_ms.clear();
     handle->initialized = false;
@@ -2230,12 +2237,10 @@ void quickAiDisarmRunCancellation(CausalLmHandle handle) {
 
  * *============================================================================*/
 
-#if defined(ENABLE_QNN_MODELS) &&                                              \
-  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
 /**
- * Model-agnostic multimodal composer. Works through base Transformer virtuals
- * only (no concrete-model casts), so any [vision producer, LLM consumer] pair
- * (e.g. future vJEPA/siglip+LFM) is driven identically.
+ * Model-agnostic multimodal composer. Works through base Transformer
+ * virtuals only (no concrete-model casts), so any [vision producer, LLM
+ * consumer] pair (e.g. future vJEPA/siglip+LFM) is driven identically.
  *
  *   llm:          embedding CONSUMER (lookupEmbedding / run_with_embeddings)
  *   image_embeds: producer output; ownership taken here (freed before return)
@@ -2247,8 +2252,7 @@ execute_multimodal(CausalLmModel &h, causallm::Transformer *llm,
                    void *user_data, causallm::XGrammar *grammar = nullptr) {
   std::unique_ptr<void, decltype(&std::free)> image_guard(image_embeds.first,
                                                           &std::free);
-  if (llm == nullptr || !llm->supportsTextGeneration() ||
-      !llm->supportsEmbeddingInput()) {
+  if (llm == nullptr || !llm->supportsEmbeddingInput()) {
     LOGE("[MM] model does not support embedding-based text generation");
     return CAUSAL_LM_ERROR_UNSUPPORTED;
   }
@@ -2333,26 +2337,27 @@ execute_multimodal(CausalLmModel &h, causallm::Transformer *llm,
 
   CallbackStreamer streamer;
   callback_streamer_init(&streamer, callback, user_data);
-  // Attach via the cast helper: setStreamer lives on Quick_Dot_AI_QNN /
-  // CausalLM, not on the base Transformer the composer drives through.
-  if (!set_model_streamer(llm, &streamer.base)) {
-    return CAUSAL_LM_ERROR_UNSUPPORTED;
-  }
+  llm->setStreamer(&streamer.base);
   std::unique_ptr<XGrammarLogitsProcessor> grammar_processor;
   struct Detach {
     causallm::Transformer *t;
     bool detach_logits = false;
+#ifdef ENABLE_QNN_MODELS
     causallm::Quick_Dot_AI_QNN *qnn_model = nullptr;
+#endif
     ~Detach() {
-      set_model_streamer(t, nullptr);
+      t->setStreamer(nullptr);
       if (detach_logits)
         t->setLogitsProcessor(nullptr);
+#ifdef ENABLE_QNN_MODELS
       if (qnn_model != nullptr)
         qnn_model->resetXGrammar();
+#endif
     }
   } detach_guard{llm};
 
   bool qnn_grammar_attached = false;
+#ifdef ENABLE_QNN_MODELS
   if (grammar != nullptr) {
     if (auto *qnn_model = as_qnn_model(llm)) {
       qnn_model->setXGrammar(grammar);
@@ -2360,9 +2365,10 @@ execute_multimodal(CausalLmModel &h, causallm::Transformer *llm,
       qnn_grammar_attached = true;
     }
   }
+#endif
   if (grammar != nullptr && !qnn_grammar_attached) {
     grammar_processor = std::make_unique<XGrammarLogitsProcessor>(
-      grammar, [llm]() { request_model_stop(llm); });
+      grammar, [llm]() { llm->requestStop(); });
     llm->setLogitsProcessor(grammar_processor.get());
     detach_guard.detach_logits = true;
   }
@@ -2374,12 +2380,14 @@ execute_multimodal(CausalLmModel &h, causallm::Transformer *llm,
       LOGE("[MM] grammar rejected a generated token");
       return CAUSAL_LM_ERROR_INFERENCE_FAILED;
     }
+#ifdef ENABLE_QNN_MODELS
     if (detach_guard.qnn_model != nullptr &&
         detach_guard.qnn_model->hasXGrammarFailure()) {
       LOGE("[MM] QNN grammar rejected a generated token");
       return CAUSAL_LM_ERROR_INFERENCE_FAILED;
     }
-    get_model_output(llm, h.last_output);
+#endif
+    h.last_output = llm->getOutput(0);
     h.kv_len = llm->getKvLen();
   } catch (const std::exception &e) {
     LOGE("[MM] llm threw: %s", e.what());
@@ -2400,7 +2408,8 @@ run_vision_encoder(CausalLmModel &h, const char *prompt,
   causallm::Transformer *vision = h.models[0].get();
   causallm::Transformer *llm = h.models[1].get();
 
-  if (!vision->supportsImageEncoding() || !llm->supportsEmbeddingInput()) {
+  if (!vision->supportsImageEncoding() || !llm->supportsTextGeneration() ||
+      !llm->supportsEmbeddingInput() || llm->embeddingBytesPerToken() == 0) {
     LOGE("[MM] model pair does not support multimodal composition");
     return {nullptr, 0};
   }
@@ -2419,24 +2428,22 @@ run_vision_encoder(CausalLmModel &h, const char *prompt,
                            originalHeight, originalWidth, /*do_sample=*/false,
                            "", "", h.verbose);
 }
-#endif // ENABLE_QNN_MODELS &&
-       // QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API
 
-#ifdef ENABLE_QNN_MODELS
 /**
  * Standalone vision/video encoder run (no LLM). Wraps models[0]->run_image
  * and transfers the malloc'd output buffer to the caller. See header for the
  * ownership contract (free with freeImageEmbedding, not freeEmbedding).
  *
- * Always defined under ENABLE_QNN_MODELS (part of the public ABI). The
- * run_image- dependent body is gated on the experimental multimodal macro;
- * without it the function returns CAUSAL_LM_ERROR_UNSUPPORTED.
+ * This base-Transformer path is available to CPU and accelerator plugins; it
+ *
+ * is not tied to whether the public build includes QNN model sources.
  */
 ErrorCode encodeImageModelHandle(CausalLmHandle handle,
                                  const float *pixelValues, size_t numFloats,
                                  int height, int width, void **out_embedding,
                                  int *out_bytes) {
-  if (handle == nullptr || pixelValues == nullptr || out_embedding == nullptr ||
+  if (handle == nullptr || pixelValues == nullptr || numFloats == 0 ||
+      height <= 0 || width <= 0 || out_embedding == nullptr ||
       out_bytes == nullptr)
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
@@ -2450,8 +2457,12 @@ ErrorCode encodeImageModelHandle(CausalLmHandle handle,
     return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
 
-#if defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
   causallm::Transformer *vision = h.models[0].get();
+  if (!h.descriptor_id.empty() &&
+      (h.descriptor_capabilities & QDA_CAP_VISION_ENCODER) == 0) {
+    LOGE("encodeImageModelHandle: descriptor is not image-capable");
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
   if (!vision->supportsImageEncoding()) {
     LOGE("encodeImageModelHandle: model is not an image encoder");
     return CAUSAL_LM_ERROR_UNSUPPORTED;
@@ -2460,6 +2471,8 @@ ErrorCode encodeImageModelHandle(CausalLmHandle handle,
   // llm_quant_param_given_ == false so run_image returns the raw quantized
   // embedding via plain memcpy (no LLM consumer required).
 
+  if (numFloats > (std::numeric_limits<size_t>::max)() / sizeof(float))
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   const size_t pixel_bytes = numFloats * sizeof(float);
   causallm::multimodal_pointer image_in{const_cast<float *>(pixelValues),
                                         pixel_bytes};
@@ -2467,12 +2480,22 @@ ErrorCode encodeImageModelHandle(CausalLmHandle handle,
     causallm::multimodal_pointer embeds =
       vision->run_image(std::string(""), image_in, height, width,
                         /*do_sample=*/false, "", "", h.verbose);
+    std::unique_ptr<void, decltype(&std::free)> embedding_guard(embeds.first,
+                                                                &std::free);
     if (embeds.first == nullptr || embeds.second == 0) {
       LOGE("encodeImageModelHandle: run_image returned empty output");
       return CAUSAL_LM_ERROR_INFERENCE_FAILED;
     }
-    *out_embedding = embeds.first; // ownership transferred to caller
+    if (embeds.second >
+        static_cast<size_t>((std::numeric_limits<int>::max)())) {
+      LOGE("encodeImageModelHandle: embedding is too large for the V1 API");
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
+    *out_embedding = embedding_guard.release(); // ownership to caller
     *out_bytes = static_cast<int>(embeds.second);
+  } catch (const std::invalid_argument &e) {
+    LOGE("encodeImageModelHandle: invalid input: %s", e.what());
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   } catch (const std::exception &e) {
     LOGE("encodeImageModelHandle: exception: %s", e.what());
     return CAUSAL_LM_ERROR_INFERENCE_FAILED;
@@ -2481,41 +2504,9 @@ ErrorCode encodeImageModelHandle(CausalLmHandle handle,
     return CAUSAL_LM_ERROR_INFERENCE_FAILED;
   }
   return CAUSAL_LM_ERROR_NONE;
-#else
-  // Multimodal vision encoding relies on Transformer::run_image, which the
-  // main nntrainer API does not provide. The proprietary vision QNN models
-  // that implemented it (e.g. vjepa2-qnn) are excluded from the build. See
-  // docs/qnn-model-main-adaptation-todo.ko.md.
-  (void)height;
-  (void)width;
-  (void)numFloats;
-  LOGE("encodeImageModelHandle: multimodal vision encoder API is not enabled");
-  return CAUSAL_LM_ERROR_UNSUPPORTED;
-#endif
 }
 
 void freeImageEmbedding(void *embedding) { std::free(embedding); }
-#endif // ENABLE_QNN_MODELS
-
-#ifndef ENABLE_QNN_MODELS
-ErrorCode encodeImageModelHandle(CausalLmHandle handle,
-                                 const float *pixelValues, size_t numFloats,
-                                 int height, int width, void **out_embedding,
-                                 int *out_bytes) {
-  (void)handle;
-  (void)pixelValues;
-  (void)numFloats;
-  (void)height;
-  (void)width;
-  if (out_embedding)
-    *out_embedding = nullptr;
-  if (out_bytes)
-    *out_bytes = 0;
-  return CAUSAL_LM_ERROR_UNSUPPORTED;
-}
-
-void freeImageEmbedding(void *embedding) { (void)embedding; }
-#endif // !ENABLE_QNN_MODELS
 
 /*============================================================================
 
@@ -2626,8 +2617,6 @@ validate_openai_images(const causallm::openai::Request &request,
   return CAUSAL_LM_ERROR_NONE;
 }
 
-#if defined(ENABLE_QNN_MODELS) &&                                              \
-  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
 static std::vector<float>
 convert_chw_to_hwc(const QuickAiImageTensorV1 &image) {
   std::vector<float> converted(image.value_count);
@@ -2651,7 +2640,160 @@ convert_chw_to_hwc(const QuickAiImageTensorV1 &image) {
   }
   return converted;
 }
-#endif
+
+struct MultimodalCallbackMatch {
+  const OpenAIMultimodalStreamingCallback *openai_callback = nullptr;
+  const ModelCallbacks *legacy_callbacks = nullptr;
+  size_t model_index = 0;
+};
+
+static MultimodalCallbackMatch
+find_multimodal_callbacks(const CausalLmModel &h, size_t text_model_index) {
+  std::vector<size_t> candidates;
+  const size_t model_count = std::min(h.models.size(), h.architectures.size());
+  auto add_candidate = [&](size_t candidate) {
+    if (candidate < model_count &&
+        std::find(candidates.begin(), candidates.end(), candidate) ==
+          candidates.end()) {
+      candidates.push_back(candidate);
+    }
+  };
+  add_candidate(text_model_index);
+  add_candidate(0);
+  for (size_t i = 0; i < model_count; ++i)
+    add_candidate(i);
+
+  // Prefer the full sidecar/grammar-aware hook across every candidate before
+  // considering the shape-limited legacy callback.
+  for (const size_t candidate : candidates) {
+    const auto *callback = OpenAIMultimodalCallbackRegistry::instance().lookup(
+      h.architectures[candidate]);
+    if (callback != nullptr && *callback)
+      return {callback, nullptr, candidate};
+  }
+
+  const size_t legacy_candidates[] = {text_model_index, 0};
+  for (size_t i = 0; i < 2; ++i) {
+    const size_t candidate = legacy_candidates[i];
+    if (candidate >= h.architectures.size() || candidate >= h.models.size() ||
+        (i == 1 && candidate == text_model_index)) {
+      continue;
+    }
+    const auto *legacy_callbacks =
+      ModelCallbackRegistry::instance().lookup(h.architectures[candidate]);
+    if (legacy_callbacks != nullptr && legacy_callbacks->multimodal_streaming)
+      return {nullptr, legacy_callbacks, candidate};
+  }
+  return {};
+}
+
+struct CapturingTokenCallback {
+  CausalLmTokenCallback callback;
+  void *user_data;
+  std::string *output;
+  causallm::Transformer *stop_model;
+};
+
+static int capture_token_delta(const char *delta, void *user_data) {
+  auto *capture = static_cast<CapturingTokenCallback *>(user_data);
+  if (delta != nullptr)
+    capture->output->append(delta);
+  const int result = capture->callback(delta, capture->user_data);
+  if (result != 0)
+    request_model_stop(capture->stop_model);
+  return result;
+}
+
+struct MultimodalCallbackDispatch {
+  bool invoked = false;
+  ErrorCode result = CAUSAL_LM_ERROR_UNSUPPORTED;
+};
+
+static MultimodalCallbackDispatch run_registered_multimodal(
+  CausalLmModel &h, const MultimodalCallbackMatch &match,
+  size_t text_model_index, const QuickAiImageTensorV1 *images,
+  size_t image_count, const causallm::openai::Request &request,
+  const std::string *formatted_input, causallm::XGrammar *grammar,
+  CausalLmTokenCallback callback, void *user_data) {
+  if (match.model_index >= h.models.size() || !h.models[match.model_index])
+    return {};
+
+  std::string captured_output;
+  if (match.openai_callback != nullptr) {
+    const size_t state_model_index =
+      text_model_index < h.models.size() && h.models[text_model_index]
+        ? text_model_index
+        : match.model_index;
+    std::vector<causallm::Transformer *> callback_models;
+    callback_models.reserve(h.models.size());
+    for (const auto &model : h.models)
+      callback_models.push_back(model.get());
+    const OpenAIMultimodalModelViewV1 model_view{
+      static_cast<uint32_t>(sizeof(OpenAIMultimodalModelViewV1)),
+      callback_models.data(), callback_models.size(), match.model_index,
+      text_model_index};
+    CapturingTokenCallback capture{callback, user_data, &captured_output,
+                                   h.models[state_model_index].get()};
+    const ErrorCode result = (*match.openai_callback)(
+      &model_view, &request, formatted_input, images, image_count, grammar,
+      capture_token_delta, &capture);
+    if (result == CAUSAL_LM_ERROR_NONE) {
+      h.last_output = std::move(captured_output);
+      update_handle_session_after_run(h, state_model_index);
+    } else {
+      h.last_output.clear();
+    }
+    return {true, result};
+  }
+
+  if (match.legacy_callbacks == nullptr ||
+      !match.legacy_callbacks->multimodal_streaming || image_count != 1 ||
+      grammar != nullptr || formatted_input == nullptr)
+    return {};
+
+  const auto &image = images[0];
+  if (image.patch_count >
+      static_cast<uint32_t>((std::numeric_limits<int>::max)())) {
+    return {};
+  }
+
+  // The legacy callback predates sidecar metadata and its historical contract
+  // is one or more dense RGB 512x512 patches in HWC order. Never pass a
+  // model-native or arbitrary dense tensor to a callback that cannot inspect
+  // its layout/shape.
+  constexpr uint32_t LEGACY_CHANNELS = 3;
+  constexpr uint32_t LEGACY_PATCH_SIZE = 512;
+  if (image.layout == QUICK_AI_IMAGE_LAYOUT_MODEL_NATIVE ||
+      image.channels != LEGACY_CHANNELS ||
+      image.patch_height != LEGACY_PATCH_SIZE ||
+      image.patch_width != LEGACY_PATCH_SIZE) {
+    return {};
+  }
+
+  std::vector<float> converted;
+  const float *values = image.values;
+  if (image.layout == QUICK_AI_IMAGE_LAYOUT_CHW) {
+    converted = convert_chw_to_hwc(image);
+    values = converted.data();
+  }
+  if (text_model_index >= h.models.size() || !h.models[text_model_index])
+    return {true, CAUSAL_LM_ERROR_NOT_INITIALIZED};
+
+  CapturingTokenCallback capture{callback, user_data, &captured_output,
+                                 h.models[text_model_index].get()};
+  const ErrorCode result = match.legacy_callbacks->multimodal_streaming(
+    &h, values, static_cast<int>(image.patch_count),
+    static_cast<int>(image.original_height),
+    static_cast<int>(image.original_width), *formatted_input,
+    capture_token_delta, &capture);
+  if (result == CAUSAL_LM_ERROR_NONE) {
+    h.last_output = std::move(captured_output);
+    update_handle_session_after_run(h, text_model_index);
+  } else {
+    h.last_output.clear();
+  }
+  return {true, result};
+}
 
 /**
  * Render a validated request with the model-provided template, or with the
@@ -2728,6 +2870,10 @@ ErrorCode quickAiRunOpenAI(CausalLmHandle handle, const char *json_request,
   if (!h.initialized || h.models.empty()) {
     return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
+  if (!h.descriptor_id.empty() &&
+      (h.descriptor_capabilities & QDA_CAP_OPENAI_API) == 0) {
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
   ScopedRunRequest run_request(h);
 
   try {
@@ -2749,22 +2895,29 @@ ErrorCode quickAiRunOpenAI(CausalLmHandle handle, const char *json_request,
       return CAUSAL_LM_ERROR_NOT_INITIALIZED;
     }
     if (image_count > 0) {
-#if defined(ENABLE_QNN_MODELS) &&                                              \
-  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
-      if (image_count != 1 || h.models.size() < 2 || model_index != 1 ||
-          !h.models[0]->supportsImageEncoding() ||
-          !h.models[model_index]->supportsEmbeddingInput())
+      if (!h.descriptor_id.empty() &&
+          (h.descriptor_capabilities & QDA_CAP_MULTIMODAL) == 0) {
         return CAUSAL_LM_ERROR_UNSUPPORTED;
-#else
-      return CAUSAL_LM_ERROR_UNSUPPORTED;
-#endif
+      }
+      if (image_count > 1 && !h.descriptor_id.empty() &&
+          (h.descriptor_capabilities & QDA_CAP_MULTI_IMAGE) == 0) {
+        return CAUSAL_LM_ERROR_UNSUPPORTED;
+      }
     }
+
+    const auto callback_match = image_count > 0
+                                  ? find_multimodal_callbacks(h, model_index)
+                                  : MultimodalCallbackMatch{};
+    const bool has_full_plugin_callback =
+      callback_match.openai_callback != nullptr;
 
     std::string formatted_input;
     const ErrorCode render_result =
       render_openai_prompt(h, model_index, request, formatted_input);
-    if (render_result != CAUSAL_LM_ERROR_NONE)
+    if (render_result != CAUSAL_LM_ERROR_NONE && !has_full_plugin_callback)
       return render_result;
+    const std::string *formatted_input_or_null =
+      render_result == CAUSAL_LM_ERROR_NONE ? &formatted_input : nullptr;
 
     causallm::XGrammar *grammar = nullptr;
     std::string grammar_key;
@@ -2784,15 +2937,33 @@ ErrorCode quickAiRunOpenAI(CausalLmHandle handle, const char *json_request,
 
     ScopedGeneration generation(h);
     h.last_output.clear();
-    h.models[model_index]->resetConversationState();
+    for (auto &model : h.models) {
+      if (model != nullptr)
+        model->resetConversationState();
+    }
     reset_handle_session_state(h);
 
     if (image_count == 0) {
       return run_model_streaming_on_handle(h, formatted_input, callback,
                                            user_data, model_index, grammar);
     }
-#if defined(ENABLE_QNN_MODELS) &&                                              \
-  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
+
+    const MultimodalCallbackDispatch registered = run_registered_multimodal(
+      h, callback_match, model_index, images, image_count, request,
+      formatted_input_or_null, grammar, callback, user_data);
+    if (registered.invoked)
+      return registered.result;
+    if (render_result != CAUSAL_LM_ERROR_NONE)
+      return render_result;
+
+    if (image_count != 1 || h.models.size() < 2 || !h.models[0] ||
+        model_index != 1 || !h.models[0]->supportsImageEncoding() ||
+        !h.models[model_index]->supportsTextGeneration() ||
+        !h.models[model_index]->supportsEmbeddingInput() ||
+        h.models[model_index]->embeddingBytesPerToken() == 0) {
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+
     const auto &image = images[0];
     std::vector<float> converted;
     const float *values = image.values;
@@ -2804,14 +2975,8 @@ ErrorCode quickAiRunOpenAI(CausalLmHandle handle, const char *json_request,
       run_vision_encoder(h, formatted_input.c_str(), values, image.value_count,
                          static_cast<int>(image.original_height),
                          static_cast<int>(image.original_width));
-    if (image_embeds.first == nullptr || image_embeds.second == 0) {
-      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-    }
     return execute_multimodal(h, h.models[model_index].get(), image_embeds,
                               formatted_input, callback, user_data, grammar);
-#else
-    return CAUSAL_LM_ERROR_UNSUPPORTED;
-#endif
   } catch (const std::invalid_argument &e) {
     LOGE("quickAiRunOpenAI: invalid request: %s", e.what());
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;

@@ -31,3 +31,20 @@ bool ModelCallbackRegistry::any_requires_htp() const {
   }
   return false;
 }
+
+OpenAIMultimodalCallbackRegistry &OpenAIMultimodalCallbackRegistry::instance() {
+  static OpenAIMultimodalCallbackRegistry reg;
+  return reg;
+}
+
+void OpenAIMultimodalCallbackRegistry::register_for(
+  const std::string &architecture, OpenAIMultimodalStreamingCallback callback) {
+  by_arch_[architecture] = std::move(callback);
+}
+
+const OpenAIMultimodalStreamingCallback *
+OpenAIMultimodalCallbackRegistry::lookup(
+  const std::string &architecture) const {
+  auto it = by_arch_.find(architecture);
+  return it != by_arch_.end() ? &it->second : nullptr;
+}
