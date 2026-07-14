@@ -29,6 +29,7 @@
 # into libcausallm.so above.
 causallm_src = [
     meson.current_source_dir() / 'chat_template.cpp',
+    meson.current_source_dir() / 'api' / 'openai_request.cpp',
     meson.current_source_dir() / 'huggingface_tokenizer.cpp',
     meson.current_source_dir() / 'llm_util.cpp',
     meson.current_source_dir() / 'kv_cache_manager.cpp',
@@ -334,16 +335,17 @@ e_safetensors_info = executable('nntr_safetensors_info',
 # Mirrors QuickAI's api/meson.build: xgrammar is compiled once into
 # libcausallm.so (see the xgrammar block above causallm_src) and this target
 # borrows the single XGrammarManager singleton from it via causallm_dep,
-# instead of compiling its own copy. ENABLE_QNN_MODELS is defined only when
-# enable-qnn-models is set, matching the QNN sources conditionally compiled
-# into libcausallm.so above — the dynamic_cast<Quick_Dot_AI_QNN *> /
-# make_unique<Gemma4_E2B_QNN> paths those defines unlock in
-# api/quick_dot_ai_api.cpp then resolve at link via causallm_dep.
+# instead of compiling its own copy. QNN and the model-agnostic multimodal
+# composer are enabled together, matching app_build/meson.build. The composer
+# remains unreachable unless a compatible two-model vision/LLM handle loads.
 if get_option('enable-api')
   quick_dot_ai_api_inc = [
     causallm_inc,
     causallm_inc_minja_inc,
     causallm_inc_nlohmann_inc,
+    include_directories('models' / 'gpt_oss_cached_slim'),
+    include_directories('models' / 'qwen3_cached_slim_moe'),
+    include_directories('models' / 'bert'),
     include_directories('api'),
     include_directories('xgrammar' / 'include'),
     include_directories('xgrammar' / '3rdparty' / 'picojson'),
@@ -356,7 +358,10 @@ if get_option('enable-api')
       include_directories('qnn'),
       include_directories('qnn' / 'gemma4-e2b-qnn'),
     ]
-    quick_dot_ai_api_cpp_args += ['-DENABLE_QNN_MODELS=1']
+    quick_dot_ai_api_cpp_args += [
+      '-DENABLE_QNN_MODELS=1',
+      '-DQUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API=1',
+    ]
   endif
 
   quick_dot_ai_api_src = [
@@ -364,7 +369,6 @@ if get_option('enable-api')
     meson.current_source_dir() / 'api' / 'model_callbacks.cpp',
     meson.current_source_dir() / 'api' / 'model_config.cpp',
     meson.current_source_dir() / 'api' / 'model_descriptors_public.cpp',
-    meson.current_source_dir() / 'api' / 'streamer.cpp',
     meson.current_source_dir() / 'api' / 'callback_streamer.cpp',
   ]
 
@@ -374,6 +378,13 @@ if get_option('enable-api')
     dependencies: [nntrainer_dep, causallm_dep, dependency('threads')],
     cpp_args: quick_dot_ai_api_cpp_args,
     install: true,
+    install_dir: application_install_dir,
+  )
+
+  install_headers(
+    'api' / 'quick_dot_ai_api.h',
+    'api' / 'model_descriptor.h',
+    install_dir: nntrainer_includedir / 'causallm',
   )
 
   quick_dot_ai_api_dep = declare_dependency(
@@ -461,6 +472,43 @@ if get_option('enable-test')
   test('unittest_callback_streamer', unittest_callback_streamer,
     args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_callback_streamer'),
     timeout: 60,
+    suite: 'unittests'
+  )
+
+  unittest_openai_request = executable(
+    'unittest_openai_request',
+    [
+      meson.current_source_dir() / 'api' / 'unittest_openai_request.cpp',
+      meson.current_source_dir() / 'api' / 'openai_request.cpp',
+      meson.current_source_dir() / 'chat_template.cpp',
+    ],
+    dependencies: [gtest_main_dep],
+    include_directories: causallm_inc + [
+      causallm_inc_minja_inc,
+      causallm_inc_nlohmann_inc,
+    ],
+    build_by_default: true,
+    install: false,
+  )
+
+  test('unittest_openai_request', unittest_openai_request,
+    args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_openai_request'),
+    timeout: 60,
+    suite: 'unittests'
+  )
+
+  unittest_xgrammar_manager = executable(
+    'unittest_xgrammar_manager',
+    meson.current_source_dir() / 'api' / 'unittest_xgrammar_manager.cpp',
+    dependencies: [gtest_main_dep, causallm_dep],
+    include_directories: causallm_xgrammar_inc,
+    build_by_default: true,
+    install: false,
+  )
+
+  test('unittest_xgrammar_manager', unittest_xgrammar_manager,
+    args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_xgrammar_manager'),
+    timeout: 120,
     suite: 'unittests'
   )
 

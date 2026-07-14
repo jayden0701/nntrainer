@@ -64,6 +64,7 @@ LOCAL_LDLIBS := -llog -landroid -DENABLE_FP16=1 -DUSE__FP16=1 -D__ARM_NEON__=1 -
 
 LOCAL_SRC_FILES := \
     ../chat_template.cpp \
+    ../api/openai_request.cpp \
     ../models/causal_lm.cpp \
     ../models/transformer.cpp \
     ../models/sentence_transformer.cpp \

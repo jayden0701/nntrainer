@@ -91,23 +91,68 @@ static void print_error(const std::string &msg) {
             << clr::reset << "\n";
 }
 
+static int print_token(const char *delta, void *) {
+  if (delta != nullptr)
+    std::cout << delta << std::flush;
+  return 0;
+}
+
+static std::string json_escape(const char *text) {
+  static constexpr char hex[] = "0123456789abcdef";
+  std::string escaped;
+  for (const unsigned char ch : std::string(text)) {
+    switch (ch) {
+    case '"':
+      escaped += "\\\"";
+      break;
+    case '\\':
+      escaped += "\\\\";
+      break;
+    case '\b':
+      escaped += "\\b";
+      break;
+    case '\f':
+      escaped += "\\f";
+      break;
+    case '\n':
+      escaped += "\\n";
+      break;
+    case '\r':
+      escaped += "\\r";
+      break;
+    case '\t':
+      escaped += "\\t";
+      break;
+    default:
+      if (ch < 0x20) {
+        escaped += "\\u00";
+        escaped += hex[ch >> 4];
+        escaped += hex[ch & 0x0f];
+      } else {
+        escaped += static_cast<char>(ch);
+      }
+    }
+  }
+  return escaped;
+}
+
 // ── Usage ────────────────────────────────────────────────────────────────────
 static void print_usage(const char *prog) {
   print_banner();
   print_section("Usage", clr::yellow);
   std::cout << clr::yellow << "│" << clr::reset << "  " << clr::bold_white
-            << prog << clr::reset << " <model> [prompt] [chat_tpl] [quant] "
-            << "[verbose]\n";
+            << prog << clr::reset << " <model> [prompt] [quant] [verbose] "
+            << "[model_base_path]\n";
   std::cout << clr::yellow << "│" << clr::reset << "\n";
   print_kv("model", "qwen3-0.6b | gemma4-e2b-qnn | <catalog id>", clr::yellow);
   print_kv("", "ouro → embedding smoke (encodeModelHandle)", clr::yellow);
   print_kv("prompt", "\"Hello, how are you?\"", clr::yellow);
-  print_kv("chat_tpl", "true | false  (default: true)", clr::yellow);
   print_kv("quant", "W4A32 | W16A16 | W8A16 | W32A32", clr::yellow);
   print_kv("verbose", "true | false  (default: true)", clr::yellow);
   print_kv("model_base_path",
            "Base directory for models (or set QUICKAI_MODEL_BASE_PATH)",
            clr::yellow);
+  print_kv("QDA_API", "openai (default) | text", clr::yellow);
   print_section_end(clr::yellow);
 }
 
@@ -307,17 +352,10 @@ int main(int argc, char *argv[]) {
   const char *model_name = argv[1];
   const char *prompt = (argc >= 3) ? argv[2] : "Hello, how are you?";
 
-  bool use_chat_template = true;
-  if (argc >= 4) {
-    std::string arg(argv[3]);
-    std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
-    use_chat_template = (arg == "true" || arg == "1");
-  }
-
   ModelQuantizationType quant_type = CAUSAL_LM_QUANTIZATION_W4A32;
   std::string quant_str = "W4A32";
-  if (argc >= 5) {
-    quant_str = std::string(argv[4]);
+  if (argc >= 4) {
+    quant_str = std::string(argv[3]);
     if (quant_str == "W4A32") {
       quant_type = CAUSAL_LM_QUANTIZATION_W4A32;
     } else if (quant_str == "W16A16") {
@@ -330,8 +368,8 @@ int main(int argc, char *argv[]) {
   }
 
   bool verbose = true;
-  if (argc >= 6) {
-    std::string arg(argv[5]);
+  if (argc >= 5) {
+    std::string arg(argv[4]);
     verbose = (arg == "1" || arg == "true");
   }
 
@@ -341,8 +379,8 @@ int main(int argc, char *argv[]) {
   // Model base path: CLI arg > env var > nullptr (uses C API default)
   const char *model_base_path = nullptr;
   std::string model_base_path_storage;
-  if (argc >= 7) {
-    model_base_path_storage = argv[6];
+  if (argc >= 6) {
+    model_base_path_storage = argv[5];
     model_base_path = model_base_path_storage.c_str();
   } else {
     const char *env_path = std::getenv("QUICKAI_MODEL_BASE_PATH");
@@ -352,6 +390,16 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  std::string generation_api = "openai";
+  if (const char *api = std::getenv("QDA_API"))
+    generation_api = api;
+  std::transform(generation_api.begin(), generation_api.end(),
+                 generation_api.begin(), ::tolower);
+  if (generation_api != "openai" && generation_api != "text") {
+    print_error("QDA_API must be either 'openai' or 'text'");
+    return 1;
+  }
+
   // ── Banner ─────────────────────────────────────────────────────────────
   print_banner();
 
@@ -359,16 +407,15 @@ int main(int argc, char *argv[]) {
   print_section("Configuration", clr::cyan);
   print_kv("Model", model_name, clr::cyan);
   print_kv("Prompt", std::string("\"") + prompt + "\"", clr::cyan);
-  print_kv("Chat Template", use_chat_template ? "Yes" : "No", clr::cyan);
   print_kv("Quantization", quant_str, clr::cyan);
   print_kv("Verbose", verbose ? "Yes" : "No", clr::cyan);
+  print_kv("Generation API", generation_api, clr::cyan);
   print_kv("Model Base Path",
            model_base_path ? model_base_path : "(C API default)", clr::cyan);
   print_section_end(clr::cyan);
 
   // ── Set options ────────────────────────────────────────────────────────
-  Config config;
-  config.use_chat_template = use_chat_template;
+  Config config{};
   config.debug_mode = verbose;
   config.verbose = verbose;
 
@@ -570,56 +617,37 @@ int main(int argc, char *argv[]) {
             << clr::reset << "\n";
   std::cout << clr::green << "│" << clr::reset << "\n";
 
-  const char *outputText = nullptr;
-  // CausalLMChatMessage msg;
-  // msg.role = "user";
-  // msg.content = prompt;
-  // err = runModelHandleWithMessages(handle, &msg, 1, true, &outputText);
-
-  // QDA_STREAM=1: unconstrained per-token streaming generation, matching the
-  // GUI app's Chat path (runChatModelHandleStreaming →
-  // runModelHandleStreaming). The default tool/grammar path below produces only
-  // a short constrained JSON, which never reaches the longer free-text
-  // generation the app does.
-  if (std::getenv("QDA_STREAM")) {
-    struct Cb {
-      static int on_token(const char *delta, void *) {
-        if (delta) {
-          std::cout << delta << std::flush;
-        }
-        return 0; // keep generating
-      }
-    };
-    std::cout << clr::green << "│" << clr::reset << "  " << clr::dim
-              << "Output (streaming):" << clr::reset << "\n";
-    err = runModelHandleStreaming(handle, prompt, &Cb::on_token, nullptr);
-    std::cout << "\n";
+  std::cout << clr::green << "│" << clr::reset << "  " << clr::dim
+            << "Output (streaming):" << clr::reset << "\n";
+  if (generation_api == "text") {
+    // Exact-text mode deliberately bypasses every chat template and grammar.
+    // The prompt must already be in the format expected by the selected model.
+    err = quickAiRunText(handle, prompt, &print_token, nullptr);
   } else {
-    // XGrammar Test
-    auto tool_name = "web_search";
-    auto schema =
-      "{\"type\": \"object\",\"properties\": {\"query\": {\"type\": "
-      "\"string\", "
-      "\"description\": \"Search query in the most effective language for "
-      "results (use Korean for Korean local info, English for global "
-      "topics)\"},\"count\": {\"type\": \"integer\", \"minimum\": 1, "
-      "\"maximum\": 10, \"description\": \"Number of results to return "
-      "(default 5, max 10)\"}},\"required\": [\"query\"]}";
-    err =
-      runModelHandleWithTool(handle, prompt, &outputText, tool_name, schema);
+    // OpenAI mode parses messages, applies the model chat template, and uses
+    // response_format to constrain decoding with xgrammar. This smoke request
+    // is text-only, hence the explicit nullptr/0 image sidecar pair.
+    const std::string request =
+      "{\"messages\":["
+      "{\"role\":\"system\",\"content\":\"Return a short answer in the "
+      "requested JSON format.\"},"
+      "{\"role\":\"user\",\"content\":\"" +
+      json_escape(prompt) +
+      "\"}],\"response_format\":{\"type\":\"json_schema\","
+      "\"json_schema\":{\"name\":\"smoke_result\",\"schema\":{"
+      "\"type\":\"object\",\"properties\":{\"answer\":{\"type\":"
+      "\"string\"}},\"required\":[\"answer\"],"
+      "\"additionalProperties\":false}}}}";
+    err = quickAiRunOpenAI(handle, request.c_str(), nullptr, 0, &print_token,
+                           nullptr);
   }
+  std::cout << "\n";
 
   if (err != CAUSAL_LM_ERROR_NONE) {
     print_error("Inference failed (code " + std::to_string(err) + ")");
     return 1;
   }
 
-  if (outputText) {
-    std::cout << clr::green << "│" << clr::reset << "  " << clr::dim
-              << "Output:" << clr::reset << "\n";
-    std::cout << clr::green << "│" << clr::reset << "  " << clr::bold_white
-              << outputText << clr::reset << "\n";
-  }
   print_section_end(clr::green);
 
   // ── Performance Metrics ────────────────────────────────────────────────

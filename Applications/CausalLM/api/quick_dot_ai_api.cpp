@@ -11,14 +11,13 @@
  */
 
 #include "quick_dot_ai_api.h"
-#ifdef ENABLE_QNN_MODELS
-#include "quick_dot_ai_qnn.h"
-#endif
+#include "quick_dot_ai_api_internal.h"
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <cxxabi.h>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -29,8 +28,15 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <typeinfo>
+#include <unordered_map>
 #include <vector>
 
+#ifndef _WIN32
+#include <cxxabi.h>
+#endif
+
+#include "callback_streamer.h"
 #include "causal_lm.h"
 #include "chat_template.h"
 #include "gemma3_causallm.h"
@@ -42,35 +48,22 @@
 #include "model_config_internal.h"
 #include "model_descriptor.h"
 #include "multilingual_tinybert_16mb.h"
+#include "openai_request.h"
 #include "qwen2_causallm.h"
 #include "qwen3_cached_slim_moe_causallm.h"
 #include "qwen3_causallm.h"
 #include "qwen3_moe_causallm.h"
 #include "qwen3_slim_moe_causallm.h"
 #include "sentence_transformer.h"
-// V-JEPA2 + LFM2 fused video-language model. Depends on the nntrainer
-// VjepaLfm2ForConditionalGeneration model + Transformer::run_video virtual,
-// which are not present in this tree. Gated off until they are ported here;
-// define QUICKAI_ENABLE_VJEPA_LFM2_VIDEO to re-enable the video path.
-#if defined(QUICKAI_ENABLE_VJEPA_LFM2_VIDEO)
-#include "vjepa_lfm2_vl/vjepa_lfm2_vl.h"
-#endif
 #include "xgrammar_manager.h"
 #include "xgrammar_wrapper.h"
 #include <factory.h>
 #ifdef ENABLE_QNN_MODELS
 #include "gemma4_e2b_qnn.h"
 #include "quick_dot_ai_qnn.h"
-// Multimodal vision QNN models are excluded: they depend on the OLD
-// nntrainer multimodal interface (run_image / multimodal_pointer) absent
-// from main nntrainer. See docs/qnn-model-main-adaptation-todo.ko.md.
-#if defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
-#endif
-
 #endif
 #include <fstream>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -84,15 +77,24 @@
 
 using json = nlohmann::json;
 
+static int set_environment_variable(const char *name, const char *value) {
+#ifdef _WIN32
+  return _putenv_s(name, value);
+#else
+  return setenv(name, value, 1);
+#endif
+}
+
 /**
  * @brief Per-handle state for a loaded CausalLM model instance.
  *
- * Each handle may carry one or more sub-models so that compositions like
- * vision-encoder + LLM can live behind a single handle. The vectors are
- * kept parallel: models[i] ↔ architectures[i] ↔ model_dirs[i] ↔
- * initialization_duration_ms[i]. The single-model API paths
- * (runModelHandleWithMessages / runModelHandleStreaming) operate on models[0]
- * and ignore the rest; the multimodal API drives the full set.
+ * Each handle may carry one or more sub-models so that compositions like a
+ *
+ * vision encoder plus LLM can live behind a single owner. The parallel model
+ *
+ * metadata vectors use the same index. Generation selects the text model and
+ *
+ * optionally drives the complete composition through quickAiRunOpenAI().
  *
  * Note: the legacy non-handle API (loadModel / ...) is
  * implemented on top of a single static "default" instance of this struct
@@ -100,25 +102,132 @@ using json = nlohmann::json;
  */
 struct CausalLmModel {
   std::mutex mtx;
+  std::mutex cancellation_mtx;
+  bool run_announced = false;
+  bool run_active = false;
+  bool cancellation_pending = false;
   std::vector<std::unique_ptr<causallm::Transformer>> models;
+  std::vector<causallm::Transformer *> cancellation_targets;
   std::vector<std::string> architectures;
   std::vector<std::string> model_dirs;
+  std::vector<std::optional<causallm::ChatTemplate>> chat_templates;
+  std::unique_ptr<causallm::XGrammarManager> grammar_manager;
+  std::unordered_map<std::string, std::string> dynamic_grammar_schemas;
   std::string last_output;
   std::string native_lib_dir;
   std::vector<double> initialization_duration_ms;
+  bool verbose = false;
+  std::string chat_template_name;
   bool initialized = false;
   int kv_len = 0;
 };
 
-// Globals shared across all handles — options set via setOptions() apply
-// process-wide regardless of which handle is active.
+/**
+ * Clear owned models without racing a cross-thread cancellation request.
+ *
+ * Callers must already hold @c h.mtx; cancelModelHandle only takes the
+ *
+ * cancellation mutex, so it never waits for a long-running inference.
+ */
+static void clear_handle_models(CausalLmModel &h) {
+  std::lock_guard<std::mutex> cancellation_lock(h.cancellation_mtx);
+  h.run_announced = false;
+  h.run_active = false;
+  h.cancellation_pending = false;
+  h.cancellation_targets.clear();
+  h.models.clear();
+}
+
+static bool is_valid_backend(BackendType backend) {
+  return backend >= CAUSAL_LM_BACKEND_CPU && backend <= CAUSAL_LM_BACKEND_NPU;
+}
+
+static bool is_valid_quantization(ModelQuantizationType quantization) {
+  return quantization >= CAUSAL_LM_QUANTIZATION_UNKNOWN &&
+         quantization <= CAUSAL_LM_QUANTIZATION_W32A32;
+}
+
+/** Publish stable, non-owning targets after a load has fully succeeded. */
+static void publish_cancellation_targets(CausalLmModel &h) {
+  std::lock_guard<std::mutex> cancellation_lock(h.cancellation_mtx);
+  h.cancellation_targets.clear();
+  h.cancellation_targets.reserve(h.models.size());
+  for (const auto &model : h.models) {
+    if (model)
+      h.cancellation_targets.push_back(model.get());
+  }
+}
+
+/** Own the cancellation state for the complete parse-to-generation request. */
+class ScopedRunRequest final {
+public:
+  explicit ScopedRunRequest(CausalLmModel &handle) : handle_(handle) {
+    std::lock_guard<std::mutex> cancellation_lock(handle_.cancellation_mtx);
+    if (!handle_.run_announced) {
+      handle_.run_announced = true;
+      handle_.cancellation_pending = false;
+    }
+  }
+
+  ScopedRunRequest(const ScopedRunRequest &) = delete;
+  ScopedRunRequest &operator=(const ScopedRunRequest &) = delete;
+
+  ~ScopedRunRequest() {
+    std::lock_guard<std::mutex> cancellation_lock(handle_.cancellation_mtx);
+    if (!handle_.run_active) {
+      handle_.run_announced = false;
+      handle_.cancellation_pending = false;
+    }
+  }
+
+private:
+  CausalLmModel &handle_;
+};
+
+/**
+ * Mark a handle as actively generating and prepare every component for one
+
+ * * cancellation epoch. The cancellation mutex serializes the transition with
+
+ * * cancelModelHandle(), preventing one request's stop from reaching the next.
+
+ */
+class ScopedGeneration final {
+public:
+  explicit ScopedGeneration(CausalLmModel &handle) : handle_(handle) {
+    std::lock_guard<std::mutex> cancellation_lock(handle_.cancellation_mtx);
+    for (auto *model : handle_.cancellation_targets) {
+      if (model != nullptr)
+        model->prepareForRun();
+    }
+    handle_.run_active = true;
+    if (handle_.cancellation_pending) {
+      handle_.cancellation_pending = false;
+      for (auto *model : handle_.cancellation_targets) {
+        if (model != nullptr)
+          model->requestStop();
+      }
+    }
+  }
+
+  ScopedGeneration(const ScopedGeneration &) = delete;
+  ScopedGeneration &operator=(const ScopedGeneration &) = delete;
+
+  ~ScopedGeneration() {
+    std::lock_guard<std::mutex> cancellation_lock(handle_.cancellation_mtx);
+    handle_.run_active = false;
+    handle_.run_announced = false;
+    handle_.cancellation_pending = false;
+  }
+
+private:
+  CausalLmModel &handle_;
+};
+
 static std::mutex g_registry_mutex;
-static bool g_use_chat_template = true;
-static bool g_verbose = false;
-static std::string g_last_output = "";
-static std::optional<causallm::ChatTemplate> g_chat_template;
-static std::string g_formatted_template;
-static std::string g_chat_template_name = "default";
+static std::mutex g_options_mutex;
+static bool g_default_verbose = false;
+static std::string g_default_chat_template_name;
 
 // Default handle backing the legacy non-handle API.
 static CausalLmModel &get_default_handle() {
@@ -148,6 +257,10 @@ public:
     }
     auto *matcher = grammar_->getGrammarMatcher();
     if (!matcher->AcceptToken(static_cast<int32_t>(token_id))) {
+      failed_ = true;
+      if (on_completed_) {
+        on_completed_();
+      }
       return;
     }
     if (matcher->IsCompleted() || matcher->IsTerminated()) {
@@ -161,19 +274,19 @@ public:
   }
 
   void reset() override {
+    failed_ = false;
     if (grammar_ != nullptr) {
       grammar_->resetGrammar();
     }
   }
 
+  bool failed() const { return failed_; }
+
 private:
   causallm::XGrammar *grammar_;
   std::function<void()> on_completed_;
+  bool failed_ = false;
 };
-
-static causallm::CausalLM *as_causal_lm(causallm::Transformer *model) {
-  return dynamic_cast<causallm::CausalLM *>(model);
-}
 
 #ifdef ENABLE_QNN_MODELS
 static causallm::Quick_Dot_AI_QNN *as_qnn_model(causallm::Transformer *model) {
@@ -182,57 +295,30 @@ static causallm::Quick_Dot_AI_QNN *as_qnn_model(causallm::Transformer *model) {
 #endif
 
 static bool model_supports_text_output(causallm::Transformer *model) {
-  if (as_causal_lm(model) != nullptr)
-    return true;
-#ifdef ENABLE_QNN_MODELS
-  if (as_qnn_model(model) != nullptr)
-    return true;
-#endif
-  return false;
+  return model != nullptr && model->supportsTextGeneration();
 }
 
 static bool get_model_output(causallm::Transformer *model,
                              std::string &output) {
-  if (auto *causal_model = as_causal_lm(model)) {
-    output = causal_model->getOutput(0);
-    return true;
-  }
-#ifdef ENABLE_QNN_MODELS
-  if (auto *qnn_model = as_qnn_model(model)) {
-    output = qnn_model->getOutput(0);
-    return true;
-  }
-#endif
-  return false;
+  if (!model_supports_text_output(model))
+    return false;
+  output = model->getOutput(0);
+  return true;
 }
 
 static bool set_model_streamer(causallm::Transformer *model,
                                ::BaseStreamer *streamer) {
-  if (auto *causal_model = as_causal_lm(model)) {
-    causal_model->setStreamer(streamer);
-    return true;
-  }
-#ifdef ENABLE_QNN_MODELS
-  if (auto *qnn_model = as_qnn_model(model)) {
-    qnn_model->setStreamer(streamer);
-    return true;
-  }
-#endif
-  return false;
+  if (!model_supports_text_output(model))
+    return false;
+  model->setStreamer(streamer);
+  return true;
 }
 
 static bool request_model_stop(causallm::Transformer *model) {
-  if (auto *causal_model = as_causal_lm(model)) {
-    causal_model->requestStop();
-    return true;
-  }
-#ifdef ENABLE_QNN_MODELS
-  if (auto *qnn_model = as_qnn_model(model)) {
-    qnn_model->requestStop();
-    return true;
-  }
-#endif
-  return false;
+  if (!model_supports_text_output(model))
+    return false;
+  model->requestStop();
+  return true;
 }
 
 static std::map<std::string, std::string> g_model_path_map = {
@@ -263,6 +349,7 @@ static std::map<std::string, ModelArchConfig> g_arch_config_map;
 namespace quick_dot_ai {
 
 void register_arch(const char *arch_name, ModelArchConfig config) {
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
   std::string name(arch_name);
   std::transform(name.begin(), name.end(), name.begin(), ::toupper);
   g_arch_config_map[name] = config;
@@ -270,6 +357,7 @@ void register_arch(const char *arch_name, ModelArchConfig config) {
 
 void register_model(const char *model_name, const char *arch_name,
                     ModelRuntimeConfig config) {
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
   std::string name(model_name);
   std::transform(name.begin(), name.end(), name.begin(), ::toupper);
   std::string aname(arch_name);
@@ -443,19 +531,6 @@ static void register_models() {
     // TU (src/models/ouro/ouro_embedding.cpp) via __attribute__((constructor)),
     // same pattern as the QNN models below.
 
-    // V-JEPA2 + LFM2 fused video-language model (CPU). Sub-models (ViT,
-    // projector, LFM2) are constructed internally, so only the combined
-    // architecture needs a Factory entry.
-    // Gated: see the QUICKAI_ENABLE_VJEPA_LFM2_VIDEO note at the include of
-    // vjepa_lfm2_vl.h.
-#if defined(QUICKAI_ENABLE_VJEPA_LFM2_VIDEO)
-    causallm::Factory::Instance().registerModel(
-      "Lfm2VLVJepa21BModel", [](json cfg, json generation_cfg, json nntr_cfg) {
-        return std::make_unique<causallm::VjepaLfm2ForConditionalGeneration>(
-          cfg, generation_cfg, nntr_cfg);
-      });
-#endif
-
 #ifdef ENABLE_QNN_MODELS
     causallm::Factory::Instance().registerModel(
       "Gemma4_E2B_QNN", [](json cfg, json generation_cfg, json nntr_cfg) {
@@ -493,62 +568,6 @@ static const char *get_model_name_from_type(ModelType type) {
   }
 }
 
-static std::string apply_chat_template(const std::string &architecture,
-                                       const std::string &input) {
-  // Use dynamic chat template from tokenizer_config.json if available
-  if (g_chat_template) {
-    nlohmann::json request;
-    request["messages"] = nlohmann::json::array();
-    request["messages"].push_back({{"role", "user"}, {"content", input}});
-    request["add_generation_prompt"] = true;
-    try {
-      return g_chat_template->apply(request);
-    } catch (const std::exception &e) {
-      LOGE("Chat template apply failed: %s", e.what());
-      // fallback to hardcoded
-    }
-  }
-
-  LOGE("----------------APPLY CHAT FALLBACKS!!!!!!-------------");
-
-  // Fallback: hardcoded per-architecture templates
-  if (architecture == "LlamaForCausalLM") {
-    // Llama 2/3 chat format: [INST] {prompt} [/INST]
-    return "[INST] " + input + " [/INST]";
-  } else if (architecture == "Qwen2ForCausalLM" ||
-             architecture == "Qwen3ForCausalLM" ||
-             architecture == "Qwen3MoeForCausalLM" ||
-             architecture == "Qwen3SlimMoeForCausalLM" ||
-             architecture == "Qwen3CachedSlimMoeForCausalLM") {
-    // Qwen chat format
-    // <|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n
-    return "<|im_start|>user\n" + input + "<|im_end|>\n<|im_start|>assistant\n";
-  } else if (architecture == "Gemma3ForCausalLM") {
-    // Gemma chat format:
-    // <start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n
-    return "<start_of_turn>user\n" + input +
-           "<end_of_turn>\n<start_of_turn>model\n";
-  } else if (architecture == "Gemma4ForCausalLM" ||
-             architecture == "Gemma4_E2B_QNN") {
-    // Gemma 4 requires the prompt to begin with the <bos> token. The model's
-    // own nntr_config.json sample_input documents the canonical format as
-    // "<bos><|turn>user\n...<turn|>\n<|turn>model\n". This model's
-    // tokenizer.json post_processor does NOT add <bos>, and tokenizer_config
-    // .json carries no chat_template / add_bos_token, so it must be added
-    // here or the model receives a BOS-less prompt and emits garbage.
-    // "<bos>" is a special added token (id 2) and encodes to that single id.
-    return "<bos><|turn>user\n" + input + "<turn|>\n<|turn>model\n";
-  } else {
-    if (const auto *cb =
-          ModelCallbackRegistry::instance().lookup(architecture)) {
-      if (cb->format_prompt) {
-        return cb->format_prompt(input);
-      }
-    }
-  }
-  return input;
-}
-
 static size_t text_generation_model_index(const CausalLmModel &h) {
   // Convention: a multi-model handle is [vision producer, text LLM, ...];
   // text generation runs on the LLM at index 1.
@@ -567,9 +586,6 @@ static void update_handle_session_after_run(CausalLmModel &h,
     return;
   h.kv_len = cb->read_kv_len(h.models[model_index].get());
 }
-
-static constexpr size_t kAutoTextGenerationModelIndex =
-  (std::numeric_limits<size_t>::max)();
 
 #ifdef ENABLE_QNN_MODELS
 static causallm::Quick_Dot_AI_QNN *find_qnn_kv_cache_model(CausalLmModel &h) {
@@ -675,42 +691,11 @@ static ErrorCode reset_qnn_kv_cache_on_handle(CausalLmModel &h) {
 #endif
 }
 
-static std::string prepare_input_for_model(CausalLmModel &h, size_t model_index,
-                                           const std::string &input,
-                                           bool input_already_formatted) {
-  if (model_index >= h.architectures.size() || !g_use_chat_template) {
-    return input;
-  }
-
-  const std::string &architecture = h.architectures[model_index];
-  if (h.kv_len > 0) {
-    const auto *cb = ModelCallbackRegistry::instance().lookup(architecture);
-    if (cb && cb->incremental_prompt) {
-      return cb->incremental_prompt(input);
-    }
-  }
-
-  if (input_already_formatted) {
-    return input;
-  }
-
-  return apply_chat_template(architecture, input);
-}
-
 static std::string get_quantization_suffix(ModelQuantizationType type) {
+  // Current external model directories are not quantization-suffixed.
+  // Quantization is still used for descriptor/config selection.
+  (void)type;
   return "";
-  switch (type) {
-  case CAUSAL_LM_QUANTIZATION_W4A32:
-    return "-w4a32";
-  case CAUSAL_LM_QUANTIZATION_W16A16:
-    return "-w16a16";
-  case CAUSAL_LM_QUANTIZATION_W8A16:
-    return "-w8a16";
-  case CAUSAL_LM_QUANTIZATION_W32A32:
-    return "-w32a32";
-  default: // W4A32 by default
-    return "-w4a32";
-  }
 }
 
 static std::string resolve_model_path(const std::string &model_key,
@@ -751,7 +736,13 @@ static std::string resolve_model_path(const std::string &model_key,
  * override a specific file with a system-wide path if they want.
  */
 static bool is_absolute_path(const std::string &path) {
-  return !path.empty() && path[0] == '/';
+  if (path.empty())
+    return false;
+  if (path[0] == '/' || path[0] == '\\')
+    return true;
+  return path.size() >= 3 &&
+         std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':' &&
+         (path[2] == '/' || path[2] == '\\');
 }
 
 static std::string rebase_path(const std::string &path,
@@ -780,7 +771,64 @@ static bool check_file_exists(const std::string &path) {
   return (stat(path.c_str(), &buffer) == 0);
 }
 
+static bool initialize_handle_grammar(CausalLmModel &h, size_t model_index) {
+  if (model_index >= h.models.size() || !h.models[model_index] ||
+      model_index >= h.model_dirs.size()) {
+    return false;
+  }
+
+  if (!h.grammar_manager) {
+    h.grammar_manager = std::make_unique<causallm::XGrammarManager>();
+  }
+  auto *tokenizer = h.models[model_index]->getTokenizer();
+  const unsigned int vocab_size = h.models[model_index]->getVocabSize();
+  const std::string tokenizer_path =
+    h.model_dirs[model_index] + "/tokenizer.json";
+  std::ifstream tokenizer_file(tokenizer_path, std::ios::binary);
+  if (!tokenizer_file.is_open()) {
+    LOGE("Cannot initialize xgrammar: tokenizer metadata file is missing: %s",
+         tokenizer_path.c_str());
+    return false;
+  }
+  std::ostringstream tokenizer_json;
+  tokenizer_json << tokenizer_file.rdbuf();
+
+  std::string tokenizer_metadata;
+  try {
+    tokenizer_metadata =
+      xgrammar::TokenizerInfo::DetectMetadataFromHF(tokenizer_json.str());
+  } catch (const std::exception &e) {
+    LOGE("Cannot detect xgrammar tokenizer metadata for model[%zu]: %s",
+         model_index, e.what());
+    return false;
+  }
+  try {
+    if (!h.grammar_manager->initialize(tokenizer, vocab_size,
+                                       tokenizer_metadata)) {
+      return false;
+    }
+
+    const std::string toolset_path =
+      h.model_dirs[model_index] + "/Toolset.json";
+    if (check_file_exists(toolset_path) &&
+        !h.grammar_manager->loadToolset(toolset_path, tokenizer, vocab_size)) {
+      LOGE("Failed to load toolset for model[%zu]: %s", model_index,
+           toolset_path.c_str());
+      return false;
+    }
+  } catch (const std::exception &e) {
+    LOGE("Cannot initialize xgrammar for model[%zu]: %s", model_index,
+         e.what());
+    return false;
+  } catch (...) {
+    LOGE("Cannot initialize xgrammar for model[%zu]", model_index);
+    return false;
+  }
+  return true;
+}
+
 static void validate_models() {
+  std::lock_guard<std::mutex> registry_lock(g_registry_mutex);
   LOGD("[DEBUG] Validating model files...");
   // Iterate over all known model names in map
   for (auto const &[key, val] : g_model_path_map) {
@@ -855,12 +903,12 @@ static void validate_models() {
 }
 
 ErrorCode setOptions(Config config) {
-  // Currently no options are being handled
-  g_use_chat_template = config.use_chat_template;
-  g_verbose = config.verbose;
-  g_chat_template_name = (config.chat_template_name != nullptr)
-                           ? config.chat_template_name
-                           : "default";
+  {
+    std::lock_guard<std::mutex> lock(g_options_mutex);
+    g_default_verbose = config.verbose;
+    g_default_chat_template_name =
+      config.chat_template_name != nullptr ? config.chat_template_name : "";
+  }
   if (config.debug_mode) {
     // Ensure models are registered so we can validate them
     register_models();
@@ -869,39 +917,11 @@ ErrorCode setOptions(Config config) {
   return CAUSAL_LM_ERROR_NONE;
 }
 
-ErrorCode loadToolset(const char *toolset_path,
-                      tokenizers::Tokenizer *tokenizer,
-                      unsigned int vocab_size) {
-  if (toolset_path == nullptr) {
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-  if (tokenizer == nullptr) {
-    std::cerr << "Error: Tokenizer is null" << std::endl;
-    return CAUSAL_LM_ERROR_UNKNOWN;
-  }
-
-  LOGD("[LoadToolset] load toolset path: %s", toolset_path);
-
-  try {
-    // Load and pre-compile all tool grammars
-    bool success = causallm::XGrammarManager::Instance().loadToolset(
-      std::string(toolset_path), tokenizer, vocab_size);
-    LOGD("causallm::XGrammarManager::loadToolset() done");
-    if (!success) {
-      return CAUSAL_LM_ERROR_UNKNOWN;
-    }
-  } catch (const std::exception &e) {
-    std::cerr << "Exception in loadToolset: " << e.what() << std::endl;
-    return CAUSAL_LM_ERROR_UNKNOWN;
-  }
-
-  return CAUSAL_LM_ERROR_NONE;
-}
-
 ErrorCode registerModelArchitecture(const char *arch_name,
                                     ModelArchConfig config) {
   if (arch_name == nullptr)
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
   std::string name(arch_name);
   std::transform(name.begin(), name.end(), name.begin(), ::toupper);
   g_arch_config_map[name] = config;
@@ -912,6 +932,7 @@ ErrorCode registerModel(const char *model_name, const char *arch_name,
                         ModelRuntimeConfig config) {
   if (model_name == nullptr || arch_name == nullptr)
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
   std::string name(model_name);
   std::transform(name.begin(), name.end(), name.begin(), ::toupper);
 
@@ -959,7 +980,8 @@ static void ensure_qnn_backend_ext_config(const std::string &base_dir) {
     config_path = config_path.substr(0, config_path.length() - 7);
   }
   config_path += "/htp_backend_ext_config.json";
-  setenv("QUICK_DOT_AI_QNN_BACKEND_EXT_CONFIG_PATH", config_path.c_str(), 1);
+  set_environment_variable("QUICK_DOT_AI_QNN_BACKEND_EXT_CONFIG_PATH",
+                           config_path.c_str());
 }
 #endif
 
@@ -975,6 +997,12 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
        target_model_name ? target_model_name : "(null)");
   LOGD("[DEBUG]   quant_type: %d", quant_type);
 
+  if (target_model_name == nullptr || target_model_name[0] == '\0' ||
+      model_base_path == nullptr || model_base_path[0] == '\0') {
+    LOGE("load_into_handle: model name and model base path are required");
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  }
+
   auto start_init = std::chrono::high_resolution_clock::now();
 
   // Ensure models/configs are registered (thread-safe via call_once)
@@ -984,12 +1012,21 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
 
   std::lock_guard<std::mutex> lock(h.mtx);
   try {
-    h.models.clear();
+    clear_handle_models(h);
     h.architectures.clear();
     h.model_dirs.clear();
+    h.chat_templates.clear();
+    h.grammar_manager = std::make_unique<causallm::XGrammarManager>();
+    h.dynamic_grammar_schemas.clear();
+    h.last_output.clear();
     h.initialization_duration_ms.clear();
     h.initialized = false;
     reset_handle_session_state(h);
+    {
+      std::lock_guard<std::mutex> options_lock(g_options_mutex);
+      h.verbose = g_default_verbose;
+      h.chat_template_name = g_default_chat_template_name;
+    }
 
     // Check if it's a registered in-memory config
     std::string input_name = std::string(target_model_name);
@@ -1021,23 +1058,16 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     json cfg;
     json generation_cfg;
     json nntr_cfg;
+    std::optional<causallm::ChatTemplate> loaded_chat_template;
     std::string model_dir_path;
     std::string abs_model_dir;
-    std::string base_dir =
-      (model_base_path != nullptr && strlen(model_base_path) > 0)
-        ? model_base_path
-        : "/sdcard/Download/aistudio-mobile/models/";
+    std::string base_dir = model_base_path;
 
 #ifdef ENABLE_QNN_MODELS
     // Set the QNN backend-extensions config path up front so it is in effect
     // for BOTH the multi-model sub-model loop and the single-model path.
     ensure_qnn_backend_ext_config(base_dir);
 #endif
-
-    // Snapshot registry entries under the registry mutex so concurrent
-    // loads on different handles don't race with each other (or with
-    // registerModel / registerModelArchitecture).
-    std::lock_guard<std::mutex> reg_lock(g_registry_mutex);
 
     // Check in-memory map first
     // if (g_model_registry.find(lookup_name) != g_model_registry.end()) {
@@ -1166,10 +1196,6 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
         !top_nntr["architectures"].empty() &&
         top_nntr["architectures"].size() == top_nntr["model_dirs"].size();
 
-      if (top_nntr.contains("use_chat_template")) {
-        g_use_chat_template = top_nntr["use_chat_template"].get<bool>();
-      }
-
       LOGD("[DEBUG] load_into_handle: abs_model_dir = %d %d %d %d %zu %zu",
            top_nntr.contains("architectures"),
            top_nntr["architectures"].is_array(),
@@ -1251,7 +1277,7 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
 
           auto sub_t0 = std::chrono::high_resolution_clock::now();
           if (native_lib_dir != nullptr && strlen(native_lib_dir) > 0) {
-            setenv("ADSP_LIBRARY_PATH", native_lib_dir, 1);
+            set_environment_variable("ADSP_LIBRARY_PATH", native_lib_dir);
           }
           m->initialize();
 
@@ -1271,24 +1297,34 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
           h.initialization_duration_ms.push_back(sub_ms);
           LOGD("[DEBUG]   [%zu] loaded (%.1f ms)", i, sub_ms);
 
-          // Load chat template from model directory if available.
+          // Keep templates parallel with models so handles and sub-models do
+          // not overwrite each other's rendering state.
           if (causallm::ChatTemplate::Exists(sub_dir)) {
             try {
-              g_chat_template = causallm::ChatTemplate::Load(sub_dir);
+              h.chat_templates.emplace_back(
+                causallm::ChatTemplate::Load(sub_dir));
               std::cout << "[Info] Chat template loaded from " << sub_dir
                         << std::endl;
             } catch (const std::exception &e) {
               std::cerr << "[Warning] Chat template load failed: " << e.what()
-                        << ". Falling back to hardcoded templates."
+                        << ". Continuing without a model-provided template."
                         << std::endl;
-              g_chat_template.reset();
+              h.chat_templates.emplace_back(std::nullopt);
             }
+          } else {
+            h.chat_templates.emplace_back(std::nullopt);
           }
         }
 
         if (native_lib_dir != nullptr)
           h.native_lib_dir = native_lib_dir;
+        const size_t text_model_index = text_generation_model_index(h);
+        if (!initialize_handle_grammar(h, text_model_index)) {
+          LOGE("[Warning] Grammar unavailable for text model[%zu]",
+               text_model_index);
+        }
         h.initialized = true;
+        publish_cancellation_targets(h);
 
         auto finish_init = std::chrono::high_resolution_clock::now();
         auto e2e = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1326,18 +1362,17 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     // Load chat template from model directory if available.
     if (causallm::ChatTemplate::Exists(abs_model_dir)) {
       try {
-        g_chat_template = causallm::ChatTemplate::Load(abs_model_dir);
+        loaded_chat_template = causallm::ChatTemplate::Load(abs_model_dir);
         LOGD("[Info] Chat template loaded from %s", abs_model_dir.c_str());
       } catch (const std::exception &e) {
-        LOGE("[Warning] Chat template load failed: %s. Falling back to "
-             "hardcoded templates.",
+        LOGE("[Warning] Chat template load failed: %s. Continuing without a "
+             "model-provided template.",
              e.what());
-        g_chat_template.reset();
+        loaded_chat_template.reset();
       }
     } else {
-      g_chat_template.reset();
-      LOGE("[Warning] No chat template found in %s. Using hardcoded chat "
-           "templates.",
+      loaded_chat_template.reset();
+      LOGE("[Warning] No model-provided chat template found in %s.",
            abs_model_dir.c_str());
     }
 
@@ -1375,8 +1410,6 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
       std::string str = nntr_cfg["ple_file_name"].get<std::string>();
       nntr_cfg["ple_file_name"] = rebase_path(str, abs_model_dir);
     }
-
-    LOGD("[DEBUG] -------------------------- asdfasdfasdfasdfasdfasdf ");
 
     // Determine architecture from config or ModelType
     // Priority: Config file architecture > ModelType mapping (fallback)
@@ -1419,7 +1452,7 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
 
     LOGD("[DEBUG] load_into_handle: Calling model->initialize()...");
     if (native_lib_dir != nullptr && strlen(native_lib_dir) > 0) {
-      setenv("ADSP_LIBRARY_PATH", native_lib_dir, 1);
+      set_environment_variable("ADSP_LIBRARY_PATH", native_lib_dir);
     }
     m->initialize();
     LOGD("[DEBUG] load_into_handle: model->initialize() done");
@@ -1443,21 +1476,15 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     h.models.push_back(std::move(m));
     h.architectures.push_back(architecture);
     h.model_dirs.push_back(abs_model_dir);
+    h.chat_templates.push_back(std::move(loaded_chat_template));
     h.initialization_duration_ms.push_back(
       static_cast<double>(init_duration.count()));
     h.initialized = true;
 
-    // XGrammarManager Initalize
-    auto *tokenizer = h.models[0]->getTokenizer();
-    unsigned int vocab_size = h.models[0]->getVocabSize();
-    causallm::XGrammarManager::Instance().initialize(tokenizer, vocab_size);
-
-    // XGrammarManager Toolset Load
-    std::string default_toolset_path = abs_model_dir + "/Toolset.json";
-    bool toolset_file_exists = check_file_exists(default_toolset_path);
-    if (toolset_file_exists) {
-      loadToolset(default_toolset_path.c_str(), tokenizer, vocab_size);
+    if (!initialize_handle_grammar(h, 0)) {
+      LOGE("[Warning] Grammar unavailable for model[0]");
     }
+    publish_cancellation_targets(h);
 
     LOGD("[DEBUG] load_into_handle: SINGLE SUCCESS (init took %lld ms)",
          (long long)init_duration.count());
@@ -1466,6 +1493,7 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     // exception's typeinfo directly via the Itanium ABI hook. This
     // works even when catching by concrete types fails due to typeinfo
     // duplication between libnntrainer.so and libquick_dot_ai_api.so.
+#ifndef _WIN32
     const std::type_info *ti = abi::__cxa_current_exception_type();
     const char *raw = ti ? ti->name() : "(null)";
     int status = 0;
@@ -1475,6 +1503,9 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     LOGE("[DEBUG] load_into_handle: unknown exception, type=%s",
          demangled ? demangled : raw);
     std::free(demangled);
+#else
+    LOGE("[DEBUG] load_into_handle: unknown exception");
+#endif
 
     // Also try once more via rethrow — in case std::exception RTTI does
     // match from this catch-site (we already tried above but leaving
@@ -1508,94 +1539,6 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
        modeltype);
   return load_into_handle(h, compute, target_model_name, quant_type,
                           native_lib_dir, model_base_path);
-}
-
-/**
- * @brief Core runner shared by runModelHandleWithMessages.
- */
-static ErrorCode
-run_on_handle(CausalLmModel &h, const char *inputTextPrompt,
-              const char **outputText, bool input_already_formatted = false,
-              size_t model_index = kAutoTextGenerationModelIndex,
-              causallm::XGrammar *tool_grammar = nullptr) {
-  if (inputTextPrompt == nullptr || outputText == nullptr) {
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  std::lock_guard<std::mutex> lock(h.mtx);
-  if (model_index == kAutoTextGenerationModelIndex)
-    model_index = text_generation_model_index(h);
-
-  if (!h.initialized || model_index >= h.models.size() ||
-      !h.models[model_index]) {
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  }
-
-  try {
-    auto *model = h.models[model_index].get();
-    if (!model_supports_text_output(model)) {
-      LOGE("run_on_handle: model[%zu] does not expose text output",
-           model_index);
-      return CAUSAL_LM_ERROR_UNSUPPORTED;
-    }
-
-    std::unique_ptr<XGrammarLogitsProcessor> grammar_processor;
-
-    struct ScopedRunProcessor {
-      causallm::Transformer *model = nullptr;
-      bool detach_logits = false;
-#ifdef ENABLE_QNN_MODELS
-      causallm::Quick_Dot_AI_QNN *qnn_model = nullptr;
-#endif
-
-      ~ScopedRunProcessor() {
-        if (detach_logits && model != nullptr)
-          model->setLogitsProcessor(nullptr);
-#ifdef ENABLE_QNN_MODELS
-        if (qnn_model != nullptr)
-          qnn_model->resetXGrammar();
-#endif
-      }
-    } scoped_processor{model};
-
-    bool qnn_grammar_attached = false;
-#ifdef ENABLE_QNN_MODELS
-    if (tool_grammar != nullptr) {
-      if (auto *qnn_model = as_qnn_model(model)) {
-        qnn_model->setXGrammar(tool_grammar);
-        scoped_processor.qnn_model = qnn_model;
-        qnn_grammar_attached = true;
-      }
-    }
-#endif
-    if (tool_grammar != nullptr && !qnn_grammar_attached) {
-      grammar_processor = std::make_unique<XGrammarLogitsProcessor>(
-        tool_grammar, [model]() { request_model_stop(model); });
-      model->setLogitsProcessor(grammar_processor.get());
-      scoped_processor.detach_logits = true;
-    }
-
-    std::string input = prepare_input_for_model(
-      h, model_index, std::string(inputTextPrompt), input_already_formatted);
-
-// We assume single batch request for this API
-#if defined(_WIN32)
-    model->run(std::wstring(input.begin(), input.end()), false, L"", L"",
-               g_verbose);
-#else
-    model->run(input, false, "", "", g_verbose);
-#endif
-
-    if (!get_model_output(model, h.last_output))
-      return CAUSAL_LM_ERROR_UNSUPPORTED;
-    *outputText = h.last_output.c_str();
-    update_handle_session_after_run(h, model_index);
-  } catch (const std::exception &e) {
-    LOGE("Exception in run_on_handle: %s", e.what());
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  }
-
-  return CAUSAL_LM_ERROR_NONE;
 }
 
 /**
@@ -1641,285 +1584,6 @@ static ErrorCode metrics_on_handle(CausalLmModel &h,
   }
 
   return CAUSAL_LM_ERROR_NONE;
-}
-
-/*****************************************************************************
- * Chat Template API - role + content message support
- *****************************************************************************/
-
-// Internal ChatMessage struct for API use
-struct ChatMessage {
-  std::string role;
-  std::string content;
-};
-
-static std::vector<ChatMessage>
-convertMessages(const CausalLMChatMessage *messages, size_t num_messages) {
-  std::vector<ChatMessage> result;
-  result.reserve(num_messages);
-  for (size_t i = 0; i < num_messages; ++i) {
-    ChatMessage msg;
-    msg.role = messages[i].role ? messages[i].role : "";
-    msg.content = messages[i].content ? messages[i].content : "";
-    result.push_back(std::move(msg));
-  }
-  return result;
-}
-
-/**
- * @brief Apply chat template to messages with hardcoded fallback
- *
- * @param model_dir Optional model directory to load tokenizer_config.json
- *        from if g_chat_template is not already loaded. This ensures
- *        registered models (and any other model) use their tokenizer's
- *        chat template when available.
- */
-static std::string apply_chat_template_messages(
-  const std::string &architecture, const std::vector<ChatMessage> &messages,
-  bool add_generation_prompt, const std::string &model_dir = "") {
-  // If g_chat_template is not loaded but a model_dir is provided,
-  // try loading tokenizer_config.json from that directory at run time.
-  if (!g_chat_template && !model_dir.empty()) {
-    std::string tc_path = model_dir + "/tokenizer_config.json";
-    if (check_file_exists(tc_path)) {
-      try {
-        g_chat_template = causallm::ChatTemplate::Load(model_dir);
-        if (g_chat_template) {
-          LOGD("[Info] Chat template loaded on-demand from %s",
-               model_dir.c_str());
-        } else {
-          LOGE("[Warning] tokenizer_config.json found in %s but could not be "
-               "loaded.",
-               model_dir.c_str());
-        }
-      } catch (const std::exception &e) {
-        LOGE("[Warning] Failed to load chat template from %s: %s",
-             model_dir.c_str(), e.what());
-      }
-    } else {
-      LOGE("[Warning] tokenizer_config.json not found in %s",
-           model_dir.c_str());
-    }
-  }
-
-  // Use Enhanced Chat Template if available
-  if (g_chat_template) {
-    nlohmann::json request;
-    request["messages"] = nlohmann::json::array();
-    for (const auto &msg : messages) {
-      request["messages"].push_back(
-        {{"role", msg.role}, {"content", msg.content}});
-    }
-    request["add_generation_prompt"] = add_generation_prompt;
-
-    try {
-      return g_chat_template->apply(request);
-    } catch (const std::exception &e) {
-      LOGE("Chat template apply failed: %s", e.what());
-      // fallback to hardcoded
-    }
-  }
-
-  LOGD("APPLYING HARD CODED FALLBACK");
-  std::string result;
-
-  if (architecture == "LlamaForCausalLM") {
-    for (const auto &msg : messages) {
-      if (msg.role == "system") {
-        result += "<<SYS>>\n" + msg.content + "\n<</SYS>>\n\n";
-      } else if (msg.role == "user") {
-        result += "[INST] " + msg.content + " [/INST]";
-      } else if (msg.role == "assistant") {
-        result += msg.content + "\n";
-      }
-    }
-  } else if (architecture == "Qwen2ForCausalLM" ||
-             architecture == "Qwen3ForCausalLM" ||
-             architecture == "Qwen3MoeForCausalLM" ||
-             architecture == "Qwen3SlimMoeForCausalLM" ||
-             architecture == "Qwen3CachedSlimMoeForCausalLM") {
-    for (const auto &msg : messages) {
-      result += "<|im_start|>" + msg.role + "\n" + msg.content + "<|im_end|>\n";
-    }
-    if (add_generation_prompt) {
-      result += "<|im_start|>assistant\n";
-    }
-  } else if (architecture == "Gemma3ForCausalLM") {
-    for (const auto &msg : messages) {
-      if (msg.role == "user") {
-        result += "<start_of_turn>user\n" + msg.content + "<end_of_turn>\n";
-      } else if (msg.role == "assistant") {
-        result += "<start_of_turn>model\n" + msg.content + "<end_of_turn>\n";
-      }
-    }
-    if (add_generation_prompt) {
-      result += "<start_of_turn>model\n";
-    }
-  } else if (architecture == "Gemma4ForCausalLM" ||
-             architecture == "Gemma4_E2B_QNN") {
-    // Gemma 4 requires a single leading <bos> token (id 2) at the very start
-    // of the prompt; see the canonical sample_input in the model's
-    // nntr_config.json. Nothing downstream adds it (the tokenizer.json
-    // post_processor is empty and tokenizer_config.json has no
-    // add_bos_token), so prepend it exactly once here.
-    result += "<bos>";
-    for (const auto &msg : messages) {
-      std::string role = msg.role;
-      if (role == "assistant") {
-        role = "model";
-      }
-      result += "<|turn>" + role + "\n" + msg.content + "<turn|>\n";
-    }
-    if (add_generation_prompt) {
-      result += "<|turn>model\n";
-    }
-  } else {
-    const auto *reg_cb = ModelCallbackRegistry::instance().lookup(architecture);
-    if (reg_cb && reg_cb->format_prompt) {
-      // Build a full multi-message prompt via the registered format_prompt.
-      // Concatenate all message contents and delegate to the callback.
-      std::string combined;
-      for (const auto &msg : messages) {
-        combined += msg.content + "\n";
-      }
-      result = reg_cb->format_prompt(combined);
-      return result;
-    }
-    // Unknown architecture fallback
-    for (const auto &msg : messages) {
-      result += msg.content + "\n";
-    }
-  }
-
-  return result;
-}
-
-ErrorCode applyChatTemplate(const CausalLMChatMessage *messages,
-                            size_t num_messages, bool add_generation_prompt,
-                            const char **formattedText) {
-  if (messages == nullptr || num_messages == 0 || formattedText == nullptr) {
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  try {
-    auto &h = get_default_handle();
-    std::lock_guard<std::mutex> lock(h.mtx);
-
-    // Debug: print messages before convertMessages
-    LOGD("[DEBUG] applyChatTemplate: num_messages=%zu", num_messages);
-    for (size_t i = 0; i < num_messages; ++i) {
-      LOGD("[DEBUG] applyChatTemplate: messages[%zu] role='%s' content='%s'", i,
-           messages[i].role ? messages[i].role : "(null)",
-           messages[i].content ? messages[i].content : "(null)");
-    }
-
-    auto chat_messages = convertMessages(messages, num_messages);
-    std::string arch =
-      h.architectures.empty() ? std::string() : h.architectures[0];
-    std::string model_dir =
-      h.model_dirs.empty() ? std::string() : h.model_dirs[0];
-    std::string formattedInput = apply_chat_template_messages(
-      arch, chat_messages, add_generation_prompt, model_dir);
-
-    g_formatted_template = std::move(formattedInput);
-    *formattedText = g_formatted_template.c_str();
-  } catch (const std::exception &e) {
-    LOGE("Exception in applyChatTemplate: %s", e.what());
-    return CAUSAL_LM_ERROR_UNKNOWN;
-  }
-
-  return CAUSAL_LM_ERROR_NONE;
-}
-
-ErrorCode runModelHandleWithMessages(CausalLmHandle handle,
-                                     const CausalLMChatMessage *messages,
-                                     size_t num_messages,
-                                     bool add_generation_prompt,
-                                     const char **outputText) {
-  LOGD("[DEBUG] runModelHandleWithMessages: handle=%p", (void *)handle);
-
-  if (handle == nullptr || outputText == nullptr) {
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  auto &h = *handle;
-  size_t model_index = 0;
-  std::string formattedInput;
-
-  try {
-    {
-      std::lock_guard<std::mutex> lock(h.mtx);
-      if (!h.initialized || h.models.empty()) {
-        return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-      }
-      model_index = text_generation_model_index(h);
-      if (model_index >= h.models.size() || !h.models[model_index]) {
-        return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-      }
-
-      std::string model_dir = h.model_dirs.size() > model_index
-                                ? h.model_dirs[model_index]
-                                : std::string();
-
-      auto chat_messages = convertMessages(messages, num_messages);
-      std::string arch = h.architectures.size() > model_index
-                           ? h.architectures[model_index]
-                           : std::string();
-      formattedInput = apply_chat_template_messages(
-        arch, chat_messages, add_generation_prompt, model_dir);
-    }
-
-    return run_on_handle(h, formattedInput.c_str(), outputText,
-                         /*input_already_formatted=*/true, model_index);
-  } catch (const std::exception &e) {
-    LOGE("Exception in runModelHandleWithMessages: %s", e.what());
-    return CAUSAL_LM_ERROR_UNKNOWN;
-  }
-}
-
-ErrorCode runModelHandleWithTool(CausalLmHandle handle,
-                                 const char *inputTextPrompt,
-                                 const char **outputText, const char *tool_name,
-                                 const char *tool_schema) {
-  if (handle == nullptr) {
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  causallm::XGrammar *grammar = nullptr;
-  // Step 1: Check if tool exists in XGrammarManager
-  if (causallm::XGrammarManager::Instance().hasTool(tool_name)) {
-    LOGD("[runModelWithToolHandle] Tool '%s' found in XGrammarManager, using "
-         "existing grammar",
-         tool_name);
-    grammar = causallm::XGrammarManager::Instance().getGrammar(tool_name);
-  } else {
-    // Step 2: Tool doesn't exist, create and register it
-    if (tool_schema == nullptr) {
-      LOGE("Error: Tool '%s' not found and no schema provided", tool_name);
-      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-    }
-
-    LOGD("[runModelWithToolHandle] Tool '%s' not found, creating new grammar",
-         tool_name);
-    bool registered = causallm::XGrammarManager::Instance().registerTool(
-      tool_name, tool_schema);
-
-    if (!registered) {
-      LOGE("Error: Failed to register tool '%s'", tool_name);
-      return CAUSAL_LM_ERROR_UNKNOWN;
-    }
-
-    grammar = causallm::XGrammarManager::Instance().getGrammar(tool_name);
-  }
-
-  if (grammar == nullptr) {
-    LOGE("Error: Failed to get grammar for tool '%s'", tool_name);
-    return CAUSAL_LM_ERROR_UNKNOWN;
-  }
-
-  return run_on_handle(*handle, inputTextPrompt, outputText,
-                       /*input_already_formatted=*/false,
-                       kAutoTextGenerationModelIndex, grammar);
 }
 
 /*============================================================================
@@ -1971,14 +1635,19 @@ ErrorCode loadModelHandle(BackendType compute, ModelType modeltype,
     LOGE("[DEBUG] loadModelHandle:%d out_handle is nullptr", __LINE__);
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   }
-  auto *h = new (std::nothrow) CausalLmModel();
-  if (h == nullptr) {
-    LOGE("[DEBUG] loadModelHandle:%d Failed to allocate CausalLmModel",
-         __LINE__);
+  *out_handle = nullptr;
+  if (!is_valid_backend(compute) || !is_valid_quantization(quant_type))
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+  std::unique_ptr<CausalLmModel> h;
+  try {
+    h = std::make_unique<CausalLmModel>();
+  } catch (const std::exception &e) {
+    LOGE("loadModelHandle: allocation failed: %s", e.what());
     return CAUSAL_LM_ERROR_UNKNOWN;
   }
   LOGD("[DEBUG] loadModelHandle:%d CausalLmModel allocated at %p", __LINE__,
-       (void *)h);
+       (void *)h.get());
 
   LOGD("[DEBUG] loadModelHandle:%d Calling load_into_handle...", __LINE__);
   ErrorCode ec = load_into_handle(*h, compute, modeltype, quant_type,
@@ -1989,13 +1658,11 @@ ErrorCode loadModelHandle(BackendType compute, ModelType modeltype,
   if (ec != CAUSAL_LM_ERROR_NONE) {
     LOGE("[DEBUG] loadModelHandle:%d load_into_handle failed, deleting handle",
          __LINE__);
-    delete h;
-    *out_handle = nullptr;
     return ec;
   }
-  *out_handle = h;
+  *out_handle = h.release();
   LOGD("[DEBUG] loadModelHandle:%d SUCCESS, handle set to %p", __LINE__,
-       (void *)h);
+       (void *)*out_handle);
   return CAUSAL_LM_ERROR_NONE;
 }
 
@@ -2004,63 +1671,91 @@ ErrorCode loadModelHandleByName(BackendType compute, const char *model_id,
                                 const char *native_lib_dir,
                                 const char *model_base_path,
                                 CausalLmHandle *out_handle) {
-  if (out_handle == nullptr || model_id == nullptr)
+  if (out_handle == nullptr)
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  *out_handle = nullptr;
+  if (model_id == nullptr || model_id[0] == '\0' ||
+      !is_valid_backend(compute) || !is_valid_quantization(quant_type))
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
-  register_models(); // ensure factory + public descriptors registered
+  try {
+    register_models(); // ensure factory + public descriptors registered
 
-  auto d_opt = find_descriptor_by_id(model_id);
-  if (!d_opt) {
-    LOGE("loadModelHandleByName: unknown id '%s'", model_id);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-  const ModelDescriptor &d = *d_opt;
-  if (!d.config_name) {
-    LOGE("loadModelHandleByName: descriptor '%s' has null config_name",
-         model_id);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-  if (((d.backend_mask >> (unsigned)compute) & 1u) == 0u) {
-    LOGE("loadModelHandleByName: backend %d not in mask 0x%x for '%s'", compute,
-         d.backend_mask, model_id);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
+    auto d_opt = find_descriptor_by_id(model_id);
+    if (!d_opt) {
+      LOGE("loadModelHandleByName: unknown id '%s'", model_id);
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
+    const ModelDescriptor &d = *d_opt;
+    if (!d.config_name) {
+      LOGE("loadModelHandleByName: descriptor '%s' has null config_name",
+           model_id);
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
+    if (((d.backend_mask >> static_cast<unsigned int>(compute)) & 1u) == 0u) {
+      LOGE("loadModelHandleByName: backend %d not in mask 0x%x for '%s'",
+           compute, d.backend_mask, model_id);
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
 
-  auto *h = new (std::nothrow) CausalLmModel();
-  if (!h)
-    return CAUSAL_LM_ERROR_UNKNOWN;
+    std::unique_ptr<CausalLmModel> h;
+    try {
+      h = std::make_unique<CausalLmModel>();
+    } catch (const std::exception &e) {
+      LOGE("loadModelHandleByName: allocation failed: %s", e.what());
+      return CAUSAL_LM_ERROR_UNKNOWN;
+    }
 
-  ErrorCode ec = load_into_handle(*h, compute, d.config_name, quant_type,
-                                  native_lib_dir, model_base_path);
-  if (ec != CAUSAL_LM_ERROR_NONE) {
-    delete h;
-    *out_handle = nullptr;
-    return ec;
+    ErrorCode ec = load_into_handle(*h, compute, d.config_name, quant_type,
+                                    native_lib_dir, model_base_path);
+    if (ec != CAUSAL_LM_ERROR_NONE) {
+      return ec;
+    }
+    *out_handle = h.release();
+    return CAUSAL_LM_ERROR_NONE;
+  } catch (const std::exception &e) {
+    LOGE("loadModelHandleByName: exception: %s", e.what());
+    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
+  } catch (...) {
+    LOGE("loadModelHandleByName: unknown exception");
+    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
   }
-  *out_handle = h;
-  return CAUSAL_LM_ERROR_NONE;
 }
 
 ErrorCode configureSpeculativeDecoding(CausalLmHandle h, bool use_sd) {
   if (!h)
-    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+  std::lock_guard<std::mutex> lock(h->mtx);
+  if (!h->initialized || h->models.empty() || h->architectures.empty())
+    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   if (!use_sd)
     return CAUSAL_LM_ERROR_NONE;
-  if (h->models.empty() || h->architectures.empty())
-    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
+
   const auto *cb =
     ModelCallbackRegistry::instance().lookup(h->architectures[0]);
   if (!cb || !cb->configure_speculative_decoding)
-    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
-  return cb->configure_speculative_decoding(h->models[0].get(), use_sd);
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  try {
+    return cb->configure_speculative_decoding(h->models[0].get(), true);
+  } catch (const std::exception &e) {
+    LOGE("configureSpeculativeDecoding: %s", e.what());
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  } catch (...) {
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
 }
 
 ErrorCode loadMultimodalHandleByName(
   BackendType compute, const char *embedding_model_id, const char *llm_model_id,
   ModelQuantizationType quant_type, const char *native_lib_dir,
   const char *model_base_path, CausalLmHandle *out_handle) {
-  if (out_handle == nullptr || embedding_model_id == nullptr ||
-      llm_model_id == nullptr)
+  if (out_handle == nullptr)
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  *out_handle = nullptr;
+  if (embedding_model_id == nullptr || embedding_model_id[0] == '\0' ||
+      llm_model_id == nullptr || llm_model_id[0] == '\0' ||
+      !is_valid_backend(compute) || !is_valid_quantization(quant_type))
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
 #ifndef QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API
@@ -2068,74 +1763,100 @@ ErrorCode loadMultimodalHandleByName(
   (void)quant_type;
   (void)native_lib_dir;
   (void)model_base_path;
-  *out_handle = nullptr;
   LOGE("loadMultimodalHandleByName: experimental multimodal nntrainer API is "
        "not enabled");
   return CAUSAL_LM_ERROR_UNSUPPORTED;
 #else
-  register_models();
+  try {
+    register_models();
 
-  auto ev = find_descriptor_by_id(embedding_model_id);
-  auto lv = find_descriptor_by_id(llm_model_id);
-  if (!ev || !lv || !ev->config_name || !lv->config_name) {
-    LOGE("loadMultimodalHandleByName: unknown id(s) emb='%s' llm='%s'",
-         embedding_model_id, llm_model_id);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
+    auto ev = find_descriptor_by_id(embedding_model_id);
+    auto lv = find_descriptor_by_id(llm_model_id);
+    if (!ev || !lv || !ev->config_name || !lv->config_name) {
+      LOGE("loadMultimodalHandleByName: unknown id(s) emb='%s' llm='%s'",
+           embedding_model_id, llm_model_id);
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
+    const unsigned int backend_bit = 1u << static_cast<unsigned int>(compute);
+    if ((ev->backend_mask & backend_bit) == 0u ||
+        (lv->backend_mask & backend_bit) == 0u ||
+        (ev->capabilities & QDA_CAP_VISION_ENCODER) == 0u ||
+        (lv->capabilities & QDA_CAP_OPENAI_API) == 0u ||
+        (lv->capabilities & QDA_CAP_MULTIMODAL) == 0u) {
+      LOGE("loadMultimodalHandleByName: incompatible descriptors or backend");
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
 
-  // Load each model into its own temporary single-model handle, then move the
-  // sub-models into the combined handle in order [vision producer, LLM].
-  // This reuses the proven single-model load path without modifying it.
-  CausalLmModel tmp_vision;
-  CausalLmModel tmp_llm;
-  ErrorCode ec = load_into_handle(tmp_vision, compute, ev->config_name,
-                                  quant_type, native_lib_dir, model_base_path);
-  if (ec != CAUSAL_LM_ERROR_NONE) {
-    LOGE("loadMultimodalHandleByName: vision '%s' load failed (%d)",
-         embedding_model_id, ec);
-    return ec;
-  }
-  ec = load_into_handle(tmp_llm, compute, lv->config_name, quant_type,
-                        native_lib_dir, model_base_path);
-  if (ec != CAUSAL_LM_ERROR_NONE) {
-    LOGE("loadMultimodalHandleByName: llm '%s' load failed (%d)", llm_model_id,
-         ec);
-    return ec;
-  }
-  if (tmp_vision.models.empty() || tmp_llm.models.empty())
+    // Load each model into its own temporary single-model handle, then move the
+    // sub-models into the combined handle in order [vision producer, LLM].
+    // This reuses the proven single-model load path without modifying it.
+    CausalLmModel tmp_vision;
+    CausalLmModel tmp_llm;
+    ErrorCode ec =
+      load_into_handle(tmp_vision, compute, ev->config_name, quant_type,
+                       native_lib_dir, model_base_path);
+    if (ec != CAUSAL_LM_ERROR_NONE) {
+      LOGE("loadMultimodalHandleByName: vision '%s' load failed (%d)",
+           embedding_model_id, ec);
+      return ec;
+    }
+    ec = load_into_handle(tmp_llm, compute, lv->config_name, quant_type,
+                          native_lib_dir, model_base_path);
+    if (ec != CAUSAL_LM_ERROR_NONE) {
+      LOGE("loadMultimodalHandleByName: llm '%s' load failed (%d)",
+           llm_model_id, ec);
+      return ec;
+    }
+    if (tmp_vision.models.empty() || tmp_llm.models.empty())
+      return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
+
+    auto *vision_model = tmp_vision.models[0].get();
+    auto *llm_model = tmp_llm.models[0].get();
+    if (!vision_model->supportsImageEncoding() ||
+        !llm_model->supportsTextGeneration() ||
+        !llm_model->supportsEmbeddingInput() ||
+        llm_model->embeddingBytesPerToken() == 0) {
+      LOGE("loadMultimodalHandleByName: model pair does not implement the "
+           "required vision/embedding generation interfaces");
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+
+    auto h = std::make_unique<CausalLmModel>();
+
+    auto move_one = [](CausalLmModel &src, CausalLmModel &dst) {
+      dst.models.push_back(std::move(src.models[0]));
+      dst.architectures.push_back(
+        src.architectures.empty() ? std::string() : src.architectures[0]);
+      dst.model_dirs.push_back(src.model_dirs.empty() ? std::string()
+                                                      : src.model_dirs[0]);
+      if (!src.initialization_duration_ms.empty())
+        dst.initialization_duration_ms.push_back(
+          src.initialization_duration_ms[0]);
+      dst.chat_templates.push_back(src.chat_templates.empty()
+                                     ? std::optional<causallm::ChatTemplate>{}
+                                     : std::move(src.chat_templates[0]));
+    };
+    move_one(tmp_vision, *h); // index 0 = vision producer
+    move_one(tmp_llm, *h);    // index 1 = LLM consumer
+    if (native_lib_dir != nullptr)
+      h->native_lib_dir = native_lib_dir;
+    h->verbose = tmp_llm.verbose;
+    h->chat_template_name = tmp_llm.chat_template_name;
+    if (!initialize_handle_grammar(*h, 1)) {
+      LOGE("loadMultimodalHandleByName: grammar unavailable for the LLM");
+    }
+    h->initialized = true;
+    publish_cancellation_targets(*h);
+
+    *out_handle = h.release();
+    return CAUSAL_LM_ERROR_NONE;
+  } catch (const std::exception &e) {
+    LOGE("loadMultimodalHandleByName: exception: %s", e.what());
     return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
-
-  // Compatibility check (R5): the LLM must expose an embedding table so the
-  // composer can interleave text + image embeddings.
-  if (tmp_llm.models[0]->embeddingBytesPerToken() == 0) {
-    LOGE("loadMultimodalHandleByName: LLM '%s' has no embedding table — "
-         "incompatible pair",
-         llm_model_id);
-    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  } catch (...) {
+    LOGE("loadMultimodalHandleByName: unknown exception");
+    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
   }
-
-  auto *h = new (std::nothrow) CausalLmModel();
-  if (!h)
-    return CAUSAL_LM_ERROR_UNKNOWN;
-
-  auto move_one = [](CausalLmModel &src, CausalLmModel &dst) {
-    dst.models.push_back(std::move(src.models[0]));
-    dst.architectures.push_back(
-      src.architectures.empty() ? std::string() : src.architectures[0]);
-    dst.model_dirs.push_back(src.model_dirs.empty() ? std::string()
-                                                    : src.model_dirs[0]);
-    if (!src.initialization_duration_ms.empty())
-      dst.initialization_duration_ms.push_back(
-        src.initialization_duration_ms[0]);
-  };
-  move_one(tmp_vision, *h); // index 0 = vision producer
-  move_one(tmp_llm, *h);    // index 1 = LLM consumer
-  if (native_lib_dir != nullptr)
-    h->native_lib_dir = native_lib_dir;
-  h->initialized = true;
-
-  *out_handle = h;
-  return CAUSAL_LM_ERROR_NONE;
 #endif
 }
 
@@ -2172,12 +1893,11 @@ ErrorCode getPerformanceMetricsHandle(CausalLmHandle handle,
  * Internal streaming helper
  *============================================================================*/
 
-static ErrorCode run_model_streaming_on_handle(CausalLmModel &h,
-                                               const std::string &raw_input,
-                                               CausalLmTokenCallback callback,
-                                               void *user_data,
-                                               bool input_already_formatted,
-                                               size_t model_index) {
+static ErrorCode
+run_model_streaming_on_handle(CausalLmModel &h, const std::string &raw_input,
+                              CausalLmTokenCallback callback, void *user_data,
+                              size_t model_index,
+                              causallm::XGrammar *grammar = nullptr) {
   if (model_index >= h.models.size() || !h.models[model_index]) {
     return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
@@ -2194,32 +1914,57 @@ static ErrorCode run_model_streaming_on_handle(CausalLmModel &h,
   if (!set_model_streamer(m, &streamer.base))
     return CAUSAL_LM_ERROR_UNSUPPORTED;
 
+  std::unique_ptr<XGrammarLogitsProcessor> grammar_processor;
   struct Detach {
     causallm::Transformer *t;
-    ~Detach() { set_model_streamer(t, nullptr); }
+    bool detach_logits = false;
+#ifdef ENABLE_QNN_MODELS
+    causallm::Quick_Dot_AI_QNN *qnn_model = nullptr;
+#endif
+    ~Detach() {
+      set_model_streamer(t, nullptr);
+      if (detach_logits)
+        t->setLogitsProcessor(nullptr);
+#ifdef ENABLE_QNN_MODELS
+      if (qnn_model != nullptr)
+        qnn_model->resetXGrammar();
+#endif
+    }
   } detach_guard{m};
 
-  try {
-    std::string input = prepare_input_for_model(h, model_index, raw_input,
-                                                input_already_formatted);
-
-    LOGD("[DEBUG]   raw input length: %zu", raw_input.length());
-    LOGD("[DEBUG]   g_use_chat_template: %d", g_use_chat_template);
-    if (input_already_formatted) {
-      LOGD("[DEBUG]   input_already_formatted=1, using pre-formatted input "
-           "(length: %zu)",
-           input.length());
-    } else {
-      LOGD("[DEBUG]   input_already_formatted=0, applying chat template");
-      LOGD("[DEBUG]   model input length: %zu", input.length());
-      LOGD("[DEBUG]   model input: %s", input.c_str());
+  bool qnn_grammar_attached = false;
+#ifdef ENABLE_QNN_MODELS
+  if (grammar != nullptr) {
+    if (auto *qnn_model = as_qnn_model(m)) {
+      qnn_model->setXGrammar(grammar);
+      detach_guard.qnn_model = qnn_model;
+      qnn_grammar_attached = true;
     }
+  }
+#endif
+  if (grammar != nullptr && !qnn_grammar_attached) {
+    grammar_processor = std::make_unique<XGrammarLogitsProcessor>(
+      grammar, [m]() { request_model_stop(m); });
+    m->setLogitsProcessor(grammar_processor.get());
+    detach_guard.detach_logits = true;
+  }
 
-#if defined(_WIN32)
-    m->run(std::wstring(input.begin(), input.end()), false, L"", L"",
-           g_verbose);
-#else
-    m->run(input, false, "", "", true);
+  try {
+    LOGD("[DEBUG]   formatted input length: %zu", raw_input.length());
+    m->run(raw_input, false, "", "", h.verbose);
+
+    if (grammar_processor != nullptr && grammar_processor->failed()) {
+      LOGE("[DEBUG] run_model_streaming_on_handle: grammar rejected a "
+           "generated token");
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
+#ifdef ENABLE_QNN_MODELS
+    if (detach_guard.qnn_model != nullptr &&
+        detach_guard.qnn_model->hasXGrammarFailure()) {
+      LOGE("[DEBUG] run_model_streaming_on_handle: QNN grammar rejected a "
+           "generated token");
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
 #endif
 
     if (!get_model_output(m, h.last_output))
@@ -2264,36 +2009,38 @@ static ErrorCode run_model_streaming_on_handle(CausalLmModel &h,
   return CAUSAL_LM_ERROR_NONE;
 }
 
-ErrorCode runModelHandleStreaming(CausalLmHandle handle,
-                                  const char *inputTextPrompt,
-                                  CausalLmTokenCallback callback,
-                                  void *user_data) {
-  LOGD("[DEBUG] runModelHandleStreaming: START");
-  LOGD("[DEBUG]   handle: %p", (void *)handle);
-  LOGD("[DEBUG]   inputTextPrompt: %.50s%s",
-       inputTextPrompt ? inputTextPrompt : "(null)",
-       inputTextPrompt && strlen(inputTextPrompt) > 50 ? "..." : "");
-
-  if (handle == nullptr || inputTextPrompt == nullptr || callback == nullptr) {
-    LOGE("[DEBUG] runModelHandleStreaming: INVALID_PARAMETER");
+ErrorCode quickAiRunText(CausalLmHandle handle, const char *input,
+                         CausalLmTokenCallback callback, void *user_data) {
+  if (handle == nullptr || input == nullptr || input[0] == '\0' ||
+      callback == nullptr) {
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   }
 
   auto &h = *handle;
   std::lock_guard<std::mutex> lock(h.mtx);
-
   if (!h.initialized || h.models.empty()) {
-    LOGE("[DEBUG] runModelHandleStreaming: NOT_INITIALIZED");
     return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
-  const size_t model_index = text_generation_model_index(h);
+  ScopedRunRequest run_request(h);
 
-  ErrorCode ec = run_model_streaming_on_handle(
-    h, std::string(inputTextPrompt), callback, user_data,
-    /*input_already_formatted=*/false, model_index);
-
-  LOGD("[DEBUG] runModelHandleStreaming: END (errorCode=%d)", ec);
-  return ec;
+  try {
+    const size_t model_index = text_generation_model_index(h);
+    if (model_index >= h.models.size() || !h.models[model_index]) {
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+    }
+    ScopedGeneration generation(h);
+    h.last_output.clear();
+    h.models[model_index]->resetConversationState();
+    reset_handle_session_state(h);
+    return run_model_streaming_on_handle(h, input, callback, user_data,
+                                         model_index);
+  } catch (const std::exception &e) {
+    LOGE("quickAiRunText: inference failed: %s", e.what());
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  } catch (...) {
+    LOGE("quickAiRunText: unknown failure");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
 }
 
 ErrorCode encodeModelHandle(CausalLmHandle handle, const char *text,
@@ -2326,7 +2073,7 @@ ErrorCode encodeModelHandle(CausalLmHandle handle, const char *text,
     }
 
     // WSTR is std::string in this codebase; pass the text directly,
-    // consistent with runModelHandleStreaming.
+    // The embedding tokenizer consumes ordinary UTF-8 text.
     std::string s(text);
 
     std::vector<float *> results = st->encode(s);
@@ -2363,9 +2110,13 @@ ErrorCode unloadModelHandle(CausalLmHandle handle) {
     return CAUSAL_LM_ERROR_NONE;
   }
   std::lock_guard<std::mutex> lock(handle->mtx);
-  handle->models.clear();
+  clear_handle_models(*handle);
   handle->architectures.clear();
   handle->model_dirs.clear();
+  handle->chat_templates.clear();
+  handle->grammar_manager.reset();
+  handle->dynamic_grammar_schemas.clear();
+  handle->last_output.clear();
   handle->initialization_duration_ms.clear();
   handle->initialized = false;
   reset_handle_session_state(*handle);
@@ -2378,13 +2129,17 @@ ErrorCode destroyModelHandle(CausalLmHandle handle) {
   }
   // Take the mutex to make sure no in-flight call on this handle is still
   // running, then release and delete. Any caller that still holds a pointer
-  // to the output buffer returned by runModelHandleWithMessages is reading
-  // freed memory after this point — documented as "valid until destroy".
+  // to an earlier borrowed output buffer is reading freed memory after this
+  // point.
   {
     std::lock_guard<std::mutex> lock(handle->mtx);
-    handle->models.clear();
+    clear_handle_models(*handle);
     handle->architectures.clear();
     handle->model_dirs.clear();
+    handle->chat_templates.clear();
+    handle->grammar_manager.reset();
+    handle->dynamic_grammar_schemas.clear();
+    handle->last_output.clear();
     handle->initialization_duration_ms.clear();
     handle->initialized = false;
     reset_handle_session_state(*handle);
@@ -2402,34 +2157,66 @@ ErrorCode cancelModelHandle(CausalLmHandle handle) {
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   }
 
-  // NOTE: We intentionally do NOT take the mutex here to avoid blocking
-  // when run() is holding the lock. The requestStop() method is thread-safe
-  // (uses atomic<bool>), and the models vector is not modified during run()
-  // (only during load/unload which do take the mutex). This allows immediate
-  // cancellation from any thread (e.g., UI cancel button handler).
-  LOGD("[DEBUG] cancelModelHandle: checking state without mutex, "
-       "initialized=%d, models.size=%zu",
-       handle->initialized, handle->models.size());
-
-  if (!handle->initialized || handle->models.empty()) {
+  // Do not take the inference mutex: run() holds it for the full decode. The
+  // separate target mutex makes model lifetime stable while requestStop()
+  // sets its atomic flag, and unload/destroy clear targets before ownership.
+  std::lock_guard<std::mutex> cancellation_lock(handle->cancellation_mtx);
+  if (handle->cancellation_targets.empty()) {
     LOGE(
       "[DEBUG] cancelModelHandle: not initialized, returning NOT_INITIALIZED");
     return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
+  if (!handle->run_active && handle->run_announced) {
+    // This specific request has been announced but generation has not started.
+    // ScopedGeneration consumes the stop request; ScopedRunRequest discards it
+    // on parse, validation, or capability failures.
+    handle->cancellation_pending = true;
+    LOGD("[DEBUG] cancelModelHandle: cancellation queued before generation");
+    return CAUSAL_LM_ERROR_NONE;
+  }
+  if (!handle->run_active) {
+    // Cancellation is request-scoped. An idle cancellation must never affect
+    // an unrelated future generation.
+    LOGD("[DEBUG] cancelModelHandle: no active request");
+    return CAUSAL_LM_ERROR_NONE;
+  }
 
-  // Set stop flag on all models (primarily affects models[0] for LLM)
-  for (size_t i = 0; i < handle->models.size(); ++i) {
-    if (handle->models[i]) {
-      if (!request_model_stop(handle->models[i].get())) {
-        LOGD("[DEBUG] cancelModelHandle: model[%zu] is not cancellable", i);
-        continue;
-      }
-      LOGD("[DEBUG] cancelModelHandle: calling requestStop() on model[%zu]", i);
+  for (size_t i = 0; i < handle->cancellation_targets.size(); ++i) {
+    if (!request_model_stop(handle->cancellation_targets[i])) {
+      LOGD("[DEBUG] cancelModelHandle: model[%zu] is not cancellable", i);
+      continue;
     }
+    LOGD("[DEBUG] cancelModelHandle: requested stop on model[%zu]", i);
   }
 
   LOGD("[DEBUG] cancelModelHandle: returning NONE (success)");
   return CAUSAL_LM_ERROR_NONE;
+}
+
+ErrorCode quickAiArmRunCancellation(CausalLmHandle handle) {
+  if (handle == nullptr)
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+  std::lock_guard<std::mutex> cancellation_lock(handle->cancellation_mtx);
+  if (handle->cancellation_targets.empty())
+    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+  if (handle->run_announced || handle->run_active)
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+  handle->run_announced = true;
+  handle->cancellation_pending = false;
+  return CAUSAL_LM_ERROR_NONE;
+}
+
+void quickAiDisarmRunCancellation(CausalLmHandle handle) {
+  if (handle == nullptr)
+    return;
+
+  std::lock_guard<std::mutex> cancellation_lock(handle->cancellation_mtx);
+  if (!handle->run_active) {
+    handle->run_announced = false;
+    handle->cancellation_pending = false;
+  }
 }
 
 /*============================================================================
@@ -2437,11 +2224,11 @@ ErrorCode cancelModelHandle(CausalLmHandle handle) {
  *
  * Preconditions: the handle must have been loaded from a multi-model
  * nntr_config.json carrying at least two sub-models. The first sub-model
- * is expected to be the vision encoder and the second the LLM, though
- * the concrete integration (vision encoding + embedding fusion + LLM
- * generation) is still TODO. Single-model handles return
- * CAUSAL_LM_ERROR_UNSUPPORTED.
- *============================================================================*/
+ * is expected to be the vision encoder and the second the embedding-input LLM.
+
+ * * Single-model and incompatible handles return CAUSAL_LM_ERROR_UNSUPPORTED.
+
+ * *============================================================================*/
 
 #if defined(ENABLE_QNN_MODELS) &&                                              \
   defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
@@ -2453,16 +2240,25 @@ ErrorCode cancelModelHandle(CausalLmHandle handle) {
  *   llm:          embedding CONSUMER (lookupEmbedding / run_with_embeddings)
  *   image_embeds: producer output; ownership taken here (freed before return)
  */
-static ErrorCode execute_multimodal(CausalLmModel &h,
-                                    causallm::Transformer *llm,
-                                    causallm::multimodal_pointer image_embeds,
-                                    const std::string &prompt,
-                                    CausalLmTokenCallback callback,
-                                    void *user_data) {
+static ErrorCode
+execute_multimodal(CausalLmModel &h, causallm::Transformer *llm,
+                   causallm::multimodal_pointer image_embeds,
+                   const std::string &prompt, CausalLmTokenCallback callback,
+                   void *user_data, causallm::XGrammar *grammar = nullptr) {
+  std::unique_ptr<void, decltype(&std::free)> image_guard(image_embeds.first,
+                                                          &std::free);
+  if (llm == nullptr || !llm->supportsTextGeneration() ||
+      !llm->supportsEmbeddingInput()) {
+    LOGE("[MM] model does not support embedding-based text generation");
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
+  if (image_embeds.first == nullptr || image_embeds.second == 0) {
+    LOGE("[MM] vision encoder returned no embeddings");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
   auto *tok = llm->getTokenizer();
   if (tok == nullptr) {
     LOGE("[MM] llm has no tokenizer");
-    std::free(image_embeds.first);
     return CAUSAL_LM_ERROR_UNSUPPORTED;
   }
   std::vector<int> text_ids = tok->Encode(prompt);
@@ -2472,29 +2268,42 @@ static ErrorCode execute_multimodal(CausalLmModel &h,
   if (bpt == 0) {
     LOGE("[MM] llm embedding table not loaded (needs uses_embedding=false + "
          "embedding_file_name)");
-    std::free(image_embeds.first);
     return CAUSAL_LM_ERROR_UNSUPPORTED;
   }
   if (image_embeds.second % bpt != 0) {
     LOGE("[MM] image_embeds.size=%zu not a multiple of bpt=%zu",
          image_embeds.second, bpt);
-    std::free(image_embeds.first);
     return CAUSAL_LM_ERROR_INFERENCE_FAILED;
   }
   const size_t n_image = image_embeds.second / bpt;
 
-  auto it_img = (image_token_id >= 0)
-                  ? std::find(text_ids.begin(), text_ids.end(), image_token_id)
-                  : text_ids.end();
-  const bool has_placeholder = (it_img != text_ids.end());
+  if (image_token_id < 0) {
+    LOGE("[MM] tokenizer does not define the <|image|> placeholder");
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
+  const size_t placeholder_count = static_cast<size_t>(
+    std::count(text_ids.begin(), text_ids.end(), image_token_id));
+  if (placeholder_count != 1) {
+    LOGE("[MM] expected exactly one image placeholder, found %zu",
+         placeholder_count);
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  }
+  const auto it_img =
+    std::find(text_ids.begin(), text_ids.end(), image_token_id);
   const size_t img_pos =
-    has_placeholder
-      ? static_cast<size_t>(std::distance(text_ids.begin(), it_img))
-      : 0;
-  const size_t n_text_kept = text_ids.size() - (has_placeholder ? 1 : 0);
+    static_cast<size_t>(std::distance(text_ids.begin(), it_img));
+  const size_t n_text_kept = text_ids.size() - 1;
+  if (n_image > (std::numeric_limits<size_t>::max)() - n_text_kept) {
+    LOGE("[MM] combined token count overflow");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
   const size_t n_total = n_text_kept + n_image;
-  LOGD("[MM] text=%zu image=%zu total=%zu placeholder=%d pos=%zu",
-       text_ids.size(), n_image, n_total, has_placeholder, img_pos);
+  if (n_total > (std::numeric_limits<size_t>::max)() / bpt) {
+    LOGE("[MM] combined embedding size overflow");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
+  LOGD("[MM] text=%zu image=%zu total=%zu pos=%zu", text_ids.size(), n_image,
+       n_total, img_pos);
 
   std::vector<uint8_t> combined(n_total * bpt);
   uint8_t *dst = combined.data();
@@ -2511,32 +2320,66 @@ static ErrorCode execute_multimodal(CausalLmModel &h,
     return true;
   };
   if (!copy_text_range(0, img_pos)) {
-    std::free(image_embeds.first);
     return CAUSAL_LM_ERROR_INFERENCE_FAILED;
   }
   std::memcpy(dst, image_embeds.first, n_image * bpt);
   dst += n_image * bpt;
-  const size_t after_start = has_placeholder ? img_pos + 1 : img_pos;
+  const size_t after_start = img_pos + 1;
   if (!copy_text_range(after_start, text_ids.size())) {
-    std::free(image_embeds.first);
     return CAUSAL_LM_ERROR_INFERENCE_FAILED;
   }
-  std::free(image_embeds.first);
+  image_guard.reset();
   image_embeds.first = nullptr;
 
   CallbackStreamer streamer;
   callback_streamer_init(&streamer, callback, user_data);
   // Attach via the cast helper: setStreamer lives on Quick_Dot_AI_QNN /
   // CausalLM, not on the base Transformer the composer drives through.
-  set_model_streamer(llm, &streamer.base);
+  if (!set_model_streamer(llm, &streamer.base)) {
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
+  std::unique_ptr<XGrammarLogitsProcessor> grammar_processor;
   struct Detach {
     causallm::Transformer *t;
-    ~Detach() { set_model_streamer(t, nullptr); }
+    bool detach_logits = false;
+    causallm::Quick_Dot_AI_QNN *qnn_model = nullptr;
+    ~Detach() {
+      set_model_streamer(t, nullptr);
+      if (detach_logits)
+        t->setLogitsProcessor(nullptr);
+      if (qnn_model != nullptr)
+        qnn_model->resetXGrammar();
+    }
   } detach_guard{llm};
+
+  bool qnn_grammar_attached = false;
+  if (grammar != nullptr) {
+    if (auto *qnn_model = as_qnn_model(llm)) {
+      qnn_model->setXGrammar(grammar);
+      detach_guard.qnn_model = qnn_model;
+      qnn_grammar_attached = true;
+    }
+  }
+  if (grammar != nullptr && !qnn_grammar_attached) {
+    grammar_processor = std::make_unique<XGrammarLogitsProcessor>(
+      grammar, [llm]() { request_model_stop(llm); });
+    llm->setLogitsProcessor(grammar_processor.get());
+    detach_guard.detach_logits = true;
+  }
 
   try {
     llm->run_with_embeddings(combined.data(), n_total, text_ids,
-                             /*do_sample=*/false, /*log_output=*/g_verbose);
+                             /*do_sample=*/false, /*log_output=*/h.verbose);
+    if (grammar_processor != nullptr && grammar_processor->failed()) {
+      LOGE("[MM] grammar rejected a generated token");
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
+    if (detach_guard.qnn_model != nullptr &&
+        detach_guard.qnn_model->hasXGrammarFailure()) {
+      LOGE("[MM] QNN grammar rejected a generated token");
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
+    get_model_output(llm, h.last_output);
     h.kv_len = llm->getKvLen();
   } catch (const std::exception &e) {
     LOGE("[MM] llm threw: %s", e.what());
@@ -2552,22 +2395,29 @@ static ErrorCode execute_multimodal(CausalLmModel &h,
  */
 static causallm::multimodal_pointer
 run_vision_encoder(CausalLmModel &h, const char *prompt,
-                   const float *pixelValues, int numPatches, int originalHeight,
-                   int originalWidth) {
-  const int PATCH_SIZE = 512; // pixel layout: numPatches*3*512*512 floats
+                   const float *pixelValues, size_t valueCount,
+                   int originalHeight, int originalWidth) {
   causallm::Transformer *vision = h.models[0].get();
   causallm::Transformer *llm = h.models[1].get();
+
+  if (!vision->supportsImageEncoding() || !llm->supportsEmbeddingInput()) {
+    LOGE("[MM] model pair does not support multimodal composition");
+    return {nullptr, 0};
+  }
 
   auto info = llm->get_embedding_info();
   vision->set_quant_param(info.first, info.second);
 
-  const size_t pixel_bytes = static_cast<size_t>(numPatches) * 3 * PATCH_SIZE *
-                             PATCH_SIZE * sizeof(float);
+  if (valueCount > (std::numeric_limits<size_t>::max)() / sizeof(float)) {
+    LOGE("[MM] image tensor byte size overflow");
+    return {nullptr, 0};
+  }
+  const size_t pixel_bytes = valueCount * sizeof(float);
   causallm::multimodal_pointer image_in{const_cast<float *>(pixelValues),
                                         pixel_bytes};
   return vision->run_image(std::string(prompt ? prompt : ""), image_in,
                            originalHeight, originalWidth, /*do_sample=*/false,
-                           "", "", g_verbose);
+                           "", "", h.verbose);
 }
 #endif // ENABLE_QNN_MODELS &&
        // QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API
@@ -2602,6 +2452,10 @@ ErrorCode encodeImageModelHandle(CausalLmHandle handle,
 
 #if defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
   causallm::Transformer *vision = h.models[0].get();
+  if (!vision->supportsImageEncoding()) {
+    LOGE("encodeImageModelHandle: model is not an image encoder");
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
   // Intentionally do NOT call set_quant_param: standalone encode keeps
   // llm_quant_param_given_ == false so run_image returns the raw quantized
   // embedding via plain memcpy (no LLM consumer required).
@@ -2612,7 +2466,7 @@ ErrorCode encodeImageModelHandle(CausalLmHandle handle,
   try {
     causallm::multimodal_pointer embeds =
       vision->run_image(std::string(""), image_in, height, width,
-                        /*do_sample=*/false, "", "", g_verbose);
+                        /*do_sample=*/false, "", "", h.verbose);
     if (embeds.first == nullptr || embeds.second == 0) {
       LOGE("encodeImageModelHandle: run_image returned empty output");
       return CAUSAL_LM_ERROR_INFERENCE_FAILED;
@@ -2663,632 +2517,309 @@ ErrorCode encodeImageModelHandle(CausalLmHandle handle,
 void freeImageEmbedding(void *embedding) { (void)embedding; }
 #endif // !ENABLE_QNN_MODELS
 
-ErrorCode runMultimodalHandleStreaming(CausalLmHandle handle,
-                                       const char *prompt,
-                                       const float *pixelValues, int numPatches,
-                                       int originalHeight, int originalWidth,
-                                       CausalLmTokenCallback callback,
-                                       void *user_data) {
-  LOGD("[DEBUG] runMultimodalHandleStreaming: START");
-  LOGD("[DEBUG]   handle=%p", handle);
-  LOGD("[DEBUG]   prompt=%s", prompt ? prompt : "(null)");
-  LOGD("[DEBUG]   pixelValues=%p", pixelValues);
-  LOGD("[DEBUG]   numPatches=%d", numPatches);
-  LOGD("[DEBUG]   originalHeight=%d", originalHeight);
-  LOGD("[DEBUG]   originalWidth=%d", originalWidth);
-  LOGD("[DEBUG]   callback=%p", (void *)callback);
-  LOGD("[DEBUG]   user_data=%p", user_data);
+/*============================================================================
 
-  if (handle == nullptr || prompt == nullptr || pixelValues == nullptr ||
-      callback == nullptr) {
-    LOGE("[DEBUG] runMultimodalHandleStreaming: INVALID_PARAMETER"
-         " handle=%p prompt=%s pixelValues=%p callback=%p",
-         handle, prompt, pixelValues, (void *)callback);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+ * * OpenAI JSON streaming API implementation
+
+ * *============================================================================*/
+
+static ErrorCode prepare_openai_grammar(
+  CausalLmModel &h, const causallm::openai::GrammarSelection &grammar_selection,
+  causallm::XGrammar **grammar, std::string &grammar_key) {
+  *grammar = nullptr;
+  grammar_key.clear();
+  if (grammar_selection.kind == causallm::openai::GrammarKind::NONE) {
+    return CAUSAL_LM_ERROR_NONE;
   }
-
-  auto &h = *handle;
-  std::lock_guard<std::mutex> lock(h.mtx);
-  if (!h.initialized || h.models.empty()) {
-    LOGE("[DEBUG] runMultimodalHandleStreaming: NOT_INITIALIZED");
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  }
-
-  // Multimodal expects the handle to be loaded from a multi-model
-  // nntr_config.json (architectures[] + model_dirs[]) with at least
-  // [vision_encoder, llm]. A single-model handle cannot drive this path.
-  if (h.models.size() < 2) {
-    LOGE("[DEBUG] runMultimodalHandleStreaming: need >=2 sub-models "
-         "(got %zu). Load with multi-model nntr_config.json.",
-         h.models.size());
+  if (!h.grammar_manager || !h.grammar_manager->isInitialized()) {
     return CAUSAL_LM_ERROR_UNSUPPORTED;
   }
 
-  LOGD("[DEBUG] runMultimodalHandleStreaming: %zu sub-models loaded",
-       h.models.size());
-  for (size_t i = 0; i < h.architectures.size(); ++i) {
-    LOGD("[DEBUG]   models[%zu]: arch=%s dir=%s", i, h.architectures[i].c_str(),
-         h.model_dirs[i].c_str());
+  json schema;
+  if (grammar_selection.kind == causallm::openai::GrammarKind::JSON_OBJECT) {
+    schema = {{"type", "object"}};
+  } else {
+    schema = grammar_selection.schema;
+  }
+  const std::string schema_text = schema.dump();
+  const std::string key_prefix =
+    "__openai_" + std::to_string(std::hash<std::string>{}(schema_text));
+  grammar_key = key_prefix;
+  size_t collision = 0;
+  while (true) {
+    const auto existing = h.dynamic_grammar_schemas.find(grammar_key);
+    if (existing != h.dynamic_grammar_schemas.end() &&
+        existing->second == schema_text) {
+      break;
+    }
+    if (existing == h.dynamic_grammar_schemas.end() &&
+        !h.grammar_manager->hasTool(grammar_key))
+      break;
+    grammar_key = key_prefix + "_" + std::to_string(++collision);
   }
 
-  // Log pixel values summary (first few values)
-  // Note: patch size is fixed at 512x512
-  const int PATCH_SIZE = 512;
-  long long totalValues = 1LL * numPatches * 3 * PATCH_SIZE * PATCH_SIZE;
-  LOGD("[DEBUG]   totalPixelValues=%lld", totalValues);
-  if (totalValues > 0 && pixelValues != nullptr) {
-    LOGD("[DEBUG]   pixelValues[0..4]=%f, %f, %f, %f, %f", pixelValues[0],
-         pixelValues[1], pixelValues[2],
-         (totalValues > 3 ? pixelValues[3] : 0.0f),
-         (totalValues > 4 ? pixelValues[4] : 0.0f));
+  if (!h.grammar_manager->hasTool(grammar_key)) {
+    constexpr size_t MAX_DYNAMIC_GRAMMARS = 16;
+    if (h.dynamic_grammar_schemas.size() >= MAX_DYNAMIC_GRAMMARS) {
+      const auto victim = h.dynamic_grammar_schemas.begin();
+      h.grammar_manager->unregisterTool(victim->first);
+      h.dynamic_grammar_schemas.erase(victim);
+    }
+    if (!h.grammar_manager->registerTool(grammar_key, schema_text)) {
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
   }
-
-#if defined(ENABLE_QNN_MODELS) &&                                              \
-  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
-  // Generic path: models[0]=vision producer, models[1]=LLM consumer.
-  causallm::multimodal_pointer image_embeds{nullptr, 0};
-  try {
-    image_embeds = run_vision_encoder(h, prompt, pixelValues, numPatches,
-                                      originalHeight, originalWidth);
-  } catch (const std::exception &e) {
-    LOGE("[DEBUG] runMultimodalHandleStreaming: vision threw: %s", e.what());
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  }
-
-  const std::string raw_input(prompt);
-  const bool input_already_formatted =
-    raw_input.find("<|turn_start|>") != std::string::npos ||
-    raw_input.find("<|im_start|>") != std::string::npos ||
-    raw_input.find("<start_of_turn>") != std::string::npos;
-  std::string input =
-    prepare_input_for_model(h, 1, raw_input, input_already_formatted);
-
-  return execute_multimodal(h, h.models[1].get(), image_embeds, input, callback,
-                            user_data);
-#else
-  LOGE("[DEBUG] runMultimodalHandleStreaming: experimental multimodal "
-       "nntrainer API is not enabled");
-  return CAUSAL_LM_ERROR_UNSUPPORTED;
-#endif
+  h.dynamic_grammar_schemas[grammar_key] = schema_text;
+  h.grammar_manager->resetGrammar(grammar_key);
+  *grammar = h.grammar_manager->getGrammar(grammar_key);
+  return *grammar != nullptr ? CAUSAL_LM_ERROR_NONE
+                             : CAUSAL_LM_ERROR_INFERENCE_FAILED;
 }
 
-ErrorCode runMultimodalHandleWithMessages(
-  CausalLmHandle handle, const CausalLMChatMessage *messages,
-  size_t num_messages, bool add_generation_prompt, const float *pixelValues,
-  int numPatches, int originalHeight, int originalWidth,
-  const char **outputText) {
-  LOGD("[DEBUG] runMultimodalHandleWithMessages: START");
-  LOGD("[DEBUG]   handle=%p", handle);
-  LOGD("[DEBUG]   messages=%p", messages);
-  LOGD("[DEBUG]   num_messages=%zu", num_messages);
-  LOGD("[DEBUG]   add_generation_prompt=%d", add_generation_prompt);
-  LOGD("[DEBUG]   pixelValues=%p", pixelValues);
-  LOGD("[DEBUG]   numPatches=%d", numPatches);
-  LOGD("[DEBUG]   originalHeight=%d", originalHeight);
-  LOGD("[DEBUG]   originalWidth=%d", originalWidth);
-  LOGD("[DEBUG]   outputText=%p", outputText);
-
-  if (handle == nullptr || messages == nullptr || num_messages == 0 ||
-      pixelValues == nullptr || outputText == nullptr) {
-    LOGE("[DEBUG] runMultimodalHandleWithMessages: INVALID_PARAMETER"
-         " handle=%p messages=%p num_messages=%zu pixelValues=%p outputText=%p",
-         handle, messages, num_messages, pixelValues, outputText);
+static ErrorCode
+validate_openai_images(const causallm::openai::Request &request,
+                       const QuickAiImageTensorV1 *images, size_t image_count) {
+  if (request.image_sources.size() != image_count ||
+      (image_count > 0 && images == nullptr)) {
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   }
 
-  auto &h = *handle;
-  std::lock_guard<std::mutex> lock(h.mtx);
-  if (!h.initialized || h.models.empty()) {
-    LOGE("[DEBUG] runMultimodalHandleWithMessages: NOT_INITIALIZED");
-    *outputText = nullptr;
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  }
+  for (size_t i = 0; i < image_count; ++i) {
+    const auto &image = images[i];
+    if (image.struct_size != sizeof(QuickAiImageTensorV1) ||
+        image.source == nullptr || image.values == nullptr ||
+        image.value_count == 0 || image.patch_count == 0 ||
+        image.channels == 0 || image.patch_height == 0 ||
+        image.patch_width == 0 || image.original_height == 0 ||
+        image.original_width == 0 ||
+        image.original_height >
+          static_cast<uint32_t>((std::numeric_limits<int>::max)()) ||
+        image.original_width >
+          static_cast<uint32_t>((std::numeric_limits<int>::max)()) ||
+        request.image_sources[i] != image.source ||
+        image.layout < QUICK_AI_IMAGE_LAYOUT_MODEL_NATIVE ||
+        image.layout > QUICK_AI_IMAGE_LAYOUT_CHW) {
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
 
-  if (h.models.size() < 2) {
-    LOGE(
-      "[DEBUG] runMultimodalHandleWithMessages: need >=2 sub-models (got %zu)",
-      h.models.size());
-    *outputText = nullptr;
-    return CAUSAL_LM_ERROR_UNSUPPORTED;
-  }
+    for (size_t value_index = 0; value_index < image.value_count;
+         ++value_index) {
+      if (!std::isfinite(image.values[value_index])) {
+        return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+      }
+    }
 
-  LOGD("[DEBUG] runMultimodalHandleWithMessages: %zu sub-models loaded",
-       h.models.size());
-  for (size_t i = 0; i < h.architectures.size(); ++i) {
-    LOGD("[DEBUG]   models[%zu]: arch=%s dir=%s", i, h.architectures[i].c_str(),
-         h.model_dirs[i].c_str());
+    if (image.layout != QUICK_AI_IMAGE_LAYOUT_MODEL_NATIVE) {
+      size_t expected = image.patch_count;
+      for (uint32_t dimension :
+           {image.channels, image.patch_height, image.patch_width}) {
+        if (expected > (std::numeric_limits<size_t>::max)() / dimension) {
+          return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+        }
+        expected *= dimension;
+      }
+      if (expected != image.value_count) {
+        return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+      }
+    }
   }
-
-  // Apply chat template
-  auto chat_messages = convertMessages(messages, num_messages);
-  const size_t llm_index = h.architectures.size() > 1 ? 1 : 0;
-  std::string arch = h.architectures.size() > llm_index
-                       ? h.architectures[llm_index]
-                       : std::string();
-  std::string model_dir =
-    h.model_dirs.size() > llm_index ? h.model_dirs[llm_index] : std::string();
-  std::string prompt = apply_chat_template_messages(
-    arch, chat_messages, add_generation_prompt, model_dir);
-  LOGD("[DEBUG]   formatted prompt length: %zu", prompt.length());
-  LOGD("[DEBUG]   formatted prompt preview: %.100s%s", prompt.c_str(),
-       prompt.length() > 100 ? "..." : "");
-
-  // Log pixel values summary (first few values)
-  // Note: patch size is fixed at 512x512
-  const int PATCH_SIZE = 512;
-  long long totalValues = 1LL * numPatches * 3 * PATCH_SIZE * PATCH_SIZE;
-  LOGD("[DEBUG]   totalPixelValues=%lld", totalValues);
-  if (totalValues > 0 && pixelValues != nullptr) {
-    LOGD("[DEBUG]   pixelValues[0..4]=%f, %f, %f, %f, %f", pixelValues[0],
-         pixelValues[1], pixelValues[2],
-         (totalValues > 3 ? pixelValues[3] : 0.0f),
-         (totalValues > 4 ? pixelValues[4] : 0.0f));
-  }
-
-#if defined(ENABLE_QNN_MODELS) &&                                              \
-  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
-  causallm::multimodal_pointer image_embeds{nullptr, 0};
-  try {
-    image_embeds =
-      run_vision_encoder(h, prompt.c_str(), pixelValues, numPatches,
-                         originalHeight, originalWidth);
-  } catch (const std::exception &e) {
-    LOGE("[DEBUG] runMultimodalHandleWithMessages: vision threw: %s", e.what());
-    *outputText = nullptr;
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  }
-
-  h.last_output.clear();
-  auto accumulate_cb = [](const char *delta, void *ud) -> int {
-    if (delta)
-      static_cast<std::string *>(ud)->append(delta);
-    return 0;
-  };
-  ErrorCode ec = execute_multimodal(h, h.models[1].get(), image_embeds, prompt,
-                                    accumulate_cb, &h.last_output);
-  if (ec != CAUSAL_LM_ERROR_NONE) {
-    *outputText = nullptr;
-    return ec;
-  }
-#else
-  LOGE("[DEBUG] runMultimodalHandleWithMessages: experimental multimodal "
-       "nntrainer API is not enabled");
-  *outputText = nullptr;
-  return CAUSAL_LM_ERROR_UNSUPPORTED;
-#endif
-  *outputText = h.last_output.c_str();
   return CAUSAL_LM_ERROR_NONE;
 }
 
-/*============================================================================
- * OpenAI messages streaming variants
- *============================================================================*/
-
-extern "C" {
-
-ErrorCode runModelHandleWithMessagesStreaming(
-  CausalLmHandle handle, const CausalLMChatMessage *messages,
-  size_t num_messages, bool add_generation_prompt,
-  CausalLmTokenCallback callback, void *user_data) {
-  LOGD("[DEBUG] runModelHandleWithMessagesStreaming: START");
-  LOGD("[DEBUG]   handle: %p", (void *)handle);
-  LOGD("[DEBUG]   num_messages: %zu", num_messages);
-
-  if (handle == nullptr || messages == nullptr || num_messages == 0 ||
-      callback == nullptr) {
-    LOGE("[DEBUG] runModelHandleWithMessagesStreaming: INVALID_PARAMETER");
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  auto &h = *handle;
-  std::lock_guard<std::mutex> lock(h.mtx);
-
-  if (!h.initialized || h.models.empty()) {
-    LOGE("[DEBUG] runModelHandleWithMessagesStreaming: NOT_INITIALIZED");
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  }
-  const size_t model_index = text_generation_model_index(h);
-  if (model_index >= h.models.size() || !h.models[model_index]) {
-    LOGE("[DEBUG] runModelHandleWithMessagesStreaming: text model is missing");
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  }
-
-  try {
-    LOGD("[DEBUG] runModelHandleWithMessagesStreaming: Formatting messages...");
-
-    std::string model_dir = h.model_dirs.size() > model_index
-                              ? h.model_dirs[model_index]
-                              : std::string();
-
-    // Use the *actual* handle's architecture so architecture-specific
-    // chat template markers are generated.
-    auto chat_messages = convertMessages(messages, num_messages);
-    std::string arch = h.architectures.size() > model_index
-                         ? h.architectures[model_index]
-                         : std::string();
-    std::string formattedInput = apply_chat_template_messages(
-      arch, chat_messages, add_generation_prompt, model_dir);
-
-    LOGD("[DEBUG]   raw messages count: %zu", num_messages);
-    LOGD("[DEBUG]   formatted input length: %zu", formattedInput.length());
-    LOGD("[DEBUG]   formatted input: %s", formattedInput.c_str());
-
-    LOGD("[DEBUG] runModelHandleWithMessagesStreaming: Calling internal helper "
-         "directly...");
-    return run_model_streaming_on_handle(h, formattedInput, callback, user_data,
-                                         /*input_already_formatted=*/true,
-                                         model_index);
-  } catch (const std::exception &e) {
-    LOGE("[DEBUG] runModelHandleWithMessagesStreaming: Exception caught: %s",
-         e.what());
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  } catch (...) {
-    LOGE(
-      "[DEBUG] runModelHandleWithMessagesStreaming: Unknown exception caught");
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  }
-}
-
-ErrorCode runMultimodalHandleWithMessagesStreaming(
-  CausalLmHandle handle, const CausalLMChatMessage *messages,
-  size_t num_messages, bool add_generation_prompt, const float *pixelValues,
-  int numPatches, int originalHeight, int originalWidth,
-  CausalLmTokenCallback callback, void *user_data) {
-  LOGD("[DEBUG] runMultimodalHandleWithMessagesStreaming: START");
-  LOGD("[DEBUG]   handle: %p", (void *)handle);
-  LOGD("[DEBUG]   num_messages: %zu", num_messages);
-
-  if (handle == nullptr || messages == nullptr || num_messages == 0 ||
-      pixelValues == nullptr || callback == nullptr) {
-    LOGE("[DEBUG] runMultimodalHandleWithMessagesStreaming: INVALID_PARAMETER");
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  try {
-    LOGD("[DEBUG] runMultimodalHandleWithMessagesStreaming: Formatting "
-         "messages...");
-
-    std::string formattedInput;
-    {
-      auto &h = *handle;
-      std::lock_guard<std::mutex> lock(h.mtx);
-      if (!h.initialized) {
-        LOGE("[DEBUG] runMultimodalHandleWithMessagesStreaming: handle is not "
-             "initialized for multimodal");
-        return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+#if defined(ENABLE_QNN_MODELS) &&                                              \
+  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
+static std::vector<float>
+convert_chw_to_hwc(const QuickAiImageTensorV1 &image) {
+  std::vector<float> converted(image.value_count);
+  const size_t patch_size = static_cast<size_t>(image.channels) *
+                            image.patch_height * image.patch_width;
+  for (size_t patch = 0; patch < image.patch_count; ++patch) {
+    const size_t patch_offset = patch * patch_size;
+    for (size_t y = 0; y < image.patch_height; ++y) {
+      for (size_t x = 0; x < image.patch_width; ++x) {
+        for (size_t channel = 0; channel < image.channels; ++channel) {
+          const size_t chw =
+            patch_offset +
+            (channel * image.patch_height + y) * image.patch_width + x;
+          const size_t hwc = patch_offset +
+                             (y * image.patch_width + x) * image.channels +
+                             channel;
+          converted[hwc] = image.values[chw];
+        }
       }
-      if (h.models.size() < 2) {
-        LOGE("[DEBUG] runMultimodalHandleWithMessagesStreaming: need >=2 "
-             "sub-models (got %zu)",
-             h.models.size());
-        return CAUSAL_LM_ERROR_UNSUPPORTED;
-      }
-
-      auto chat_messages = convertMessages(messages, num_messages);
-      const size_t llm_index = h.architectures.size() > 1 ? 1 : 0;
-      std::string arch = h.architectures.size() > llm_index
-                           ? h.architectures[llm_index]
-                           : std::string();
-      std::string model_dir = h.model_dirs.size() > llm_index
-                                ? h.model_dirs[llm_index]
-                                : std::string();
-      formattedInput = apply_chat_template_messages(
-        arch, chat_messages, add_generation_prompt, model_dir);
     }
-
-    LOGD("[DEBUG]   raw messages count: %zu", num_messages);
-    LOGD("[DEBUG]   formatted input length: %zu", formattedInput.length());
-    LOGD("[DEBUG]   formatted input preview: %.100s%s", formattedInput.c_str(),
-         formattedInput.length() > 100 ? "..." : "");
-
-    LOGD("[DEBUG] runMultimodalHandleWithMessagesStreaming: Delegating to "
-         "runMultimodalHandleStreaming...");
-    return runMultimodalHandleStreaming(handle, formattedInput.c_str(),
-                                        pixelValues, numPatches, originalHeight,
-                                        originalWidth, callback, user_data);
-  } catch (const std::exception &e) {
-    LOGE(
-      "[DEBUG] runMultimodalHandleWithMessagesStreaming: Exception caught: %s",
-      e.what());
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  } catch (...) {
-    LOGE("[DEBUG] runMultimodalHandleWithMessagesStreaming: Unknown exception "
-         "caught");
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
   }
+  return converted;
 }
+#endif
 
-/*============================================================================
- * OpenAI JSON streaming API implementation
- *============================================================================*/
+/**
+ * Render a validated request with the model-provided template, or with the
 
-ErrorCode runModelHandleWithJsonStreaming(CausalLmHandle handle,
-                                          const char *jsonRequest,
-                                          CausalLmTokenCallback callback,
-                                          void *user_data) {
-  LOGD("[DEBUG] runModelHandleWithJsonStreaming: START");
-  LOGD("[DEBUG]   handle: %p", (void *)handle);
-  LOGD("[DEBUG]   jsonRequest length: %zu",
-       jsonRequest ? strlen(jsonRequest) : 0);
-
-  if (handle == nullptr || jsonRequest == nullptr || callback == nullptr) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: INVALID_PARAMETER");
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+ * * canonical Gemma4 format used by the bundled Gemma4 configurations. The
+ *
+ * built-in fallback intentionally does not guess how to serialize tools or
+ *
+ * tool history; those require a tokenizer-supplied tool-aware template.
+ */
+static ErrorCode render_openai_prompt(CausalLmModel &h, size_t model_index,
+                                      const causallm::openai::Request &request,
+                                      std::string &formatted_input) {
+  if (model_index < h.chat_templates.size() && h.chat_templates[model_index]) {
+    causallm::ChatTemplate::Options template_options;
+    template_options.template_name = h.chat_template_name;
+    formatted_input =
+      h.chat_templates[model_index]->apply(request.original, template_options);
+    return CAUSAL_LM_ERROR_NONE;
   }
 
-  auto &h = *handle;
-  std::lock_guard<std::mutex> lock(h.mtx);
-
-  if (!h.initialized || h.models.empty()) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: NOT_INITIALIZED");
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+  if (model_index >= h.architectures.size() ||
+      (h.architectures[model_index] != "Gemma4ForCausalLM" &&
+       h.architectures[model_index] != "Gemma4_E2B_QNN")) {
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
   }
-  const size_t model_index = text_generation_model_index(h);
-  if (model_index >= h.models.size() || !h.models[model_index]) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: text model is missing");
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+  if (!request.tools.empty()) {
+    LOGE("Gemma4 built-in chat format cannot serialize tool definitions");
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
   }
 
-  try {
-    LOGD("[DEBUG] runModelHandleWithJsonStreaming: Parsing JSON request...");
-
-    // Parse JSON request
-    json request = json::parse(jsonRequest);
-    LOGD("[DEBUG]   JSON parsed successfully");
-
-    // Apply chat template using the existing g_chat_template
-    // The chat_template.apply() method handles messages, tools, functions, etc.
-    std::string formattedInput;
-    if (g_chat_template.has_value()) {
-      LOGD(
-        "[DEBUG] runModelHandleWithJsonStreaming: Applying chat template...");
-      formattedInput = g_chat_template->apply(request);
-      LOGD("[DEBUG]   Formatted input length: %zu", formattedInput.length());
-      LOGD("[DEBUG]   Formatted input preview: %.100s%s",
-           formattedInput.c_str(), formattedInput.length() > 100 ? "..." : "");
-    } else {
-      LOGE(
-        "[DEBUG] runModelHandleWithJsonStreaming: Chat template not available");
+  formatted_input = "<bos>";
+  for (size_t i = 0; i < request.messages.size(); ++i) {
+    const auto &message = request.messages[i];
+    const auto &original_message = request.original["messages"][i];
+    if (message.role == "tool" || original_message.contains("tool_calls") ||
+        original_message.contains("function_call")) {
+      LOGE("Gemma4 built-in chat format cannot serialize tool history");
       return CAUSAL_LM_ERROR_UNSUPPORTED;
     }
 
-    LOGD("[DEBUG] runModelHandleWithJsonStreaming: Running inference...");
-    return run_model_streaming_on_handle(h, formattedInput, callback, user_data,
-                                         /*input_already_formatted=*/true,
-                                         model_index);
-  } catch (const json::exception &e) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: JSON parse error: %s",
-         e.what());
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  } catch (const std::exception &e) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: Exception caught: %s",
-         e.what());
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  } catch (...) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: Unknown exception caught");
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Multi-image Multimodal API (V-JEPA)
-// ---------------------------------------------------------------------------
-
-// V-JEPA2 + LFM2 fused video path. Gated off (no VjepaLfm2 model /
-// Transformer::run_video in this tree). See the include-site note for
-// QUICKAI_ENABLE_VJEPA_LFM2_VIDEO.
-#if defined(QUICKAI_ENABLE_VJEPA_LFM2_VIDEO)
-// True when the handle holds a single self-contained video-language model
-// (VJEPA2ViT + Projector + LFM2 fused in one Transformer) rather than the
-// QNN [vision producer, LLM consumer] pair.
-static bool is_vjepa_lfm2_combined(CausalLmModel &h) {
-  return h.models.size() == 1 && !h.architectures.empty() &&
-         h.architectures[0] == "Lfm2VLVJepa21BModel";
-}
-
-// Extract a plain text prompt from chat messages for the combined video path.
-// The model applies its own <video> chat template internally, so we hand it
-// the raw user text rather than a pre-formatted template.
-static std::string
-extract_prompt_from_messages(const CausalLMChatMessage *messages,
-                             size_t num_messages) {
-  std::string last_user;
-  std::string concat;
-  for (size_t i = 0; i < num_messages; ++i) {
-    const char *role = messages[i].role;
-    const char *content = messages[i].content;
-    if (content == nullptr)
-      continue;
-    if (!concat.empty())
-      concat += "\n";
-    concat += content;
-    if (role != nullptr && std::string(role) == "user")
-      last_user = content;
-  }
-  return last_user.empty() ? concat : last_user;
-}
-
-// Extract the system-role text from chat messages (empty ⇒ model default).
-static std::string
-extract_system_from_messages(const CausalLMChatMessage *messages,
-                             size_t num_messages) {
-  std::string system;
-  for (size_t i = 0; i < num_messages; ++i) {
-    if (messages[i].role != nullptr && messages[i].content != nullptr &&
-        std::string(messages[i].role) == "system") {
-      system = messages[i].content; // last system message wins
-    }
-  }
-  return system;
-}
-
-// Drive the fused video-language model: split the flat pixel buffer into
-// @p numImages frames ([C,H,W] each), stream tokens through @p callback.
-// @p system_prompt sets the chat-template system turn (empty ⇒ model default).
-// Contract: @p numFloats is the TOTAL float count of @p pixelValues; it must
-// be an exact multiple of @p numImages. The model validates each frame's size
-// against its config (3 * img * img) and throws on mismatch.
-static ErrorCode run_video_on_combined_handle(
-  CausalLmModel &h, const std::string &prompt, const std::string &system_prompt,
-  const float *pixelValues, int numFloats, int numImages,
-  CausalLmTokenCallback callback, void *user_data) {
-  if (numImages < 1 || numFloats < numImages || (numFloats % numImages) != 0) {
-    LOGE("run_video_on_combined_handle: bad shape numFloats=%d numImages=%d",
-         numFloats, numImages);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-  auto *m = h.models[0].get();
-  if (!m)
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-
-  const size_t frame_size = static_cast<size_t>(numFloats) / numImages;
-  std::vector<std::vector<float>> frames;
-  frames.reserve(numImages);
-  for (int i = 0; i < numImages; ++i) {
-    const float *p = pixelValues + static_cast<size_t>(i) * frame_size;
-    frames.emplace_back(p, p + frame_size);
+    std::string role = message.role;
+    if (role == "assistant")
+      role = "model";
+    else if (role == "developer")
+      role = "system";
+    formatted_input += "<|turn>" + role + "\n";
+    formatted_input +=
+      causallm::openai::renderContentWithImagePlaceholders(message.content);
+    formatted_input += "<turn|>\n";
   }
 
-  CallbackStreamer streamer;
-  callback_streamer_init(&streamer, callback, user_data);
-  m->setStreamer(&streamer.base);
-  struct Detach {
-    causallm::Transformer *t;
-    ~Detach() { t->setStreamer(nullptr); }
-  } detach_guard{m};
-
-  try {
-    m->run_video(frames, prompt, system_prompt, /*do_sample=*/false,
-                 /*log_output=*/false);
-    h.last_output = m->getOutput(0);
-    update_handle_session_after_run(h, 0);
-  } catch (const std::exception &e) {
-    LOGE("run_video_on_combined_handle: exception: %s", e.what());
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  } catch (...) {
-    LOGE("run_video_on_combined_handle: unknown exception");
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  bool add_generation_prompt = request.messages.back().role != "assistant";
+  if (request.original.contains("add_generation_prompt")) {
+    add_generation_prompt =
+      request.original["add_generation_prompt"].get<bool>();
   }
+  if (add_generation_prompt)
+    formatted_input += "<|turn>model\n";
   return CAUSAL_LM_ERROR_NONE;
 }
-#endif // QUICKAI_ENABLE_VJEPA_LFM2_VIDEO
 
-ErrorCode runMultimodalMultiImageHandleStreaming(
-  CausalLmHandle handle, const char *prompt, const float *pixelValues,
-  int numPatches, int numImages, const int *patchesPerImage,
-  const int *originalHeights, const int *originalWidths,
-  CausalLmTokenCallback callback, void *user_data) {
-
-  LOGD("[DEBUG] runMultimodalMultiImageHandleStreaming: START");
-  LOGD("[DEBUG]   handle: %p", (void *)handle);
-  LOGD("[DEBUG]   numPatches: %d, numImages: %d", numPatches, numImages);
-
-  if (handle == nullptr || prompt == nullptr || pixelValues == nullptr ||
-      callback == nullptr || patchesPerImage == nullptr ||
-      originalHeights == nullptr || originalWidths == nullptr) {
-    LOGE("[DEBUG] runMultimodalMultiImageHandleStreaming: INVALID_PARAMETER");
+ErrorCode quickAiRunOpenAI(CausalLmHandle handle, const char *json_request,
+                           const QuickAiImageTensorV1 *images,
+                           size_t image_count, CausalLmTokenCallback callback,
+                           void *user_data) {
+  if (handle == nullptr || json_request == nullptr || callback == nullptr ||
+      (images == nullptr && image_count != 0)) {
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   }
 
-  if (numImages < 1 || numPatches < 1) {
-    LOGE("[DEBUG] runMultimodalMultiImageHandleStreaming: "
-         "numImages=%d, numPatches=%d — must be >= 1",
-         numImages, numPatches);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  auto &h = *handle;
+  std::lock_guard<std::mutex> lock(h.mtx);
+  if (!h.initialized || h.models.empty()) {
+    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
+  ScopedRunRequest run_request(h);
 
-  // Validate handle and, for the fused video-language model, run the full
-  // video pipeline while holding the handle lock.
-  {
-    auto &h = *reinterpret_cast<CausalLmModel *>(handle);
-    std::lock_guard<std::mutex> lock(h.mtx);
-    if (!h.initialized || h.models.empty()) {
-      LOGE("[DEBUG] runMultimodalMultiImageHandleStreaming: NOT_INITIALIZED");
+  try {
+    const auto request =
+      causallm::openai::parseRequest(std::string(json_request));
+    if (!request.unsupported_fields.empty()) {
+      LOGE("quickAiRunOpenAI: unsupported request field: %s",
+           request.unsupported_fields.front().c_str());
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+    const ErrorCode image_validation =
+      validate_openai_images(request, images, image_count);
+    if (image_validation != CAUSAL_LM_ERROR_NONE) {
+      return image_validation;
+    }
+
+    const size_t model_index = text_generation_model_index(h);
+    if (model_index >= h.models.size() || !h.models[model_index]) {
       return CAUSAL_LM_ERROR_NOT_INITIALIZED;
     }
-#if defined(QUICKAI_ENABLE_VJEPA_LFM2_VIDEO)
-    if (is_vjepa_lfm2_combined(h)) {
-      LOGD("[DEBUG] runMultimodalMultiImageHandleStreaming: VJEPA-LFM2 video "
-           "path (numImages=%d, numFloats=%d)",
-           numImages, numPatches);
-      // No messages here → use the model's default system persona.
-      return run_video_on_combined_handle(h, std::string(prompt),
-                                          /*system_prompt=*/std::string(),
-                                          pixelValues, numPatches, numImages,
-                                          callback, user_data);
-    }
+    if (image_count > 0) {
+#if defined(ENABLE_QNN_MODELS) &&                                              \
+  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
+      if (image_count != 1 || h.models.size() < 2 || model_index != 1 ||
+          !h.models[0]->supportsImageEncoding() ||
+          !h.models[model_index]->supportsEmbeddingInput())
+        return CAUSAL_LM_ERROR_UNSUPPORTED;
+#else
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
 #endif
-  }
-
-  // Fallback (QNN [vision, LLM] pair): delegate to the single-image path using
-  // the first image's metadata until the QNN multi-image encoder lands.
-  LOGD("[DEBUG] runMultimodalMultiImageHandleStreaming: delegating to "
-       "single-image runMultimodalHandleStreaming");
-
-  return runMultimodalHandleStreaming(handle, prompt, pixelValues, numPatches,
-                                      originalHeights[0], originalWidths[0],
-                                      callback, user_data);
-}
-
-ErrorCode runMultimodalMultiImageHandleWithMessagesStreaming(
-  CausalLmHandle handle, const CausalLMChatMessage *messages,
-  size_t num_messages, bool add_generation_prompt, const float *pixelValues,
-  int numPatches, int numImages, const int *patchesPerImage,
-  const int *originalHeights, const int *originalWidths,
-  CausalLmTokenCallback callback, void *user_data) {
-
-  LOGD("[DEBUG] runMultimodalMultiImageHandleWithMessagesStreaming: START");
-  LOGD("[DEBUG]   handle: %p", (void *)handle);
-  LOGD("[DEBUG]   num_messages: %zu, numPatches: %d, numImages: %d",
-       num_messages, numPatches, numImages);
-
-  if (handle == nullptr || messages == nullptr || pixelValues == nullptr ||
-      callback == nullptr || patchesPerImage == nullptr ||
-      originalHeights == nullptr || originalWidths == nullptr) {
-    LOGE("[DEBUG] runMultimodalMultiImageHandleWithMessagesStreaming: "
-         "INVALID_PARAMETER");
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  if (numImages < 1 || numPatches < 1) {
-    LOGE("[DEBUG] runMultimodalMultiImageHandleWithMessagesStreaming: "
-         "numImages=%d, numPatches=%d — must be >= 1",
-         numImages, numPatches);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  // Fused video-language model: extract the user prompt and run the video
-  // pipeline (the model applies its own <video> chat template internally).
-  {
-    auto &h = *reinterpret_cast<CausalLmModel *>(handle);
-    std::lock_guard<std::mutex> lock(h.mtx);
-    if (!h.initialized || h.models.empty()) {
-      LOGE("[DEBUG] runMultimodalMultiImageHandleWithMessagesStreaming: "
-           "NOT_INITIALIZED");
-      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
     }
-#if defined(QUICKAI_ENABLE_VJEPA_LFM2_VIDEO)
-    if (is_vjepa_lfm2_combined(h)) {
-      std::string prompt = extract_prompt_from_messages(messages, num_messages);
-      std::string system = extract_system_from_messages(messages, num_messages);
-      LOGD(
-        "[DEBUG] runMultimodalMultiImageHandleWithMessagesStreaming: "
-        "VJEPA-LFM2 video path (numImages=%d, numFloats=%d, system=%zu chars)",
-        numImages, numPatches, system.size());
-      return run_video_on_combined_handle(h, prompt, system, pixelValues,
-                                          numPatches, numImages, callback,
-                                          user_data);
+
+    std::string formatted_input;
+    const ErrorCode render_result =
+      render_openai_prompt(h, model_index, request, formatted_input);
+    if (render_result != CAUSAL_LM_ERROR_NONE)
+      return render_result;
+
+    causallm::XGrammar *grammar = nullptr;
+    std::string grammar_key;
+    const ErrorCode grammar_result =
+      prepare_openai_grammar(h, request.grammar, &grammar, grammar_key);
+    if (grammar_result != CAUSAL_LM_ERROR_NONE) {
+      return grammar_result;
     }
+    struct GrammarReset {
+      causallm::XGrammarManager *manager;
+      const std::string *key;
+      ~GrammarReset() {
+        if (manager != nullptr && key != nullptr && !key->empty())
+          manager->resetGrammar(*key);
+      }
+    } grammar_reset{h.grammar_manager.get(), &grammar_key};
+
+    ScopedGeneration generation(h);
+    h.last_output.clear();
+    h.models[model_index]->resetConversationState();
+    reset_handle_session_state(h);
+
+    if (image_count == 0) {
+      return run_model_streaming_on_handle(h, formatted_input, callback,
+                                           user_data, model_index, grammar);
+    }
+#if defined(ENABLE_QNN_MODELS) &&                                              \
+  defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
+    const auto &image = images[0];
+    std::vector<float> converted;
+    const float *values = image.values;
+    if (image.layout == QUICK_AI_IMAGE_LAYOUT_CHW) {
+      converted = convert_chw_to_hwc(image);
+      values = converted.data();
+    }
+    auto image_embeds =
+      run_vision_encoder(h, formatted_input.c_str(), values, image.value_count,
+                         static_cast<int>(image.original_height),
+                         static_cast<int>(image.original_width));
+    if (image_embeds.first == nullptr || image_embeds.second == 0) {
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
+    return execute_multimodal(h, h.models[model_index].get(), image_embeds,
+                              formatted_input, callback, user_data, grammar);
+#else
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
 #endif
+  } catch (const std::invalid_argument &e) {
+    LOGE("quickAiRunOpenAI: invalid request: %s", e.what());
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  } catch (const std::exception &e) {
+    LOGE("quickAiRunOpenAI: inference failed: %s", e.what());
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  } catch (...) {
+    LOGE("quickAiRunOpenAI: unknown failure");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
   }
-
-  // Fallback (QNN [vision, LLM] pair): delegate to the single-image path.
-  LOGD("[DEBUG] runMultimodalMultiImageHandleWithMessagesStreaming: delegating "
-       "to single-image runMultimodalHandleWithMessagesStreaming");
-
-  return runMultimodalHandleWithMessagesStreaming(
-    handle, messages, num_messages, add_generation_prompt, pixelValues,
-    numPatches, originalHeights[0], originalWidths[0], callback, user_data);
 }
-
-} // extern "C"

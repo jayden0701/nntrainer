@@ -19,7 +19,8 @@ typedef enum {
 
 typedef enum {
   QDA_CAP_STREAMING = 1u << 0,
-  QDA_CAP_MESSAGES_API = 1u << 1, /**< requires messages-based API */
+  QDA_CAP_OPENAI_API = 1u << 1,              /**< OpenAI-compatible JSON API */
+  QDA_CAP_MESSAGES_API = QDA_CAP_OPENAI_API, /**< Deprecated source alias */
   QDA_CAP_MULTIMODAL = 1u << 2,
   QDA_CAP_TOOL_USE = 1u << 3,
   QDA_CAP_EMBEDDING = 1u << 4,

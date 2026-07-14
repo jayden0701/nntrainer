@@ -178,7 +178,7 @@ if get_option('enable-fp16') and is_android
 endif
 
 # Single QNN switch. enable-qnn on → QNN infra + QNN models (gemma4-e2b-qnn
-# folded into libcausallm) + the multimodal run path (api runMultimodal* →
+# folded into libcausallm) + the OpenAI multimodal path (implemented through
 # base Transformer::run_image; vision encoders like gauss-3.8-vit are overlaid
 # by the internal-models plugin). The multimodal api code is model-agnostic
 # (base-class virtuals only, no proprietary headers) and unreachable without a
@@ -220,6 +220,7 @@ causallm_src_roots = [
   causallm_root / 'llm_util.cpp',
   causallm_root / 'huggingface_tokenizer.cpp',
   causallm_root / 'chat_template.cpp',
+  causallm_root / 'api' / 'openai_request.cpp',
   causallm_root / 'kv_cache_manager.cpp',
 ]
 
@@ -366,11 +367,16 @@ if get_option('enable-api')
       causallm_root / 'api' / 'model_callbacks.cpp',
       causallm_root / 'api' / 'model_config.cpp',
       causallm_root / 'api' / 'model_descriptors_public.cpp',
-      causallm_root / 'api' / 'streamer.cpp',
       causallm_root / 'api' / 'callback_streamer.cpp',
       dependencies: [nntrainer_dep, causallm_dep, openmp_dep, thread_dep, log_dep],
       cpp_args: quick_dot_ai_inc_args + quick_dot_ai_api_cpp_args,
       install: true,
+  )
+
+  install_headers(
+      causallm_root / 'api' / 'quick_dot_ai_api.h',
+      causallm_root / 'api' / 'model_descriptor.h',
+      install_dir: get_option('includedir') / 'nntrainer' / 'causallm',
   )
 
   quick_dot_ai_api_dep = declare_dependency(
