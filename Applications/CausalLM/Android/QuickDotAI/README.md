@@ -1,223 +1,200 @@
-# QuickDotAI AAR API 📱
+# QuickDotAI Android AAR
 
-`QuickDotAI` is the Android-facing API for Quick.AI. It provides one Kotlin
-interface over two engine implementations:
+`QuickDotAI` is the Android-facing API for running one loaded on-device model.
+The AAR contains a native nntrainer/QNN adapter and a LiteRT-LM adapter.
+Only `arm64-v8a` native prebuilts are currently packaged.
 
-- `NativeQuickDotAI`: JNI path for nntrainer / QNN models, backed by
-  `libquickai_jni.so` and the native `quick_dot_ai_api.h` entry points.
-- `LiteRTLm`: LiteRT-LM path for Gemma-family `.litertlm` models.
+## Dependency packaging
 
-The current Gradle build includes `:QuickDotAI` and `:SampleTestAPP`.
+QuickDotAI is a thin AAR: it packages QuickDotAI classes and native `.so`
+files, but it does not merge dependency bytecode into the archive. A Gradle
+project dependency resolves the declarations in `QuickDotAI/build.gradle.kts`.
+If the library is later published with Maven metadata, consumers get the same
+transitive dependency resolution from that metadata.
 
-## 📦 Dependency
+Copying only a raw `.aar` loses all Gradle dependency metadata. Raw-AAR
+consumers must therefore declare the current dependencies themselves:
 
 ```kotlin
-dependencies {
-    implementation(project(":QuickDotAI"))
-}
+implementation(files("libs/QuickDotAI.aar"))
+implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.0")
+implementation("androidx.core:core-ktx:1.12.0")
 ```
 
-Only `arm64-v8a` prebuilt native libraries are currently supported.
+`kotlinx-serialization-json` is part of the public compile contract;
+LiteRT-LM and AndroidX Core are runtime implementation dependencies. Keep the
+versions synchronized with `Android/gradle/libs.versions.toml` and
+`QuickDotAI/build.gradle.kts` when updating the AAR.
 
-## 🧭 API Surface
+## Public generation API
 
-Package: `com.example.quickdotai`
+Generation has two input concepts (the interface excerpt omits lifecycle
+metadata and the separate embedding helper):
 
 ```kotlin
 interface QuickDotAI {
-    val kind: String
-    val architecture: String?
-    val chatSessionId: String?
+    fun load(request: LoadModelRequest): BackendResult<Unit>
 
-    fun load(req: LoadModelRequest): BackendResult<Unit>
-    fun unload(): BackendResult<Unit>
-    fun metrics(): BackendResult<PerformanceMetrics>
-    fun cancel()
-    fun close()
-
-    fun runModelHandleWithMessagesStreaming(
-        messages: List<QuickAiChatMessage>,
-        sink: StreamSink
-    ): BackendResult<Unit>
-
-    fun runMultimodalHandleWithMessagesStreaming(
-        messages: List<QuickAiChatMessage>,
-        sink: StreamSink
-    ): BackendResult<Unit>
-
-    fun runModelHandleWithJsonStreaming(
-        jsonRequest: String,
-        sink: StreamSink
-    ): BackendResult<Unit>
-
-    fun runMultimodalHandle(parts: List<PromptPart>): BackendResult<String>
-
-    fun runMultimodalHandleStreaming(
-        parts: List<PromptPart>,
-        sink: StreamSink
-    ): BackendResult<Unit>
-
-    fun openChatSession(
-        config: QuickAiChatSessionConfig? = null
-    ): BackendResult<String>
-
-    fun closeChatSession(): BackendResult<Unit>
-
-    fun runChatModelHandleStreaming(
+    fun runText(
         text: String,
-        sink: StreamSink
-    ): BackendResult<QuickAiChatResult>
+        sink: StreamSink,
+    ): BackendResult<Unit>
 
-    fun runChatMultimodalHandleStreaming(
-        parts: List<PromptPart>,
-        sink: StreamSink
-    ): BackendResult<QuickAiChatResult>
+    fun runOpenAI(
+        request: OpenAIRequest,
+        sink: StreamSink,
+    ): BackendResult<Unit>
 
-    fun chatRebuild(messages: List<QuickAiChatMessage>): BackendResult<Unit>
-    fun chatCancel()
+    fun cancel()
+    fun unload(): BackendResult<Unit>
+    fun close()
 }
 ```
 
-Removed APIs: `run()`, `runStreaming()`, `runWithMessages()`,
-`runWithMessagesStreaming()`, `chatRun()`, and `chatRunStreaming()`.
+`runText()` sends the exact input text without adding a chat template or
+implicit history. A backend that cannot guarantee exact raw-text semantics
+returns `UNSUPPORTED`. Empty text is rejected as `INVALID_PARAMETER`.
 
-## 🤖 Engine Selection
+`runOpenAI()` forwards an OpenAI-compatible JSON object unchanged. This is the
+path for chat templates, tools, functions, response constraints, and
+multimodal requests.
+
+The native adapter accepts the subset documented by the
+[C API reference](../../api/README.md): messages, function tools, structured
+response formats, and compatibility metadata. The loaded engine—not the JSON
+`model` field—selects the model, and callback delivery is always streaming.
+Unsupported sampling/length controls are reported as `UNSUPPORTED` rather
+than being ignored. `store: true` and `parallel_tool_calls: true` are likewise
+unsupported by the local single-response runner.
+
+LiteRT-LM currently represents a narrower subset: top-level `messages` and an
+optional string `model`, with `system`, `user`, and `assistant` text or locally
+resolvable image content. `developer` (whose priority cannot be preserved by
+the LiteRT conversation API), tools, and structured-output controls return
+`UNSUPPORTED` on that backend. The final message must be `user`, image content
+is accepted only in `user` messages, and `image_url.detail` currently supports
+only `auto`.
+
+Both methods synchronously block the invoking worker thread while streaming
+deltas. Do not call them on Android's main thread. `StreamSink` callbacks are
+not marshalled to the main thread by the AAR. Callbacks must not re-enter the
+same engine through `load`, generation, `metrics`, `unload`, or `close`: the
+native handle remains locked until generation returns. Only `cancel()` is
+supported from another thread. Apply this rule to terminal callbacks too.
+
+`QuickDotAI.modelId` identifies the successfully loaded model. It is `null`
+before `load()` succeeds and again after `unload()` or `close()`; it does not
+claim to report a runtime-inspected model architecture.
+
+## Native multimodal tensor sidecar
+
+The native backend requires preprocessed image tensors in a versioned sidecar
+rather than large JSON float arrays. Each tensor's `source` must exactly match
+an `image_url.url` in the JSON request.
+
+This is a capability-gated composition path. The current public catalog does
+not ship a vision-producer/embedding-input LLM pair, so public native models
+return `UNSUPPORTED` for sidecars. Downstream model plugins may enable the path
+only when both models implement the required capabilities and all native
+libraries/plugins were rebuilt from the same source revision.
 
 ```kotlin
-val engine: QuickDotAI = when (req.model) {
-    ModelId.GEMMA4 -> LiteRTLm(applicationContext)
-    else -> NativeQuickDotAI(applicationContext)
+val source = "quickdotai://image/0"
+val imageTensor = when (
+    val result = LlavaNextImagePreprocessor().preprocess(
+        source = source,
+        encodedImage = encodedImage,
+    )
+) {
+    is BackendResult.Ok -> result.value
+    is BackendResult.Err -> error(result.message ?: result.error.name)
 }
-```
 
-`GEMMA4` is Kotlin-only and never crosses the JNI boundary. Other `ModelId`
-values map to native enum ordinals in `quick_dot_ai_api.h`.
+val json = """
+    {
+      "messages": [{
+        "role": "user",
+        "content": [
+          {"type": "image_url", "image_url": {"url": "$source"}},
+          {"type": "text", "text": "Describe this image."}
+        ]
+      }]
+    }
+""".trimIndent()
 
-## 💬 OpenAI Message Streaming
-
-Use `runModelHandleWithMessagesStreaming()` for OpenAI-style message lists and
-`runModelHandleWithJsonStreaming()` for full OpenAI JSON requests containing
-`tools` or legacy `functions`.
-
-End-to-end Chat tab and OpenAI tab examples live in
-[`../../docs/ChatAndOpenAIUsage.md`](../../docs/ChatAndOpenAIUsage.md).
-
-## 🖼️ Multimodal Usage
-
-LiteRT-LM multimodal usage requires `LoadModelRequest.visionBackend`.
-Native multimodal usage requires a native model handle whose config loads the
-expected vision encoder + LLM sub-models.
-
-```kotlin
-engine.load(
-    LoadModelRequest(
-        model = ModelId.GEMMA4,
-        backend = BackendType.GPU,
-        visionBackend = BackendType.GPU,
-        modelPath = "/sdcard/Download/aistudio-mobile/models/gemma-4-E2B-it/gemma-4-E2B-it.litertlm"
+val request = OpenAIRequest(
+    json = json,
+    imageTensors = OpenAIImageTensorSidecar(
+        tensors = listOf(imageTensor),
     )
 )
 
-engine.runMultimodalHandleWithMessagesStreaming(
-    listOf(
-        QuickAiChatMessage(
-            role = QuickAiChatRole.USER,
-            parts = listOf(
-                PromptPart.ImageFile("/sdcard/photo.jpg"),
-                PromptPart.Text("Describe this picture.")
-            )
-        )
-    ),
-    sink
-)
+engine.runOpenAI(request, sink)
 ```
 
-## 🧵 Chat Sessions
+For `HWC` and `CHW`, validation requires
+`pixelValues.size == patchCount * channels * patchHeight * patchWidth`.
+`MODEL_NATIVE` is for a model-specific preprocessed representation whose value
+count is validated by that native model. Dimensions, patch count, source
+order, sidecar version, and JSON source references are validated before JNI is
+entered. Sidecar tensors follow `image_url` occurrence order. Repeating the
+same URL twice therefore requires two sidecar entries with the same source.
+The contract is multi-image ready, but the current native OpenAI runner returns
+`UNSUPPORTED` for more than one image occurrence.
 
-Chat sessions keep backend-managed conversation state. Use
-`openChatSession()` before `runChatModelHandleStreaming()` or
-`runChatMultimodalHandleStreaming()`, then call `chatRebuild()` or
-`closeChatSession()` when the conversation state changes or ends. Only one chat
-session may be active per engine instance.
+`LlavaNextImagePreprocessor` returns the HWC RGB, 512-pixel patch representation
+expected by the current LLaVA-NeXT path. It accepts encoded JPEG/PNG bytes or a
+`Bitmap`; it is intentionally model-specific rather than a universal image
+format.
 
-See [`../../docs/ChatAndOpenAIUsage.md`](../../docs/ChatAndOpenAIUsage.md) for
-complete session examples.
+## LiteRT-LM multimodal image URLs
 
-## 🧱 Core Types
+LiteRT-LM consumes sidecar-less OpenAI image content directly. It preserves the
+order of text and images in both initial history and the final user message.
+Supported sources are:
+
+- `data:image/...;base64,...`, mapped to LiteRT-LM `Content.ImageBytes`;
+- absolute, readable `file://` URLs, mapped to `Content.ImageFile`.
+
+For example, put an encoded image in the JSON and omit `imageTensors`:
 
 ```kotlin
-data class LoadModelRequest(
-    val backend: BackendType = BackendType.GPU,
-    val model: ModelId,
-    val quantization: QuantizationType = QuantizationType.W4A32,
-    val modelPath: String? = null,
-    val visionBackend: BackendType? = null,
-    val cacheDir: String? = null,
-    val maxNumTokens: Int? = null,
-    val nativeLibDir: String? = null,
-    val modelBasePath: String? = null,
-    val htpBackendConfigPath: String? = null,
+val source = "data:image/jpeg;base64," +
+    java.util.Base64.getEncoder().encodeToString(encodedImage)
+val request = OpenAIRequest(
+    json = """
+        {"messages":[{"role":"user","content":[
+          {"type":"image_url","image_url":{"url":"$source"}},
+          {"type":"text","text":"Describe this image."}
+        ]}]}
+    """.trimIndent(),
 )
-
-enum class BackendType { CPU, GPU, NPU }
-
-enum class ModelId {
-    QWEN3_0_6B,
-    GEMMA4,
-    MODEL_A_QNN,
-    MODEL_B_QNN,
-    QWEN3_1_7B_Q40,
-    MODEL_A_VISION_QNN,
-    MODEL_A,
-    MODEL_B,
-    TINY_BERT,
-    FUNCTION_GEMMA,
-    GEMMA4_CPU,
-    GEMMA4_E2B_QNN
-}
-
-enum class QuantizationType { UNKNOWN, W4A32, W16A16, W8A16, W32A32 }
-
-sealed class PromptPart {
-    data class Text(val text: String) : PromptPart()
-    data class ImageFile(val absolutePath: String) : PromptPart()
-    data class ImageBytes(val bytes: ByteArray) : PromptPart()
-}
-
-data class QuickAiChatMessage(
-    val role: QuickAiChatRole,
-    val parts: List<PromptPart>
-)
-
-enum class QuickAiChatRole { SYSTEM, USER, ASSISTANT }
-
-interface StreamSink {
-    fun onDelta(text: String)
-    fun onReasoningDelta(text: String) {}
-    fun onDone()
-    fun onError(error: QuickAiError, message: String?)
-}
+engine.runOpenAI(request, sink)
 ```
 
-See `Types.kt` for the full DTO set, including `QuickAiChatSessionConfig`,
-sampling options, error codes, and metrics.
+LiteRT-LM rejects preprocessed tensor sidecars because they are native-model
+representations. The AAR never fetches `http://` or `https://` URLs and cannot
+resolve `content://` or custom schemes; those return `UNSUPPORTED`. The host
+must resolve such media into bytes or an app-readable file first.
 
-For native QNN models, `htpBackendConfigPath` points to
-`htp_backend_ext_config.json`. Absolute paths are used as-is. Relative paths are
-resolved from the app external files directory, so
-`"configs/htp_backend_ext_config.json"` resolves to
-`<externalFilesDir>/configs/htp_backend_ext_config.json`. When omitted,
-`NativeQuickDotAI` uses `<externalFilesDir>/htp_backend_ext_config.json`.
+The AAR declares no storage permission. Use app-owned storage or Android's
+Storage Access Framework for model and image files.
 
-## ✅ Rules
+## Lifecycle and threading
 
-- Call `load()` before any inference call.
-- Drive each `QuickDotAI` instance from one worker thread.
-- Call `close()` when finished; it closes any active chat session.
-- Pass `nativeLibDir` for native/QNN models when the host app can provide
-  `applicationInfo.nativeLibraryDir`.
-- Pass `modelBasePath` for native models when model files live outside the
-  native default path.
-- Pass `htpBackendConfigPath` for QNN models when
-  `htp_backend_ext_config.json` lives outside the app external files root.
-- Pass `modelPath` for `LiteRTLm` / `GEMMA4` models.
+- Call `load()` before generation.
+- Create an implementation with `createEngine(descriptor)`; concrete backend
+  classes are internal implementation details.
+- Supply `modelPath` for LiteRT-LM or `modelBasePath` for the native backend;
+  the AAR never guesses a shared-storage model location.
+- Serialize ordinary calls for one engine on a worker thread.
+- `cancel()` is the cross-thread cancellation entry point.
+- Call `unload()` or `close()` when finished; `close()` is idempotent.
+- Native and LiteRT capabilities differ. Unsupported behavior is reported
+  explicitly rather than silently dropping OpenAI fields or changing raw text.
+
+The legacy handle/messages/multimodal/chat-session `run*` variants are not part
+of the AAR's public source API. Applications should keep full conversation
+history in the OpenAI JSON request until a backend-owned session abstraction
+with consistent KV-cache semantics is introduced.
