@@ -20,13 +20,12 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include <model.h>
 #include <tokenizers_cpp.h>
-
-std::mt19937 rng;
 
 std::vector<IO_TensorType>
 run_qnn_inference(ModelHandle &model, unsigned int batch,
@@ -459,51 +458,71 @@ void fill_generation_inputs_u16(
 int sample(uint16_t *pointer, int length, int *tokens, int number_of_tokens,
            float logit_scale, int logit_offset, float repetition_penalty,
            float temperature, float top_p, int top_k,
-           float final_logit_softcapping) {
-  // Priority queue!
-  std::priority_queue<std::pair<int, int>, std::vector<std::pair<int, int>>,
-                      std::greater<std::pair<int, int>>>
-    top_k_elements;
-  for (int i = 0; i < top_k && i < length; i++) {
-    top_k_elements.push(std::make_pair(pointer[i], i));
-  }
-  for (int i = top_k; i < length; i++) {
-    if (top_k_elements.top().first < pointer[i]) {
-      top_k_elements.pop();
-      top_k_elements.push(std::make_pair(pointer[i], i));
-    }
-  }
-  length = top_k_elements.size();
+           std::mt19937 &random_engine, float final_logit_softcapping,
+           const int32_t *allowed_token_bitmask,
+           size_t allowed_token_bitmask_size) {
+  if (pointer == nullptr || length <= 0 || top_k <= 0 || number_of_tokens < 0 ||
+      (number_of_tokens > 0 && tokens == nullptr) ||
+      repetition_penalty <= 0.0f || temperature < 0.0f || top_p < 0.0f ||
+      top_p > 1.0f)
+    throw std::invalid_argument("Sampling requires logits and a positive size");
 
-  // Convert to float, dequant, then apply Gemma final-logit soft-cap.
-  // Soft-cap: l = soft_cap * tanh(l / soft_cap). Without it, a few raw
-  // logits dominate softmax and the model collapses into repetition.
-  std::vector<int> indices(length);
-  std::vector<float> logits(length);
+  // Repetition penalty changes ranking, so apply it to every allowed token
+  // before selecting top-k. Applying it after top-k can permanently retain a
+  // repeated token that should have fallen below an unpenalized candidate.
+  std::unordered_set<int> repeated_tokens;
+  repeated_tokens.reserve(static_cast<size_t>(number_of_tokens));
+  for (int i = 0; i < number_of_tokens; ++i)
+    repeated_tokens.insert(tokens[i]);
+
+  std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>,
+                      std::greater<std::pair<float, int>>>
+    top_k_elements;
+
+  const bool filter_candidates = allowed_token_bitmask != nullptr;
+  const auto is_allowed = [&](int token_id) {
+    if (!filter_candidates)
+      return true;
+    const size_t block = static_cast<size_t>(token_id) / 32;
+    if (block >= allowed_token_bitmask_size)
+      return false;
+    const auto bits = static_cast<uint32_t>(allowed_token_bitmask[block]);
+    return ((bits >> (static_cast<unsigned int>(token_id) % 32U)) & 1U) != 0;
+  };
+
   const bool use_softcap = final_logit_softcapping > 0.0f;
   const float inv_softcap = use_softcap ? 1.0f / final_logit_softcapping : 0.0f;
-  for (int i = 0; i < length; i++) {
-    auto element = top_k_elements.top();
-    float l = (1.0f * element.first + logit_offset) * logit_scale;
-    if (use_softcap) {
-      l = final_logit_softcapping * std::tanh(l * inv_softcap);
+  for (int i = 0; i < length; ++i) {
+    if (!is_allowed(i))
+      continue;
+    float logit = (static_cast<float>(pointer[i]) + logit_offset) * logit_scale;
+    if (use_softcap)
+      logit = final_logit_softcapping * std::tanh(logit * inv_softcap);
+    if (repeated_tokens.count(i) != 0) {
+      if (logit > 0.0f)
+        logit /= repetition_penalty;
+      else
+        logit *= repetition_penalty;
     }
-    logits[i] = l;
-    indices[i] = element.second;
-    top_k_elements.pop();
+    if (static_cast<int>(top_k_elements.size()) < top_k) {
+      top_k_elements.emplace(logit, i);
+    } else if (top_k_elements.top().first < logit) {
+      top_k_elements.pop();
+      top_k_elements.emplace(logit, i);
+    }
   }
 
-  for (unsigned int i = 0; i < number_of_tokens; ++i) {
-    const int t = tokens[i];
-    for (int j = 0; j < length; ++j) {
-      if (indices[j] == tokens[i]) {
-        if (logits[j] > 0.0f)
-          logits[j] /= repetition_penalty;
-        else
-          logits[j] *= repetition_penalty;
-        break;
-      }
-    }
+  if (top_k_elements.empty())
+    throw std::runtime_error("No token is allowed by the sampling mask");
+  length = top_k_elements.size();
+
+  std::vector<int> indices(length);
+  std::vector<float> logits(length);
+  for (int i = 0; i < length; i++) {
+    auto element = top_k_elements.top();
+    logits[i] = element.first;
+    indices[i] = element.second;
+    top_k_elements.pop();
   }
 
   std::vector<std::pair<int, float>> top_indices_and_logits(length);
@@ -514,6 +533,9 @@ int sample(uint16_t *pointer, int length, int *tokens, int number_of_tokens,
   }
   sort(top_indices_and_logits.begin(), top_indices_and_logits.end(),
        [](auto &a, auto &b) { return a.second > b.second; });
+
+  if (temperature <= 1e-5f)
+    return indices[top_indices_and_logits.front().first];
 
   const float max_logit = top_indices_and_logits[0].second;
   std::vector<float> probs(length);
@@ -559,5 +581,5 @@ int sample(uint16_t *pointer, int length, int *tokens, int number_of_tokens,
 
   // Sample
   std::discrete_distribution<int> dist(logits.data(), logits.data() + length);
-  return indices[dist(rng)];
+  return indices[dist(random_engine)];
 }

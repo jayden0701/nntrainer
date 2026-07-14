@@ -1168,9 +1168,16 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
                          const WSTR /*tail_prompt*/, bool log_output) {
   last_output_.clear();
 
+  struct StreamerEndGuard {
+    BaseStreamer *streamer;
+    ~StreamerEndGuard() { streamer_end(streamer); }
+  } streamer_end_guard{streamer_};
+
   resetKvCache();
 
-  stop_requested_.store(false, std::memory_order_release);
+  prepareStopRequestForRun();
+  if (stop_requested_.load(std::memory_order_acquire))
+    return;
 
   std::string prefill_graph = graphs_to_use[0];
   std::string generation_graph = graphs_to_use[1];
@@ -1181,9 +1188,8 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
 
   const std::string model_prompt = promptToUtf8(prompt);
   auto _input = tokenizer->Encode(model_prompt);
-  if (_input.size() <= 1) {
-    std::cout << "[Error] Empty input\n";
-    return;
+  if (_input.empty()) {
+    throw std::invalid_argument("Gemma4 QNN input is empty after tokenization");
   }
   unsigned int input_len = _input.size() - 1;
   int token = _input.back();
@@ -1228,7 +1234,9 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
   // ── Prefill ──
   auto start_prefill = std::chrono::system_clock::now();
 
-  for (int c = 0; c < (int)n_chunks; ++c) {
+  for (int c = 0;
+       c < (int)n_chunks && !stop_requested_.load(std::memory_order_acquire);
+       ++c) {
     int chunk_len = ((c + 1) * context_size < (int)input_len)
                       ? context_size
                       : ((int)input_len - c * context_size);
@@ -1325,6 +1333,9 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
     kv_len += chunk_len;
   }
 
+  if (stop_requested_.load(std::memory_order_acquire))
+    return;
+
   // ── Debug: Post-prefill KV cache state ──
   std::cout << "\n=== Post-prefill KV cache debug ===" << std::endl;
   std::cout << "KV cache layers: " << kvs.size() / 2 << std::endl;
@@ -1375,7 +1386,9 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
   int prefill_len = kv_len;
   // Tokens decoded-but-not-yet-streamed because they end mid-character.
   std::vector<int32_t> pending_stream;
-  for (idx = prefill_len; idx < generation_full_kv_past_length; ++idx) {
+  for (idx = prefill_len; idx < generation_full_kv_past_length &&
+                          !stop_requested_.load(std::memory_order_acquire);
+       ++idx) {
     fill_generation_inputs(
       generation_sample, token, generation_attention_mask,
       generation_attention_mask_elements, generation_sliding_attention_mask,
@@ -1501,7 +1514,7 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
                                  generation_graph, &kv_columns);
     }
     kv_len += 1;
-    token = ::sample(
+    token = sample(
       std::get<uint16_t *>(outputs[generation_logits_output_index]), vocab_size,
       _input.data(), _input.size(), logit_scale, logit_offset,
       repetition_penalty, temperature, top_p, top_k, final_logit_softcapping);
@@ -1549,7 +1562,7 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
   // Flush any tail held while waiting for an incomplete character to finish.
   if (!pending_stream.empty()) {
     std::string tail = tokenizer->Decode(pending_stream);
-    if (!tail.empty()) {
+    if (!tail.empty() && !utf8stream::shouldHold(tail, pending_stream.size())) {
       last_output_ += tail;
       if (streamer_)
         streamer_put(streamer_, tail.c_str());
@@ -1558,8 +1571,6 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
     }
   }
 
-  if (streamer_)
-    streamer_end(streamer_);
   auto end = std::chrono::system_clock::now();
   this->raw_exec_seconds = end - start;
 

@@ -65,6 +65,7 @@ public:
                                const WSTR system_prompt = "",
                                const WSTR tail_prompt = "",
                                bool log_output = true) override;
+  bool supportsImageEncoding() const override { return true; }
   void set_quant_param(float scale, int offset) override;
 
 private:

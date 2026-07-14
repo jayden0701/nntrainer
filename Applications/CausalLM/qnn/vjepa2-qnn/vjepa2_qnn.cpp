@@ -8,6 +8,7 @@
 
 #include "vjepa2_qnn.h"
 #include "factory.h"
+#include "generate_qnn_utils.h"
 #include "nntrainer_error.h"
 #include <model_descriptor.h>
 
@@ -36,15 +37,11 @@ __attribute__((constructor)) static void register_vjepa2_qnn() {
                                                     nntr_cfg);
     });
 
-  static const ModelDescriptor d = {"vjepa2-qnn",
-                                    "vjepa",
-                                    "V-JEPA 2 (QNN)",
-                                    QDA_RUNTIME_NATIVE,
-                                    (1u << 2),
-                                    QDA_CAP_MULTIMODAL | QDA_CAP_MESSAGES_API |
-                                      QDA_CAP_MULTI_IMAGE,
-                                    "VJEPA2-QNN",
-                                    "VJEPA2_QNN"};
+  static const ModelDescriptor d = {
+    "vjepa2-qnn",     "vjepa",
+    "V-JEPA 2 (QNN)", QDA_RUNTIME_NATIVE,
+    (1u << 2),        QDA_CAP_VISION_ENCODER | QDA_CAP_MULTI_IMAGE,
+    "VJEPA2-QNN",     "VJEPA2_QNN"};
   quick_dot_ai::register_model_descriptor(&d);
 }
 
@@ -579,7 +576,10 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
                              input_info.offset);
       }
     }
-    auto qnn_output = model->inference(1, model_input)[0];
+    auto qnn_outputs = run_qnn_inference(model, 1, model_input, model_info);
+    NNTR_THROW_IF(qnn_outputs.empty(), std::runtime_error)
+      << "V-JEPA2 QNN graph returned no output tensors";
+    auto qnn_output = qnn_outputs.front();
     void *vision_encoder_output = std::visit(
       [](auto *p) -> void * { return static_cast<void *>(p); }, qnn_output);
 

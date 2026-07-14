@@ -29,7 +29,7 @@ public:
 
   ~Gemma4_E2B_QNN() override;
 
-  void initialize();
+  void initialize() override;
 
   void setupParameters(json &cfg, json &generation_cfg,
                        json &nntr_cfg) override;
@@ -37,6 +37,8 @@ public:
   void run(const WSTR prompt, bool do_sample = false,
            const WSTR system_prompt = "", const WSTR tail_prompt = "",
            bool log_output = true) override;
+
+  bool supportsTextGeneration() const override { return true; }
 
   // Gemma4 E2B implements the full QNN KV-cache machinery
   // (initialize_kv_cache / fresh_kvs). run() resets the cache at the start of
