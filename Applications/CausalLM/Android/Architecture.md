@@ -45,8 +45,9 @@ Key files:
 NativeQuickDotAI
   └── NativeCausalLm.ensureLoaded()
       ├── System.loadLibrary("qnn_context") (optional)
-      └── System.loadLibrary("quickai_jni")
-            └── links/calls libquick_dot_ai_api.so
+      ├── System.loadLibrary("quickai_jni")
+      │     └── links/calls libquick_dot_ai_api.so
+      └── System.loadLibrary("qai_ext_model") (optional plugin)
 ```
 
 The native API surface is declared in `api/quick_dot_ai_api.h`. Generation is
@@ -95,8 +96,10 @@ Dense HWC/CHW tensors must satisfy
 `pixelValues.size == patchCount * channels * patchHeight * patchWidth`.
 `MODEL_NATIVE` is reserved for a tensor already transformed for the selected
 vision model. The sidecar is versioned by `OpenAIImageTensorSidecar`; the
-current version is `1`. The current native fused path supports one image and a
-compatible vision-encoder/LLM handle.
+current version is `1`. A descriptor with `MULTIMODAL` may route the request to
+a plugin-owned fused/composite callback or to a compatible generic
+vision-encoder/LLM pair. Multiple sidecars additionally require `MULTI_IMAGE`
+and a full plugin callback; the generic composer remains single-image.
 
 The LiteRT-LM path uses the same `image_url` parts without a tensor sidecar.
 It maps `data:image/...;base64` sources to `Content.ImageBytes` and validated

@@ -116,10 +116,13 @@ For every native call:
   `value_count == patch_count * channels * patch_height * patch_width`;
 - model-native entries follow the selected model's private tensor layout.
 
-The native library never fetches the image URL. CHW input is converted to HWC
-for the current fused vision path. That path currently accepts one image and
-requires a compatible vision-encoder/LLM handle; unsupported combinations
-return `CAUSAL_LM_ERROR_UNSUPPORTED`.
+The native library never fetches the image URL. A same-revision extension
+callback receives the complete sidecar and can implement fused and multi-image
+models. When no full callback is registered, a compatible
+`[vision encoder, embedding-input LLM]` handle can use the generic single-image
+composer. The shape-limited legacy callback accepts only one unconstrained RGB
+512x512-patch image (CHW is converted to HWC). Unsupported combinations return
+`CAUSAL_LM_ERROR_UNSUPPORTED`.
 
 ## LiteRT-LM image sources
 

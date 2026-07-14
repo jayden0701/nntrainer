@@ -53,9 +53,13 @@ ErrorCode error = quickAiRunText(handle, already_formatted_prompt,
 `quickAiRunOpenAI` accepts one OpenAI Chat Completions-style JSON object. It:
 
 1. validates `messages` and their ordered `text` / `image_url` content parts;
-2. renders the request with the loaded model's chat template;
-3. applies xgrammar when structured output is explicitly required; and
-4. streams generated deltas through the callback.
+2. correlates image occurrences with sidecars and checks the loaded
+   descriptor's `MULTIMODAL` / `MULTI_IMAGE` capabilities;
+3. renders the request with the loaded model's chat template;
+4. applies xgrammar when structured output is explicitly required;
+5. dispatches image requests to a plugin-provided fused/composite hook or to
+   the generic `[vision encoder, embedding-input LLM]` composer; and
+6. streams generated deltas through the callback.
 
 Text-only requests pass `NULL, 0` for the image sidecar:
 
@@ -168,14 +172,48 @@ When present, `image_url.detail` must be `auto`, `low`, or `high`. It is
 descriptive at this layer: tensor preprocessing has already happened before
 the call, so the library does not resize the supplied sidecar again.
 
-CHW tensors are converted to the current vision path's canonical HWC input;
-HWC and model-native tensors are passed through. The fused path is compiled
-only for the experimental QNN/AAR configuration, accepts one image, and
-requires concrete vision-producer and embedding-consumer overrides. The
-ordinary public build, multiple images, or incompatible model pairs return
-`CAUSAL_LM_ERROR_UNSUPPORTED`. The current composer also requires the selected
-tokenizer/chat template to represent the image occurrence with one
-`<|image|>` token.
+Image sidecars are accepted only when the loaded catalog descriptor advertises
+`QDA_CAP_MULTIMODAL`. More than one sidecar additionally requires
+`QDA_CAP_MULTI_IMAGE`; otherwise the request returns
+`CAUSAL_LM_ERROR_UNSUPPORTED` before inference. A multi-image caller passes one
+array element per `image_url` occurrence and sets `image_count` to the complete
+array length.
+
+`quickAiRunOpenAI` chooses the execution topology behind the same public entry
+point. It first looks in `OpenAIMultimodalCallbackRegistry` for the loaded
+architecture, which lets `libqai_ext_model.so` drive a self-contained fused
+model or another plugin-owned composite. If no V2 hook is registered, the
+adapter can use the shape-limited legacy callback or a compatible handle laid
+out as `[vision encoder, embedding-input LLM]`. This dispatch is based on
+descriptor capabilities and runtime model interfaces, not on whether the
+build is QNN or whether the model is present in the public source tree.
+Missing capabilities, an unsupported image count/layout, or an incompatible
+execution path return `CAUSAL_LM_ERROR_UNSUPPORTED`.
+
+The sidecar metadata is preserved for a fused plugin hook. The generic pair
+path may canonicalize CHW input for its vision producer; HWC and model-native
+representations remain model contracts. A V2 plugin hook must honor the
+supplied layout/count and any non-null grammar, or explicitly return
+`CAUSAL_LM_ERROR_UNSUPPORTED` rather than silently ignore them. Once a V2 hook
+is invoked, its result is final; the dispatcher does not try another model path
+after externally visible token or model-state changes. The callback arguments
+are borrowed for the synchronous call and must not be retained.
+
+The V2 callback receives the validated `causallm::openai::Request`, a versioned
+view of every loaded sub-model, and a nullable core-formatted prompt. A null
+formatted prompt means that the core has no compatible chat template; a fused
+model may then render the validated messages with its own model-specific
+template. The callback model/text indices identify the registration owner and
+the conventional generation model without exposing the private
+`CausalLmModel` layout. If the callback uses the core-formatted prompt, that
+template must represent image occurrences in the form expected by the model.
+
+The legacy `ModelCallbacks::multimodal_streaming` adapter is retained for
+existing extension models. Its signature cannot describe general tensor
+metadata or xgrammar, so it is invoked only for one unconstrained image made of
+dense RGB 512x512 patches. HWC is passed directly and CHW is canonicalized to
+HWC; model-native, multi-image, constrained, and other-shaped requests bypass
+the legacy hook and may use the generic composer when compatible.
 
 ```c
 QuickAiImageTensorV1 image = {0};
@@ -194,6 +232,28 @@ image.original_width = original_width;
 ErrorCode error = quickAiRunOpenAI(handle, request, &image, 1,
                                    on_token, NULL);
 ```
+
+### Optional fused/composite plugin
+
+The public source distribution need not contain every multimodal model. A
+downstream `libqai_ext_model.so` may register a catalog descriptor, its model
+factory entry, and an architecture callback at load time. New fused or
+multi-image implementations register an `OpenAIMultimodalStreamingCallback`
+with `OpenAIMultimodalCallbackRegistry`; the older `ModelCallbacks` table
+remains size-stable for its existing by-value registration ABI. The descriptor
+can represent either one fused model or an already-defined composite; callers
+use `loadModelHandleByName()` and `quickAiRunOpenAI()` in both cases. The low-level
+`loadMultimodalHandleByName()` helper remains available for constructing a
+compatible `[vision, LLM]` pair, but it does not add another generation API.
+
+This plugin boundary shares C++ virtual interfaces and callback registry types.
+The plugin, `libcausallm.so`, and `libquick_dot_ai_api.so` must be rebuilt from
+the same source revision. Compatibility with an older binary plugin is not
+promised even when its exported filename is unchanged.
+
+The fused/composite and multi-image contracts have been reviewed with static
+source/header checks. Actual plugin execution, streaming, cancellation, and
+Android device behavior have not been validated on this host.
 
 ## Loading and lifecycle
 

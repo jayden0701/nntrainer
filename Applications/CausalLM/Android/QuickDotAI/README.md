@@ -89,15 +89,31 @@ claim to report a runtime-inspected model architecture.
 
 ## Native multimodal tensor sidecar
 
-The native backend requires preprocessed image tensors in a versioned sidecar
-rather than large JSON float arrays. Each tensor's `source` must exactly match
-an `image_url.url` in the JSON request.
+The native backend carries preprocessed image tensors in a versioned sidecar
+rather than placing large float arrays in JSON. Each tensor's `source` must
+exactly match an `image_url.url` in the JSON request.
 
-This is a capability-gated composition path. The current public catalog does
-not ship a vision-producer/embedding-input LLM pair, so public native models
-return `UNSUPPORTED` for sidecars. Downstream model plugins may enable the path
-only when both models implement the required capabilities and all native
-libraries/plugins were rebuilt from the same source revision.
+This is a descriptor-capability-gated path. A descriptor must advertise
+`MULTIMODAL` to accept any sidecar and `MULTI_IMAGE` to accept more than one
+sidecar in the same request. `runOpenAI()` remains the only public structured
+generation call: it first uses an architecture-specific fused/composite hook
+registered by an optional model plugin, then falls back to the generic
+`[vision encoder, embedding-input LLM]` composer when the loaded handle exposes
+that topology. A full V2 hook receives every sidecar plus the active grammar;
+it also receives the validated OpenAI request, all loaded sub-model pointers,
+and an optional core-formatted prompt. This lets a fused plugin apply its own
+model-specific chat template when no compatible core template exists. Once
+invoked, the hook's result is authoritative. The legacy single-image callback
+is used only for an unconstrained RGB 512x512-patch tensor because its older
+signature cannot express arbitrary metadata. A missing private plugin is
+normal for the public package and does not make native image input globally or
+intentionally unsupported. An
+individual request returns `UNSUPPORTED` when its descriptor, image count,
+plugin hook, or generic model interfaces are incompatible.
+
+The following example uses the model-specific LLaVA-NeXT preprocessor. Replace
+it with the preprocessor or `MODEL_NATIVE` tensor contract declared for the
+selected plugin model; its pixels are not a universal native image format.
 
 ```kotlin
 val source = "quickdotai://image/0"
@@ -140,13 +156,34 @@ count is validated by that native model. Dimensions, patch count, source
 order, sidecar version, and JSON source references are validated before JNI is
 entered. Sidecar tensors follow `image_url` occurrence order. Repeating the
 same URL twice therefore requires two sidecar entries with the same source.
-The contract is multi-image ready, but the current native OpenAI runner returns
-`UNSUPPORTED` for more than one image occurrence.
+Multiple entries are accepted when the loaded descriptor advertises
+`MULTI_IMAGE`; otherwise the native adapter fails before inference rather than
+silently dropping all but the first image.
 
 `LlavaNextImagePreprocessor` returns the HWC RGB, 512-pixel patch representation
-expected by the current LLaVA-NeXT path. It accepts encoded JPEG/PNG bytes or a
-`Bitmap`; it is intentionally model-specific rather than a universal image
-format.
+expected by a LLaVA-NeXT path. It accepts encoded JPEG/PNG bytes or a `Bitmap`;
+it is intentionally model-specific rather than a universal image format.
+
+### Optional native model plugin
+
+A downstream AAR or host app may package `libqai_ext_model.so` in its
+`jniLibs/arm64-v8a` directory. QuickDotAI loads it after the core native
+libraries so its static registration can add catalog descriptors, model
+factory entries, and architecture callbacks. The plugin may expose either a
+self-contained fused multimodal model or a composite model backed by multiple
+sub-models; callers still select one catalog descriptor and call
+`runOpenAI()`.
+
+The plugin boundary uses C++ virtual interfaces and callback registry types.
+`libcausallm.so`, `libquick_dot_ai_api.so`, `libquickai_jni.so`, and
+`libqai_ext_model.so` must therefore be rebuilt from the same source revision;
+dropping an older plugin binary next to newer core libraries is unsupported.
+The public AAR does not bundle a private plugin by default.
+
+This contract has been checked statically in the source and JNI/AAR packaging
+paths. Fused/composite plugin execution, multi-image streaming, and Android
+device lifecycle behavior still require verification with a same-revision
+plugin on a physical device.
 
 ## LiteRT-LM multimodal image URLs
 
