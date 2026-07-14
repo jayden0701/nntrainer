@@ -14,20 +14,17 @@
 #define XGRAMMAR_XGRAMMAR_H_
 
 #pragma once
+#ifndef WIN_EXPORT
 #ifdef _WIN32
 #define WIN_EXPORT __declspec(dllexport)
-#define WSTR std::wstring
-#define WCHAR_P wchar_t *
 #else
 #define WIN_EXPORT
-#define WSTR std::string
-#define WCHAR_P std::string &
+#endif
 #endif
 
 #include <memory>
+#include <string>
 #include <vector>
-
-#include <transformer.h>
 
 #include <dlpack/dlpack.h>
 #include <xgrammar/compiler.h>
@@ -37,17 +34,12 @@
 #include <xgrammar/matcher.h>
 #include <xgrammar/tokenizer_info.h>
 
-// Forward declarations
-namespace tokenizers {
-class Tokenizer;
-}
-
 namespace causallm {
 /**
  * @brief Grammar-guided generation helper wrapping xgrammar's compiler and
  * matcher.
  */
-WIN_EXPORT class XGrammar {
+class WIN_EXPORT XGrammar {
 
 public:
   XGrammar();
@@ -56,18 +48,6 @@ public:
    * @brief Destroy the CausalLM object
    */
   virtual ~XGrammar() {}
-
-  /**
-   * @brief Initialize xgrammar for grammar-guided generation
-   * @param grammar_type Type of grammar ("json", "ebnf", "regex")
-   * @param json_schema Optional JSON schema for JSON grammar type
-   * @param tokenizer Tokenizer instance to extract vocabulary
-   * @param vocab_size Size of the vocabulary
-   */
-  void initializeGrammar(const std::string &grammar_type = "json",
-                         const std::string &json_schema = "",
-                         tokenizers::Tokenizer *tokenizer = nullptr,
-                         unsigned int vocab_size = 0);
 
   /**
    * @brief Initialize xgrammar with pre-created TokenizerInfo and
@@ -131,8 +111,6 @@ public:
   xgrammar::GrammarMatcher *getGrammarMatcher();
 
   void applyGrammarMask(float *logits, int vocab_size);
-  void applyGrammarMask(uint16_t *logits, int vocab_size, float logit_scale,
-                        int logit_offset);
 
 private:
   /**
@@ -146,8 +124,6 @@ private:
 
 protected:
   // xgrammar components for grammar-guided generation
-  std::unique_ptr<xgrammar::TokenizerInfo> tokenizer_info_;
-  std::unique_ptr<xgrammar::GrammarCompiler> grammar_compiler_;
   std::unique_ptr<xgrammar::CompiledGrammar> compiled_grammar_;
   std::unique_ptr<xgrammar::GrammarMatcher> grammar_matcher_;
 

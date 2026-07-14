@@ -11,6 +11,7 @@
  */
 
 #include "xgrammar_wrapper.h"
+#include <cmath>
 #include <iostream>
 #include <variant>
 
@@ -21,41 +22,6 @@ namespace causallm {
 XGrammar::XGrammar() {
   // Store configurations if needed
   grammar_enabled = false;
-}
-
-void XGrammar::initializeGrammar(const std::string &grammar_type,
-                                 const std::string &json_schema,
-                                 tokenizers::Tokenizer *tokenizer,
-                                 unsigned int vocab_size) {
-  if (tokenizer == nullptr) {
-    throw std::runtime_error("Tokenizer is null. Cannot initialize grammar.");
-  }
-  // std::cout << "[xgrammar] Initializing grammar constraints...\n";
-
-  // Step 1: Extract vocabulary from tokenizer
-  // std::cout << "[xgrammar] Extracting vocabulary from tokenizer...\n";
-  std::vector<std::string> encoded_vocab;
-  encoded_vocab.reserve(vocab_size);
-
-  for (size_t i = 0; i < vocab_size; ++i) {
-    std::string token = tokenizer->IdToToken(static_cast<int32_t>(i));
-    encoded_vocab.push_back(token);
-  }
-  // std::cout << "[xgrammar] Vocabulary size: " << vocab_size << "\n";
-
-  // Step 2: Create TokenizerInfo from encoded vocabulary
-  // std::cout << "[xgrammar] Creating TokenizerInfo...\n";
-  tokenizer_info_ = std::make_unique<xgrammar::TokenizerInfo>(
-    encoded_vocab, xgrammar::VocabType::BYTE_LEVEL, encoded_vocab.size());
-
-  // Step 3: Create GrammarCompiler
-  // std::cout << "[xgrammar] Creating GrammarCompiler...\n";
-  grammar_compiler_ =
-    std::make_unique<xgrammar::GrammarCompiler>(*tokenizer_info_);
-
-  // Step 4: Compile grammar using the shared helper
-  compileGrammar(grammar_type, json_schema, grammar_compiler_.get(),
-                 vocab_size);
 }
 
 void XGrammar::initializeGrammar(const std::string &grammar_type,
@@ -202,22 +168,6 @@ void XGrammar::applyGrammarMask(float *logits, int vocab_size) {
     if (!is_accepted) {
       // logits[i] = std::numeric_limits<float>::infinity();
       logits[i] = -INFINITY;
-    }
-  }
-}
-
-void XGrammar::applyGrammarMask(uint16_t *logits, int vocab_size,
-                                float logit_scale, int logit_offset) {
-  // Apply grammar mask to quantized uint16_t logits
-  // Set masked tokens to minimum value (will be rejected by sampling)
-  for (int i = 0; i < vocab_size; ++i) {
-    int32_t block = bitmask_data_[i / 32];
-    bool is_accepted = (block >> (i % 32)) & 1;
-
-    if (!is_accepted) {
-      // Set to minimum uint16_t value (0) which will result in -inf after
-      // scaling
-      logits[i] = 0;
     }
   }
 }
