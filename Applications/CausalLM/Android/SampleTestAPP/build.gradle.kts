@@ -54,10 +54,10 @@ android {
 
 dependencies {
     // The whole point of SampleTestAPP: depend on the :QuickDotAI AAR
-    // directly and drive LiteRTLm / NativeQuickDotAI in-process, without
-    // QuickAIService. The AAR re-exports kotlinx-serialization-json and
-    // the LiteRT-LM Kotlin runtime as `api` dependencies so we get them
-    // transitively.
+    // directly and drive the catalog-selected engine in-process, without
+    // QuickAIService. This project dependency also supplies the library's
+    // declared runtime dependencies. A standalone .aar file has no Gradle
+    // dependency metadata; see QuickDotAI/README.md for that integration.
     implementation(project(":QuickDotAI"))
 
     implementation(libs.androidx.core.ktx)
