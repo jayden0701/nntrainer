@@ -20,10 +20,13 @@
 #                                            # prebuilt_libs/ first) drive a single final install.
 #   ./build_android.sh --clean              # wipe the app builddir (builddir_app) first
 #   ./build_android.sh --nntr-threads=4     # override nntrainer compute thread count (default 7)
+#   ./build_android.sh --skip-qnn           # build without the QNN backend/models (no QNN SDK
+#                                            # needed; e.g. CI runners without QNN_SDK_ROOT)
 #
 # Environment:
 #   ANDROID_NDK / NDK_ROOT  - required (either name accepted)
-#   QNN_SDK_ROOT            - optional; enables staging the QNN vendor runtime libs
+#   QNN_SDK_ROOT            - required unless --skip-qnn is given (QNN is on by default);
+#                             also enables staging the QNN vendor runtime libs
 #   ANDROID_SERIAL          - optional; select a specific adb/gradle target device
 set -e
 
@@ -31,6 +34,7 @@ set -e
 CLEAN=false
 SKIP_ENGINE=false
 SKIP_INSTALL=false
+SKIP_QNN=false
 NNTR_THREADS="${NNTR_THREADS:-7}"
 
 for arg in "$@"; do
@@ -38,6 +42,7 @@ for arg in "$@"; do
         --clean)          CLEAN=true ;;
         --skip-engine)     SKIP_ENGINE=true ;;
         --skip-install)    SKIP_INSTALL=true ;;
+        --skip-qnn)        SKIP_QNN=true ;;
         --nntr-threads=*) NNTR_THREADS="${arg#*=}" ;;
         --help|-h)
             sed -n '2,/^set -e$/p' "$0" | grep '^#' | sed 's/^# \?//'
@@ -81,6 +86,7 @@ echo "ANDROID_NDK:    $ANDROID_NDK"
 echo "NNTR_THREADS:   $NNTR_THREADS"
 echo "SKIP_ENGINE:    $SKIP_ENGINE"
 echo "SKIP_INSTALL:   $SKIP_INSTALL"
+echo "SKIP_QNN:       $SKIP_QNN"
 echo "CLEAN:          $CLEAN"
 echo ""
 
@@ -140,6 +146,10 @@ echo "[2] Tokenizer library present: $TOKENIZER"
 
 # ── Step 3: Engine build (nntrainer core + libqnn_context.so) ───────────
 NNTRAINER_ANDROID_LIB="$NNTRAINER_ROOT/builddir/android_build_result/lib/arm64-v8a/libnntrainer.so"
+ENABLE_NPU=true
+if [ "$SKIP_QNN" = true ]; then
+    ENABLE_NPU=false
+fi
 
 if [ "$SKIP_ENGINE" = true ]; then
     if [ ! -f "$NNTRAINER_ANDROID_LIB" ]; then
@@ -150,10 +160,10 @@ if [ "$SKIP_ENGINE" = true ]; then
     fi
     echo "[3] --skip-engine: reusing existing engine build ($NNTRAINER_ANDROID_LIB)"
 else
-    echo "[3] Building nntrainer engine for Android (mmap-read=false, nntr-num-threads=$NNTR_THREADS, enable-npu=true)..."
+    echo "[3] Building nntrainer engine for Android (mmap-read=false, nntr-num-threads=$NNTR_THREADS, enable-npu=$ENABLE_NPU)..."
     (
         cd "$NNTRAINER_ROOT"
-        ./tools/package_android.sh -Dmmap-read=false -Dnntr-num-threads="$NNTR_THREADS" -Denable-npu=true
+        ./tools/package_android.sh -Dmmap-read=false -Dnntr-num-threads="$NNTR_THREADS" -Denable-npu="$ENABLE_NPU"
     )
     if [ ! -f "$NNTRAINER_ANDROID_LIB" ]; then
         echo "Error: engine build did not produce $NNTRAINER_ANDROID_LIB"
@@ -169,9 +179,13 @@ sed "s|@ANDROID_NDK@|$ANDROID_NDK|g" "$CROSS_FILE_IN" > "$CROSS_FILE"
 echo "[4] Generated cross file: $CROSS_FILE"
 
 # ── Step 5: App meson build (standalone project, public-only) ───────────
+ENABLE_QNN=true
+if [ "$SKIP_QNN" = true ]; then
+    ENABLE_QNN=false
+fi
 MESON_APP_OPTS=(
     -Dplatform=android
-    -Denable-qnn=true
+    -Denable-qnn="$ENABLE_QNN"
     -Denable-api=true
     -Denable-api-test=true
 )

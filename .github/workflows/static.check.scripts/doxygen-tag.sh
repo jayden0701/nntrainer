@@ -28,6 +28,7 @@ fi
 
 files=$1
 failed=0
+report_path=${report_path:-/tmp/doxygen-tag-report.log}
 
 if [ ! -f $files ]; then
   echo "::error The file $files does not exists."
