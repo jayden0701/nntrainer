@@ -4,7 +4,7 @@
  *
  * @file    streamer.h
  * @brief   Minimal C-callable base streamer used by the handle-based
- *          `runModelHandleStreaming` entry point in quick_dot_ai_api.h.
+ *          the streaming generation entry points in quick_dot_ai_api.h.
  *
  * This is intentionally a very thin vtable-based polymorphism layer so
  * that:

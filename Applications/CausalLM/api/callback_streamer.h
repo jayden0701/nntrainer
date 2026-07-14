@@ -12,7 +12,7 @@
  * and pushes a CallbackStreamer onto its own stack frame for the
  * duration of the call.
  *
- * See AsyncAndStreaming.md §3.2 at the repo root.
+ * Generation callbacks are synchronous and owned by the invoking API call.
  */
 #ifndef __QUICK_DOT_AI_CALLBACK_STREAMER_H__
 #define __QUICK_DOT_AI_CALLBACK_STREAMER_H__
@@ -37,11 +37,20 @@ extern "C" {
  * @param delta     UTF-8 text produced for this token boundary. Valid
  *                  only for the duration of the call — copy before
  *                  retaining.
- * @param user_data Opaque pointer passed through from the
- *                  runModelHandleStreaming() caller.
+ * @param user_data Opaque pointer passed through from the generation caller.
+ *
  * @return 0 to continue generation, non-zero to request cancellation.
+ * @note
+ * The callback runs synchronously while the handle is executing. It
+ * must not
+ * re-enter an API on the same handle; cancellation from a
+ *       different
+ * thread through cancelModelHandle() is supported.
  */
+#ifndef QUICK_AI_TOKEN_CALLBACK_DEFINED
+#define QUICK_AI_TOKEN_CALLBACK_DEFINED
 typedef int (*CausalLmTokenCallback)(const char *delta, void *user_data);
+#endif
 
 /**
  * @brief A BaseStreamer that forwards every put() to a

@@ -90,28 +90,36 @@ public:
            const WSTR system_prompt = "", const WSTR tail_prompt = "",
            bool log_output = true) override;
 
+  bool supportsTextGeneration() const override { return true; }
+
+  /** Reset token/KV positions retained from earlier run() calls. */
+  void resetConversationState() override;
+
   /**
    * @brief Get the generated output text
    * @param batch_idx Index of the batch item
    * @return Generated text string
    */
-  std::string getOutput(int batch_idx = 0) const;
+  std::string getOutput(int batch_idx = 0) const override;
 
   /**
    * @brief Attach or detach a non-owning streamer for decoded output deltas.
    * @param streamer Streamer owned by the caller, or nullptr to detach
    */
-  void setStreamer(::BaseStreamer *streamer) { streamer_ = streamer; }
+  void setStreamer(::BaseStreamer *streamer) override { streamer_ = streamer; }
 
   /**
    * @brief Cooperatively request the active generation loop to stop.
    */
-  void requestStop() { stop_requested_.store(true, std::memory_order_release); }
+  void requestStop() override {
+    stop_requested_.store(true, std::memory_order_release);
+  }
 
   /**
-   * @brief Clear stale stop requests before publishing a new cancellable run.
+   * @brief Clear stale stop requests before publishing a new cancellable
+   * run.
    */
-  void prepareForRun();
+  void prepareForRun() override;
 
   /**
    * @brief Attach a non-owning logits processor
@@ -144,6 +152,9 @@ protected:
   registerOutputs(std::unique_ptr<tokenizers::Tokenizer> &tokenizer,
                   std::vector<unsigned int> ids, unsigned int pos,
                   const std::vector<bool> &eos_list, bool log_output = true);
+
+  /** Emit complete text still buffered by registerOutputs at run teardown. */
+  void flushPendingOutput(bool log_output) noexcept;
 
   /**
    * @brief save kv cache
@@ -179,7 +190,7 @@ protected:
   unsigned int *ids_history =
     nullptr; /**< History of input IDs for the model */
 
-  std::vector<int> pending_ids_;
+  std::vector<std::vector<int>> pending_ids_;
 
   ::BaseStreamer *streamer_ = nullptr;
   std::atomic<bool> stop_requested_{false};
@@ -199,6 +210,7 @@ protected:
   std::string PRE_COMPUTED_CACHE_PATH;
   bool SAVE_KVCACHE;
   bool USE_KVCACHE;
+  bool bypass_precomputed_cache_once_ = false;
   bool SKIP_PREFILL;
   unsigned int global_token_len;
 

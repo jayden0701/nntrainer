@@ -51,6 +51,8 @@
 #include <tokenizers_c.h>
 #include <tokenizers_cpp.h>
 
+struct BaseStreamer;
+
 namespace causallm {
 
 /*** ALIAS ****/
@@ -67,8 +69,10 @@ enum class ModelType { MODEL, CAUSALLM, EMBEDDING, UNKNOWN };
 
 /**
  * @brief {data, size} pointer pair produced/consumed by multimodal vision
- *        models. The buffer is heap-allocated by the producer (run_image) and
- *        ownership transfers to the caller.
+ *
+ * models. The producer allocates the buffer with malloc(), ownership
+ *
+ * transfers to the caller, and the caller releases it with free().
  */
 using multimodal_pointer = std::pair<void *, size_t>;
 
@@ -174,12 +178,30 @@ public:
                    const WSTR system_prompt = WSTR(),
                    const WSTR tail_prompt = WSTR(), bool log_output = true);
 
+  /** Whether this model implements autoregressive text generation. */
+  virtual bool supportsTextGeneration() const { return false; }
+
+  /** Return the most recent generated text, if text generation is supported. */
+  virtual std::string getOutput(int batch_idx = 0) const {
+    (void)batch_idx;
+    return {};
+  }
+
+  /** Attach a non-owning streaming output callback. */
+  virtual void setStreamer(::BaseStreamer *streamer) { (void)streamer; }
+
+  /** Cooperatively request cancellation of an active generation. */
+  virtual void requestStop() {}
+
   // ── Multimodal composition interface (model-agnostic) ──────────────────
   // Lets a generic composer drive any [vision producer, LLM consumer] pair
   // through base pointers, without knowing the concrete model type.
   // Default implementations mean "this role is not supported by this model".
 
   /** Embedding-CONSUMER (LLM): bytes of one token embedding (0 ⇒ no table). */
+  /** Whether this model accepts precomputed embeddings for generation. */
+  virtual bool supportsEmbeddingInput() const { return false; }
+
   virtual size_t embeddingBytesPerToken() const { return 0; }
 
   /** Embedding-CONSUMER (LLM): embedding of @p token_id, or nullptr. */
@@ -209,9 +231,14 @@ public:
     (void)offset;
   }
 
+  /** Whether this model can encode image/video input into embeddings. */
+  virtual bool supportsImageEncoding() const { return false; }
+
   /** Embedding-PRODUCER (vision): encode an image into LLM-space embeddings.
-   *  Returns a heap buffer (caller frees) of size {bytes}; the default
-   *  {nullptr,0} means "this model is not a vision producer". */
+
+   * *  Returns a malloc-allocated buffer (caller uses freeImageEmbedding/free)
+
+   * *  of size {bytes}; the default {nullptr,0} means "not a producer". */
   virtual multimodal_pointer
   run_image(const WSTR prompt, multimodal_pointer image, int image_height,
             int image_width, bool do_sample = false,
@@ -230,6 +257,28 @@ public:
 
   /** Current KV-cache length (0 if the model has no persistent KV cache). */
   virtual int getKvLen() const { return 0; }
+
+  /**
+   * Prepare the model for a new cancellable run.
+   *
+   *
+   * Request-oriented callers invoke this before publishing a run as active.
+
+   * * Implementations may clear stale cancellation state while preserving a
+
+   * * cancellation request that arrives between this call and run().
+   */
+  virtual void prepareForRun() {}
+
+  /**
+   * Reset implicit state from earlier generation calls.
+   *
+   *
+   * Stateless models may keep the default no-op. Stateful implementations
+   *
+   * override this so request-oriented APIs can start from a clean context.
+ */
+  virtual void resetConversationState() {}
 
   /**
    * @brief Get TransformerPerformanceMetrics

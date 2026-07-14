@@ -30,6 +30,8 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -246,9 +248,10 @@ void CausalLM::registerOutputs(
   static const std::vector<char> puncts{',', '!', ':', ';', '?'};
   for (size_t b = 0; b < ids.size(); ++b) {
     if (!eos_list[b]) {
-      pending_ids_.push_back(static_cast<int>(ids[b]));
+      auto &pending_ids = pending_ids_[b];
+      pending_ids.push_back(static_cast<int>(ids[b]));
       ids_history[b * MAX_SEQ_LEN + pos] = ids[b];
-      std::string decoded_str = tokenizer->Decode(pending_ids_);
+      std::string decoded_str = tokenizer->Decode(pending_ids);
 
       if (decoded_str.empty()) {
         continue;
@@ -257,7 +260,7 @@ void CausalLM::registerOutputs(
       if (std::find(puncts.begin(), puncts.end(), decoded_str.back()) !=
           puncts.end()) {
         // last symbol is a punctuation, hold on
-      } else if (utf8stream::shouldHold(decoded_str, pending_ids_.size())) {
+      } else if (utf8stream::shouldHold(decoded_str, pending_ids.size())) {
       } else {
         if (log_output && streamer_ == nullptr) {
           std::cout << decoded_str;
@@ -268,9 +271,42 @@ void CausalLM::registerOutputs(
             streamer_put(streamer_, decoded_str.c_str()) != 0) {
           requestStop();
         }
-        pending_ids_.clear();
+        pending_ids.clear();
       }
     }
+  }
+}
+
+void CausalLM::flushPendingOutput(bool log_output) noexcept {
+  try {
+    if (tokenizer == nullptr) {
+      pending_ids_.clear();
+      return;
+    }
+
+    const size_t batch_count =
+      std::min(pending_ids_.size(), output_list.size());
+    for (size_t b = 0; b < batch_count; ++b) {
+      auto &pending_ids = pending_ids_[b];
+      if (pending_ids.empty())
+        continue;
+
+      std::string decoded_str = tokenizer->Decode(pending_ids);
+      if (!decoded_str.empty() &&
+          !utf8stream::shouldHold(decoded_str, pending_ids.size())) {
+        output_list[b].append(decoded_str);
+        if (streamer_ != nullptr) {
+          if (streamer_put(streamer_, decoded_str.c_str()) != 0)
+            requestStop();
+        } else if (log_output) {
+          std::cout << decoded_str << std::flush;
+        }
+      }
+      pending_ids.clear();
+    }
+  } catch (...) {
+    // Teardown must not replace an active exception with a decode failure.
+    pending_ids_.clear();
   }
 }
 
@@ -362,10 +398,18 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
                              "initialize() before run().");
   }
 
+  output_list.assign(BATCH_SIZE, "");
+  pending_ids_.assign(BATCH_SIZE, {});
+
   struct StreamerEndGuard {
+    CausalLM *model;
     BaseStreamer *streamer;
-    ~StreamerEndGuard() { streamer_end(streamer); }
-  } streamer_end_guard{streamer_};
+    bool log_output;
+    ~StreamerEndGuard() {
+      model->flushPendingOutput(log_output);
+      streamer_end(streamer);
+    }
+  } streamer_end_guard{this, streamer_, log_output};
 
   // Allocate the host-owned KV cache and bind it to mha_core's external cache
   // input slots. Idempotent: only the first call does work; subsequent runs
@@ -375,11 +419,14 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
   has_run_ = false;
   prepareStopRequestForRun();
+  if (stop_requested_.load(std::memory_order_acquire))
+    return;
 
-  output_list.clear();
-  for (unsigned int b = 0; b < BATCH_SIZE; ++b) {
-    output_list.push_back("");
-  }
+  const bool effective_use_kvcache =
+    USE_KVCACHE && !bypass_precomputed_cache_once_;
+  bypass_precomputed_cache_once_ = false;
+  unsigned int effective_sys_prompt_len =
+    effective_use_kvcache ? SYS_PROMP_LEN : 0;
 
   if (MAX_SEQ_LEN < INIT_SEQ_LEN) {
     throw std::invalid_argument(
@@ -403,7 +450,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
    *  if USE_KVCACHE && system_prompt is given && but the
    * PRE_COMPUTED_CACHE_PATH does not exist
    */
-  SAVE_KVCACHE = (USE_KVCACHE && system_prompt != "" &&
+  SAVE_KVCACHE = (effective_use_kvcache && system_prompt != "" &&
                   !std::filesystem::exists(PRE_COMPUTED_CACHE_PATH));
 
   // print input text
@@ -413,14 +460,16 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
   // actual prompt to be used in computation
   std::string prompt_;
 
-  if (USE_KVCACHE) {
+  if (effective_use_kvcache) {
     prompt_ = SAVE_KVCACHE ? system_prompt : (prompt + tail_prompt);
   } else {
     prompt_ = system_prompt + prompt + tail_prompt;
   }
 
-  if (USE_KVCACHE && !SAVE_KVCACHE && SYS_PROMP_LEN == 0)
-    SYS_PROMP_LEN = tokenizer->Encode(system_prompt).size();
+  if (effective_use_kvcache && !SAVE_KVCACHE && effective_sys_prompt_len == 0) {
+    effective_sys_prompt_len = tokenizer->Encode(system_prompt).size();
+    SYS_PROMP_LEN = effective_sys_prompt_len;
+  }
 
   auto _input = tokenizer->Encode(prompt_);
   ///@note insert bos token at the beginning of the input
@@ -449,8 +498,12 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
   _input.clear();
 
   unsigned int init_len = init_input.size();
-  float *input_sample =
-    (float *)malloc(sizeof(float) * BATCH_SIZE * MAX_SEQ_LEN);
+  std::unique_ptr<float, decltype(&std::free)> input_sample_owner(
+    static_cast<float *>(std::malloc(sizeof(float) * BATCH_SIZE * MAX_SEQ_LEN)),
+    &std::free);
+  if (!input_sample_owner)
+    throw std::bad_alloc();
+  float *input_sample = input_sample_owner.get();
   std::vector<bool> eos_list(BATCH_SIZE, false);
 
   unsigned int input_len = init_len;
@@ -501,7 +554,33 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
   auto start_prefill = std::chrono::high_resolution_clock::now();
 
-  std::vector<float *> output;
+  struct InferenceOutput {
+    std::vector<float *> buffers;
+
+    InferenceOutput() = default;
+    explicit InferenceOutput(std::vector<float *> &&value) :
+      buffers(std::move(value)) {}
+    InferenceOutput(const InferenceOutput &) = delete;
+    InferenceOutput &operator=(const InferenceOutput &) = delete;
+    ~InferenceOutput() { clear(); }
+
+    void reset(std::vector<float *> &&value) {
+      clear();
+      buffers = std::move(value);
+    }
+    void release() { clear(); }
+    float *operator[](size_t index) const { return buffers[index]; }
+
+  private:
+    void clear() {
+      for (auto *buffer : buffers)
+        delete[] buffer;
+      buffers.clear();
+    }
+  } output;
+
+  if (stop_requested_.load(std::memory_order_acquire))
+    return;
 
   if (SAVE_KVCACHE) {
     //@note This is for the save the kv cache. precomputed kv cache should be
@@ -519,11 +598,12 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
       std::cout << "\n==============[KV CACHE SAVE MODE]================\n";
     allocateAndBindKVCache();
     setKVCachePosition(0);
-    output = model->incremental_inference(BATCH_SIZE, input, label, input_len,
-                                          0, input_len, false);
+    output.reset(model->incremental_inference(BATCH_SIZE, input, label,
+                                              input_len, 0, input_len, false));
 
-    SYS_PROMP_LEN = input_len;
-    save_kvcache(PRE_COMPUTED_CACHE_PATH, SYS_PROMP_LEN);
+    effective_sys_prompt_len = input_len;
+    SYS_PROMP_LEN = effective_sys_prompt_len;
+    save_kvcache(PRE_COMPUTED_CACHE_PATH, effective_sys_prompt_len);
 
     if (log_output) {
 
@@ -538,13 +618,10 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     return;
   }
 
-  if (USE_KVCACHE) {
-    load_kvcache(PRE_COMPUTED_CACHE_PATH, SYS_PROMP_LEN);
-  } else {
-    SYS_PROMP_LEN = 0;
-  }
+  if (effective_use_kvcache)
+    load_kvcache(PRE_COMPUTED_CACHE_PATH, effective_sys_prompt_len);
   allocateAndBindKVCache();
-  const unsigned int prefill_from = SYS_PROMP_LEN + global_token_len;
+  const unsigned int prefill_from = effective_sys_prompt_len + global_token_len;
   std::vector<unsigned int> id_list;
 
   if (SKIP_PREFILL && init_len > 1) {
@@ -555,8 +632,8 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
     const unsigned int prefill_to = prefill_from + input_len - 1;
     setKVCachePosition(prefill_from);
-    output = model->incremental_inference(
-      BATCH_SIZE, input, label, init_len - 1, prefill_from, prefill_to, false);
+    output.reset(model->incremental_inference(
+      BATCH_SIZE, input, label, init_len - 1, prefill_from, prefill_to, false));
 
     for (unsigned int b = 0; b < BATCH_SIZE; ++b)
       id_list.push_back(skipped_token);
@@ -568,8 +645,8 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
   } else {
     const unsigned int prefill_to = prefill_from + input_len;
     setKVCachePosition(prefill_from);
-    output = model->incremental_inference(BATCH_SIZE, input, label, init_len,
-                                          prefill_from, prefill_to, false);
+    output.reset(model->incremental_inference(
+      BATCH_SIZE, input, label, init_len, prefill_from, prefill_to, false));
 
     // post process of model output
     id_list = generate(output[0], do_sample, 1, ids_history, init_len);
@@ -577,11 +654,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     if (init_len < INIT_SEQ_LEN)
       registerOutputs(tokenizer, id_list, init_len, eos_list, log_output);
   }
-  // output should be deallocated after use
-  for (auto &out : output) {
-    delete[] out;
-  }
-
+  output.release();
   auto finish_prefill = std::chrono::high_resolution_clock::now();
   auto prefill_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
     finish_prefill - start_prefill);
@@ -590,7 +663,22 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
    * TOKEN GENERATION
    */
 
-  input_len += SYS_PROMP_LEN;
+  input_len += effective_sys_prompt_len;
+
+  auto update_eos = [&](const std::vector<unsigned int> &ids) {
+    for (unsigned int batch = 0; batch < BATCH_SIZE; ++batch) {
+      if (!eos_list[batch] &&
+          std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(), ids[batch]) !=
+            EOS_TOKEN_ID.end()) {
+        eos_list[batch] = true;
+      }
+    }
+  };
+  auto all_finished = [&]() {
+    return std::all_of(eos_list.begin(), eos_list.end(),
+                       [](bool finished) { return finished; });
+  };
+  update_eos(id_list);
 
   // Update generated token by prefill as an input
   for (unsigned int b = 0; b < BATCH_SIZE; ++b)
@@ -601,14 +689,14 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
   for (unsigned int token_generation_idx = input_len + 1;
        token_generation_idx < input_len + 1 + NUM_TO_GENERATE &&
-       !stop_requested_.load(std::memory_order_acquire);
+       !all_finished() && !stop_requested_.load(std::memory_order_acquire);
        ++token_generation_idx) {
 
     allocateAndBindKVCache();
-    auto output_interval =
+    InferenceOutput output_interval(
       model->incremental_inference(BATCH_SIZE, input, label, input_len,
                                    token_generation_idx - 1 + global_token_len,
-                                   token_generation_idx + global_token_len);
+                                   token_generation_idx + global_token_len));
     std::vector<unsigned int> ids_list(generate(output_interval[0], do_sample));
 
     // Feed the newly generated token back as the next input token.
@@ -622,28 +710,9 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
                     log_output);
     ++generation_cnt;
 
-    // output should be deallocated after use
-    for (auto out : output_interval) {
-      delete[] out;
-    }
-
     // check FINISH
-    for (unsigned int j = 0; j < BATCH_SIZE; ++j) {
-      if (!eos_list[j] && (std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(),
-                                     ids_list[j]) != EOS_TOKEN_ID.end())) {
-        eos_list[j] = true;
-      }
-    }
-
-    bool is_finish = true;
-    for (unsigned int j = 0; j < BATCH_SIZE; ++j) {
-      if (!eos_list[j]) {
-        is_finish = false;
-        break;
-      }
-    }
-
-    if (is_finish) {
+    update_eos(ids_list);
+    if (all_finished()) {
       break;
     }
 
@@ -652,9 +721,9 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     }
   }
 
-  // Always release the input buffer after the generation loop, whether
-  // the loop exited early (EOS found) or ran to the maximum token limit.
-  free(input_sample);
+  // Emit punctuation or other complete text that was held for streaming.
+  // Incomplete UTF-8 remains discarded by flushPendingOutput().
+  flushPendingOutput(log_output);
 
   global_token_len += (generation_cnt + init_len);
 
@@ -693,6 +762,14 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
   performance_metrics.peak_memory_kb = peak_memory;
 
   has_run_ = true;
+}
+
+void CausalLM::resetConversationState() {
+  bypass_precomputed_cache_once_ = true;
+  global_token_len = 0;
+  pending_ids_.clear();
+  if (kv_cache_bound)
+    setKVCachePosition(0);
 }
 
 std::string CausalLM::getOutput(int batch_idx) const {
