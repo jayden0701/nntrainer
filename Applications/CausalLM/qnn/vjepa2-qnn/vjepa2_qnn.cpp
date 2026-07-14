@@ -18,6 +18,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -545,20 +546,40 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
       << " (raw frames).";
   }
 
-  int num_inference = image.second / (num_bytes_per_inference *
-                                      (sizeof(float) / sizeof(uint16_t)));
+  const size_t input_expansion = sizeof(float) / sizeof(uint16_t);
+  NNTR_THROW_IF(num_bytes_per_inference <= 0, std::runtime_error)
+    << "V-JEPA2 QNN graph has an invalid input size";
+  const size_t input_bytes =
+    static_cast<size_t>(num_bytes_per_inference) * input_expansion;
+  NNTR_THROW_IF(image.second % input_bytes != 0, std::invalid_argument)
+    << "Video buffer size " << image.second
+    << " is not a multiple of one inference input (" << input_bytes << ")";
+  const size_t num_inference = image.second / input_bytes;
 
-  LOGD("image.second %zu, num_bytes_per_inference : %d, num_inference: %d",
+  LOGD("image.second %zu, num_bytes_per_inference : %d, num_inference: %zu",
        image.second, num_bytes_per_inference, num_inference);
 
-  int out_embedding_size = output_info.dimensions[2]; // 768
-  int output_bw = GraphParser::get_tensor_bit_width(output_info);
-  int num_tokens = output_info.dimensions[1]; // 3072
-  int total_embedding_size = num_tokens * out_embedding_size * output_bw;
+  const int output_bw = GraphParser::get_tensor_bit_width(output_info);
+  const int output_elements = GraphParser::get_tensor_count(output_info);
+  NNTR_THROW_IF(output_elements <= 0, std::runtime_error)
+    << "V-JEPA2 QNN graph has an invalid output shape";
+  const size_t output_bytes =
+    llm_quant_param_given_
+      ? static_cast<size_t>(output_elements) * sizeof(uint16_t)
+      : static_cast<size_t>(output_elements) * output_bw;
+  NNTR_THROW_IF(num_inference >
+                  (std::numeric_limits<size_t>::max)() / output_bytes,
+                std::overflow_error)
+    << "V-JEPA2 output allocation overflow";
+  const size_t total_embedding_size = output_bytes * num_inference;
 
-  void *my_output = malloc(total_embedding_size * num_inference);
+  std::unique_ptr<void, decltype(&std::free)> output_guard(
+    std::malloc(total_embedding_size), &std::free);
+  if (output_guard == nullptr)
+    throw std::bad_alloc();
+  void *my_output = output_guard.get();
 
-  for (int i = 0; i < num_inference; i++) {
+  for (size_t i = 0; i < num_inference; i++) {
     auto src = ((const float *)image.first) + i * num_elements_per_inference;
     if (use_preprocessed) {
       quantize_uint16_memcpy(const_cast<float *>(src), pixel_values_input_,
@@ -583,13 +604,12 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
     void *vision_encoder_output = std::visit(
       [](auto *p) -> void * { return static_cast<void *>(p); }, qnn_output);
 
-    int vision_encoder_output_size = GraphParser::get_tensor_size(output_info);
+    const size_t vision_encoder_output_size =
+      static_cast<size_t>(GraphParser::get_tensor_size(output_info));
 
-    void *dest =
-      static_cast<uint8_t *>(my_output) + i * vision_encoder_output_size;
+    void *dest = static_cast<uint8_t *>(my_output) + i * output_bytes;
     if (llm_quant_param_given_) {
-      requantEmbedding(vision_encoder_output, dest,
-                       vision_encoder_output_size / output_bw);
+      requantEmbedding(vision_encoder_output, dest, output_elements);
     } else {
       std::memcpy(dest, vision_encoder_output, vision_encoder_output_size);
     }
@@ -600,7 +620,8 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
                     end_total - start_total)
                     .count();
 
-  performance_metrics.prefill_tokens = static_cast<unsigned int>(num_tokens);
+  performance_metrics.prefill_tokens =
+    static_cast<unsigned int>(output_info.dimensions[1]);
   performance_metrics.prefill_duration_ms = static_cast<double>(total_ms);
   performance_metrics.generation_tokens = 0;
   performance_metrics.generation_duration_ms = 0.0;
@@ -609,5 +630,5 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
   has_run_ = true;
 
   std::cout << "run_image done!" << std::endl;
-  return std::make_pair(my_output, total_embedding_size * num_inference);
+  return std::make_pair(output_guard.release(), total_embedding_size);
 }
