@@ -478,6 +478,75 @@ makeDirectTinyQwen2Model(const causallm_test::TinyCausalLMFiles &files,
 }
 
 /**
+ * @brief Force a configured token sequence through the logits processor
+ * hook
+ */
+class TokenSequenceProcessor final : public causallm::LogitsProcessor {
+public:
+  explicit TokenSequenceProcessor(std::vector<unsigned int> tokens) :
+    tokens_(std::move(tokens)) {}
+
+  void process(float *logits, unsigned int vocab_size, unsigned int) override {
+    for (unsigned int i = 0; i < vocab_size; ++i)
+      logits[i] = -std::numeric_limits<float>::infinity();
+    logits[tokens_[std::min(accepted_count_, tokens_.size() - 1)]] = 100.0f;
+  }
+
+  void acceptToken(unsigned int, unsigned int) override { ++accepted_count_; }
+
+  size_t acceptedCount() const { return accepted_count_; }
+
+private:
+  std::vector<unsigned int> tokens_;
+  size_t accepted_count_ = 0;
+};
+
+/**
+ * @brief Test that EOS is hidden without changing generation accounting
+ */
+TEST(Qwen2CausalLMOutputTest, EosIsSuppressedOnlyFromDecodedOutput) {
+  TokenSequenceProcessor processor({2u, 31u});
+
+  const auto test_case = makeQwen2Case(causallm_test::makeTinyFp32DataType());
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Qwen2CausalLMOutputTest", "EosIsSuppressedOnlyFromDecodedOutput",
+    test_case.name);
+  auto model = makeDirectTinyQwen2Model(files, test_case);
+
+  model->initializeModel();
+  setupQwen2DeterministicWeights(*model);
+  model->setLogitsProcessor(&processor);
+
+  ASSERT_NO_THROW(model->runPrompt("hello"));
+  EXPECT_EQ(model->getOutputText(), "world");
+  EXPECT_EQ(model->tokenAt(1), 2u);
+  EXPECT_EQ(model->tokenAt(2), 31u);
+  EXPECT_EQ(model->getPerformanceMetrics().generation_tokens, 1u);
+}
+
+/**
+ * @brief Test that prefill EOS skips the decode stage
+ */
+TEST(Qwen2CausalLMOutputTest, PrefillEosSkipsDecodeStage) {
+  TokenSequenceProcessor processor({31u});
+
+  const auto test_case = makeQwen2Case(causallm_test::makeTinyFp32DataType());
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Qwen2CausalLMOutputTest", "PrefillEosSkipsDecodeStage", test_case.name);
+  auto model = makeDirectTinyQwen2Model(files, test_case);
+
+  model->initializeModel();
+  setupQwen2DeterministicWeights(*model);
+  model->setLogitsProcessor(&processor);
+
+  ASSERT_NO_THROW(model->runPrompt("hello"));
+  EXPECT_TRUE(model->getOutputText().empty());
+  EXPECT_EQ(model->tokenAt(1), 31u);
+  EXPECT_EQ(processor.acceptedCount(), 1u);
+  EXPECT_EQ(model->getPerformanceMetrics().generation_tokens, 0u);
+}
+
+/**
  * @brief Test that Transformer exposes the configured vocabulary size
  */
 TEST_P(Qwen2CausalLMTinyModelTest, TransformerReturnsConfiguredVocabSize) {

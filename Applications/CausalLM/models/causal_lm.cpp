@@ -245,32 +245,45 @@ void CausalLM::registerOutputs(
 
   static const std::vector<char> puncts{',', '!', ':', ';', '?'};
   for (size_t b = 0; b < ids.size(); ++b) {
-    if (!eos_list[b]) {
+    if (eos_list[b])
+      continue;
+
+    ids_history[b * MAX_SEQ_LEN + pos] = ids[b];
+
+    const bool is_eos = std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(),
+                                  ids[b]) != EOS_TOKEN_ID.end();
+    if (!is_eos)
       pending_ids_.push_back(static_cast<int>(ids[b]));
-      ids_history[b * MAX_SEQ_LEN + pos] = ids[b];
-      std::string decoded_str = tokenizer->Decode(pending_ids_);
 
-      if (decoded_str.empty()) {
-        continue;
-      }
+    if (pending_ids_.empty())
+      continue;
 
-      if (std::find(puncts.begin(), puncts.end(), decoded_str.back()) !=
-          puncts.end()) {
-        // last symbol is a punctuation, hold on
-      } else if (utf8stream::shouldHold(decoded_str, pending_ids_.size())) {
-      } else {
-        if (log_output && streamer_ == nullptr) {
-          std::cout << decoded_str;
-          std::cout.flush();
-        }
-        output_list[b].append(decoded_str);
-        if (streamer_ != nullptr &&
-            streamer_put(streamer_, decoded_str.c_str()) != 0) {
-          requestStop();
-        }
+    const std::string decoded_str = tokenizer->Decode(pending_ids_);
+    const bool should_hold_utf8 =
+      decoded_str.empty() ||
+      utf8stream::shouldHold(decoded_str, pending_ids_.size());
+    if (should_hold_utf8) {
+      if (is_eos)
         pending_ids_.clear();
-      }
+      continue;
     }
+
+    const bool ends_in_punctuation =
+      std::find(puncts.begin(), puncts.end(), decoded_str.back()) !=
+      puncts.end();
+    if (!is_eos && ends_in_punctuation)
+      continue;
+
+    if (log_output && streamer_ == nullptr) {
+      std::cout << decoded_str;
+      std::cout.flush();
+    }
+    output_list[b].append(decoded_str);
+    if (streamer_ != nullptr &&
+        streamer_put(streamer_, decoded_str.c_str()) != 0) {
+      requestStop();
+    }
+    pending_ids_.clear();
   }
 }
 
@@ -576,6 +589,15 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
     if (init_len < INIT_SEQ_LEN)
       registerOutputs(tokenizer, id_list, init_len, eos_list, log_output);
+
+    // Mark EOS after output registration so the sampled token remains in
+    // history while registerOutputs() suppresses it from decoded output.
+    for (unsigned int j = 0; j < BATCH_SIZE; ++j) {
+      if (std::find(EOS_TOKEN_ID.begin(), EOS_TOKEN_ID.end(), id_list[j]) !=
+          EOS_TOKEN_ID.end()) {
+        eos_list[j] = true;
+      }
+    }
   }
   // output should be deallocated after use
   for (auto &out : output) {
@@ -599,8 +621,11 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
 
   auto start_generation = std::chrono::high_resolution_clock::now();
 
+  bool all_batches_finished = std::all_of(eos_list.begin(), eos_list.end(),
+                                          [](bool is_eos) { return is_eos; });
   for (unsigned int token_generation_idx = input_len + 1;
        token_generation_idx < input_len + 1 + NUM_TO_GENERATE &&
+       !all_batches_finished &&
        !stop_requested_.load(std::memory_order_acquire);
        ++token_generation_idx) {
 
@@ -620,6 +645,9 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     }
     registerOutputs(tokenizer, ids_list, token_generation_idx, eos_list,
                     log_output);
+
+    // This iteration already consumed the previous input token and wrote its
+    // K/V, even when the newly sampled output token is EOS.
     ++generation_cnt;
 
     // output should be deallocated after use
@@ -635,17 +663,8 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
       }
     }
 
-    bool is_finish = true;
-    for (unsigned int j = 0; j < BATCH_SIZE; ++j) {
-      if (!eos_list[j]) {
-        is_finish = false;
-        break;
-      }
-    }
-
-    if (is_finish) {
-      break;
-    }
+    all_batches_finished = std::all_of(eos_list.begin(), eos_list.end(),
+                                       [](bool is_eos) { return is_eos; });
 
     if (stop_requested_.load(std::memory_order_acquire)) {
       break;
