@@ -3,7 +3,7 @@ package com.example.quickdotai
 import kotlin.math.abs
 import kotlin.math.ceil
 
-class PillowBilinearResizer {
+internal class PillowBilinearResizer {
     companion object {
 
         // Bilinear kernel
