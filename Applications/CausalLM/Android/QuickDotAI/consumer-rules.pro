@@ -12,20 +12,23 @@
 -keep class com.example.quickdotai.NativeCausalLm$* { *; }
 -keep class com.example.quickdotai.NativeCausalLm { *; }
 
-# Keep the public QuickDotAI surface so consumers can reference it by
-# name after R8 shrinks their app.
--keep class com.example.quickdotai.QuickDotAI { *; }
+# Keep the public QuickDotAI surface so consumers that expose these DTOs from
+# their own serialized or reflected boundary retain stable names.
 -keep interface com.example.quickdotai.QuickDotAI { *; }
--keep class com.example.quickdotai.LiteRTLm { *; }
--keep class com.example.quickdotai.NativeQuickDotAI { *; }
--keep class com.example.quickdotai.StreamSink { *; }
 -keep interface com.example.quickdotai.StreamSink { *; }
 -keep class com.example.quickdotai.BackendResult** { *; }
 -keep class com.example.quickdotai.LoadModelRequest { *; }
+-keep class com.example.quickdotai.OpenAIRequest { *; }
+-keep class com.example.quickdotai.OpenAIImageTensor { *; }
+-keep class com.example.quickdotai.OpenAIImageTensorSidecar { *; }
+-keep class com.example.quickdotai.ImageTensorLayout { *; }
+-keep class com.example.quickdotai.LlavaNextImagePreprocessor { *; }
 -keep class com.example.quickdotai.PerformanceMetrics { *; }
--keep class com.example.quickdotai.PromptPart { *; }
--keep class com.example.quickdotai.PromptPart$* { *; }
--keepclassmembers class com.example.quickdotai.ModelId { *; }
+-keep class com.example.quickdotai.ModelDescriptor { *; }
+-keep class com.example.quickdotai.ModelIds { *; }
+-keep class com.example.quickdotai.ModelCatalog { *; }
+-keepclassmembers class com.example.quickdotai.RuntimeKind { *; }
+-keepclassmembers class com.example.quickdotai.Capability { *; }
 -keepclassmembers class com.example.quickdotai.BackendType { *; }
 -keepclassmembers class com.example.quickdotai.QuantizationType { *; }
 -keepclassmembers class com.example.quickdotai.QuickAiError { *; }

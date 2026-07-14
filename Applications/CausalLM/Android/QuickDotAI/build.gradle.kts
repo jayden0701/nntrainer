@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Samsung Electronics Co., Ltd. All Rights Reserved.
 //
-// QuickDotAI — reusable AAR that bundles the QuickDotAI interface and
+// QuickDotAI - reusable AAR that bundles the QuickDotAI interface and
 // both concrete implementations (LiteRTLm + NativeQuickDotAI) plus the
 // JNI shim (libquickai_jni.so) and the CausalLM prebuilt shared
 // libraries. Third-party apps can depend on this AAR to run on-device
@@ -26,7 +26,6 @@ val prebuiltNativeLibsDir =
 val copyPrebuiltNativeLibs = tasks.register<Sync>("copyPrebuiltNativeLibs") {
     from(project.file("prebuilt_libs"))
     include("*.so")
-    include("htp_backend_ext_config.json")
     into(prebuiltNativeLibsDir)
 }
 
@@ -43,7 +42,7 @@ android {
         minSdk = 33
 
         ndk {
-            // Only arm64-v8a is supported by the prebuilt libcausallm_api.so.
+            // Only arm64-v8a is supported by the packaged native libraries.
             abiFilters += listOf("arm64-v8a")
         }
 
@@ -107,7 +106,7 @@ android {
 // The merge*JniLibFolders task reads android.sourceSets.main.jniLibs and
 // stages the native libraries for packaging into the AAR, so make it
 // depend on the copy task. ExternalNativeBuild also benefits because the
-// CMake link step reads libcausallm_api.so directly from prebuilt_libs.
+// CMake link step reads libquick_dot_ai_api.so directly from prebuilt_libs.
 tasks.matching {
     it.name.startsWith("merge") && it.name.endsWith("JniLibFolders")
 }.configureEach {
@@ -119,13 +118,14 @@ tasks.matching { it.name.startsWith("externalNativeBuild") }.configureEach {
 
 dependencies {
     // kotlinx.serialization is exposed as an `api` dependency because the
-    // public types (ModelId, BackendType, LoadModelRequest, …) carry
+    // public types (ModelDescriptor, BackendType, LoadModelRequest, etc.) carry
     // @Serializable annotations so consumers that want to JSON-ify them
     // can do so without pulling the runtime in themselves.
     api(libs.kotlinx.serialization.json)
 
-    // LiteRT-LM is the engine used by LiteRTLm.kt for Gemma-family models.
-    // Exposed as `api` so consumers don't have to redeclare it.
+    // LiteRT-LM is an implementation detail of LiteRTLm.kt. No LiteRT type is
+    // exposed by the QuickDotAI public API, so keep it off consumer compile
+    // classpaths while retaining it as a transitive runtime dependency.
     //
     // Pinned to an explicit version via the version catalog instead of
     // `latest.release`: dynamic versions are non-deterministic (they
@@ -135,8 +135,10 @@ dependencies {
     // compiler was pinned to a version that could not read 0.10.0's
     // metadata stamp. See gradle/libs.versions.toml for the rationale
     // behind the exact pin.
-    api(libs.litertlm.android)
-    
+    implementation(libs.litertlm.android)
+
     // AndroidX Core for createBitmap and other utility functions
     implementation("androidx.core:core-ktx:1.12.0")
+
+    testImplementation(libs.junit)
 }
