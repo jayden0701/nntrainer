@@ -126,19 +126,21 @@ object ModelCatalog {
     }
 
     fun byId(id: String): ModelDescriptor? = all().firstOrNull { it.id == id }
-    fun families(): List<String> = all().map { it.family }.distinct()
+    fun families(): List<String> = selectable().map { it.family }.distinct()
     fun runtimesFor(family: String): Set<RuntimeKind> =
-        all().filter { it.family == family }.map { it.runtime }.toSet()
+        selectable().filter { it.family == family }.map { it.runtime }.toSet()
     fun backendsFor(family: String, rt: RuntimeKind): Set<BackendType> =
-        all().filter { it.family == family && it.runtime == rt }
+        selectable().filter { it.family == family && it.runtime == rt }
             .flatMap { it.backends }.toSet()
     fun resolve(family: String, rt: RuntimeKind, backend: BackendType): ModelDescriptor? =
-        all().firstOrNull { it.family == family && it.runtime == rt && backend in it.backends }
+        selectable().firstOrNull {
+            it.family == family && it.runtime == rt && backend in it.backends
+        }
 
     /** 사용자 선택(생성/실행) 가능 capability. 하나라도 있으면 피커에 노출. */
     private val SELECTABLE_CAPS = setOf(
-        Capability.STREAMING, Capability.OPENAI_API,
-        Capability.MULTIMODAL, Capability.TOOL_USE
+        Capability.STREAMING,
+        Capability.OPENAI_API
     )
 
     /** 생성/실행 가능한 모델인지(EMBEDDING 전용 모델은 false). */
@@ -149,5 +151,5 @@ object ModelCatalog {
     fun selectable(): List<ModelDescriptor> = all().filter { isSelectable(it) }
 
     /** selectable()에서 파생한 family 목록(families()와 동일 distinct 규칙). */
-    fun selectableFamilies(): List<String> = selectable().map { it.family }.distinct()
+    fun selectableFamilies(): List<String> = families()
 }

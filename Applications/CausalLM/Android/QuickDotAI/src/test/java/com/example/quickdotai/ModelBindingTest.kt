@@ -45,17 +45,90 @@ class ModelBindingTest {
     }
 
     @Test
-    fun standaloneVisionEncoderIsNotSelectableForGeneration() {
+    fun standaloneVisionEncoderModifiersAreNotSelectableForGeneration() {
         val descriptor = ModelDescriptor(
             id = ModelIds.VJEPA_QNN,
             family = "vjepa",
             displayName = "V-JEPA 2 (QNN)",
             runtime = RuntimeKind.NATIVE,
             backends = setOf(BackendType.NPU),
-            capabilities = setOf(Capability.VISION_ENCODER, Capability.MULTI_IMAGE)
+            capabilities = setOf(
+                Capability.VISION_ENCODER,
+                Capability.MULTIMODAL,
+                Capability.TOOL_USE,
+                Capability.MULTI_IMAGE
+            )
         )
 
         assertFalse(ModelCatalog.isSelectable(descriptor))
+    }
+
+    @Test
+    fun multimodalEncoderWithGenerationCapabilitiesIsSelectable() {
+        val descriptor = ModelDescriptor(
+            id = ModelIds.VJEPA_LFM2,
+            family = "vjepa",
+            displayName = "V-JEPA 2 + LFM2",
+            runtime = RuntimeKind.NATIVE,
+            backends = setOf(BackendType.CPU),
+            capabilities = setOf(
+                Capability.VISION_ENCODER,
+                Capability.MULTIMODAL,
+                Capability.OPENAI_API,
+                Capability.MULTI_IMAGE
+            )
+        )
+
+        assertTrue(ModelCatalog.isSelectable(descriptor))
+    }
+
+    @Test
+    fun nativeImageSidecarsRequireMultimodalCapability() {
+        val descriptor = NATIVE_DESCRIPTOR.copy(
+            capabilities = setOf(Capability.OPENAI_API, Capability.MULTI_IMAGE)
+        )
+
+        val result = validateNativeOpenAIImageCapabilities(descriptor, imageCount = 1)
+
+        assertTrue(result is BackendResult.Err)
+        assertEquals(QuickAiError.UNSUPPORTED, (result as BackendResult.Err).error)
+    }
+
+    @Test
+    fun multipleNativeImageSidecarsRequireMultiImageCapability() {
+        val descriptor = NATIVE_DESCRIPTOR.copy(
+            capabilities = setOf(Capability.OPENAI_API, Capability.MULTIMODAL)
+        )
+
+        val result = validateNativeOpenAIImageCapabilities(descriptor, imageCount = 2)
+
+        assertTrue(result is BackendResult.Err)
+        assertEquals(QuickAiError.UNSUPPORTED, (result as BackendResult.Err).error)
+    }
+
+    @Test
+    fun multiImageNativeModelAcceptsMultipleImageSidecars() {
+        val descriptor = NATIVE_DESCRIPTOR.copy(
+            capabilities = setOf(
+                Capability.OPENAI_API,
+                Capability.MULTIMODAL,
+                Capability.MULTI_IMAGE
+            )
+        )
+
+        val result = validateNativeOpenAIImageCapabilities(descriptor, imageCount = 2)
+
+        assertTrue(result is BackendResult.Ok)
+    }
+
+    @Test
+    fun textOnlyNativeRequestDoesNotRequireImageCapabilities() {
+        val result = validateNativeOpenAIImageCapabilities(
+            NATIVE_DESCRIPTOR.copy(capabilities = setOf(Capability.OPENAI_API)),
+            imageCount = 0
+        )
+
+        assertTrue(result is BackendResult.Ok)
     }
 
     private companion object {
@@ -70,6 +143,15 @@ class ModelBindingTest {
                 Capability.OPENAI_API,
                 Capability.MULTIMODAL
             )
+        )
+
+        val NATIVE_DESCRIPTOR = ModelDescriptor(
+            id = "native-test-model",
+            family = "native-test",
+            displayName = "Native Test Model",
+            runtime = RuntimeKind.NATIVE,
+            backends = setOf(BackendType.NPU),
+            capabilities = setOf(Capability.OPENAI_API)
         )
     }
 }

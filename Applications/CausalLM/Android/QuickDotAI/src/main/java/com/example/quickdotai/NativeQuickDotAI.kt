@@ -11,6 +11,27 @@ import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
+/** Validate descriptor capabilities for native OpenAI image sidecars. */
+internal fun validateNativeOpenAIImageCapabilities(
+    descriptor: ModelDescriptor,
+    imageCount: Int
+): BackendResult<Unit> {
+    if (imageCount == 0) return BackendResult.Ok(Unit)
+    if (Capability.MULTIMODAL !in descriptor.capabilities) {
+        return BackendResult.Err(
+            QuickAiError.UNSUPPORTED,
+            "Model '${descriptor.id}' does not support image sidecars"
+        )
+    }
+    if (imageCount > 1 && Capability.MULTI_IMAGE !in descriptor.capabilities) {
+        return BackendResult.Err(
+            QuickAiError.UNSUPPORTED,
+            "Model '${descriptor.id}' does not support multiple image sidecars"
+        )
+    }
+    return BackendResult.Ok(Unit)
+}
+
 /** One native CausalLmHandle exposed through the two QuickDotAI run modes. */
 internal class NativeQuickDotAI(
     private val descriptor: ModelDescriptor
@@ -154,19 +175,12 @@ internal class NativeQuickDotAI(
             }
 
             val tensors = request.imageTensors?.tensors.orEmpty()
-            if (tensors.isNotEmpty() && Capability.MULTIMODAL !in descriptor.capabilities) {
-                return failRun(
-                    sink,
-                    QuickAiError.UNSUPPORTED,
-                    "Model '${descriptor.id}' does not support image sidecars"
-                )
-            }
-            if (tensors.size > 1) {
-                return failRun(
-                    sink,
-                    QuickAiError.UNSUPPORTED,
-                    "The native OpenAI runner currently supports one image"
-                )
+            when (val validation = validateNativeOpenAIImageCapabilities(descriptor, tensors.size)) {
+                is BackendResult.Ok -> Unit
+                is BackendResult.Err -> {
+                    emitError(sink, validation.error, validation.message)
+                    return validation
+                }
             }
             completeCancelledBeforeNative(runEpoch, sink)?.let { return it }
             return runNativeGeneration("runOpenAI", sink, runEpoch) { callback ->
