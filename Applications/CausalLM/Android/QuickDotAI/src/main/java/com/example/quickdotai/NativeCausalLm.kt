@@ -3,7 +3,7 @@
  * Copyright (C) 2026 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
  * @file    NativeCausalLm.kt
- * @brief   JNI bindings for libcausallm_api.so (handle-based API only).
+ * @brief   JNI bindings for libquick_dot_ai_api.so (handle-based API only).
  *
  * All methods here are 1:1 with the handle-based entry points added to
  * quick_dot_ai_api.h. Higher-level lifecycle (serialization, registry,
@@ -13,13 +13,13 @@
 package com.example.quickdotai
 
 /**
- * @brief Low-level JNI bridge to libcausallm_api.so.
+ * @brief Low-level JNI bridge to libquick_dot_ai_api.so.
  *
  * Loaded libraries (all bundled into the QuickDotAI AAR under
  * jniLibs/arm64-v8a/):
  *   - libquickai_jni.so     (JNI shim produced by src/main/cpp)
- *   - libcausallm_api.so    (the C API lib built from Applications/CausalLM)
- *   - libcausallm_core.so   (transitive)
+ *   - libquick_dot_ai_api.so (the C API lib built from Applications/CausalLM)
+ *   - libcausallm.so         (transitive)
  *   - libnntrainer.so       (transitive)
  *   - libccapi-nntrainer.so (transitive)
  *
@@ -52,9 +52,15 @@ object NativeCausalLm {
     fun ensureLoaded(): Boolean {
         if (loaded) return true
         return try {
-            // qnn_context must be loaded before quickai_jni
-            System.loadLibrary("qnn_context")
-            // quickai_jni dlopens libcausallm_api.so as part of its JNI_OnLoad.
+            // CPU-only AARs intentionally omit qnn_context. When present it
+            // must be loaded before quickai_jni, but its absence is normal.
+            try {
+                System.loadLibrary("qnn_context")
+                android.util.Log.i(TAG, "Loaded optional QNN backend (qnn_context)")
+            } catch (t: UnsatisfiedLinkError) {
+                android.util.Log.d(TAG, "No optional QNN backend present (CPU build)")
+            }
+            // quickai_jni links libquick_dot_ai_api.so and libcausallm.so.
             System.loadLibrary("quickai_jni")
 
             // Optional model-extension plugin. A downstream project may ship a
