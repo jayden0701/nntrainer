@@ -38,6 +38,15 @@ namespace nntrainer {
 
 ThreadManagerConfig ThreadManager::config_ = {};
 
+ThreadManager &ThreadManager::Global() {
+  // Single definition in libnntrainer.so -> one ThreadManager (one thread
+  // pool) shared by every consumer .so (see declaration note in
+  // thread_manager.h).
+  static ThreadManager instance;
+  instance.initializeOnce();
+  return instance;
+}
+
 ThreadManager::ThreadManager() {}
 
 ThreadManager::~ThreadManager() {
