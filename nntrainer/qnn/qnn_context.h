@@ -61,8 +61,6 @@
 #endif
 #endif
 
-#include "singleton.h"
-
 using namespace qnn;
 using namespace qnn::tools;
 
@@ -75,7 +73,7 @@ extern std::mutex qnn_factory_mutex;
  * @brief QNN support for app context
  */
 
-class QNNContext : public Context, public Singleton<QNNContext> {
+class QNNContext : public Context {
 
 public:
   /**
@@ -83,7 +81,19 @@ public:
    */
   QNNContext() : Context(std::make_shared<QNNBackendVar>()) {}
 
-  ~QNNContext() {
+  QNNContext(const QNNContext &) = delete;
+  QNNContext &operator=(const QNNContext &) = delete;
+  QNNContext(QNNContext &&) = delete;
+  QNNContext &operator=(QNNContext &&) = delete;
+
+  /**
+   * @brief Initialize this plugin-owned context at most once
+   */
+  void initializeOnce() {
+    std::call_once(initialized_, [this]() { initialize(); });
+  }
+
+  ~QNNContext() override {
     auto qnn_data = getQnnData();
     // Free all remaining QNN contexts in ct_map before releasing backend
     if (qnn_data) {
@@ -231,9 +241,8 @@ public:
   std::string getName() override { return "qnn"; }
 
   /**
-   * @brief   Set the default backend extension config path before singleton
-   * initialization. Must be called before QNNContext::Global() or any
-   * operation that triggers context creation. Relative paths are resolved from
+   * @brief Set the default backend extension config path before context
+   * creation or initialization. Relative paths are resolved from
    * QUICK_DOT_AI_BASE_DIR when set, otherwise from the current working
    * directory.
    */
@@ -259,8 +268,11 @@ public:
     return (int)ret;
   }
 
+protected:
+  std::once_flag initialized_;
+
 private:
-  void initialize() noexcept override;
+  virtual void initialize() noexcept;
 
   // flag to check predefined qnn context is resistered
   bool qnn_initialized = false;
