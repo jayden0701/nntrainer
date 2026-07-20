@@ -39,6 +39,9 @@
 
 namespace nntrainer {
 
+class AppContext;
+template <> NNTRAINER_SINGLETON_API AppContext &Singleton<AppContext>::Global();
+
 extern std::mutex factory_mutex;
 namespace {} // namespace
 

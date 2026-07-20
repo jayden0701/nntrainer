@@ -41,6 +41,9 @@
 
 namespace nntrainer {
 
+class Engine;
+template <> NNTRAINER_SINGLETON_API Engine &Singleton<Engine>::Global();
+
 extern std::mutex engine_mutex;
 namespace {} // namespace
 
@@ -97,20 +100,11 @@ protected:
 public:
   /**
    * @brief   Get the single process-wide Engine instance.
-   * @note    Overrides Singleton<Engine>::Global() with an out-of-line
-   *          definition in engine.cpp so there is exactly ONE Engine instance
-   *          across all shared libraries. The inherited template Global() is an
-   *          inline method, which under -fvisibility=hidden / per-namespace
-   *          loading gets instantiated separately in each consumer .so
-   *          (libcausallm, libquick_dot_ai, libqnn_context, ...). That produced
-   *          multiple Engine instances: a context registered into one (e.g.
-   *          "qnn" via Quick_Dot_AI_QNN in libquick_dot_ai) was invisible to
-   *          another (NetworkGraph in libnntrainer), surfacing as
-   *          std::invalid_argument "[Engine] qnn Context is not registered".
-   *          A single out-of-line definition in libnntrainer.so makes every
-   *          Engine::Global() caller share the same instance.
+   * @note Delegates to the owner-defined Singleton<Engine>::Global()
+   * specialization in libnntrainer. Both access forms return the same instance
+   * across consumer shared libraries.
    */
-  static Engine &Global();
+  static NNTRAINER_SINGLETON_API Engine &Global();
 
   /**
    * @brief   Default constructor

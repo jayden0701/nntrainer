@@ -24,6 +24,15 @@
 #include <profiler.h>
 
 namespace nntrainer {
+
+template <>
+NNTRAINER_SINGLETON_API profile::Profiler &
+Singleton<profile::Profiler>::Global() {
+  static profile::Profiler instance;
+  instance.initializeOnce();
+  return instance;
+}
+
 namespace profile {
 
 void GenericProfileListener::onNotifyTimeEvent(

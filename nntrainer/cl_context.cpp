@@ -34,6 +34,13 @@
 #endif
 
 namespace nntrainer {
+
+template <> NNTRAINER_SINGLETON_API ClContext &Singleton<ClContext>::Global() {
+  static ClContext instance;
+  instance.initializeOnce();
+  return instance;
+}
+
 #if KERNEL_CACHE
 static constexpr bool KERNEL_CACHE_ENABLED = true;
 #else

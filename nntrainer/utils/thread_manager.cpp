@@ -38,13 +38,18 @@ namespace nntrainer {
 
 ThreadManagerConfig ThreadManager::config_ = {};
 
-ThreadManager &ThreadManager::Global() {
+template <>
+NNTRAINER_SINGLETON_API ThreadManager &Singleton<ThreadManager>::Global() {
   // Single definition in libnntrainer.so -> one ThreadManager (one thread
   // pool) shared by every consumer .so (see declaration note in
   // thread_manager.h).
   static ThreadManager instance;
   instance.initializeOnce();
   return instance;
+}
+
+NNTRAINER_SINGLETON_API ThreadManager &ThreadManager::Global() {
+  return Singleton<ThreadManager>::Global();
 }
 
 ThreadManager::ThreadManager() {}

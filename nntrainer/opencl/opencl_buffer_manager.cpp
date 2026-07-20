@@ -18,6 +18,13 @@
 
 namespace nntrainer {
 
+template <>
+NNTRAINER_SINGLETON_API ClBufferManager &Singleton<ClBufferManager>::Global() {
+  static ClBufferManager instance;
+  instance.initializeOnce();
+  return instance;
+}
+
 void ClBufferManager::initBuffers() {
   data_input = context_inst_.createSVMRegion(buffer_size_bytes);
   for (unsigned int i = 0; i < max_qs; ++i) {

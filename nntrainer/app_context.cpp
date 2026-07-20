@@ -125,6 +125,13 @@ constexpr const char *getConfPath() { return DEFAULT_CONF_PATH; }
 
 namespace nntrainer {
 
+template <>
+NNTRAINER_SINGLETON_API AppContext &Singleton<AppContext>::Global() {
+  static AppContext instance;
+  instance.initializeOnce();
+  return instance;
+}
+
 namespace {
 
 /**

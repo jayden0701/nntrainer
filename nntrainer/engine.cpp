@@ -37,13 +37,17 @@ std::once_flag global_engine_init_flag;
 nntrainer::Context
   *Engine::nntrainerRegisteredContext[Engine::RegisterContextMax];
 
-Engine &Engine::Global() {
+template <> NNTRAINER_SINGLETON_API Engine &Singleton<Engine>::Global() {
   // Single definition in libnntrainer.so → one Engine instance shared by every
   // consumer .so (see declaration in engine.h). initializeOnce() registers the
   // default contexts (cpu/gpu, and qnn when ENABLE_NPU) exactly once.
   static Engine instance;
   instance.initializeOnce();
   return instance;
+}
+
+NNTRAINER_SINGLETON_API Engine &Engine::Global() {
+  return Singleton<Engine>::Global();
 }
 
 void Engine::add_default_object() {

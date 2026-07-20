@@ -19,6 +19,16 @@
 #include "noncopyable.h"
 #include "nonmovable.h"
 
+#ifndef NNTRAINER_SINGLETON_API
+#if defined(_WIN32)
+#define NNTRAINER_SINGLETON_API
+#elif defined(__GNUC__) || defined(__clang__)
+#define NNTRAINER_SINGLETON_API __attribute__((visibility("default")))
+#else
+#define NNTRAINER_SINGLETON_API
+#endif
+#endif
+
 namespace nntrainer {
 
 /**
@@ -31,7 +41,12 @@ public:
   /**
    * @brief   Get reference to global instance object
    * once
+   *
    * @return Instance to singleton class reference
+   * @note The inline default preserves behavior for downstream singleton
+   * types. An nntrainer-owned type shared across library boundaries must
+   * explicitly specialize this function in its public header and define the
+   * specialization in the library that owns the instance.
    */
   static T &Global() {
     static T instance;

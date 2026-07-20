@@ -85,6 +85,13 @@ using timepoint = std::chrono::time_point<std::chrono::steady_clock>;
 namespace nntrainer {
 
 namespace profile {
+class Profiler;
+}
+template <>
+NNTRAINER_SINGLETON_API profile::Profiler &
+Singleton<profile::Profiler>::Global();
+
+namespace profile {
 
 enum PROFILE_EVENT {
   EVENT_TIME_START = 0,
@@ -144,8 +151,6 @@ public:
   std::string event_str;
   std::chrono::microseconds duration;
 };
-
-class Profiler;
 
 /**
  * @brief Generic profile listener class to attach to a profiler,

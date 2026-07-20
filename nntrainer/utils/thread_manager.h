@@ -72,6 +72,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace nntrainer {
 
+class ThreadManager;
+template <>
+NNTRAINER_SINGLETON_API ThreadManager &Singleton<ThreadManager>::Global();
+
 #if defined(__GNUC__)
 #define CACHELINE_ALIGNED __attribute__((__aligned__(64)))
 #elif defined(_MSC_VER)
@@ -145,18 +149,11 @@ public:
 
   /**
    * @brief   Get the single process-wide ThreadManager instance.
-   * @note    Hides Singleton<ThreadManager>::Global() with an out-of-line
-   *          definition in thread_manager.cpp (compiled into libnntrainer.so)
-   *          so there is exactly ONE ThreadManager across all shared
-   *          libraries. The inherited template Global() is an inline method,
-   *          which under Android's per-namespace loading gets instantiated
-   *          separately in each consumer .so (libnntrainer, libcausallm, any
-   *          model plugin, ...), producing multiple independent thread pools
-   *          that each pin workers to the same physical cores. A single
-   *          out-of-line definition makes every ThreadManager::Global() caller
-   *          share one instance. Mirrors Engine::Global() (see engine.h).
+   * @note Delegates to the owner-defined Singleton<ThreadManager>::Global()
+   * specialization in libnntrainer. Both access forms return the same thread
+   * pool across consumer shared libraries.
    */
-  static ThreadManager &Global();
+  static NNTRAINER_SINGLETON_API ThreadManager &Global();
 
   /**
    * @brief parallize loop for given function
