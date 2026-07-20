@@ -12,7 +12,7 @@
  * @bug    No known bugs except for NYI items
  */
 
-/*
+/**
 Copyright 2019 Google LLC
 Copyright (c) 2017 Facebook Inc.
 Copyright (c) 2015-2017 Georgia Institute of Technology
