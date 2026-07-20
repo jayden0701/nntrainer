@@ -373,19 +373,29 @@ fi
 build_legacy_ndk_targets() {
     echo "[4] Building the Android.mk compatibility targets."
     local legacy_jni_dir="$CAUSALLM_ROOT/jni"
+    local legacy_modules=(
+        causallm_core
+        nntrainer_causallm
+        nntr_quantize
+        nntr_safetensors_info
+        quick_dot_ai_api
+        quick_dot_ai_test
+    )
     if [[ "$CLEAN" == true ]]; then
         rm -rf "$legacy_jni_dir/libs" "$legacy_jni_dir/obj"
     fi
     (
         cd "$legacy_jni_dir"
+        # Selecting modules through APP_MODULES keeps ndk-build's default
+        # all -> installed_modules path, which copies the linked outputs from
+        # obj/local into NDK_LIBS_OUT. Explicit make goals stop at obj/local.
         "$NDK_BUILD" \
             NDK_PROJECT_PATH=. \
             NDK_LIBS_OUT=./libs \
             NDK_OUT=./obj \
             APP_BUILD_SCRIPT=./Android.mk \
             NDK_APPLICATION_MK=./Application.mk \
-            causallm_core nntrainer_causallm nntr_quantize \
-            nntr_safetensors_info causallm_api test_api \
+            APP_MODULES="${legacy_modules[*]}" \
             -j "$BUILD_JOBS"
     )
     local file
