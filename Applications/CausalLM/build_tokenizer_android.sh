@@ -13,52 +13,6 @@ if [ -z "$ANDROID_NDK" ]; then
     echo "Error: ANDROID_NDK is not set. Please set it to your Android NDK path."
     exit 1
 fi
-if [ ! -d "$ANDROID_NDK/toolchains/llvm/prebuilt" ]; then
-    echo "Error: Invalid ANDROID_NDK path: $ANDROID_NDK"
-    exit 1
-fi
-ANDROID_NDK="$(cd "$ANDROID_NDK" && pwd -P)"
-export ANDROID_NDK
-
-NDK_SOURCE_PROPERTIES="$ANDROID_NDK/source.properties"
-if [ ! -f "$NDK_SOURCE_PROPERTIES" ]; then
-    echo "Error: Android NDK metadata is missing: $NDK_SOURCE_PROPERTIES"
-    exit 1
-fi
-NDK_REVISION="$(
-    awk '
-        /^[[:space:]]*Pkg\.Revision[[:space:]]*=/ {
-            revision = substr($0, index($0, "=") + 1)
-            gsub(/^[[:space:]]+|[[:space:]\r]+$/, "", revision)
-            print revision
-            exit
-        }
-    ' "$NDK_SOURCE_PROPERTIES"
-)"
-if [ -z "$NDK_REVISION" ]; then
-    echo "Error: Pkg.Revision is missing from $NDK_SOURCE_PROPERTIES"
-    exit 1
-fi
-
-case "$(uname -s)" in
-    Linux*)
-        NDK_HOST="linux-x86_64"
-        ;;
-    Darwin*)
-        NDK_HOST="darwin-x86_64"
-        ;;
-    CYGWIN*|MINGW*|MSYS*)
-        NDK_HOST="windows-x86_64"
-        ;;
-    *)
-        echo "Error: Unsupported NDK host: $(uname -s)"
-        exit 1
-        ;;
-esac
-NDK_FINGERPRINT_PATH="$ANDROID_NDK"
-if [ "$NDK_HOST" = "windows-x86_64" ] && command -v cygpath >/dev/null 2>&1; then
-    NDK_FINGERPRINT_PATH="$(cygpath -m "$ANDROID_NDK")"
-fi
 
 # Check if cmake is installed
 if ! command -v cmake &> /dev/null; then
@@ -110,20 +64,6 @@ esac
 # Set build directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/tokenizers-cpp-build"
-NDK_STAMP="$BUILD_DIR/.$TARGET_ABI-ndk-fingerprint"
-CURRENT_NDK_FINGERPRINT="$(
-    printf 'revision=%s\npath=%s\n' "$NDK_REVISION" "$NDK_FINGERPRINT_PATH"
-)"
-if [ ! -f "$NDK_STAMP" ] || [ "$(<"$NDK_STAMP")" != "$CURRENT_NDK_FINGERPRINT" ]; then
-    if [ -d "$BUILD_DIR/tokenizers-cpp/build-android-$TARGET_ABI" ]; then
-        echo "Android NDK changed; recreating the tokenizer build cache."
-    fi
-    rm -rf "$BUILD_DIR/tokenizers-cpp/build-android-$TARGET_ABI"
-    rm -f "$SCRIPT_DIR/lib/$TARGET_ABI/libtokenizers_android_c.a"
-    if [ "$TARGET_ABI" = "arm64-v8a" ]; then
-        rm -f "$SCRIPT_DIR/lib/libtokenizers_android_c.a"
-    fi
-fi
 
 # Clone tokenizers-cpp repository if not exists
 if [ ! -d "$BUILD_DIR/tokenizers-cpp" ]; then
@@ -146,6 +86,18 @@ cd "build-android-$TARGET_ABI"
 # Set up Android toolchain variables
 ANDROID_PLATFORM="android-29"
 ANDROID_STL="c++_static"
+
+# Detect platform for NDK paths
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    NDK_HOST="darwin-x86_64"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    NDK_HOST="linux-x86_64"
+elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
+    NDK_HOST="windows-x86_64"
+else
+    echo "Warning: Unknown platform $OSTYPE, assuming linux-x86_64"
+    NDK_HOST="linux-x86_64"
+fi
 
 # Set Rust environment variables for cross-compilation
 export CARGO_TARGET_DIR="$BUILD_DIR/tokenizers-cpp/build-android-$TARGET_ABI/rust"
@@ -285,8 +237,6 @@ if [ "$TARGET_ABI" = "arm64-v8a" ] && [ -f "$SCRIPT_DIR/lib/$TARGET_ABI/libtoken
 fi
 
 if [ -f "$SCRIPT_DIR/lib/$TARGET_ABI/libtokenizers_android_c.a" ]; then
-    printf 'revision=%s\npath=%s\n' \
-        "$NDK_REVISION" "$NDK_FINGERPRINT_PATH" > "$NDK_STAMP"
     echo "Build completed successfully!"
     echo "Library copied to: $SCRIPT_DIR/lib/$TARGET_ABI/libtokenizers_android_c.a"
     if [ "$TARGET_ABI" = "arm64-v8a" ]; then

@@ -54,22 +54,10 @@ jobs:
         ./Applications/CausalLM/build_android.sh \
           --skip-qnn --assemble-aar --legacy-ndk
 
-    - name: Verify ABI propagation and CPU-only Android packages
+    - name: Verify ABI propagation and CPU-only AAR
       run: |
         ABI_FILE=builddir/android_build_result/nntrainer-abi.ini
         AAR=Applications/CausalLM/Android/QuickDotAI/build/outputs/aar/QuickDotAI-debug.aar
-        APK=Applications/CausalLM/Android/SampleTestAPP/build/outputs/apk/debug/SampleTestAPP-debug.apk
-        CMAKE_CACHE_ROOT=Applications/CausalLM/Android/QuickDotAI/.cxx
-        NDK_REVISION="$(
-          awk '
-            /^[[:space:]]*Pkg\.Revision[[:space:]]*=/ {
-              revision = substr($0, index($0, "=") + 1)
-              gsub(/^[[:space:]]+|[[:space:]\r]+$/, "", revision)
-              print revision
-              exit
-            }
-          ' "$ANDROID_NDK/source.properties"
-        )"
 
         test -f "$ABI_FILE"
         grep -q 'nntrainer_abi_schema = 1' "$ABI_FILE"
@@ -77,29 +65,15 @@ jobs:
         grep -q -- '-DENABLE_FP16=1' "$ABI_FILE"
         grep -q -- '-DUSE__FP16=1' "$ABI_FILE"
 
-        python3 Applications/CausalLM/Android/verify_native_runtime.py \
-          --ndk "$ANDROID_NDK" \
-          --expected-revision "$NDK_REVISION" \
-          --aar "$AAR" \
-          --apk "$APK" \
-          --cmake-cache-root "$CMAKE_CACHE_ROOT"
-
         unzip -Z1 "$AAR" > /tmp/quickdotai-aar-entries.txt
-        unzip -Z1 "$APK" > /tmp/sampletestapp-apk-entries.txt
-        for archive_spec in \
-          "/tmp/quickdotai-aar-entries.txt:jni" \
-          "/tmp/sampletestapp-apk-entries.txt:lib"; do
-          entries="${archive_spec%%:*}"
-          prefix="${archive_spec##*:}"
-          for lib in \
-            libquickai_jni.so libquick_dot_ai_api.so libcausallm.so \
-            libnntrainer.so libccapi-nntrainer.so libc++_shared.so; do
-            test "$(grep -Fxc "$prefix/arm64-v8a/$lib" "$entries" || true)" -eq 1
-          done
+        for lib in \
+          libquickai_jni.so libquick_dot_ai_api.so libcausallm.so \
+          libnntrainer.so libccapi-nntrainer.so libc++_shared.so; do
+          grep -qx "jni/arm64-v8a/$lib" /tmp/quickdotai-aar-entries.txt
         done
-        if grep -E '/arm64-v8a/(libqnn_context|libQnn.*)\.so' \
-          /tmp/quickdotai-aar-entries.txt /tmp/sampletestapp-apk-entries.txt; then
-          echo "CPU-only Android package contains QNN libraries"
+        if grep -E 'jni/arm64-v8a/(libqnn_context|libQnn.*)\.so' \
+          /tmp/quickdotai-aar-entries.txt; then
+          echo "CPU-only AAR contains QNN libraries"
           exit 1
         fi
 

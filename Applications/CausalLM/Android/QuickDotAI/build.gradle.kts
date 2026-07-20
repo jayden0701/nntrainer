@@ -26,14 +26,6 @@ val nntrainerNdkPath =
                 "Applications/CausalLM/build_android.sh --assemble-aar, or pass " +
                 "the absolute path of the NDK used for the native prebuilts."
         )
-val nntrainerNdkRevision =
-    providers.gradleProperty("nntrainerNdkRevision").orNull
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
-        ?: throw GradleException(
-            "Missing -PnntrainerNdkRevision. Pass the Pkg.Revision value from " +
-                "the selected NDK's source.properties file."
-        )
 
 val requestedNdkDirectory = File(nntrainerNdkPath)
 if (!requestedNdkDirectory.isAbsolute) {
@@ -49,13 +41,13 @@ if (!ndkSourcePropertiesFile.isFile) {
 }
 val installedNdkProperties = Properties()
 ndkSourcePropertiesFile.inputStream().use { installedNdkProperties.load(it) }
-val installedNdkRevision = installedNdkProperties.getProperty("Pkg.Revision")?.trim()
-if (installedNdkRevision != nntrainerNdkRevision) {
-    throw GradleException(
-        "NDK revision mismatch: requested $nntrainerNdkRevision, but " +
-            "$nntrainerNdkDirectory reports $installedNdkRevision"
-    )
-}
+val nntrainerNdkRevision =
+    installedNdkProperties.getProperty("Pkg.Revision")
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException(
+            "Pkg.Revision is missing from $ndkSourcePropertiesFile"
+        )
 
 // Mirrors transitive prebuilt .so files from QuickDotAI/prebuilt_libs/ into
 // an ABI-nested directory (build/generated/jniLibs/arm64-v8a/) so Android
@@ -81,6 +73,7 @@ val copyPrebuiltNativeLibs = tasks.register<Sync>("copyPrebuiltNativeLibs") {
 android {
     namespace = "com.example.quickdotai"
     compileSdk = 36
+    ndkVersion = nntrainerNdkRevision
     ndkPath = nntrainerNdkDirectory.path
 
     packaging {
@@ -103,9 +96,6 @@ android {
                 // default is c++_static, which would create a second runtime
                 // and would not package the required libc++_shared.so.
                 arguments += "-DANDROID_STL=c++_shared"
-                // Make an in-place NDK upgrade part of the CMake model inputs.
-                arguments +=
-                    "-DNNTRAINER_ANDROID_NDK_REVISION=$nntrainerNdkRevision"
             }
         }
 
