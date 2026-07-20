@@ -287,12 +287,24 @@ fi
 NNTRAINER_ANDROID_RESULT="$NNTRAINER_ROOT/builddir/android_build_result"
 NNTRAINER_ANDROID_LIBDIR="$NNTRAINER_ANDROID_RESULT/lib/arm64-v8a"
 NNTRAINER_ABI_FILE="$NNTRAINER_ANDROID_RESULT/nntrainer-abi.ini"
+NNTRAINER_PREBUILT_MK="$NNTRAINER_ANDROID_RESULT/Android.mk"
+
+engine_prebuilt_metadata_valid() {
+    [[ -f "$NNTRAINER_PREBUILT_MK" ]] || return 1
+    grep -Fq 'LOCAL_SRC_FILES := lib/$(TARGET_ARCH_ABI)/libccapi-nntrainer.so' \
+        "$NNTRAINER_PREBUILT_MK" || return 1
+    grep -Fq 'LOCAL_SRC_FILES := lib/$(TARGET_ARCH_ABI)/libnntrainer.so' \
+        "$NNTRAINER_PREBUILT_MK" || return 1
+    ! grep -Fq 'LOCAL_SRC_FILES := $(LOCAL_PATH)/lib/' \
+        "$NNTRAINER_PREBUILT_MK"
+}
 
 engine_cache_valid() {
     local required=(
         "$NNTRAINER_ANDROID_LIBDIR/libnntrainer.so"
         "$NNTRAINER_ANDROID_LIBDIR/libccapi-nntrainer.so"
         "$NNTRAINER_ABI_FILE"
+        "$NNTRAINER_PREBUILT_MK"
     )
     if [[ "$ENABLE_QNN" == true ]]; then
         required+=("$NNTRAINER_ANDROID_LIBDIR/libqnn_context.so")
@@ -301,6 +313,7 @@ engine_cache_valid() {
     for file in "${required[@]}"; do
         [[ -f "$file" ]] || return 1
     done
+    engine_prebuilt_metadata_valid
 }
 
 describe_missing_engine_cache() {
@@ -308,6 +321,7 @@ describe_missing_engine_cache() {
         "$NNTRAINER_ANDROID_LIBDIR/libnntrainer.so"
         "$NNTRAINER_ANDROID_LIBDIR/libccapi-nntrainer.so"
         "$NNTRAINER_ABI_FILE"
+        "$NNTRAINER_PREBUILT_MK"
     )
     if [[ "$ENABLE_QNN" == true ]]; then
         required+=("$NNTRAINER_ANDROID_LIBDIR/libqnn_context.so")
@@ -316,6 +330,9 @@ describe_missing_engine_cache() {
     for file in "${required[@]}"; do
         [[ -f "$file" ]] || echo "  missing: $file" >&2
     done
+    if [[ -f "$NNTRAINER_PREBUILT_MK" ]] && ! engine_prebuilt_metadata_valid; then
+        echo "  incompatible: $NNTRAINER_PREBUILT_MK has stale prebuilt paths" >&2
+    fi
 }
 
 if [[ "$SKIP_ENGINE" == true ]]; then
@@ -332,7 +349,7 @@ else
         if [[ ${#ENGINE_ARGS[@]} -ne 0 ]]; then
             echo "[3] Explicit engine options bypass --cache; rebuilding."
         else
-            echo "[3] Engine cache miss or pre-4053 cache; rebuilding."
+            echo "[3] Engine cache miss or incompatible metadata; rebuilding."
             describe_missing_engine_cache
         fi
     else
@@ -347,7 +364,7 @@ else
             "${ENGINE_ARGS[@]}"
     )
     if ! engine_cache_valid; then
-        echo "Error: engine build did not produce all required artifacts." >&2
+        echo "Error: engine build did not produce a compatible artifact set." >&2
         describe_missing_engine_cache
         exit 1
     fi
