@@ -17,10 +17,65 @@ if [ ! -d $TARGET ]; then
     fi
 fi
 
+ANDROID_NDK="${ANDROID_NDK:-${NDK_ROOT:-}}"
+if [[ -z "$ANDROID_NDK" ]]; then
+  ndk_build_path="$(command -v ndk-build 2>/dev/null || \
+    command -v ndk-build.cmd 2>/dev/null || true)"
+  if [[ -n "$ndk_build_path" ]]; then
+    ANDROID_NDK="$(dirname "$ndk_build_path")"
+  fi
+fi
+if [[ -z "$ANDROID_NDK" || ! -d "$ANDROID_NDK" ]]; then
+  echo "Error: cannot determine the Android NDK" >&2
+  exit 1
+fi
+ANDROID_NDK="$(cd "$ANDROID_NDK" && pwd -P)"
+if [[ ! -f "$ANDROID_NDK/ndk-build" && \
+      ! -f "$ANDROID_NDK/ndk-build.cmd" ]]; then
+  echo "Error: invalid Android NDK root: $ANDROID_NDK" >&2
+  exit 1
+fi
+NDK_ROOT="$ANDROID_NDK"
+export ANDROID_NDK NDK_ROOT
+export PATH="$ANDROID_NDK:$PATH"
+
 pushd $TARGET
 
 filtered_args=()
 arm_arch=""
+
+record_android_ndk_fingerprint() {
+  local ndk_root="$ANDROID_NDK"
+  local source_properties="$ndk_root/source.properties"
+  local ndk_revision=""
+  if [[ -f "$source_properties" ]]; then
+    ndk_revision="$(
+      awk '
+        /^[[:space:]]*Pkg\.Revision[[:space:]]*=/ {
+          revision = substr($0, index($0, "=") + 1)
+          gsub(/^[[:space:]]+|[[:space:]\r]+$/, "", revision)
+          print revision
+          exit
+        }
+      ' "$source_properties"
+    )"
+  fi
+  if [[ -z "$ndk_revision" ]]; then
+    echo "Error: Pkg.Revision is missing from $source_properties" >&2
+    return 1
+  fi
+
+  local fingerprint_path="$ndk_root"
+  case "$(uname -s)" in
+    CYGWIN*|MINGW*|MSYS*)
+      if command -v cygpath >/dev/null 2>&1; then
+        fingerprint_path="$(cygpath -m "$ndk_root")"
+      fi
+      ;;
+  esac
+  printf 'revision=%s\npath=%s\n' "$ndk_revision" "$fingerprint_path" \
+    > android_build_result/nntrainer-ndk-fingerprint
+}
 
 for arg in "$@"; do
     if [[ $arg == -D* ]]; then
@@ -87,6 +142,7 @@ fi
 
 pushd builddir
 ninja install
+record_android_ndk_fingerprint
 
 tar -czvf $TARGET/nntrainer_for_android.tar.gz --directory=android_build_result .
 

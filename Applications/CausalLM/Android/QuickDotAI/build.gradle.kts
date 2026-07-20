@@ -8,10 +8,53 @@
 // LLMs without linking QuickAIService or any of LauncherApp's REST
 // plumbing.
 
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
+}
+
+val nntrainerNdkPath =
+    providers.gradleProperty("nntrainerNdkPath").orNull
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException(
+            "Missing -PnntrainerNdkPath. Run " +
+                "Applications/CausalLM/build_android.sh --assemble-aar, or pass " +
+                "the absolute path of the NDK used for the native prebuilts."
+        )
+val nntrainerNdkRevision =
+    providers.gradleProperty("nntrainerNdkRevision").orNull
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: throw GradleException(
+            "Missing -PnntrainerNdkRevision. Pass the Pkg.Revision value from " +
+                "the selected NDK's source.properties file."
+        )
+
+val requestedNdkDirectory = File(nntrainerNdkPath)
+if (!requestedNdkDirectory.isAbsolute) {
+    throw GradleException("nntrainerNdkPath must be absolute: $nntrainerNdkPath")
+}
+val nntrainerNdkDirectory = requestedNdkDirectory.canonicalFile
+val ndkSourcePropertiesFile = nntrainerNdkDirectory.resolve("source.properties")
+if (!ndkSourcePropertiesFile.isFile) {
+    throw GradleException(
+        "Invalid nntrainerNdkPath; source.properties is missing: " +
+            ndkSourcePropertiesFile
+    )
+}
+val installedNdkProperties = Properties()
+ndkSourcePropertiesFile.inputStream().use { installedNdkProperties.load(it) }
+val installedNdkRevision = installedNdkProperties.getProperty("Pkg.Revision")?.trim()
+if (installedNdkRevision != nntrainerNdkRevision) {
+    throw GradleException(
+        "NDK revision mismatch: requested $nntrainerNdkRevision, but " +
+            "$nntrainerNdkDirectory reports $installedNdkRevision"
+    )
 }
 
 // Mirrors transitive prebuilt .so files from QuickDotAI/prebuilt_libs/ into
@@ -38,6 +81,7 @@ val copyPrebuiltNativeLibs = tasks.register<Sync>("copyPrebuiltNativeLibs") {
 android {
     namespace = "com.example.quickdotai"
     compileSdk = 36
+    ndkPath = nntrainerNdkDirectory.path
 
     packaging {
         jniLibs.useLegacyPackaging = true
@@ -59,6 +103,9 @@ android {
                 // default is c++_static, which would create a second runtime
                 // and would not package the required libc++_shared.so.
                 arguments += "-DANDROID_STL=c++_shared"
+                // Make an in-place NDK upgrade part of the CMake model inputs.
+                arguments +=
+                    "-DNNTRAINER_ANDROID_NDK_REVISION=$nntrainerNdkRevision"
             }
         }
 

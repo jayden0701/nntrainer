@@ -18,6 +18,11 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(quickai_jni LANGUAGES CXX)
 
+if(DEFINED NNTRAINER_ANDROID_NDK_REVISION)
+  message(STATUS
+    "QuickDotAI JNI NDK revision: ${NNTRAINER_ANDROID_NDK_REVISION}")
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

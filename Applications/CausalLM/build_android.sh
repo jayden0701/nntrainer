@@ -173,6 +173,26 @@ if [[ ! -d "$ANDROID_NDK/toolchains/llvm/prebuilt" ]]; then
     echo "Error: invalid Android NDK root: $ANDROID_NDK" >&2
     exit 1
 fi
+ANDROID_NDK="$(cd "$ANDROID_NDK" && pwd -P)"
+ANDROID_NDK_SOURCE_PROPERTIES="$ANDROID_NDK/source.properties"
+if [[ ! -f "$ANDROID_NDK_SOURCE_PROPERTIES" ]]; then
+    echo "Error: Android NDK metadata is missing: $ANDROID_NDK_SOURCE_PROPERTIES" >&2
+    exit 1
+fi
+ANDROID_NDK_REVISION="$(
+    awk '
+        /^[[:space:]]*Pkg\.Revision[[:space:]]*=/ {
+            revision = substr($0, index($0, "=") + 1)
+            gsub(/^[[:space:]]+|[[:space:]\r]+$/, "", revision)
+            print revision
+            exit
+        }
+    ' "$ANDROID_NDK_SOURCE_PROPERTIES"
+)"
+if [[ -z "$ANDROID_NDK_REVISION" ]]; then
+    echo "Error: Pkg.Revision is missing from $ANDROID_NDK_SOURCE_PROPERTIES" >&2
+    exit 1
+fi
 export ANDROID_NDK
 export PATH="$ANDROID_NDK:$PATH"
 
@@ -212,6 +232,28 @@ if [[ "$ANDROID_NDK_HOST" == "windows-x86_64" ]] && command -v cygpath >/dev/nul
     ANDROID_NDK_MESON="$(cygpath -m "$ANDROID_NDK")"
 fi
 
+current_ndk_fingerprint() {
+    printf 'revision=%s\npath=%s\n' \
+        "$ANDROID_NDK_REVISION" "$ANDROID_NDK_MESON"
+}
+
+ndk_fingerprint_matches() {
+    local stamp="$1"
+    [[ -f "$stamp" ]] || return 1
+    [[ "$(<"$stamp")" == "$(current_ndk_fingerprint)" ]]
+}
+
+write_ndk_fingerprint() {
+    local stamp="$1"
+    mkdir -p "$(dirname "$stamp")"
+    current_ndk_fingerprint > "$stamp"
+}
+
+GRADLE_NDK_ARGS=(
+    "-PnntrainerNdkPath=$ANDROID_NDK_MESON"
+    "-PnntrainerNdkRevision=$ANDROID_NDK_REVISION"
+)
+
 if [[ "$ENABLE_QNN" == true && -z "${QNN_SDK_ROOT:-}" ]]; then
     echo "Error: QNN_SDK_ROOT is required with --enable-qnn." >&2
     exit 1
@@ -220,6 +262,7 @@ fi
 echo "=== nntrainer CausalLM Android build ==="
 echo "NNTRAINER_ROOT: $NNTRAINER_ROOT"
 echo "ANDROID_NDK:    $ANDROID_NDK"
+echo "NDK revision:   $ANDROID_NDK_REVISION"
 echo "Mode:           $([[ "$ENABLE_QNN" == true ]] && echo QNN || echo CPU)"
 echo "Install:        $INSTALL"
 echo "App/AAR mode:   $APP_MODE_REQUESTED"
@@ -275,7 +318,8 @@ if [[ ! -f "$CAUSALLM_ROOT/json.hpp" ]]; then
 fi
 
 TOKENIZER="$CAUSALLM_ROOT/lib/libtokenizers_android_c.a"
-if [[ ! -f "$TOKENIZER" ]]; then
+TOKENIZER_NDK_STAMP="$CAUSALLM_ROOT/tokenizers-cpp-build/.arm64-v8a-ndk-fingerprint"
+if [[ ! -f "$TOKENIZER" ]] || ! ndk_fingerprint_matches "$TOKENIZER_NDK_STAMP"; then
     echo "[2] Building the Android tokenizer library..."
     "$CAUSALLM_ROOT/build_tokenizer_android.sh"
 fi
@@ -283,11 +327,16 @@ if [[ ! -f "$TOKENIZER" ]]; then
     echo "Error: tokenizer build did not produce $TOKENIZER" >&2
     exit 1
 fi
+if ! ndk_fingerprint_matches "$TOKENIZER_NDK_STAMP"; then
+    echo "Error: tokenizer NDK fingerprint was not recorded correctly." >&2
+    exit 1
+fi
 
 NNTRAINER_ANDROID_RESULT="$NNTRAINER_ROOT/builddir/android_build_result"
 NNTRAINER_ANDROID_LIBDIR="$NNTRAINER_ANDROID_RESULT/lib/arm64-v8a"
 NNTRAINER_ABI_FILE="$NNTRAINER_ANDROID_RESULT/nntrainer-abi.ini"
 NNTRAINER_PREBUILT_MK="$NNTRAINER_ANDROID_RESULT/Android.mk"
+NNTRAINER_NDK_STAMP="$NNTRAINER_ANDROID_RESULT/nntrainer-ndk-fingerprint"
 
 engine_prebuilt_metadata_valid() {
     [[ -f "$NNTRAINER_PREBUILT_MK" ]] || return 1
@@ -313,7 +362,8 @@ engine_cache_valid() {
     for file in "${required[@]}"; do
         [[ -f "$file" ]] || return 1
     done
-    engine_prebuilt_metadata_valid
+    engine_prebuilt_metadata_valid || return 1
+    ndk_fingerprint_matches "$NNTRAINER_NDK_STAMP"
 }
 
 describe_missing_engine_cache() {
@@ -332,6 +382,10 @@ describe_missing_engine_cache() {
     done
     if [[ -f "$NNTRAINER_PREBUILT_MK" ]] && ! engine_prebuilt_metadata_valid; then
         echo "  incompatible: $NNTRAINER_PREBUILT_MK has stale prebuilt paths" >&2
+    fi
+    if [[ -f "$NNTRAINER_PREBUILT_MK" ]] && \
+       ! ndk_fingerprint_matches "$NNTRAINER_NDK_STAMP"; then
+        echo "  incompatible: engine was built with a different or unknown NDK" >&2
     fi
 }
 
@@ -373,6 +427,7 @@ fi
 build_legacy_ndk_targets() {
     echo "[4] Building the Android.mk compatibility targets."
     local legacy_jni_dir="$CAUSALLM_ROOT/jni"
+    local legacy_ndk_stamp="$legacy_jni_dir/obj/nntrainer-ndk-fingerprint"
     local legacy_modules=(
         causallm_core
         nntrainer_causallm
@@ -381,7 +436,7 @@ build_legacy_ndk_targets() {
         quick_dot_ai_api
         quick_dot_ai_test
     )
-    if [[ "$CLEAN" == true ]]; then
+    if [[ "$CLEAN" == true ]] || ! ndk_fingerprint_matches "$legacy_ndk_stamp"; then
         rm -rf "$legacy_jni_dir/libs" "$legacy_jni_dir/obj"
     fi
     (
@@ -407,6 +462,7 @@ build_legacy_ndk_targets() {
             exit 1
         fi
     done
+    write_ndk_fingerprint "$legacy_ndk_stamp"
 }
 
 if [[ "$LEGACY_NDK" == true ]]; then
@@ -434,6 +490,7 @@ cleanup_temp_files() {
 trap cleanup_temp_files EXIT
 
 sed -e "s|@ANDROID_NDK@|$ANDROID_NDK_MESON|g" \
+    -e "s|@ANDROID_NDK_REVISION@|$ANDROID_NDK_REVISION|g" \
     -e "s|@ANDROID_NDK_HOST@|$ANDROID_NDK_HOST|g" \
     -e "s|@ANDROID_CLANG_SUFFIX@|$ANDROID_CLANG_SUFFIX|g" \
     -e "s|@ANDROID_EXE_SUFFIX@|$ANDROID_EXE_SUFFIX|g" \
@@ -566,9 +623,18 @@ if [[ "$ASSEMBLE_AAR" == false ]]; then
 fi
 
 echo "[7] Assembling the QuickDotAI AAR and sample APK."
+GRADLE_NDK_STAMP="$CAUSALLM_ROOT/Android/.gradle/nntrainer-ndk-fingerprint"
+if [[ "$CLEAN" == true ]] || ! ndk_fingerprint_matches "$GRADLE_NDK_STAMP"; then
+    GRADLE_CXX_CACHE="$CAUSALLM_ROOT/Android/QuickDotAI/.cxx"
+    if [[ -d "$GRADLE_CXX_CACHE" ]]; then
+        echo "[7] Android NDK changed; recreating the Gradle CMake cache."
+        rm -rf "$GRADLE_CXX_CACHE"
+    fi
+fi
 (
     cd "$CAUSALLM_ROOT/Android"
-    ./gradlew :QuickDotAI:assembleDebug :SampleTestAPP:assembleDebug
+    ./gradlew "${GRADLE_NDK_ARGS[@]}" \
+        :QuickDotAI:assembleDebug :SampleTestAPP:assembleDebug
 )
 AAR="$CAUSALLM_ROOT/Android/QuickDotAI/build/outputs/aar/QuickDotAI-debug.aar"
 APK="$CAUSALLM_ROOT/Android/SampleTestAPP/build/outputs/apk/debug/SampleTestAPP-debug.apk"
@@ -578,6 +644,25 @@ for file in "$AAR" "$APK"; do
         exit 1
     fi
 done
+
+VALIDATOR="$CAUSALLM_ROOT/Android/verify_native_runtime.py"
+VALIDATOR_AAR="$AAR"
+VALIDATOR_APK="$APK"
+VALIDATOR_CMAKE_ROOT="$CAUSALLM_ROOT/Android/QuickDotAI/.cxx"
+VALIDATOR_SCRIPT="$VALIDATOR"
+if [[ "$ANDROID_NDK_HOST" == "windows-x86_64" ]] && command -v cygpath >/dev/null 2>&1; then
+    VALIDATOR_AAR="$(cygpath -m "$AAR")"
+    VALIDATOR_APK="$(cygpath -m "$APK")"
+    VALIDATOR_CMAKE_ROOT="$(cygpath -m "$VALIDATOR_CMAKE_ROOT")"
+    VALIDATOR_SCRIPT="$(cygpath -m "$VALIDATOR")"
+fi
+python3 "$VALIDATOR_SCRIPT" \
+    --ndk "$ANDROID_NDK_MESON" \
+    --expected-revision "$ANDROID_NDK_REVISION" \
+    --aar "$VALIDATOR_AAR" \
+    --apk "$VALIDATOR_APK" \
+    --cmake-cache-root "$VALIDATOR_CMAKE_ROOT"
+write_ndk_fingerprint "$GRADLE_NDK_STAMP"
 
 if [[ "$INSTALL" == false ]]; then
     echo "=== Done (AAR/APK assembled; no device modified) ==="
@@ -608,7 +693,7 @@ fi
 echo "[8] Installing the sample APK and pushing command-line tools."
 (
     cd "$CAUSALLM_ROOT/Android"
-    ./gradlew :SampleTestAPP:installDebug
+    ./gradlew "${GRADLE_NDK_ARGS[@]}" :SampleTestAPP:installDebug
 )
 
 DEVICE_DIR="/data/local/tmp/Quick.AI"
