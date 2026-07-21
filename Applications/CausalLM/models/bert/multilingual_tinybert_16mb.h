@@ -3,6 +3,7 @@
  * Copyright (C) 2026 Seunghui Lee <shsh1004.lee@samsung.com>
  *
  * @file   multilingual_tinybert_16mb.h
+ * @brief  BERT-based encoder-only embedding model (multilingual-TinyBERT-16MB).
  * @date   21 April 2026
  * @see    https://github.com/nntrainer/nntrainer
  * @author Seunghui Lee <shsh1004.lee@samsung.com>

@@ -3,6 +3,7 @@
  * Copyright (C) 2025 Eunju Yang <ej.yang@samsung.com>
  *
  * @file   gptoss_causallm.h
+ * @brief  GPT-OSS causal language model implementation.
  * @date   26 Aug 2025
  * @see    https://github.com/nntrainer/nntrainer
  * @author Eunju Yang <ej.yang@samsung.com>

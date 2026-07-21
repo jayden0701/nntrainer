@@ -3,6 +3,7 @@
  * Copyright (C) 2026 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
  * @file   xlm_roberta.h
+ * @brief  XLM-RoBERTa encoder-only embedding model.
  * @date   18 June 2026
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jungwon-Lee <jungone.lee@samsung.com>

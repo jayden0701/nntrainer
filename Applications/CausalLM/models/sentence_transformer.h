@@ -3,6 +3,7 @@
  * Copyright (C) 2025 Eunju Yang <ej.yang@samsung.com>
  *
  * @file    sentence_transformer.h
+ * @brief   Base class for SentenceTransformer-style embedding (encoder) models.
  * @date    02 Jan 2026
  * @see     https://github.com/nntrainer/nntrainer
  * @author  Eunju Yang <ej.yang@samsung.com>

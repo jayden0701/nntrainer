@@ -6,6 +6,7 @@
  * Copyright (C) 2025 Eunju Yang <ej.yang@samsung.com>
  *
  * @file   causal_lm.h
+ * @brief  Base class for Transformer-based Causal Language Models (CausalLM).
  * @date   10 July 2025
  * @see    https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>

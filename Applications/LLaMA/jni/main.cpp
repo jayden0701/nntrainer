@@ -3,6 +3,8 @@
  * Copyright (C) 2023 Seungbaek Hong <sb92.hong@samsung.com>
  *
  * @file   main.cpp
+ * @brief  LLaMA model construction and training/inference example built
+ *         directly on nntrainer's model API.
  * @date   7 August 2023
  * @see    https://github.com/nntrainer/nntrainer
  * @author Seungbaek Hong <sb92.hong@samsung.com>

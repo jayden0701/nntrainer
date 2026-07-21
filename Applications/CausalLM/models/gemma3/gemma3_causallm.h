@@ -3,6 +3,7 @@
  * Copyright (C) 2025 SeungBaek Hong <sb92.hong@samsung.com>
  *
  * @file   gemma3_causallm.h
+ * @brief  Gemma3 causal language model implementation.
  * @date   24 Dec 2025
  * @see    https://github.com/nnstreamer/nntrainer
  * @author Seungbaek Hong <sb92.hong@samsung.com>

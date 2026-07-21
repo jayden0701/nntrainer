@@ -3,6 +3,7 @@
  * Copyright (C) 2026 Samsung Electronics Co., Ltd. All Rights Reserved.
  *
  * @file   gemma4_causallm.h
+ * @brief  Gemma4 causal language model implementation.
  * @date   07 Apr 2026
  * @see    https://github.com/nnstreamer/nntrainer
  * @author Joonseok Oh <jrock.oh@samsung.com>
