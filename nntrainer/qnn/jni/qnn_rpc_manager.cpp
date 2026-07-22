@@ -120,22 +120,27 @@ void QNNRpcManager::alloc(void **ptr, size_t size, size_t alignment) {
     throw std::length_error("QNN RPC allocation exceeds rpcmem size limit");
   }
 
+  // Reserve the backing ledger node before calling into rpcmem. Holding the
+  // registration lock across acquisition ensures no fallible lock or map-node
+  // allocation remains between acquiring the RPC resource and publishing its
+  // ownership record.
+  std::lock_guard<std::mutex> registration_guard(registration_mutex_);
+  char allocation_placeholder;
+  auto placeholder = allocations_.emplace(&allocation_placeholder, size);
+  if (!placeholder.second) {
+    throw std::logic_error("Failed to reserve QNN RPC allocation ledger node");
+  }
+  auto allocation_node = allocations_.extract(placeholder.first);
+
   void *mem_pointer = RpcMem::global().alloc(
     kRpcMemHeapIdSystem, kRpcMemDefaultFlags, static_cast<int>(size));
   if (mem_pointer == nullptr) {
     throw std::bad_alloc();
   }
 
-  bool inserted = false;
-  try {
-    std::lock_guard<std::mutex> registration_guard(registration_mutex_);
-    inserted = allocations_.emplace(mem_pointer, size).second;
-  } catch (...) {
-    RpcMem::global().free(mem_pointer);
-    throw;
-  }
-
-  if (!inserted) {
+  allocation_node.key() = mem_pointer;
+  auto inserted = allocations_.insert(std::move(allocation_node));
+  if (!inserted.inserted) {
     // rpcmem must not return an address that is still live. Do not free the
     // ambiguous address because it may be the previously tracked allocation.
     ml_loge("QNN RPC allocator returned a duplicate live pointer: %p",
