@@ -1168,6 +1168,8 @@ void Gemma4_E2B_QNN::setupParameters(json &cfg, json &generation_cfg,
 void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
                          const WSTR /*system_prompt*/,
                          const WSTR /*tail_prompt*/, bool log_output) {
+  has_run_ = false;
+  performance_metrics = {};
   last_output_.clear();
 
   resetKvCache();

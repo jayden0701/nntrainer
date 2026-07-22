@@ -1593,6 +1593,11 @@ run_on_handle(CausalLmModel &h, const char *inputTextPrompt,
   } catch (const std::exception &e) {
     LOGE("Exception in run_on_handle: %s", e.what());
     return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  } catch (...) {
+    // Exceptions can cross shared-library boundaries from dynamically loaded
+    // NNTrainer backends. Always keep unknown exception types inside the C ABI.
+    LOGE("Unknown exception in run_on_handle");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
   }
 
   return CAUSAL_LM_ERROR_NONE;
