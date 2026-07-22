@@ -57,6 +57,11 @@ struct JniCache {
 
 JniCache g_cache;
 
+struct NativeLoadResult {
+  ErrorCode error_code;
+  CausalLmHandle handle;
+};
+
 jclass find_global(JNIEnv *env, const char *name) {
   jclass local = env->FindClass(name);
   if (local == nullptr) {
@@ -66,6 +71,73 @@ jclass find_global(JNIEnv *env, const char *name) {
   auto *global = reinterpret_cast<jclass>(env->NewGlobalRef(local));
   env->DeleteLocalRef(local);
   return global;
+}
+
+NativeLoadResult load_model_by_name(JNIEnv *env, jint backend,
+                                    jstring model_id_j, jint quant,
+                                    jstring native_lib_dir_j,
+                                    jstring model_base_path_j) {
+  if (model_id_j == nullptr) {
+    return {CAUSAL_LM_ERROR_INVALID_PARAMETER, nullptr};
+  }
+
+  const char *id = env->GetStringUTFChars(model_id_j, nullptr);
+  if (id == nullptr) {
+    return {CAUSAL_LM_ERROR_UNKNOWN, nullptr};
+  }
+  const char *native_lib_dir =
+    native_lib_dir_j ? env->GetStringUTFChars(native_lib_dir_j, nullptr)
+                     : nullptr;
+  if (native_lib_dir_j != nullptr && native_lib_dir == nullptr) {
+    env->ReleaseStringUTFChars(model_id_j, id);
+    return {CAUSAL_LM_ERROR_UNKNOWN, nullptr};
+  }
+  const char *model_base_path =
+    model_base_path_j ? env->GetStringUTFChars(model_base_path_j, nullptr)
+                      : nullptr;
+  if (model_base_path_j != nullptr && model_base_path == nullptr) {
+    env->ReleaseStringUTFChars(model_id_j, id);
+    if (native_lib_dir != nullptr) {
+      env->ReleaseStringUTFChars(native_lib_dir_j, native_lib_dir);
+    }
+    return {CAUSAL_LM_ERROR_UNKNOWN, nullptr};
+  }
+
+  CausalLmHandle handle = nullptr;
+  ErrorCode error_code =
+    loadModelHandleByName(static_cast<BackendType>(backend), id,
+                          static_cast<ModelQuantizationType>(quant),
+                          native_lib_dir, model_base_path, &handle);
+
+  env->ReleaseStringUTFChars(model_id_j, id);
+  if (native_lib_dir)
+    env->ReleaseStringUTFChars(native_lib_dir_j, native_lib_dir);
+  if (model_base_path)
+    env->ReleaseStringUTFChars(model_base_path_j, model_base_path);
+
+  return {error_code, handle};
+}
+
+jobject make_load_result(JNIEnv *env, ErrorCode error_code,
+                         CausalLmHandle handle) {
+  if (error_code != CAUSAL_LM_ERROR_NONE && handle != nullptr) {
+    (void)destroyModelHandle(handle);
+    handle = nullptr;
+  }
+  if (g_cache.loadResultCls == nullptr || g_cache.loadResultCtor == nullptr) {
+    if (handle != nullptr) {
+      (void)destroyModelHandle(handle);
+    }
+    return nullptr;
+  }
+
+  jobject result = env->NewObject(g_cache.loadResultCls, g_cache.loadResultCtor,
+                                  static_cast<jint>(error_code),
+                                  reinterpret_cast<jlong>(handle));
+  if (result == nullptr && handle != nullptr) {
+    (void)destroyModelHandle(handle);
+  }
+  return result;
 }
 
 } // namespace
@@ -209,11 +281,7 @@ Java_com_example_quickdotai_NativeCausalLm_loadModelHandleNative(
     env->ReleaseStringUTFChars(htpBackendConfigPathJ, htp_backend_config_path);
   }
 
-  if (g_cache.loadResultCls == nullptr || g_cache.loadResultCtor == nullptr) {
-    return nullptr;
-  }
-  return env->NewObject(g_cache.loadResultCls, g_cache.loadResultCtor,
-                        static_cast<jint>(ec), reinterpret_cast<jlong>(handle));
+  return make_load_result(env, ec, handle);
 }
 
 // ---- loadModelHandleByName (T4 string-id path) ----------------------------
@@ -221,26 +289,27 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_example_quickdotai_NativeCausalLm_loadModelHandleByNameNative(
   JNIEnv *env, jobject /*thiz*/, jint backend, jstring modelIdJ, jint quant,
   jstring nativeLibDirJ, jstring modelBasePathJ) {
-  const char *id = env->GetStringUTFChars(modelIdJ, nullptr);
-  const char *nld =
-    nativeLibDirJ ? env->GetStringUTFChars(nativeLibDirJ, nullptr) : nullptr;
-  const char *mbp =
-    modelBasePathJ ? env->GetStringUTFChars(modelBasePathJ, nullptr) : nullptr;
+  const auto result = load_model_by_name(env, backend, modelIdJ, quant,
+                                         nativeLibDirJ, modelBasePathJ);
+  if (result.error_code != CAUSAL_LM_ERROR_NONE) {
+    if (result.handle != nullptr) {
+      (void)destroyModelHandle(result.handle);
+    }
+    return 0L;
+  }
+  return reinterpret_cast<jlong>(result.handle);
+}
 
-  CausalLmHandle h = nullptr;
-  ErrorCode ec = loadModelHandleByName(
-    static_cast<BackendType>(backend), id,
-    static_cast<ModelQuantizationType>(quant), nld, mbp, &h);
-
-  env->ReleaseStringUTFChars(modelIdJ, id);
-  if (nld)
-    env->ReleaseStringUTFChars(nativeLibDirJ, nld);
-  if (mbp)
-    env->ReleaseStringUTFChars(modelBasePathJ, mbp);
-
-  return (ec == CAUSAL_LM_ERROR_NONE)
-           ? static_cast<jlong>(reinterpret_cast<uintptr_t>(h))
-           : 0L;
+// Additive status-preserving counterpart. Keep the legacy jlong JNI entry
+// above so Kotlin/native library version skew fails safely instead of decoding
+// a primitive return value as an object reference.
+extern "C" JNIEXPORT jobject JNICALL
+Java_com_example_quickdotai_NativeCausalLm_loadModelHandleByNameResultNative(
+  JNIEnv *env, jobject /*thiz*/, jint backend, jstring modelIdJ, jint quant,
+  jstring nativeLibDirJ, jstring modelBasePathJ) {
+  const auto result = load_model_by_name(env, backend, modelIdJ, quant,
+                                         nativeLibDirJ, modelBasePathJ);
+  return make_load_result(env, result.error_code, result.handle);
 }
 
 // ---- nativeQueryCatalog ---------------------------------------------------

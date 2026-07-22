@@ -168,6 +168,18 @@ object NativeCausalLm {
         modelBasePath: String?,
     ): Long
 
+    /**
+     * @brief Status-preserving counterpart of [loadModelHandleByNameNative].
+     * @return Native error code and handle. The handle is 0 on failure.
+     */
+    external fun loadModelHandleByNameResultNative(
+        backend: Int,
+        modelId: String,
+        quant: Int,
+        nativeLibDir: String?,
+        modelBasePath: String?,
+    ): LoadResult
+
     /** @brief Returns the registered model catalog as a JSON array string. */
     external fun nativeQueryCatalog(): String
 

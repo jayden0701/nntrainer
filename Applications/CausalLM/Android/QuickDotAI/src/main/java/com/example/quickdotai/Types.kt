@@ -56,6 +56,7 @@ enum class QuickAiError(val code: Int) {
     INFERENCE_FAILED(3),
     NOT_INITIALIZED(4),
     INFERENCE_NOT_RUN(5),
+    RESOURCE_RELEASE_FAILED(7),
     UNKNOWN(99),
 
     // Kotlin-only conditions returned by higher layers (QuickAIService
@@ -68,8 +69,12 @@ enum class QuickAiError(val code: Int) {
     BAD_REQUEST(103);
 
     companion object {
-        fun fromNativeCode(code: Int): QuickAiError =
-            entries.firstOrNull { it.code == code } ?: UNKNOWN
+        fun fromNativeCode(code: Int): QuickAiError = when (code) {
+            // Native ErrorCode uses 6; the Kotlin semantic is shared with
+            // higher-level unsupported operations whose public code is 102.
+            6 -> UNSUPPORTED
+            else -> entries.firstOrNull { it.code == code } ?: UNKNOWN
+        }
     }
 }
 

@@ -34,6 +34,7 @@ class NativeQuickDotAI(
 
     private var handle: Long = 0L
     private var loaded: Boolean = false
+    private var teardownFailed: Boolean = false
 
     // Image processor for multimodal inference
     private var imageProcessor: LlavaNextImageProcessor? = null
@@ -53,6 +54,33 @@ class NativeQuickDotAI(
         if (loaded) {
             Log.i(TAG, "load(): already loaded, returning Ok")
             return BackendResult.Ok(Unit)
+        }
+
+        if (teardownFailed) {
+            return BackendResult.Err(
+                QuickAiError.RESOURCE_RELEASE_FAILED,
+                "This native backend is quarantined after a model teardown failure"
+            )
+        }
+
+        if (handle != 0L) {
+            val destroyCode = try {
+                NativeCausalLm.destroyModelHandleNative(handle)
+            } catch (t: Throwable) {
+                Log.e(TAG, "load(): failed to destroy the previous unloaded handle", t)
+                return BackendResult.Err(QuickAiError.UNKNOWN, t.message)
+            }
+            handle = 0L
+            if (destroyCode != 0) {
+                val error = QuickAiError.fromNativeCode(destroyCode)
+                if (error == QuickAiError.RESOURCE_RELEASE_FAILED) {
+                    teardownFailed = true
+                }
+                return BackendResult.Err(
+                    error,
+                    "Previous model teardown failed (errorCode=$destroyCode)"
+                )
+            }
         }
 
         if (!req.htpBackendConfigPath.isNullOrBlank()) {
@@ -87,13 +115,25 @@ class NativeQuickDotAI(
             Log.i(TAG, "load(): calling loadModelHandleByNameNative(backend=${req.backend.ordinal}, " +
                 "modelId=${req.modelId}, quant=${req.quantization.ordinal}, " +
                 "nativeLibDir=${req.nativeLibDir}, modelBasePath=$modelBasePath)")
-            val h = NativeCausalLm.loadModelHandleByNameNative(
+            val loadResult = NativeCausalLm.loadModelHandleByNameResultNative(
                 backend = mapBackend(req.backend),
                 modelId = req.modelId,
                 quant = mapQuant(req.quantization),
                 nativeLibDir = req.nativeLibDir,
                 modelBasePath = modelBasePath,
             )
+            if (loadResult.errorCode != 0) {
+                val error = QuickAiError.fromNativeCode(loadResult.errorCode)
+                if (error == QuickAiError.RESOURCE_RELEASE_FAILED) {
+                    teardownFailed = true
+                }
+                return BackendResult.Err(
+                    error,
+                    "loadModelHandleByName failed for '${req.modelId}' " +
+                        "(errorCode=${loadResult.errorCode})"
+                )
+            }
+            val h = loadResult.handle
             if (h == 0L) {
                 Log.e(TAG, "load(): loadModelHandleByNameNative returned 0 for '${req.modelId}'")
                 BackendResult.Err(
@@ -104,7 +144,18 @@ class NativeQuickDotAI(
                 val sdResult = NativeCausalLm.configureSpeculativeDecodingNative(h, req.useSpeculativeDecoding)
                 if (sdResult != 0) {
                     Log.e(TAG, "load(): configureSpeculativeDecoding failed (code=$sdResult) for '${req.modelId}'")
-                    NativeCausalLm.destroyModelHandleNative(h)
+                    val destroyCode = NativeCausalLm.destroyModelHandleNative(h)
+                    if (destroyCode != 0) {
+                        val error = QuickAiError.fromNativeCode(destroyCode)
+                        if (error == QuickAiError.RESOURCE_RELEASE_FAILED) {
+                            teardownFailed = true
+                        }
+                        return BackendResult.Err(
+                            error,
+                            "Speculative decoding setup and model teardown failed " +
+                                "(errorCode=$destroyCode)"
+                        )
+                    }
                     return BackendResult.Err(
                         QuickAiError.MODEL_LOAD_FAILED,
                         "Speculative decoding not supported for '${req.modelId}'"
@@ -184,14 +235,18 @@ class NativeQuickDotAI(
         activeSession?.close()
         activeSession = null
 
-        if (!loaded || handle == 0L) {
+        if (handle == 0L) {
             return BackendResult.Ok(Unit)
         }
+        loaded = false
         return try {
             val ec = NativeCausalLm.unloadModelHandleNative(handle)
-            loaded = false
             if (ec != 0) {
-                BackendResult.Err(QuickAiError.fromNativeCode(ec))
+                val error = QuickAiError.fromNativeCode(ec)
+                if (error == QuickAiError.RESOURCE_RELEASE_FAILED) {
+                    teardownFailed = true
+                }
+                BackendResult.Err(error)
             } else {
                 BackendResult.Ok(Unit)
             }
@@ -546,7 +601,13 @@ class NativeQuickDotAI(
         activeSession = null
         if (handle != 0L) {
             try {
-                NativeCausalLm.destroyModelHandleNative(handle)
+                val ec = NativeCausalLm.destroyModelHandleNative(handle)
+                if (ec != 0) {
+                    Log.e(TAG, "destroyModelHandleNative failed (errorCode=$ec)")
+                    if (QuickAiError.fromNativeCode(ec) == QuickAiError.RESOURCE_RELEASE_FAILED) {
+                        teardownFailed = true
+                    }
+                }
             } catch (t: Throwable) {
                 Log.w(TAG, "destroyModelHandleNative threw", t)
             }
