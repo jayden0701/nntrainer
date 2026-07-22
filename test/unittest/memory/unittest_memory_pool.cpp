@@ -484,6 +484,29 @@ public:
   std::string getName() override { return "qnn"; }
 };
 
+/**
+ * @brief Allocator that retains one selected pointer until permitted.
+ */
+class FailingFreeAllocator : public QnnCountingAllocator {
+public:
+  std::vector<void *> free_attempts;
+  void *blocked_ptr{nullptr};
+  bool permit_blocked_free{false};
+  unsigned int failures_remaining{0};
+
+  void free(void *ptr) override {
+    free_attempts.push_back(ptr);
+    if (failures_remaining > 0) {
+      --failures_remaining;
+      throw std::runtime_error("injected allocator release failure");
+    }
+    if (ptr == blocked_ptr && !permit_blocked_free) {
+      throw std::runtime_error("injected allocator release failure");
+    }
+    CountingAllocator::free(ptr);
+  }
+};
+
 class ForcedOffsetPlanner : public nntrainer::MemoryPlanner {
 public:
   explicit ForcedOffsetPlanner(std::vector<size_t> offsets_) :
@@ -796,6 +819,107 @@ TEST(MemoryPoolAllocator, deallocate_without_allocate_is_safe) {
 
   EXPECT_NO_THROW(pool.deallocate());
   EXPECT_EQ(counter->free_count.load(), 0);
+}
+
+/**
+ * @brief Partial release retains only the failed pointer for a later retry.
+ */
+TEST(MemoryPoolAllocator, deallocate_retains_only_failed_buffers) {
+  auto allocator = std::make_shared<FailingFreeAllocator>();
+  nntrainer::MemoryPool pool(allocator);
+
+  EXPECT_NO_THROW(pool.requestMemory(64, 1, 2));
+  EXPECT_NO_THROW(pool.requestMemory(64, 2, 3));
+  EXPECT_NO_THROW(pool.requestMemory(64, 3, 4));
+  EXPECT_NO_THROW(pool.planLayout(ForcedOffsetPlanner({0, 16, 32})));
+  EXPECT_NO_THROW(pool.allocate());
+  ASSERT_EQ(allocator->allocated_ptrs.size(), 3u);
+
+  allocator->blocked_ptr = allocator->allocated_ptrs[1];
+  EXPECT_THROW(pool.deallocate(), std::runtime_error);
+  EXPECT_TRUE(pool.isAllocated());
+  EXPECT_EQ(allocator->free_attempts.size(), 3u);
+  EXPECT_EQ(allocator->free_count.load(), 2);
+
+  allocator->permit_blocked_free = true;
+  EXPECT_NO_THROW(pool.deallocate());
+  EXPECT_FALSE(pool.isAllocated());
+  ASSERT_EQ(allocator->free_attempts.size(), 4u);
+  EXPECT_EQ(allocator->free_attempts.back(), allocator->blocked_ptr);
+  EXPECT_EQ(allocator->free_count.load(), 3);
+}
+
+/**
+ * @brief FSU resize rollback preserves the original allocation on failure.
+ */
+TEST(MemoryPoolAllocator, fsu_resize_failure_preserves_original_buffer) {
+  auto allocator = std::make_shared<FailingFreeAllocator>();
+  nntrainer::MemoryPool pool(allocator);
+
+  EXPECT_NO_THROW(pool.requestMemory(64, 1, 2));
+  EXPECT_NO_THROW(pool.requestMemory(128, 2, 3));
+  EXPECT_NO_THROW(pool.planLayout(ForcedOffsetPlanner({0, 0})));
+  allocator->failures_remaining = 1;
+
+  EXPECT_THROW(pool.allocateFSU(), std::runtime_error);
+  ASSERT_EQ(allocator->allocated_ptrs.size(), 2u);
+  ASSERT_EQ(allocator->free_attempts.size(), 2u);
+  EXPECT_EQ(allocator->free_attempts[0], allocator->allocated_ptrs[0]);
+  EXPECT_EQ(allocator->free_attempts[1], allocator->allocated_ptrs[1]);
+  EXPECT_EQ(allocator->free_count.load(), 1);
+  EXPECT_TRUE(pool.isAllocated());
+
+  EXPECT_NO_THROW(pool.deallocate());
+  EXPECT_FALSE(pool.isAllocated());
+  ASSERT_EQ(allocator->free_attempts.size(), 3u);
+  EXPECT_EQ(allocator->free_attempts.back(), allocator->allocated_ptrs[0]);
+  EXPECT_EQ(allocator->free_count.load(), 2);
+}
+
+/**
+ * @brief Failed FSU rollback tracks both old and replacement allocations.
+ */
+TEST(MemoryPoolAllocator, fsu_resize_rollback_retains_both_failures) {
+  auto allocator = std::make_shared<FailingFreeAllocator>();
+  nntrainer::MemoryPool pool(allocator);
+
+  EXPECT_NO_THROW(pool.requestMemory(64, 1, 2));
+  EXPECT_NO_THROW(pool.requestMemory(128, 2, 3));
+  EXPECT_NO_THROW(pool.planLayout(ForcedOffsetPlanner({0, 0})));
+  allocator->failures_remaining = 2;
+
+  EXPECT_THROW(pool.allocateFSU(), std::runtime_error);
+  ASSERT_EQ(allocator->allocated_ptrs.size(), 2u);
+  EXPECT_EQ(allocator->free_attempts.size(), 2u);
+  EXPECT_EQ(allocator->free_count.load(), 0);
+  EXPECT_TRUE(pool.isAllocated());
+
+  EXPECT_NO_THROW(pool.deallocate());
+  EXPECT_FALSE(pool.isAllocated());
+  EXPECT_EQ(allocator->free_attempts.size(), 4u);
+  EXPECT_EQ(allocator->free_count.load(), 2);
+}
+
+/**
+ * @brief Backend cleanup failure must not escape a MemoryPool destructor.
+ */
+TEST(MemoryPoolAllocator, destructor_contains_backend_release_failure) {
+  auto allocator = std::make_shared<FailingFreeAllocator>();
+  void *retained_ptr = nullptr;
+  {
+    nntrainer::MemoryPool pool(allocator);
+    EXPECT_NO_THROW(pool.requestMemory(64, 1, 2));
+    EXPECT_NO_THROW(pool.planLayout(ForcedOffsetPlanner({0})));
+    EXPECT_NO_THROW(pool.allocate());
+    ASSERT_EQ(allocator->allocated_ptrs.size(), 1u);
+    retained_ptr = allocator->allocated_ptrs.front();
+    allocator->blocked_ptr = retained_ptr;
+  }
+
+  ASSERT_NE(retained_ptr, nullptr);
+  EXPECT_EQ(allocator->free_attempts.size(), 1u);
+  allocator->permit_blocked_free = true;
+  EXPECT_NO_THROW(allocator->free(retained_ptr));
 }
 
 /**

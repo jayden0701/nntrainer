@@ -16,6 +16,7 @@
 
 #include <memory_pool.h>
 #include <nntrainer_log.h>
+#include <stdexcept>
 #include <tensor.h>
 #include <tensor_pool.h>
 #include <tensor_wrap_specs.h>
@@ -250,11 +251,23 @@ void TensorPool::deallocate() {
   if (cache_loader)
     cache_loader->finish();
 
-  mem_pool->deallocate();
+  bool deallocation_failed = false;
+  try {
+    mem_pool->deallocate();
+  } catch (...) {
+    deallocation_failed = true;
+  }
 
-  /** nullify the data pointers for the tensors */
+  // Nullify every tensor even after a partial backend release. Some pool
+  // buffers may already be gone, so the graph must not remain runnable while
+  // the failed allocations are retained for safe teardown.
   for (auto &spec : pool) {
     spec.tensor->setData(nullptr);
+  }
+
+  if (deallocation_failed) {
+    throw std::runtime_error(
+      "TensorPool backend retained one or more allocations");
   }
 }
 

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <exception>
 #include <limits>
 #include <map>
 #include <memory_pool.h>
@@ -52,6 +53,17 @@ size_t system_page_size() {
 }
 
 } // namespace
+
+MemoryPool::~MemoryPool() noexcept {
+  try {
+    deallocate();
+  } catch (const std::exception &e) {
+    ml_loge("MemoryPool retained backend allocations during destruction: %s",
+            e.what());
+  } catch (...) {
+    ml_loge("MemoryPool retained backend allocations during destruction");
+  }
+}
 
 unsigned int MemoryPool::requestMemory(size_t bytes, unsigned int start_time,
                                        unsigned int end_time,
@@ -225,16 +237,33 @@ void MemoryPool::allocateFSU() {
         // shared buffer and remap every aliasing entry.
         void *new_ptr = nullptr;
         allocator_->alloc(&new_ptr, current_size, alignment);
+        auto pos =
+          std::find(owned_buffers_.begin(), owned_buffers_.end(), existing_ptr);
+        if (pos == owned_buffers_.end()) {
+          if (!allocator_->tryFree(new_ptr)) {
+            owned_buffers_.push_back(new_ptr);
+          }
+          throw std::logic_error(
+            "MemoryPool lost ownership of an FSU allocation");
+        }
+
+        if (!allocator_->tryFree(existing_ptr)) {
+          // Keep the old pointer and its aliases unchanged. If rolling back
+          // the replacement also fails, track both allocations so neither is
+          // forgotten during later teardown.
+          if (!allocator_->tryFree(new_ptr)) {
+            owned_buffers_.push_back(new_ptr);
+            ml_loge("MemoryPool retained a replacement allocation after an "
+                    "FSU resize rollback failure");
+          }
+          throw std::runtime_error(
+            "MemoryPool backend failed to release an FSU allocation");
+        }
+
+        *pos = new_ptr;
         for (int idx : offset_indices[s]) {
           memory_ptrs[idx] = new_ptr;
         }
-        // Replace in owned_buffers_ so deallocate() releases the new
-        // one, not the old one we're about to free.
-        auto pos =
-          std::find(owned_buffers_.begin(), owned_buffers_.end(), existing_ptr);
-        if (pos != owned_buffers_.end())
-          *pos = new_ptr;
-        allocator_->free(existing_ptr);
         offset_ptr[s] = new_ptr;
         allocated_size[s] = current_size;
       }
@@ -261,20 +290,33 @@ void MemoryPool::deallocate() {
   // buffer through the same allocator. Mismatching alloc/free
   // backends would corrupt the heap (e.g. clSVMFree on host memory),
   // so the allocator_ shared_ptr is the single source of truth.
-  for (void *buf : owned_buffers_) {
-    allocator_->free(buf);
+  bool release_failed = false;
+  for (auto buffer = owned_buffers_.begin(); buffer != owned_buffers_.end();) {
+    void *buf = *buffer;
+    if (!allocator_->tryFree(buf)) {
+      release_failed = true;
+      ++buffer;
+      continue;
+    }
 #ifdef PROFILE
     PROFILE_MEM_DEALLOC(buf);
 #endif
+    if (buf == mem_pool) {
+      mem_pool = nullptr;
+    }
+    buffer = owned_buffers_.erase(buffer);
   }
-  owned_buffers_.clear();
 
-  mem_pool = nullptr;
   memory_size.clear();
   memory_validity.clear();
   memory_exec_order.clear();
   memory_is_wgrad.clear();
   memory_ptrs.clear();
+
+  if (release_failed) {
+    throw std::runtime_error(
+      "MemoryPool backend retained one or more allocations");
+  }
 }
 
 size_t MemoryPool::size() { return pool_size; }

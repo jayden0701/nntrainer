@@ -161,18 +161,37 @@ void CachePool::allocate() {
 }
 
 void CachePool::deallocate() {
-  MemoryPool::deallocate();
-  if (!swap_device->isOperating())
-    return;
+  bool deallocation_failed = false;
+  if (swap_device->isOperating()) {
+    for (auto &[id, elem] : elems) {
+      try {
+        invalidate(id);
+      } catch (...) {
+        deallocation_failed = true;
+      }
+    }
 
-  if (execution_mode_ == ml::train::ExecutionMode::INFERENCE)
+    actives.clear();
+    try {
+      swap_device->finish();
+    } catch (...) {
+      deallocation_failed = true;
+    }
+  }
+
+  // Cache elements can still reference pool-backed buffers. Drain them and
+  // stop the swap device before attempting a fallible backend release so a
+  // partial release cannot leave invalidate() reading a freed pointer.
+  try {
     MemoryPool::deallocate();
+  } catch (...) {
+    deallocation_failed = true;
+  }
 
-  for (auto &[id, elem] : elems)
-    invalidate(id);
-
-  actives.clear();
-  swap_device->finish();
+  if (deallocation_failed) {
+    throw std::runtime_error(
+      "CachePool retained one or more backend allocations");
+  }
 }
 
 void CachePool::validate(unsigned int id) {

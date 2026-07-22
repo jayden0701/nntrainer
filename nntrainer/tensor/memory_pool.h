@@ -67,7 +67,7 @@ public:
    * @brief MemoryPool destructor
    *
    */
-  virtual ~MemoryPool() { deallocate(); }
+  virtual ~MemoryPool() noexcept;
 
   /**
    * @brief Request Memory from memory pool
@@ -132,6 +132,10 @@ public:
   /**
    * @brief Free all the allocated memory
    *
+   * Successfully released buffers are removed from ownership immediately. If
+   * one or more backend releases fail, the pool retains only those buffers and
+   * rethrows after attempting the remaining releases. The pool is not usable
+   * for execution after a failed deallocation.
    */
   virtual void deallocate();
 
