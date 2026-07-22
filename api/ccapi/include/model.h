@@ -506,6 +506,21 @@ public:
 };
 
 /**
+ * @brief Explicitly release tensor and weight buffers allocated by a model.
+ *
+ * This non-virtual bridge preserves the Model ABI while allowing callers to
+ * observe buffer-release failures before the model destructor runs. It does
+ * not destroy the model or release non-buffer resources. Continued use after
+ * this call is not guaranteed; callers should normally destroy the model.
+ *
+ * @param model Model whose allocated resources should be released
+ * @retval #ML_ERROR_NONE Successful
+ * @retval #ML_ERROR_NOT_SUPPORTED Unsupported model implementation
+ * @retval #ML_ERROR_UNKNOWN Resource release failed
+ */
+int deallocateModel(Model &model) noexcept;
+
+/**
  * @brief Factory creator with constructor for optimizer
  */
 std::unique_ptr<Model>

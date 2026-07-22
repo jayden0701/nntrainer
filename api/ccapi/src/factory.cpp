@@ -88,6 +88,18 @@ std::unique_ptr<Model> copyConfiguration(Model &from) {
   return model;
 }
 
+int deallocateModel(Model &model) noexcept {
+  try {
+    auto *network = dynamic_cast<nntrainer::NeuralNetwork *>(&model);
+    if (network == nullptr) {
+      return ML_ERROR_NOT_SUPPORTED;
+    }
+    return network->deallocate();
+  } catch (...) {
+    return ML_ERROR_UNKNOWN;
+  }
+}
+
 /**
  * @brief Factory creator with constructor for dataset
  */
