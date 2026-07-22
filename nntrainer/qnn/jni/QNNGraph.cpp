@@ -93,7 +93,6 @@ QNNGraph::~QNNGraph() {
   }
 }
 
-
 void QNNGraph::finalize(InitLayerContext &context) {
   bin_path = std::get<props::FilePath>(graph_props).get();
 
@@ -174,10 +173,7 @@ void QNNGraph::read(std::ifstream &file, RunLayerContext &run_context,
                     size_t start_offset, bool read_from_offset, int file_fd) {}
 
 void QNNGraph::forwarding(RunLayerContext &context, bool training) {
-  auto returnStatus = StatusCode::SUCCESS;
-
   auto qc_var = getQNNVar(context);
-  unsigned int graphIdx = 0;
 
   if (!qc_var->findContext(bin_path)) {
     ml_logw("Context is not created. Create Now");
@@ -260,7 +256,6 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
   }
 
   auto start = std::chrono::system_clock::now();
-  std::time_t start_time = std::chrono::system_clock::to_time_t(start);
 
   Qnn_ErrorHandle_t executeStatus = QNN_GRAPH_NO_ERROR;
   QnnGraph_Config_t **customGraphConfigs{nullptr};
@@ -294,17 +289,29 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     }
   }
 
-  // std::cout << "executed QNNGraph, name: " << graphInfo->graphName <<
-  // std::endl;
   if (QNN_GRAPH_NO_ERROR != executeStatus) {
-    returnStatus = StatusCode::FAILURE;
-  }
+    const auto error_code = static_cast<uint64_t>(executeStatus);
+    const auto public_error_code =
+      static_cast<unsigned int>(QNN_GET_ERROR_CODE(executeStatus));
+    const char *graph_name =
+      graphInfo->graphName == nullptr ? "<unknown>" : graphInfo->graphName;
 
-  // std::cout << context.getOutput(0) << std::endl;
+    ml_loge("[QNNGraph] graphExecute failed: error=%" PRIu64 ", public_error=%u"
+            ", binary=%s, graph=%s, context=%p, graph_handle=%p",
+            error_code, public_error_code, bin_path.c_str(), graph_name,
+            static_cast<void *>(context_i.m_context),
+            static_cast<void *>(graphInfo->graph));
+
+    NNTR_THROW_IF(true, std::runtime_error)
+      << "QNN graphExecute failed: error=" << error_code
+      << ", public_error=" << public_error_code << ", binary=" << bin_path
+      << ", graph=" << graph_name
+      << ", context=" << static_cast<void *>(context_i.m_context)
+      << ", graph_handle=" << static_cast<void *>(graphInfo->graph);
+  }
 
   auto end = std::chrono::system_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - start;
-  std::time_t end_time = std::chrono::system_clock::to_time_t(end);
 
   exec_seconds += elapsed_seconds;
 
@@ -313,11 +320,6 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
 
   // std::cout << "graph exec_time : " << exec_seconds.count() << " " << counter
   //           << std::endl;
-
-  if (StatusCode::SUCCESS != returnStatus) {
-    ml_loge("Execution of Graph: %d failed!", graphIdx);
-    std::cout << "Execution of Graph : " << graphIdx << " failed!" << std::endl;
-  }
 }
 
 void QNNGraph::updateBufferType(std::vector<BufferTypePtr> &buffers,
