@@ -25,9 +25,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <fcntl.h>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -56,14 +59,14 @@ enum class StatusCode {
 };
 
 struct Qnn_Context_Graph_t {
-  Qnn_ContextHandle_t m_context;
-  qnn_wrapper_api::GraphInfo_t **m_graphsInfo;
+  Qnn_ContextHandle_t m_context{nullptr};
+  qnn_wrapper_api::GraphInfo_t **m_graphsInfo{nullptr};
   std::map<std::string, qnn_wrapper_api::GraphInfo_t *>
     graph_map; /** graph name in Context - graph map **/
   std::map<std::string, uint32_t>
     graph_idx; /** graph name in Context - graph map **/
 
-  uint32_t m_graphsCount;
+  uint32_t m_graphsCount{0};
 
   QnnContext_Config_t **m_contextConfig = nullptr;
 
@@ -214,6 +217,17 @@ struct QNNVar {
       return StatusCode::SUCCESS;
     };
 
+    if (nullptr ==
+          m_qnnFunctionPointers.qnnSystemInterface.systemContextCreate ||
+        nullptr ==
+          m_qnnFunctionPointers.qnnSystemInterface.systemContextGetBinaryInfo ||
+        nullptr == m_qnnFunctionPointers.qnnSystemInterface.systemContextFree ||
+        nullptr == m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary ||
+        nullptr == m_qnnFunctionPointers.qnnInterface.contextFree) {
+      ml_loge("Required QNN context function pointers are not populated.");
+      return StatusCode::FAILURE;
+    }
+
     // Let backendExtensions populate configs
     QnnContext_Config_t **customConfigs{nullptr};
     uint32_t customConfigCount{0};
@@ -225,17 +239,13 @@ struct QNNVar {
       }
     }
 
-    if (nullptr ==
-          m_qnnFunctionPointers.qnnSystemInterface.systemContextCreate ||
-        nullptr ==
-          m_qnnFunctionPointers.qnnSystemInterface.systemContextGetBinaryInfo ||
-        nullptr == m_qnnFunctionPointers.qnnSystemInterface.systemContextFree) {
-
-      ml_loge("QNN System function pointers are not populated.");
+    const std::streamoff binarySize = bin.file_size();
+    if (binarySize <= 0 || static_cast<uint64_t>(binarySize) >
+                             std::numeric_limits<size_t>::max()) {
+      ml_loge("Invalid QNN context binary size for: %s", bin.get().c_str());
+      return StatusCode::FAILURE;
     }
-
-    uint64_t bufferSize{0};
-    bufferSize = bin.file_size();
+    const size_t bufferSize = static_cast<size_t>(binarySize);
     std::shared_ptr<uint8_t> buffer{nullptr};
 
     void *mappedBuffer = nullptr;
@@ -244,12 +254,12 @@ struct QNNVar {
       return StatusCode::FAILURE;
     }
 
-    buffer = std::shared_ptr<uint8_t>(static_cast<uint8_t *>(mappedBuffer),
-                                      [&bufferSize](uint8_t *ptr) {
-                                        if (munmap(ptr, bufferSize)) {
-                                          ml_loge("Failed to unmap buffer");
-                                        }
-                                      });
+    buffer = std::shared_ptr<uint8_t>(
+      static_cast<uint8_t *>(mappedBuffer), [bufferSize](uint8_t *ptr) {
+        if (munmap(ptr, bufferSize)) {
+          ml_loge("Failed to unmap QNN context binary");
+        }
+      });
 
     auto returnStatus = StatusCode::SUCCESS;
     Qnn_Context_Graph_t context_i;
@@ -266,7 +276,7 @@ struct QNNVar {
     if (StatusCode::SUCCESS == returnStatus &&
         QNN_SUCCESS !=
           m_qnnFunctionPointers.qnnSystemInterface.systemContextGetBinaryInfo(
-            sysCtxHandle, static_cast<void *>(buffer.get()), bin.file_size(),
+            sysCtxHandle, static_cast<void *>(buffer.get()), bufferSize,
             &binaryInfo, &binaryInfoSize)) {
       ml_loge("Fail to get context binary info");
       returnStatus = StatusCode::FAILURE;
@@ -313,8 +323,8 @@ struct QNNVar {
         m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary(
           m_backendHandle, m_deviceHandle,
           (const QnnContext_Config_t **)context_i.m_contextConfig,
-          static_cast<void *>(buffer.get()), bin.file_size(),
-          &(context_i.m_context), m_profileBackendHandle)) {
+          static_cast<void *>(buffer.get()), bufferSize, &(context_i.m_context),
+          m_profileBackendHandle)) {
       ml_loge("Could not create context from binary.");
       returnStatus = StatusCode::FAILURE;
     }
@@ -432,14 +442,35 @@ struct QNNVar {
     return StatusCode::SUCCESS;
   }
 
-  bool mmapBinaryFile(std::string filePath, void **buffer, size_t bufferSize) {
-    int fd = open(filePath.c_str(), O_RDONLY);
-    int OFFSET = 0;
+  bool mmapBinaryFile(const std::string &filePath, void **buffer,
+                      size_t bufferSize) {
+    if (buffer == nullptr || bufferSize == 0) {
+      ml_loge("Invalid mmap request for QNN context binary");
+      return false;
+    }
+    *buffer = nullptr;
 
-    // read the binary file as memory map
-    *buffer = mmap(nullptr, bufferSize, PROT_READ, MAP_PRIVATE, fd, OFFSET);
-    close(fd);
-    if (madvise(*buffer, bufferSize, MADV_NOHUGEPAGE)) {
+    int fd = open(filePath.c_str(), O_RDONLY);
+    if (fd < 0) {
+      ml_loge("Failed to open QNN context binary %s: %s", filePath.c_str(),
+              strerror(errno));
+      return false;
+    }
+
+    void *mapped = mmap(nullptr, bufferSize, PROT_READ, MAP_PRIVATE, fd, 0);
+    const int mmapError = errno;
+    if (close(fd) != 0) {
+      ml_logw("Failed to close QNN context binary %s: %s", filePath.c_str(),
+              strerror(errno));
+    }
+    if (mapped == MAP_FAILED) {
+      ml_loge("Failed to mmap QNN context binary %s: %s", filePath.c_str(),
+              strerror(mmapError));
+      return false;
+    }
+
+    *buffer = mapped;
+    if (madvise(mapped, bufferSize, MADV_NOHUGEPAGE)) {
       ml_loge("Failed to advise OS on memory usage err: %s", strerror(errno));
     }
     return true;
