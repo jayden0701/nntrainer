@@ -16,6 +16,7 @@
 #define __APP_CONTEXT_H__
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <memory>
 #include <mutex>

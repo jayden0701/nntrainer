@@ -66,7 +66,7 @@ bool LoadOpenCL() {
   }
 
   // record error
-  std::string error(DynamicLibraryLoader::getLastError());
+  const auto error = DynamicLibraryLoader::getLastErrorString();
   ml_loge("Cannot open OpenCL library on this device - %s", error.c_str());
   opencl_init_failed = true;
   return false;

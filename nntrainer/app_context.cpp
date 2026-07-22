@@ -540,26 +540,30 @@ int AppContext::registerLayer(const std::string &library_path,
 
   void *handle = DynamicLibraryLoader::loadLibrary(full_path.c_str(),
                                                    RTLD_LAZY | RTLD_LOCAL);
-  const char *error_msg = DynamicLibraryLoader::getLastError();
+  std::unique_ptr<void, decltype(&DynamicLibraryLoader::freeLibrary)> library(
+    handle, &DynamicLibraryLoader::freeLibrary);
+  const auto load_error = handle == nullptr
+                            ? DynamicLibraryLoader::getLastErrorString()
+                            : std::string();
 
   NNTR_THROW_IF(handle == nullptr, std::invalid_argument)
-    << func_tag << "open plugin failed, reason: " << error_msg;
+    << func_tag << "open plugin failed, reason: " << load_error;
 
   nntrainer::LayerPluggable *pluggable =
     reinterpret_cast<nntrainer::LayerPluggable *>(
       DynamicLibraryLoader::loadSymbol(handle, "ml_train_layer_pluggable"));
 
-  error_msg = DynamicLibraryLoader::getLastError();
-  auto close_dl = [handle] { DynamicLibraryLoader::freeLibrary(handle); };
-  NNTR_THROW_IF_CLEANUP(error_msg != nullptr || pluggable == nullptr,
-                        std::invalid_argument, close_dl)
-    << func_tag << "loading symbol failed, reason: " << error_msg;
+  const auto symbol_error = pluggable == nullptr
+                              ? DynamicLibraryLoader::getLastErrorString()
+                              : std::string();
+  NNTR_THROW_IF(pluggable == nullptr, std::invalid_argument)
+    << func_tag << "loading symbol failed, reason: " << symbol_error;
 
   auto layer = pluggable->createfunc();
-  NNTR_THROW_IF_CLEANUP(layer == nullptr, std::invalid_argument, close_dl)
+  NNTR_THROW_IF(layer == nullptr, std::invalid_argument)
     << func_tag << "created pluggable layer is null";
   auto type = layer->getType();
-  NNTR_THROW_IF_CLEANUP(type == "", std::invalid_argument, close_dl)
+  NNTR_THROW_IF(type == "", std::invalid_argument)
     << func_tag << "custom layer must specify type name, but it is empty";
   pluggable->destroyfunc(layer);
 
@@ -571,6 +575,7 @@ int AppContext::registerLayer(const std::string &library_path,
       return layer;
     };
 
+  (void)library.release();
   return registerFactory<nntrainer::Layer>(std::move(factory_func), type);
 }
 
@@ -580,26 +585,30 @@ int AppContext::registerOptimizer(const std::string &library_path,
 
   void *handle = DynamicLibraryLoader::loadLibrary(full_path.c_str(),
                                                    RTLD_LAZY | RTLD_LOCAL);
-  const char *error_msg = DynamicLibraryLoader::getLastError();
+  std::unique_ptr<void, decltype(&DynamicLibraryLoader::freeLibrary)> library(
+    handle, &DynamicLibraryLoader::freeLibrary);
+  const auto load_error = handle == nullptr
+                            ? DynamicLibraryLoader::getLastErrorString()
+                            : std::string();
 
   NNTR_THROW_IF(handle == nullptr, std::invalid_argument)
-    << func_tag << "open plugin failed, reason: " << error_msg;
+    << func_tag << "open plugin failed, reason: " << load_error;
 
   nntrainer::OptimizerPluggable *pluggable =
     reinterpret_cast<nntrainer::OptimizerPluggable *>(
       DynamicLibraryLoader::loadSymbol(handle, "ml_train_optimizer_pluggable"));
 
-  error_msg = DynamicLibraryLoader::getLastError();
-  auto close_dl = [handle] { DynamicLibraryLoader::freeLibrary(handle); };
-  NNTR_THROW_IF_CLEANUP(error_msg != nullptr || pluggable == nullptr,
-                        std::invalid_argument, close_dl)
-    << func_tag << "loading symbol failed, reason: " << error_msg;
+  const auto symbol_error = pluggable == nullptr
+                              ? DynamicLibraryLoader::getLastErrorString()
+                              : std::string();
+  NNTR_THROW_IF(pluggable == nullptr, std::invalid_argument)
+    << func_tag << "loading symbol failed, reason: " << symbol_error;
 
   auto optimizer = pluggable->createfunc();
-  NNTR_THROW_IF_CLEANUP(optimizer == nullptr, std::invalid_argument, close_dl)
+  NNTR_THROW_IF(optimizer == nullptr, std::invalid_argument)
     << func_tag << "created pluggable optimizer is null";
   auto type = optimizer->getType();
-  NNTR_THROW_IF_CLEANUP(type == "", std::invalid_argument, close_dl)
+  NNTR_THROW_IF(type == "", std::invalid_argument)
     << func_tag << "custom optimizer must specify type name, but it is empty";
   pluggable->destroyfunc(optimizer);
 
@@ -611,6 +620,7 @@ int AppContext::registerOptimizer(const std::string &library_path,
       return optimizer;
     };
 
+  (void)library.release();
   return registerFactory<nntrainer::Optimizer>(std::move(factory_func), type);
 }
 

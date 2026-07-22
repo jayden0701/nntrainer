@@ -21,8 +21,8 @@ RpcMem::RpcMem() {
   void *handle =
     DynamicLibraryLoader::loadLibrary("libcdsprpc.so", RTLD_NOW | RTLD_LOCAL);
   if (handle == nullptr) {
-    ml_loge("RpcMem: failed to dlopen libcdsprpc.so: %s",
-            DynamicLibraryLoader::getLastError());
+    const auto load_error = DynamicLibraryLoader::getLastErrorString();
+    ml_loge("RpcMem: failed to dlopen libcdsprpc.so: %s", load_error.c_str());
     return;
   }
 

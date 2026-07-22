@@ -171,26 +171,30 @@ int Engine::registerContext(const std::string &library_path,
 
   void *handle = DynamicLibraryLoader::loadLibrary(full_path.c_str(),
                                                    RTLD_LAZY | RTLD_LOCAL);
-  const char *error_msg = DynamicLibraryLoader::getLastError();
+  std::unique_ptr<void, decltype(&DynamicLibraryLoader::freeLibrary)> library(
+    handle, &DynamicLibraryLoader::freeLibrary);
+  const auto load_error = handle == nullptr
+                            ? DynamicLibraryLoader::getLastErrorString()
+                            : std::string();
 
   NNTR_THROW_IF(handle == nullptr, std::invalid_argument)
-    << func_tag << "open plugin failed, reason: " << error_msg;
+    << func_tag << "open plugin failed, reason: " << load_error;
 
   nntrainer::ContextPluggable *pluggable =
     reinterpret_cast<nntrainer::ContextPluggable *>(
       DynamicLibraryLoader::loadSymbol(handle, "ml_train_context_pluggable"));
 
-  error_msg = DynamicLibraryLoader::getLastError();
-  auto close_dl = [handle] { DynamicLibraryLoader::freeLibrary(handle); };
-  NNTR_THROW_IF_CLEANUP(error_msg != nullptr || pluggable == nullptr,
-                        std::invalid_argument, close_dl)
-    << func_tag << "loading symbol failed, reason: " << error_msg;
+  const auto symbol_error = pluggable == nullptr
+                              ? DynamicLibraryLoader::getLastErrorString()
+                              : std::string();
+  NNTR_THROW_IF(pluggable == nullptr, std::invalid_argument)
+    << func_tag << "loading symbol failed, reason: " << symbol_error;
 
   auto context = pluggable->createfunc();
-  NNTR_THROW_IF_CLEANUP(context == nullptr, std::invalid_argument, close_dl)
+  NNTR_THROW_IF(context == nullptr, std::invalid_argument)
     << func_tag << "created pluggable context is null";
   auto type = context->getName();
-  NNTR_THROW_IF_CLEANUP(type == "", std::invalid_argument, close_dl)
+  NNTR_THROW_IF(type == "", std::invalid_argument)
     << func_tag << "custom layer must specify type name, but it is empty";
 
   // If this type is already registered (e.g. called again for a second
@@ -199,10 +203,10 @@ int Engine::registerContext(const std::string &library_path,
   // authoritative synchronized check; this is just an early-exit path.
   if (engines.find(type) != engines.end()) {
     pluggable->destroyfunc(context);
-    DynamicLibraryLoader::freeLibrary(handle);
     return 0;
   }
 
+  (void)library.release();
   registerContext(type, context);
 
   return 0;

@@ -44,6 +44,7 @@ namespace nntrainer {
 class DynamicLibraryLoader {
 public:
   static void *loadLibrary(const char *path, [[maybe_unused]] const int flag) {
+    clearLastError();
 #if defined(_WIN32)
     return LoadLibraryA(path);
 #else
@@ -61,17 +62,41 @@ public:
 
   static const char *getLastError() {
 #if defined(_WIN32)
-    return std::to_string(GetLastError()).c_str();
+    static thread_local std::string error_message;
+    const auto error = GetLastError();
+    if (error == ERROR_SUCCESS) {
+      error_message.clear();
+      return nullptr;
+    }
+
+    error_message = "Windows error " + std::to_string(error);
+    return error_message.c_str();
 #else
     return dlerror();
 #endif
   }
 
+  static std::string getLastErrorString() {
+    const char *error = getLastError();
+    return error == nullptr ? std::string() : std::string(error);
+  }
+
   static void *loadSymbol(void *handle, const char *symbol_name) {
+    clearLastError();
 #if defined(_WIN32)
-    return GetProcAddress((HMODULE)handle, symbol_name);
+    return reinterpret_cast<void *>(
+      GetProcAddress((HMODULE)handle, symbol_name));
 #else
     return dlsym(handle, symbol_name);
+#endif
+  }
+
+private:
+  static void clearLastError() noexcept {
+#if defined(_WIN32)
+    SetLastError(ERROR_SUCCESS);
+#else
+    (void)dlerror();
 #endif
   }
 };
