@@ -9,11 +9,9 @@
 #ifndef __ANDROID_MEMORY_ALLOCATOR_H__
 #define __ANDROID_MEMORY_ALLOCATOR_H__
 
-#include <cstring>
-#include <iostream>
-#include <map>
+#include <cstddef>
 
-void *allocate(size_t fileSize);
-void deallocate(void *pointer);
+void *allocate(std::size_t file_size);
+void deallocate(void *pointer) noexcept;
 
 #endif // __ANDROID_MEMORY_ALLOCATOR_H__

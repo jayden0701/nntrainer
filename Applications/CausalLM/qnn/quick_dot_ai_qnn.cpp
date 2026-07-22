@@ -254,12 +254,10 @@ std::string causallm::Quick_Dot_AI_QNN::promptToUtf8(const WSTR &prompt) {
 }
 
 causallm::Quick_Dot_AI_QNN::~Quick_Dot_AI_QNN() {
-  // Tear down each graph's NeuralNetwork (and the QNNGraph layer inside it)
-  // FIRST, so ~QNNGraph releases its zero-copy references to our input
-  // buffers before we free them. Without this, the deallocate loop below
-  // would free memory that QNNGraph still tracks, and ~QNNGraph — invoked
-  // later as part of `models` member destruction — would touch freed
-  // memory.
+  // Stop and destroy every graph before releasing application-owned QNN
+  // buffers. deallocate_all() then routes each pointer through QNNRpcManager,
+  // which removes any context-specific memHandle before freeing its RPC
+  // backing.
   for (auto &[model_name, model] : models) {
     model.model_handle.reset();
   }

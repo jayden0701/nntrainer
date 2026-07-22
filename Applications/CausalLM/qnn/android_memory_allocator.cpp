@@ -8,48 +8,58 @@
 
 #include "android_memory_allocator.h"
 
-#include <dynamic_library_loader.h>
-#include <iostream>
+#include <engine.h>
+#include <mem_allocator.h>
 
-#define RPCMEM_HEAP_ID_SYSTEM 25
-#define RPCMEM_DEFAULT_FLAGS 1
+#include <limits>
+#include <memory>
+#include <nntrainer_log.h>
+#include <stdexcept>
+#include <utility>
 
-typedef void *(*RpcMemAllocFn_t)(int, unsigned int, int);
-typedef void (*RpcMemFreeFn_t)(void *);
+namespace {
 
-enum {
-  DL_NOW = 0x0001,
-  DL_LOCAL = 0x0002,
-  DL_GLOBAL = 0x0004,
-};
+// Preserve the headroom used by the legacy direct-rpcmem adapter.
+constexpr std::size_t kQnnAllocationPadding = 140;
 
-bool inited = false;
-void *handle;
-RpcMemAllocFn_t rpcmem_alloc;
-RpcMemFreeFn_t rpcmem_free;
-
-void init_RPCMEM() {
-  void *handle = nntrainer::DynamicLibraryLoader::loadLibrary(
-    "libcdsprpc.so", DL_NOW | DL_LOCAL);
-  rpcmem_alloc = (RpcMemAllocFn_t)nntrainer::DynamicLibraryLoader::loadSymbol(
-    handle, "rpcmem_alloc");
-  rpcmem_free = (RpcMemFreeFn_t)nntrainer::DynamicLibraryLoader::loadSymbol(
-    handle, "rpcmem_free");
-
-  if (rpcmem_alloc == nullptr || rpcmem_free == nullptr) {
-    std::cerr << "open rpc mem failed" << std::endl;
-  }
+const std::shared_ptr<nntrainer::MemAllocator> &getQnnAllocator() {
+  // Some CausalLM handles are function-static and may be destroyed after the
+  // Engine singleton. Keep this small holder alive so deallocation never has
+  // to re-enter a destroyed Engine. The QNN Context and plugin are already
+  // process-lifetime resources in Engine.
+  static const auto *qnn_allocator = []() {
+    auto allocator = nntrainer::Engine::Global().getAllocator("qnn");
+    if (allocator->getName() != "qnn") {
+      throw std::runtime_error("Registered QNN allocator has the wrong type");
+    }
+    return new std::shared_ptr<nntrainer::MemAllocator>(std::move(allocator));
+  }();
+  return *qnn_allocator;
 }
 
-void *allocate(size_t fileSize) {
-  if (!inited) {
-    init_RPCMEM();
-    inited = true;
-  }
-  void *buffer =
-    rpcmem_alloc(RPCMEM_HEAP_ID_SYSTEM, RPCMEM_DEFAULT_FLAGS, fileSize + 140);
+} // namespace
 
+void *allocate(std::size_t file_size) {
+  if (file_size >
+      std::numeric_limits<std::size_t>::max() - kQnnAllocationPadding) {
+    throw std::length_error("QNN RPC allocation size overflow");
+  }
+
+  void *buffer = nullptr;
+  getQnnAllocator()->alloc(&buffer, file_size + kQnnAllocationPadding,
+                           alignof(std::max_align_t));
   return buffer;
 }
 
-void deallocate(void *pointer) { rpcmem_free(pointer); }
+void deallocate(void *pointer) noexcept {
+  if (pointer == nullptr) {
+    return;
+  }
+  try {
+    getQnnAllocator()->free(pointer);
+  } catch (const std::exception &e) {
+    ml_loge("Failed to release a CausalLM QNN allocation: %s", e.what());
+  } catch (...) {
+    ml_loge("Failed to release a CausalLM QNN allocation");
+  }
+}
