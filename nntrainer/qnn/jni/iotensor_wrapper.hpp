@@ -12,9 +12,12 @@
 #include "DataUtil.hpp"
 #include "IOTensor.hpp"
 #include "PAL/StringOp.hpp"
+#include "QnnWrapperUtils.hpp"
 
 #include <QnnTypeMacros.hpp>
 #include <nntrainer_log.h>
+
+#include <memory>
 
 namespace nntrainer {
 
@@ -24,37 +27,43 @@ using namespace qnn::tools::iotensor;
 /** @brief Wraps QNN IO tensor allocation and teardown without copying data. */
 class IOTensorWrapper {
 public:
+  /** Owns host descriptor metadata only; QNN memHandles remain RPC-owned. */
+  struct TensorDeleter {
+    uint32_t tensor_count{0};
+
+    void operator()(Qnn_Tensor_t *tensors) const noexcept {
+      if (tensors != nullptr) {
+        qnn_wrapper_api::freeQnnTensors(tensors, tensor_count);
+      }
+    }
+  };
+
+  using TensorOwner = std::unique_ptr<Qnn_Tensor_t[], TensorDeleter>;
+
+  static TensorOwner makeTensorOwner(uint32_t tensor_count) {
+    return TensorOwner(nullptr, TensorDeleter{tensor_count});
+  }
+
   StatusCode
-  setupInputAndOutputTensors(Qnn_Tensor_t **inputs, Qnn_Tensor_t **outputs,
-                             qnn_wrapper_api::GraphInfo_t graphInfo) {
-    auto returnStatus = StatusCode::SUCCESS;
-    if (StatusCode::SUCCESS != setupTensorsNoCopy(inputs,
-                                                  graphInfo.numInputTensors,
-                                                  (graphInfo.inputTensors))) {
-      ml_loge("Failure in setting up input tensors");
-      returnStatus = StatusCode::FAILURE;
-    }
-    if (StatusCode::SUCCESS != setupTensorsNoCopy(outputs,
-                                                  graphInfo.numOutputTensors,
-                                                  (graphInfo.outputTensors))) {
-      ml_loge("Failure in setting up output tensors");
-      returnStatus = StatusCode::FAILURE;
-    }
+  setupInputAndOutputTensors(TensorOwner &inputs, TensorOwner &outputs,
+                             const qnn_wrapper_api::GraphInfo_t &graphInfo) {
+    inputs.reset();
+    outputs.reset();
+
+    auto returnStatus = setupTensorsNoCopy(inputs, graphInfo.numInputTensors,
+                                           graphInfo.inputTensors);
     if (StatusCode::SUCCESS != returnStatus) {
-      ml_loge("Failure in setupInputAndOutputTensors, cleaning up resources");
-      if (nullptr != *inputs) {
-        QNN_DEBUG("cleaning up input tensors");
-        tearDownTensors(*inputs, graphInfo.numInputTensors);
-        *inputs = nullptr;
-      }
-      if (nullptr != *outputs) {
-        QNN_DEBUG("cleaning up output tensors");
-        tearDownTensors(*outputs, graphInfo.numOutputTensors);
-        *outputs = nullptr;
-      }
-      ml_loge(
-        "Failure in setupInputAndOutputTensors, done cleaning up resources");
+      ml_loge("Failure in setting up input tensors");
+      return returnStatus;
     }
+
+    returnStatus = setupTensorsNoCopy(outputs, graphInfo.numOutputTensors,
+                                      graphInfo.outputTensors);
+    if (StatusCode::SUCCESS != returnStatus) {
+      ml_loge("Failure in setting up output tensors");
+      return returnStatus;
+    }
+
     return returnStatus;
   }
 
@@ -158,8 +167,9 @@ public:
   }
 
 private:
-  StatusCode setupTensorsNoCopy(Qnn_Tensor_t **tensors, uint32_t tensorCount,
+  StatusCode setupTensorsNoCopy(TensorOwner &tensors, uint32_t tensorCount,
                                 Qnn_Tensor_t *tensorWrappers) {
+    tensors.reset();
     if (nullptr == tensorWrappers) {
       ml_loge("tensorWrappers is nullptr");
       return StatusCode::FAILURE;
@@ -168,51 +178,28 @@ private:
       QNN_INFO("tensor count is 0. Nothing to setup.");
       return StatusCode::SUCCESS;
     }
-    auto returnStatus = StatusCode::SUCCESS;
-    *tensors = (Qnn_Tensor_t *)calloc(1, tensorCount * sizeof(Qnn_Tensor_t));
-    // std::cout << "tensorCount: "<<tensorCount << std::endl;
-    if (nullptr == *tensors) {
+    auto *raw_tensors =
+      static_cast<Qnn_Tensor_t *>(calloc(tensorCount, sizeof(Qnn_Tensor_t)));
+    if (nullptr == raw_tensors) {
       ml_loge("mem alloc failed for *tensors");
-      returnStatus = StatusCode::FAILURE;
-      return returnStatus;
+      return StatusCode::FAILURE;
     }
+    tensors.reset(raw_tensors);
+
+    for (size_t tensorIdx = 0; tensorIdx < tensorCount; tensorIdx++) {
+      tensors[tensorIdx] = QNN_TENSOR_INIT;
+    }
+
     for (size_t tensorIdx = 0; tensorIdx < tensorCount; tensorIdx++) {
       Qnn_Tensor_t wrapperTensor = tensorWrappers[tensorIdx];
-      // std::cout << tensorIdx << " tensorIdx " << std::endl;
-      std::vector<size_t> dims;
-      fillDims(dims, QNN_TENSOR_GET_DIMENSIONS(wrapperTensor),
-               QNN_TENSOR_GET_RANK(wrapperTensor));
-      if (StatusCode::SUCCESS == returnStatus) {
-        QNN_DEBUG("allocateBuffer successful");
-        (*tensors)[tensorIdx] = QNN_TENSOR_INIT;
-        returnStatus = (qnn::tools::sample_app::deepCopyQnnTensorInfo(
-                          ((*tensors) + tensorIdx), &wrapperTensor) == true
-                          ? StatusCode::SUCCESS
-                          : StatusCode::FAILURE);
+      if (!qnn::tools::sample_app::deepCopyQnnTensorInfo(
+            tensors.get() + tensorIdx, &wrapperTensor)) {
+        ml_loge("Failed to copy QNN tensor descriptor at index %zu", tensorIdx);
+        return StatusCode::FAILURE;
       }
-      if (StatusCode::SUCCESS == returnStatus) {
-        QNN_DEBUG("deepCopyQnnTensorInfo successful");
-        QNN_TENSOR_SET_MEM_TYPE(((*tensors) + tensorIdx),
-                                QNN_TENSORMEMTYPE_MEMHANDLE);
-      }
+      QNN_TENSOR_SET_MEM_TYPE(tensors.get() + tensorIdx,
+                              QNN_TENSORMEMTYPE_MEMHANDLE);
     }
-    return returnStatus;
-  }
-
-  // Clean up all tensors related data after execution.
-  StatusCode tearDownTensors(Qnn_Tensor_t *tensors, uint32_t tensorCount) {
-    for (size_t tensorIdx = 0; tensorIdx < tensorCount; tensorIdx++) {
-      QNN_DEBUG("freeing resources for tensor: %d", tensorIdx);
-      if (nullptr != QNN_TENSOR_GET_DIMENSIONS(tensors[tensorIdx])) {
-        QNN_DEBUG("freeing dimensions");
-        free(QNN_TENSOR_GET_DIMENSIONS(tensors[tensorIdx]));
-      }
-      if (nullptr != QNN_TENSOR_GET_CLIENT_BUF(tensors[tensorIdx]).data) {
-        QNN_DEBUG("freeing clientBuf.data");
-        free(QNN_TENSOR_GET_CLIENT_BUF(tensors[tensorIdx]).data);
-      }
-    }
-    free(tensors);
     return StatusCode::SUCCESS;
   }
 

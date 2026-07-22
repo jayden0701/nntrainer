@@ -26,9 +26,6 @@ namespace nntrainer {
  */
 class QNNGraph : public LayerImpl {
 public:
-  using BufferTypePtr =
-    std::variant<std::monostate, uint8_t *, uint16_t *, float *>;
-
   QNNGraph();
   ~QNNGraph();
 
@@ -75,12 +72,6 @@ public:
             size_t start_offset = 0, bool read_from_offset = false,
             int file_fd = -1) override;
 
-  void updateBufferType(std::vector<BufferTypePtr> &buffers, Tensor &T);
-
-  void populateTensor(std::shared_ptr<QNNVar> qc_var,
-                      Qnn_Context_Graph_t &context_i, BufferTypePtr buffer,
-                      Qnn_Tensor_t *T);
-
 private:
   std::tuple<std::vector<props::TensorDimension>,
              std::vector<props::TensorDataType>, std::vector<props::TensorType>,
@@ -95,18 +86,11 @@ private:
   std::string bin_path;
   bool m_isContextCreated;
 
-  iotensor::InputDataType m_inputDataType;
-
   std::vector<props::TensorDataType> t_dtype;
   std::vector<TensorDim> t_dims;
   std::vector<props::TensorType> t_type;
 
-  std::vector<BufferTypePtr> currentInputBuffers;
-  std::vector<BufferTypePtr> currentOutputBuffers;
-
   sample_app::QnnFunctionPointers m_qnnFunctionPointers;
-
-  int counter;
 };
 
 } // namespace nntrainer

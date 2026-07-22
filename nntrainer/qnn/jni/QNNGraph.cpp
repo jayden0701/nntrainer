@@ -34,8 +34,6 @@
 #include <node_exporter.h>
 #include <util_func.h>
 
-std::chrono::duration<double> exec_seconds;
-
 namespace nntrainer {
 
 std::shared_ptr<QNNVar> getQNNVar(RunLayerContext &context) {
@@ -45,10 +43,30 @@ std::shared_ptr<QNNVar> getQNNVar(RunLayerContext &context) {
   return qc_var;
 }
 
+static void *getQnnTensorBuffer(Tensor &tensor, const char *kind,
+                                size_t index) {
+  switch (tensor.getDataType()) {
+  case Tdatatype::UINT4:
+  case Tdatatype::UINT8:
+  case Tdatatype::UINT16:
+  case Tdatatype::FP32:
+    break;
+  default:
+    NNTR_THROW_IF(true, std::invalid_argument)
+      << "Unsupported QNN " << kind << " tensor data type at index " << index
+      << ": " << static_cast<int>(tensor.getDataType());
+    return nullptr;
+  }
+
+  void *buffer = tensor.getData<void>();
+  NNTR_THROW_IF(buffer == nullptr, std::runtime_error)
+    << "NNTrainer " << kind << " tensor " << index << " has no backing buffer";
+  return buffer;
+}
+
 QNNGraph::QNNGraph() :
   LayerImpl(), graph_props({}, {}, {}, props::FilePath(), {}, {}) {
   m_isContextCreated = false;
-  m_inputDataType = iotensor::InputDataType::NATIVE;
 }
 
 QNNGraph::~QNNGraph() {
@@ -191,6 +209,9 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
   NNTR_THROW_IF(!graphInfo, std::invalid_argument)
     << "cannot retrieve graph " << context.getName() << " from " << bin_path;
 
+  const char *graph_name =
+    graphInfo->graphName == nullptr ? "<unknown>" : graphInfo->graphName;
+
   NNTR_THROW_IF(context.getNumInputs() != graphInfo->numInputTensors,
                 std::invalid_argument)
     << "Number of NNtrainer's inputs " << context.getNumInputs()
@@ -203,18 +224,13 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     << " does not match with number of QNN's output tensors "
     << graphInfo->numOutputTensors << "!";
 
-  for (size_t i = 0; i < context.getNumInputs(); ++i) {
-    updateBufferType(currentInputBuffers, context.getInput(i));
-  }
+  auto inputs = IOTensorWrapper::makeTensorOwner(graphInfo->numInputTensors);
+  auto outputs = IOTensorWrapper::makeTensorOwner(graphInfo->numOutputTensors);
 
-  for (size_t i = 0; i < graphInfo->numOutputTensors; ++i) {
-    updateBufferType(currentOutputBuffers, context.getOutput(i));
-  }
-
-  Qnn_Tensor_t *inputs = nullptr;
-  Qnn_Tensor_t *outputs = nullptr;
-
-  qc_var->m_ioTensor.setupInputAndOutputTensors(&inputs, &outputs, *graphInfo);
+  NNTR_THROW_IF(qc_var->m_ioTensor.setupInputAndOutputTensors(
+                  inputs, outputs, *graphInfo) != iotensor::StatusCode::SUCCESS,
+                std::runtime_error)
+    << "Failed to set up QNN I/O tensor descriptors for graph " << graph_name;
 
   auto input_quant_params =
     std::get<std::vector<props::InputQuantParam>>(graph_props);
@@ -232,7 +248,9 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
   }
 
   for (size_t i = 0; i < context.getNumInputs(); ++i) {
-    auto key = inputs[i].v1.name;
+    const char *key = inputs[i].v1.name;
+    NNTR_THROW_IF(key == nullptr, std::runtime_error)
+      << "QNN input tensor " << i << " has no name";
     NNTR_THROW_IF(input_quant_param_map.find(key) ==
                     input_quant_param_map.end(),
                   std::invalid_argument)
@@ -240,11 +258,16 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     auto value = input_quant_param_map[key];
     inputs[i].v1.quantizeParams.scaleOffsetEncoding.scale = value.first;
     inputs[i].v1.quantizeParams.scaleOffsetEncoding.offset = value.second;
-    populateTensor(qc_var, context_i, currentInputBuffers[i], &(inputs[i]));
+    // NNTrainer QNN tensors already use RPC shared-memory backing. Bind that
+    // allocation directly instead of copying into a raw client buffer.
+    void *buffer = getQnnTensorBuffer(context.getInput(i), "input", i);
+    qc_var->RpcMem->registerQnnTensor(buffer, inputs[i], context_i.m_context);
   }
 
   for (size_t i = 0; i < context.getNumOutputs(); ++i) {
-    auto key = outputs[i].v1.name;
+    const char *key = outputs[i].v1.name;
+    NNTR_THROW_IF(key == nullptr, std::runtime_error)
+      << "QNN output tensor " << i << " has no name";
     NNTR_THROW_IF(output_quant_param_map.find(key) ==
                     output_quant_param_map.end(),
                   std::invalid_argument)
@@ -252,10 +275,10 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     auto value = output_quant_param_map[key];
     outputs[i].v1.quantizeParams.scaleOffsetEncoding.scale = value.first;
     outputs[i].v1.quantizeParams.scaleOffsetEncoding.offset = value.second;
-    populateTensor(qc_var, context_i, currentOutputBuffers[i], &(outputs[i]));
+    // Outputs are written directly into the NNTrainer RPC allocation as well.
+    void *buffer = getQnnTensorBuffer(context.getOutput(i), "output", i);
+    qc_var->RpcMem->registerQnnTensor(buffer, outputs[i], context_i.m_context);
   }
-
-  auto start = std::chrono::system_clock::now();
 
   Qnn_ErrorHandle_t executeStatus = QNN_GRAPH_NO_ERROR;
   QnnGraph_Config_t **customGraphConfigs{nullptr};
@@ -280,7 +303,7 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     }
   }
   executeStatus = qc_var->m_qnnFunctionPointers.qnnInterface.graphExecute(
-    graphInfo->graph, inputs, graphInfo->numInputTensors, outputs,
+    graphInfo->graph, inputs.get(), graphInfo->numInputTensors, outputs.get(),
     graphInfo->numOutputTensors, qc_var->m_profileBackendHandle, nullptr);
 
   if (nullptr != backend_extensions && backend_extensions->interface()) {
@@ -293,9 +316,6 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     const auto error_code = static_cast<uint64_t>(executeStatus);
     const auto public_error_code =
       static_cast<unsigned int>(QNN_GET_ERROR_CODE(executeStatus));
-    const char *graph_name =
-      graphInfo->graphName == nullptr ? "<unknown>" : graphInfo->graphName;
-
     ml_loge("[QNNGraph] graphExecute failed: error=%" PRIu64 ", public_error=%u"
             ", binary=%s, graph=%s, context=%p, graph_handle=%p",
             error_code, public_error_code, bin_path.c_str(), graph_name,
@@ -308,66 +328,6 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
       << ", graph=" << graph_name
       << ", context=" << static_cast<void *>(context_i.m_context)
       << ", graph_handle=" << static_cast<void *>(graphInfo->graph);
-  }
-
-  auto end = std::chrono::system_clock::now();
-  std::chrono::duration<double> elapsed_seconds = end - start;
-
-  exec_seconds += elapsed_seconds;
-
-  // qc_var->RpcMem->deRegisterQnnTensor();
-  counter++;
-
-  // std::cout << "graph exec_time : " << exec_seconds.count() << " " << counter
-  //           << std::endl;
-}
-
-void QNNGraph::updateBufferType(std::vector<BufferTypePtr> &buffers,
-                                Tensor &T) {
-  Tdatatype type = T.getDataType();
-  switch (type) {
-  case Tdatatype::UINT4:
-  case Tdatatype::UINT8:
-    buffers.push_back(T.getData<uint8_t>());
-    break;
-  case Tdatatype::UINT16:
-    buffers.push_back(T.getData<uint16_t>());
-    break;
-  case Tdatatype::FP32:
-    buffers.push_back(T.getData<float>());
-    break;
-  default:
-    break;
-  }
-}
-
-void QNNGraph::populateTensor(std::shared_ptr<QNNVar> qc_var,
-                              Qnn_Context_Graph_t &context_i,
-                              BufferTypePtr buffers, Qnn_Tensor_t *T) {
-  switch (buffers.index()) {
-  case 1: // uint8_t *
-  {
-    qc_var->m_ioTensor.populateInputTensor(std::get<uint8_t *>(buffers), T,
-                                           m_inputDataType);
-    qc_var->RpcMem->registerQnnTensor(std::get<uint8_t *>(buffers), *T,
-                                      context_i.m_context);
-  } break;
-  case 2: // uint16_t*
-  {
-    qc_var->m_ioTensor.populateInputTensor(std::get<uint16_t *>(buffers), T,
-                                           m_inputDataType);
-    qc_var->RpcMem->registerQnnTensor(std::get<uint16_t *>(buffers), *T,
-                                      context_i.m_context);
-  } break;
-  case 3: {
-    qc_var->m_ioTensor.populateInputTensor(std::get<float *>(buffers), T,
-                                           m_inputDataType);
-    qc_var->RpcMem->registerQnnTensor(std::get<float *>(buffers), *T,
-                                      context_i.m_context);
-  } break;
-  default:
-    std::cout << "Unknown type: " << buffers.index() << std::endl;
-    break;
   }
 }
 
