@@ -52,6 +52,7 @@ typedef enum {
   CAUSAL_LM_ERROR_NOT_INITIALIZED = 4,
   CAUSAL_LM_ERROR_INFERENCE_NOT_RUN = 5,
   CAUSAL_LM_ERROR_UNSUPPORTED = 6,
+  CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED = 7,
   CAUSAL_LM_ERROR_UNKNOWN = 99
 } ErrorCode;
 
@@ -332,6 +333,8 @@ WIN_EXPORT ErrorCode getPerformanceMetricsHandle(CausalLmHandle handle,
  * @brief Release all resources owned by a handle.
  *
  * Passing a NULL handle is a no-op and returns CAUSAL_LM_ERROR_NONE.
+ * The handle object is deleted even when model teardown returns
+ * CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED; the caller must not reuse it.
  *
  * @param handle Handle returned by loadModelHandle
  * @return ErrorCode
@@ -362,6 +365,9 @@ WIN_EXPORT ErrorCode cancelModelHandle(CausalLmHandle handle);
  * with destroyModelHandle, or (in future) re-loaded.
  *
  * Passing a NULL handle is a no-op and returns CAUSAL_LM_ERROR_NONE.
+ * A resource-release failure leaves the handle unloaded and non-runnable, and
+ * returns CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED. The handle may still be
+ * passed to destroyModelHandle().
  *
  * @param handle Handle returned by loadModelHandle
  * @return ErrorCode

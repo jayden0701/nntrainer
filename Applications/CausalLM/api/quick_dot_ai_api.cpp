@@ -108,6 +108,7 @@ struct CausalLmModel {
   std::vector<double> initialization_duration_ms;
   bool initialized = false;
   int kv_len = 0;
+  ErrorCode teardown_status = CAUSAL_LM_ERROR_NONE;
 };
 
 // Globals shared across all handles — options set via setOptions() apply
@@ -557,6 +558,44 @@ static size_t text_generation_model_index(const CausalLmModel &h) {
 
 static void reset_handle_session_state(CausalLmModel &h) { h.kv_len = 0; }
 
+static bool shutdown_model(causallm::Transformer *model) noexcept {
+#ifdef ENABLE_QNN_MODELS
+  auto *qnn_model = as_qnn_model(model);
+  if (qnn_model != nullptr) {
+    return qnn_model->shutdown();
+  }
+#else
+  (void)model;
+#endif
+  return true;
+}
+
+/**
+ * @brief Shut down every model while the caller owns h.mtx.
+ *
+ * QNN teardown is one-phase: a partial release is terminal and cannot be
+ * rolled back. Preserve the first failure on the handle so repeated unload or
+ * destroy calls cannot report a later destructor fallback as success.
+ */
+static ErrorCode unload_models_locked(CausalLmModel &h) noexcept {
+  ErrorCode status = h.teardown_status;
+
+  for (auto &model : h.models) {
+    if (!shutdown_model(model.get())) {
+      status = CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED;
+    }
+  }
+
+  h.models.clear();
+  h.architectures.clear();
+  h.model_dirs.clear();
+  h.initialization_duration_ms.clear();
+  h.initialized = false;
+  reset_handle_session_state(h);
+  h.teardown_status = status;
+  return status;
+}
+
 static void update_handle_session_after_run(CausalLmModel &h,
                                             size_t model_index) {
   if (model_index >= h.models.size() || model_index >= h.architectures.size())
@@ -983,14 +1022,15 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
   LOGD("[DEBUG] load_into_handle: register_models done");
 
   std::lock_guard<std::mutex> lock(h.mtx);
-  try {
-    h.models.clear();
-    h.architectures.clear();
-    h.model_dirs.clear();
-    h.initialization_duration_ms.clear();
-    h.initialized = false;
-    reset_handle_session_state(h);
+  const auto cleanup_status = unload_models_locked(h);
+  if (cleanup_status != CAUSAL_LM_ERROR_NONE) {
+    LOGE("load_into_handle: previous model teardown failed with code=%d",
+         cleanup_status);
+    return cleanup_status;
+  }
+  h.teardown_status = CAUSAL_LM_ERROR_NONE;
 
+  try {
     // Check if it's a registered in-memory config
     std::string input_name = std::string(target_model_name);
     std::string input_name_upper = input_name;
@@ -1246,20 +1286,31 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
             LOGE("[DEBUG] load_into_handle: Factory::create returned nullptr "
                  "for sub-model %zu (arch=%s)",
                  i, arch_i.c_str());
+            const auto teardown_status = unload_models_locked(h);
+            if (teardown_status != CAUSAL_LM_ERROR_NONE) {
+              return teardown_status;
+            }
             return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
           }
 
           auto sub_t0 = std::chrono::high_resolution_clock::now();
-          if (native_lib_dir != nullptr && strlen(native_lib_dir) > 0) {
-            setenv("ADSP_LIBRARY_PATH", native_lib_dir, 1);
-          }
-          m->initialize();
+          try {
+            if (native_lib_dir != nullptr && strlen(native_lib_dir) > 0) {
+              setenv("ADSP_LIBRARY_PATH", native_lib_dir, 1);
+            }
+            m->initialize();
 
-          std::string weight_file =
-            sub_nntr.contains("model_file_name")
-              ? sub_nntr["model_file_name"].get<std::string>()
-              : (sub_dir + "/pytorch_model.bin");
-          m->load_weight(weight_file);
+            std::string weight_file =
+              sub_nntr.contains("model_file_name")
+                ? sub_nntr["model_file_name"].get<std::string>()
+                : (sub_dir + "/pytorch_model.bin");
+            m->load_weight(weight_file);
+          } catch (...) {
+            if (!shutdown_model(m.get())) {
+              h.teardown_status = CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED;
+            }
+            throw;
+          }
           auto sub_t1 = std::chrono::high_resolution_clock::now();
           double sub_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                             sub_t1 - sub_t0)
@@ -1417,24 +1468,31 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     ensure_qnn_backend_ext_config(base_dir);
 #endif
 
-    LOGD("[DEBUG] load_into_handle: Calling model->initialize()...");
-    if (native_lib_dir != nullptr && strlen(native_lib_dir) > 0) {
-      setenv("ADSP_LIBRARY_PATH", native_lib_dir, 1);
-    }
-    m->initialize();
-    LOGD("[DEBUG] load_into_handle: model->initialize() done");
+    try {
+      LOGD("[DEBUG] load_into_handle: Calling model->initialize()...");
+      if (native_lib_dir != nullptr && strlen(native_lib_dir) > 0) {
+        setenv("ADSP_LIBRARY_PATH", native_lib_dir, 1);
+      }
+      m->initialize();
+      LOGD("[DEBUG] load_into_handle: model->initialize() done");
 
-    LOGD("[DEBUG] load_into_handle: Calling model->load_weight()...");
-    // Multi-component models (e.g. Lfm2VLVJepa21BModel = ViT + projector +
-    // LFM2) have no single model_file_name; they resolve each component's
-    // weight file relative to the model directory, so hand them the directory
-    // instead.
-    if (architecture == "Lfm2VLVJepa21BModel") {
-      m->load_weight(abs_model_dir);
-    } else {
-      m->load_weight(weight_file);
+      LOGD("[DEBUG] load_into_handle: Calling model->load_weight()...");
+      // Multi-component models (e.g. Lfm2VLVJepa21BModel = ViT + projector +
+      // LFM2) have no single model_file_name; they resolve each component's
+      // weight file relative to the model directory, so hand them the directory
+      // instead.
+      if (architecture == "Lfm2VLVJepa21BModel") {
+        m->load_weight(abs_model_dir);
+      } else {
+        m->load_weight(weight_file);
+      }
+      LOGD("[DEBUG] load_into_handle: model->load_weight() done");
+    } catch (...) {
+      if (!shutdown_model(m.get())) {
+        h.teardown_status = CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED;
+      }
+      throw;
     }
-    LOGD("[DEBUG] load_into_handle: model->load_weight() done");
 
     auto finish_init = std::chrono::high_resolution_clock::now();
     auto init_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1486,6 +1544,10 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
            e.what());
     } catch (...) {
       LOGE("[DEBUG] load_into_handle: rethrown still non-std");
+    }
+    const auto teardown_status = unload_models_locked(h);
+    if (teardown_status != CAUSAL_LM_ERROR_NONE) {
+      return teardown_status;
     }
     return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
   }
@@ -2368,13 +2430,7 @@ ErrorCode unloadModelHandle(CausalLmHandle handle) {
     return CAUSAL_LM_ERROR_NONE;
   }
   std::lock_guard<std::mutex> lock(handle->mtx);
-  handle->models.clear();
-  handle->architectures.clear();
-  handle->model_dirs.clear();
-  handle->initialization_duration_ms.clear();
-  handle->initialized = false;
-  reset_handle_session_state(*handle);
-  return CAUSAL_LM_ERROR_NONE;
+  return unload_models_locked(*handle);
 }
 
 ErrorCode destroyModelHandle(CausalLmHandle handle) {
@@ -2385,17 +2441,13 @@ ErrorCode destroyModelHandle(CausalLmHandle handle) {
   // running, then release and delete. Any caller that still holds a pointer
   // to the output buffer returned by runModelHandleWithMessages is reading
   // freed memory after this point — documented as "valid until destroy".
+  ErrorCode teardown_status = CAUSAL_LM_ERROR_NONE;
   {
     std::lock_guard<std::mutex> lock(handle->mtx);
-    handle->models.clear();
-    handle->architectures.clear();
-    handle->model_dirs.clear();
-    handle->initialization_duration_ms.clear();
-    handle->initialized = false;
-    reset_handle_session_state(*handle);
+    teardown_status = unload_models_locked(*handle);
   }
   delete handle;
-  return CAUSAL_LM_ERROR_NONE;
+  return teardown_status;
 }
 
 ErrorCode cancelModelHandle(CausalLmHandle handle) {
