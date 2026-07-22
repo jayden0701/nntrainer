@@ -28,14 +28,18 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <fcntl.h>
 #include <functional>
+#include <inttypes.h>
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 #include <context.h>
@@ -58,6 +62,12 @@ enum class StatusCode {
   QNN_FEATURE_UNSUPPORTED
 };
 
+enum class QnnContextEntryState : uint8_t {
+  CREATING,
+  ACTIVE,
+  QUARANTINED,
+};
+
 struct Qnn_Context_Graph_t {
   Qnn_ContextHandle_t m_context{nullptr};
   qnn_wrapper_api::GraphInfo_t **m_graphsInfo{nullptr};
@@ -67,14 +77,37 @@ struct Qnn_Context_Graph_t {
     graph_idx; /** graph name in Context - graph map **/
 
   uint32_t m_graphsCount{0};
+  QnnContextEntryState m_state{QnnContextEntryState::CREATING};
+  Qnn_ErrorHandle_t m_lastError{QNN_CONTEXT_NO_ERROR};
+  std::shared_ptr<uint8_t> m_binaryBuffer{};
+  uint64_t m_binarySize{0};
 
-  QnnContext_Config_t **m_contextConfig = nullptr;
-
-  void setGraphInfoMap() {
-    for (uint32_t i = 0; i < m_graphsCount; ++i) {
-      std::string n((m_graphsInfo)[i]->graphName);
-      graph_map.insert(std::make_pair(n, (m_graphsInfo)[i]));
+  bool setGraphInfoMap() {
+    graph_map.clear();
+    if (m_graphsInfo == nullptr || m_graphsCount == 0) {
+      ml_loge("QNN context metadata has no graphs");
+      return false;
     }
+
+    for (uint32_t i = 0; i < m_graphsCount; ++i) {
+      auto *graph = m_graphsInfo[i];
+      if (graph == nullptr || graph->graphName == nullptr ||
+          (graph->numInputTensors > 0 && graph->inputTensors == nullptr) ||
+          (graph->numOutputTensors > 0 && graph->outputTensors == nullptr)) {
+        ml_loge("QNN context metadata is incomplete at graph index %u", i);
+        graph_map.clear();
+        return false;
+      }
+
+      auto inserted = graph_map.emplace(graph->graphName, graph);
+      if (!inserted.second) {
+        ml_loge("QNN context contains duplicate graph name: %s",
+                graph->graphName);
+        graph_map.clear();
+        return false;
+      }
+    }
+    return true;
   }
 
   qnn_wrapper_api::GraphInfo_t *getGraphPtr(const std::string &graph_name) {
@@ -134,14 +167,120 @@ struct QNNVar {
   std::string name = "qnn_backend_param";
   std::map<std::string, Qnn_Context_Graph_t>
     ct_map; /** bin file name - Context map **/
+  bool m_hasSystemContextFreeFailure{false};
+  bool m_hasContextQuarantine{false};
+  std::vector<QnnSystemContext_Handle_t> m_quarantinedSystemContexts;
 
   std::optional<std::reference_wrapper<Qnn_Context_Graph_t>>
   findContext(std::string bin_path) {
     auto mapIt = ct_map.find(bin_path);
-    if (mapIt != ct_map.end()) {
+    if (mapIt != ct_map.end() &&
+        mapIt->second.m_state == QnnContextEntryState::ACTIVE) {
       return mapIt->second;
     }
     return std::nullopt;
+  }
+
+  void quarantineSystemContext(QnnSystemContext_Handle_t handle,
+                               Qnn_ErrorHandle_t error) noexcept {
+    m_hasSystemContextFreeFailure = true;
+    try {
+      m_quarantinedSystemContexts.push_back(handle);
+    } catch (...) {
+      ml_loge("Failed to retain quarantined QNN SystemContext handle");
+    }
+    ml_loge("QNN SystemContext free failed: error=%" PRIu64
+            ", public_error=%u, handle=%p",
+            static_cast<uint64_t>(error),
+            static_cast<unsigned int>(QNN_GET_ERROR_CODE(error)), handle);
+  }
+
+  static void releaseContextHostResources(Qnn_Context_Graph_t &ctx) noexcept {
+    ctx.graph_map.clear();
+    ctx.graph_idx.clear();
+
+    if (ctx.m_graphsInfo != nullptr) {
+      for (uint32_t i = 0; i < ctx.m_graphsCount; i++) {
+        auto *graph = ctx.m_graphsInfo[i];
+        if (graph == nullptr) {
+          continue;
+        }
+        free(graph->graphName);
+        graph->graphName = nullptr;
+        if (graph->inputTensors != nullptr) {
+          qnn_wrapper_api::freeQnnTensors(graph->inputTensors,
+                                          graph->numInputTensors);
+        }
+        if (graph->outputTensors != nullptr) {
+          qnn_wrapper_api::freeQnnTensors(graph->outputTensors,
+                                          graph->numOutputTensors);
+        }
+      }
+      if (ctx.m_graphsCount > 0) {
+        free(*ctx.m_graphsInfo);
+      } else {
+        ml_logw("QNN graph metadata pointer has no associated graph count");
+      }
+      free(ctx.m_graphsInfo);
+      ctx.m_graphsInfo = nullptr;
+    }
+    ctx.m_graphsCount = 0;
+    ctx.m_binaryBuffer.reset();
+    ctx.m_binarySize = 0;
+  }
+
+  static uint32_t getBinaryGraphCount(
+    const QnnSystemContext_BinaryInfo_t *binaryInfo) noexcept {
+    if (binaryInfo == nullptr) {
+      return 0;
+    }
+    switch (binaryInfo->version) {
+    case QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1:
+      return binaryInfo->contextBinaryInfoV1.numGraphs;
+    case QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2:
+      return binaryInfo->contextBinaryInfoV2.numGraphs;
+    case QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3:
+      return binaryInfo->contextBinaryInfoV3.numGraphs;
+    default:
+      return 0;
+    }
+  }
+
+  StatusCode rollbackContextCreation(const std::string &bin_path) noexcept {
+    auto it = ct_map.find(bin_path);
+    if (it == ct_map.end() ||
+        it->second.m_state != QnnContextEntryState::CREATING) {
+      return StatusCode::FAILURE;
+    }
+
+    auto &ctx = it->second;
+    if (ctx.m_context == nullptr ||
+        m_qnnFunctionPointers.qnnInterface.contextFree == nullptr) {
+      ctx.m_state = QnnContextEntryState::QUARANTINED;
+      m_hasContextQuarantine = true;
+      ml_loge("Cannot roll back QNN context creation for: %s",
+              bin_path.c_str());
+      return StatusCode::FAILURE;
+    }
+
+    const auto freeStatus =
+      m_qnnFunctionPointers.qnnInterface.contextFree(ctx.m_context, nullptr);
+    if (QNN_CONTEXT_NO_ERROR != freeStatus) {
+      ctx.m_state = QnnContextEntryState::QUARANTINED;
+      ctx.m_lastError = freeStatus;
+      m_hasContextQuarantine = true;
+      ml_loge("Failed to roll back QNN context: error=%" PRIu64
+              ", public_error=%u, binary=%s, context=%p",
+              static_cast<uint64_t>(freeStatus),
+              static_cast<unsigned int>(QNN_GET_ERROR_CODE(freeStatus)),
+              bin_path.c_str(), static_cast<void *>(ctx.m_context));
+      return StatusCode::FAILURE;
+    }
+
+    ctx.m_context = nullptr;
+    releaseContextHostResources(ctx);
+    ct_map.erase(it);
+    return StatusCode::SUCCESS;
   }
 
   StatusCode freeContext(const std::string &bin_path) {
@@ -153,44 +292,39 @@ struct QNNVar {
 
     auto &ctx = it->second;
 
-    // 1. QNN context handle 해제
-    if (ctx.m_context != nullptr &&
-        m_qnnFunctionPointers.qnnInterface.contextFree != nullptr) {
-      if (QNN_CONTEXT_NO_ERROR !=
-          m_qnnFunctionPointers.qnnInterface.contextFree(ctx.m_context,
-                                                         nullptr)) {
-        ml_loge("Failed to free QNN context for: %s", bin_path.c_str());
+    if (ctx.m_state != QnnContextEntryState::ACTIVE) {
+      if (ctx.m_state == QnnContextEntryState::QUARANTINED) {
+        m_hasContextQuarantine = true;
       }
-      ctx.m_context = nullptr;
+      ml_loge("Refusing normal free of non-active QNN context: state=%u, "
+              "binary=%s",
+              static_cast<unsigned int>(ctx.m_state), bin_path.c_str());
+      return StatusCode::FAILURE;
+    }
+    if (ctx.m_context == nullptr ||
+        m_qnnFunctionPointers.qnnInterface.contextFree == nullptr) {
+      ctx.m_state = QnnContextEntryState::QUARANTINED;
+      m_hasContextQuarantine = true;
+      ml_loge("Cannot free QNN context for: %s", bin_path.c_str());
+      return StatusCode::FAILURE;
     }
 
-    // 2. graphsInfo 해제 (use QnnModel_freeGraphsInfo pattern)
-    if (ctx.m_graphsInfo != nullptr) {
-      for (uint32_t i = 0; i < ctx.m_graphsCount; i++) {
-        if (ctx.m_graphsInfo[i] != nullptr) {
-          free(ctx.m_graphsInfo[i]->graphName);
-          qnn_wrapper_api::freeQnnTensors(ctx.m_graphsInfo[i]->inputTensors,
-                                          ctx.m_graphsInfo[i]->numInputTensors);
-          qnn_wrapper_api::freeQnnTensors(
-            ctx.m_graphsInfo[i]->outputTensors,
-            ctx.m_graphsInfo[i]->numOutputTensors);
-        }
-      }
-      free(*ctx.m_graphsInfo);
-      free(ctx.m_graphsInfo);
-      ctx.m_graphsInfo = nullptr;
+    const auto freeStatus =
+      m_qnnFunctionPointers.qnnInterface.contextFree(ctx.m_context, nullptr);
+    if (QNN_CONTEXT_NO_ERROR != freeStatus) {
+      ctx.m_state = QnnContextEntryState::QUARANTINED;
+      ctx.m_lastError = freeStatus;
+      m_hasContextQuarantine = true;
+      ml_loge("Failed to free QNN context: error=%" PRIu64
+              ", public_error=%u, binary=%s, context=%p",
+              static_cast<uint64_t>(freeStatus),
+              static_cast<unsigned int>(QNN_GET_ERROR_CODE(freeStatus)),
+              bin_path.c_str(), static_cast<void *>(ctx.m_context));
+      return StatusCode::FAILURE;
     }
 
-    // 3. contextConfig 해제
-    if (ctx.m_contextConfig != nullptr) {
-      for (int i = 0; ctx.m_contextConfig[i] != nullptr; i++) {
-        free(ctx.m_contextConfig[i]);
-      }
-      free(ctx.m_contextConfig);
-      ctx.m_contextConfig = nullptr;
-    }
-
-    // 4. ct_map에서 엔트리 제거
+    ctx.m_context = nullptr;
+    releaseContextHostResources(ctx);
     ct_map.erase(it);
 
     ml_logi("Freed QNN context for: %s", bin_path.c_str());
@@ -204,18 +338,35 @@ struct QNNVar {
     for (auto &[k, _] : ct_map) {
       keys.push_back(k);
     }
+    auto returnStatus =
+      (m_hasSystemContextFreeFailure || m_hasContextQuarantine)
+        ? StatusCode::FAILURE
+        : StatusCode::SUCCESS;
     for (auto &k : keys) {
-      freeContext(k);
+      if (freeContext(k) != StatusCode::SUCCESS) {
+        returnStatus = StatusCode::FAILURE;
+      }
     }
-    return StatusCode::SUCCESS;
+    return returnStatus;
   }
 
   StatusCode makeContext(props::FilePath bin) {
-
-    if (findContext(bin.get())) {
-      ml_logw("context is already exists");
-      return StatusCode::SUCCESS;
-    };
+    const std::string binPath = bin.get();
+    auto existing = ct_map.find(binPath);
+    if (existing != ct_map.end()) {
+      if (existing->second.m_state == QnnContextEntryState::ACTIVE) {
+        ml_logw("QNN context already exists for: %s", binPath.c_str());
+        return StatusCode::SUCCESS;
+      }
+      ml_loge("QNN context is not reusable: state=%u, binary=%s",
+              static_cast<unsigned int>(existing->second.m_state),
+              binPath.c_str());
+      return StatusCode::FAILURE;
+    }
+    if (m_hasSystemContextFreeFailure || m_hasContextQuarantine) {
+      ml_loge("QNN runtime has quarantined state; refusing a new context");
+      return StatusCode::FAILURE;
+    }
 
     if (nullptr ==
           m_qnnFunctionPointers.qnnSystemInterface.systemContextCreate ||
@@ -228,121 +379,232 @@ struct QNNVar {
       return StatusCode::FAILURE;
     }
 
-    // Let backendExtensions populate configs
-    QnnContext_Config_t **customConfigs{nullptr};
-    uint32_t customConfigCount{0};
-    if (nullptr != m_backendExtensions && m_backendExtensions->interface()) {
-      if (!m_backendExtensions->interface()->beforeCreateFromBinary(
-            &customConfigs, &customConfigCount)) {
-        QNN_ERROR("Extensions Failure in beforeCreateFromBinary()");
-        return StatusCode::FAILURE;
-      }
-    }
-
     const std::streamoff binarySize = bin.file_size();
     if (binarySize <= 0 || static_cast<uint64_t>(binarySize) >
                              std::numeric_limits<size_t>::max()) {
-      ml_loge("Invalid QNN context binary size for: %s", bin.get().c_str());
+      ml_loge("Invalid QNN context binary size for: %s", binPath.c_str());
       return StatusCode::FAILURE;
     }
     const size_t bufferSize = static_cast<size_t>(binarySize);
-    std::shared_ptr<uint8_t> buffer{nullptr};
 
     void *mappedBuffer = nullptr;
-    if (true != mmapBinaryFile(bin.get(), &mappedBuffer, bufferSize)) {
-      ml_loge("Failed to read binary data");
+    if (!mmapBinaryFile(binPath, &mappedBuffer, bufferSize)) {
       return StatusCode::FAILURE;
     }
 
-    buffer = std::shared_ptr<uint8_t>(
+    Qnn_Context_Graph_t candidate{};
+    candidate.m_binaryBuffer = std::shared_ptr<uint8_t>(
       static_cast<uint8_t *>(mappedBuffer), [bufferSize](uint8_t *ptr) {
         if (munmap(ptr, bufferSize)) {
           ml_loge("Failed to unmap QNN context binary");
         }
       });
+    candidate.m_binarySize = bufferSize;
 
-    auto returnStatus = StatusCode::SUCCESS;
-    Qnn_Context_Graph_t context_i;
+    struct SystemContextGuard {
+      QNNVar &owner;
+      QnnSystemContext_Handle_t handle{nullptr};
 
-    QnnSystemContext_Handle_t sysCtxHandle{nullptr};
-    if (QNN_SUCCESS !=
+      Qnn_ErrorHandle_t close() noexcept {
+        if (handle == nullptr) {
+          return QNN_SUCCESS;
+        }
+        auto current = handle;
+        handle = nullptr;
+        const auto status =
+          owner.m_qnnFunctionPointers.qnnSystemInterface.systemContextFree(
+            current);
+        if (status != QNN_SUCCESS) {
+          owner.quarantineSystemContext(current, status);
+        }
+        return status;
+      }
+
+      ~SystemContextGuard() { close(); }
+    } systemContext{*this};
+
+    bool entryPublished = false;
+    try {
+      auto systemStatus =
         m_qnnFunctionPointers.qnnSystemInterface.systemContextCreate(
-          &sysCtxHandle)) {
-      ml_loge("Could not create system handle");
-      returnStatus = StatusCode::FAILURE;
-    }
-    const QnnSystemContext_BinaryInfo_t *binaryInfo{nullptr};
-    Qnn_ContextBinarySize_t binaryInfoSize{0};
-    if (StatusCode::SUCCESS == returnStatus &&
-        QNN_SUCCESS !=
-          m_qnnFunctionPointers.qnnSystemInterface.systemContextGetBinaryInfo(
-            sysCtxHandle, static_cast<void *>(buffer.get()), bufferSize,
-            &binaryInfo, &binaryInfoSize)) {
-      ml_loge("Fail to get context binary info");
-      returnStatus = StatusCode::FAILURE;
-    }
-
-    if (StatusCode::SUCCESS == returnStatus &&
-        !qnn::tools::sample_app::copyMetadataToGraphsInfo(
-          binaryInfo, context_i.m_graphsInfo, context_i.m_graphsCount)) {
-      ml_loge("Failed to copy metadata.");
-      returnStatus = StatusCode::FAILURE;
-    }
-
-    m_qnnFunctionPointers.qnnSystemInterface.systemContextFree(sysCtxHandle);
-    sysCtxHandle = nullptr;
-
-    if (StatusCode::SUCCESS == returnStatus &&
-        nullptr == m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary) {
-      ml_loge("contextCreateFromBinaryFnHandle is nullptr.");
-      returnStatus = StatusCode::FAILURE;
-    }
-
-    QnnHtpContext_CustomConfig_t ioMemEstimation;
-    ioMemEstimation.option = QnnHtpContext_ConfigOption_t::
-      QNN_HTP_CONTEXT_CONFIG_OPTION_IO_MEM_ESTIMATION;
-    ioMemEstimation.ioMemEstimation = true;
-
-    unsigned int customConfigCountIOMemEstimate = 1;
-
-    context_i.m_contextConfig = (QnnContext_Config_t **)malloc(
-      (customConfigCountIOMemEstimate + customConfigCount + 1) *
-      sizeof(QnnContext_Config_t *));
-    context_i.m_contextConfig[0] =
-      (QnnContext_Config_t *)malloc(sizeof(QnnContext_Config_t));
-    context_i.m_contextConfig[0]->option =
-      QnnContext_ConfigOption_t::QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
-    context_i.m_contextConfig[0]->customConfig =
-      reinterpret_cast<QnnContext_CustomConfig_t>(&ioMemEstimation);
-
-    for (int i = 0; i < customConfigCount; i++)
-      context_i.m_contextConfig[i + 1] = customConfigs[i];
-    context_i.m_contextConfig[customConfigCount + 1] = nullptr;
-
-    if (StatusCode::SUCCESS == returnStatus &&
-        m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary(
-          m_backendHandle, m_deviceHandle,
-          (const QnnContext_Config_t **)context_i.m_contextConfig,
-          static_cast<void *>(buffer.get()), bufferSize, &(context_i.m_context),
-          m_profileBackendHandle)) {
-      ml_loge("Could not create context from binary.");
-      returnStatus = StatusCode::FAILURE;
-    }
-
-    if (nullptr != m_backendExtensions && m_backendExtensions->interface()) {
-      if (!m_backendExtensions->interface()->afterCreateFromBinary()) {
-        QNN_ERROR("Extensions Failure in afterCreateFromBinary()");
+          &systemContext.handle);
+      if (systemStatus != QNN_SUCCESS) {
+        ml_loge("Could not create QNN SystemContext: error=%" PRIu64
+                ", public_error=%u",
+                static_cast<uint64_t>(systemStatus),
+                static_cast<unsigned int>(QNN_GET_ERROR_CODE(systemStatus)));
+        systemContext.close();
+        releaseContextHostResources(candidate);
         return StatusCode::FAILURE;
       }
+
+      const QnnSystemContext_BinaryInfo_t *binaryInfo{nullptr};
+      Qnn_ContextBinarySize_t binaryInfoSize{0};
+      systemStatus =
+        m_qnnFunctionPointers.qnnSystemInterface.systemContextGetBinaryInfo(
+          systemContext.handle, candidate.m_binaryBuffer.get(),
+          candidate.m_binarySize, &binaryInfo, &binaryInfoSize);
+      if (systemStatus != QNN_SUCCESS || binaryInfo == nullptr) {
+        ml_loge("Failed to read QNN context metadata: error=%" PRIu64
+                ", public_error=%u",
+                static_cast<uint64_t>(systemStatus),
+                static_cast<unsigned int>(QNN_GET_ERROR_CODE(systemStatus)));
+        systemContext.close();
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+
+      const uint32_t expectedGraphCount = getBinaryGraphCount(binaryInfo);
+      if (expectedGraphCount == 0) {
+        ml_loge("QNN context metadata contains no supported graphs");
+        systemContext.close();
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+
+      // The SDK sample helper allocates an expected-count, zero-initialized
+      // pointer array. Publish that count before copying so an exception or a
+      // partially populated output can still be unwound completely.
+      candidate.m_graphsCount = expectedGraphCount;
+      uint32_t copiedGraphCount{0};
+      const bool metadataCopied =
+        qnn::tools::sample_app::copyMetadataToGraphsInfo(
+          binaryInfo, candidate.m_graphsInfo, copiedGraphCount);
+      if (!metadataCopied || candidate.m_graphsInfo == nullptr ||
+          copiedGraphCount != expectedGraphCount) {
+        ml_loge("Failed to copy complete QNN context metadata");
+        systemContext.close();
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+
+      if (systemContext.close() != QNN_SUCCESS) {
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+      if (!candidate.setGraphInfoMap()) {
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+
+      QnnContext_Config_t **customConfigs{nullptr};
+      uint32_t customConfigCount{0};
+      auto *extension = m_backendExtensions == nullptr
+                          ? nullptr
+                          : m_backendExtensions->interface();
+      if (extension != nullptr && !extension->beforeCreateFromBinary(
+                                    &customConfigs, &customConfigCount)) {
+        QNN_ERROR("Extensions Failure in beforeCreateFromBinary()");
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+      if (customConfigCount > 0 && customConfigs == nullptr) {
+        ml_loge("QNN extension returned an invalid context config list");
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+
+      QnnHtpContext_CustomConfig_t ioMemEstimation{};
+      ioMemEstimation.option = QnnHtpContext_ConfigOption_t::
+        QNN_HTP_CONTEXT_CONFIG_OPTION_IO_MEM_ESTIMATION;
+      ioMemEstimation.ioMemEstimation = true;
+
+      QnnContext_Config_t ioContextConfig = QNN_CONTEXT_CONFIG_INIT;
+      ioContextConfig.option =
+        QnnContext_ConfigOption_t::QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+      ioContextConfig.customConfig =
+        reinterpret_cast<QnnContext_CustomConfig_t>(&ioMemEstimation);
+
+      std::vector<const QnnContext_Config_t *> contextConfigs;
+      contextConfigs.reserve(customConfigCount + 2);
+      contextConfigs.push_back(&ioContextConfig);
+      for (uint32_t i = 0; i < customConfigCount; ++i) {
+        if (customConfigs[i] == nullptr) {
+          ml_loge("QNN extension returned a null context config at index %u",
+                  i);
+          releaseContextHostResources(candidate);
+          return StatusCode::FAILURE;
+        }
+        contextConfigs.push_back(customConfigs[i]);
+      }
+      contextConfigs.push_back(nullptr);
+
+      auto inserted = ct_map.try_emplace(binPath, std::move(candidate));
+      if (!inserted.second) {
+        ml_loge("Failed to reserve QNN context entry for: %s", binPath.c_str());
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+      entryPublished = true;
+      auto &entry = inserted.first->second;
+      // The generated move operation transfers STL owners but copies raw
+      // pointer/scalar members. Neutralize the source so ownership remains
+      // unambiguous if this struct later gains automatic cleanup.
+      candidate.m_context = nullptr;
+      candidate.m_graphsInfo = nullptr;
+      candidate.m_graphsCount = 0;
+      candidate.m_binarySize = 0;
+
+      const auto createStatus =
+        m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary(
+          m_backendHandle, m_deviceHandle, contextConfigs.data(),
+          entry.m_binaryBuffer.get(), entry.m_binarySize, &entry.m_context,
+          m_profileBackendHandle);
+      if (createStatus != QNN_CONTEXT_NO_ERROR) {
+        entry.m_lastError = createStatus;
+        ml_loge("Could not create QNN context: error=%" PRIu64
+                ", public_error=%u, binary=%s, context=%p",
+                static_cast<uint64_t>(createStatus),
+                static_cast<unsigned int>(QNN_GET_ERROR_CODE(createStatus)),
+                binPath.c_str(), static_cast<void *>(entry.m_context));
+        if (entry.m_context != nullptr) {
+          entry.m_state = QnnContextEntryState::QUARANTINED;
+          m_hasContextQuarantine = true;
+        } else {
+          releaseContextHostResources(entry);
+          ct_map.erase(inserted.first);
+        }
+        return StatusCode::FAILURE;
+      }
+      if (entry.m_context == nullptr) {
+        ml_loge("QNN context creation succeeded without returning a handle");
+        entry.m_state = QnnContextEntryState::QUARANTINED;
+        m_hasContextQuarantine = true;
+        return StatusCode::FAILURE;
+      }
+
+      if (extension != nullptr && !extension->afterCreateFromBinary()) {
+        QNN_ERROR("Extensions Failure in afterCreateFromBinary()");
+        rollbackContextCreation(binPath);
+        return StatusCode::FAILURE;
+      }
+
+      if (sample_app::ProfilingLevel::OFF != m_profilingLevel) {
+        extractBackendProfilingInfo();
+      }
+      entry.m_state = QnnContextEntryState::ACTIVE;
+      return StatusCode::SUCCESS;
+    } catch (const std::exception &e) {
+      ml_loge("Exception while creating QNN context for %s: %s",
+              binPath.c_str(), e.what());
+    } catch (...) {
+      ml_loge("Unknown exception while creating QNN context for %s",
+              binPath.c_str());
     }
 
-    if (sample_app::ProfilingLevel::OFF != m_profilingLevel) {
-      extractBackendProfilingInfo();
+    systemContext.close();
+    if (entryPublished) {
+      auto entry = ct_map.find(binPath);
+      if (entry != ct_map.end() && entry->second.m_context != nullptr) {
+        rollbackContextCreation(binPath);
+      } else if (entry != ct_map.end()) {
+        releaseContextHostResources(entry->second);
+        ct_map.erase(entry);
+      }
+    } else {
+      releaseContextHostResources(candidate);
     }
-    context_i.setGraphInfoMap();
-
-    ct_map.insert(std::make_pair(bin.get(), context_i));
-    return StatusCode::SUCCESS;
+    return StatusCode::FAILURE;
   }
 
   qnn_wrapper_api::GraphInfo_t *graphRetrieve(std::string bin_path,

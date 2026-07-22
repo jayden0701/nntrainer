@@ -20,6 +20,7 @@
 #include "qnn_rpc_manager.h"
 
 #include <algorithm>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -79,7 +80,9 @@ public:
   /**
    * @brief   Default constructor
    */
-  QNNContext() : Context(std::make_shared<QNNBackendVar>()) {}
+  QNNContext() :
+    Context(std::make_shared<QNNBackendVar>()),
+    quarantine_runtime_holder_(std::make_unique<std::shared_ptr<QNNVar>>()) {}
 
   /** @brief Deleted copy constructor. */
   QNNContext(const QNNContext &) = delete;
@@ -98,9 +101,32 @@ public:
   /** @brief Release QNN resources. */
   ~QNNContext() override {
     auto qnn_data = getQnnData();
-    // Free all remaining QNN contexts in ct_map before releasing backend
-    if (qnn_data) {
-      qnn_data->freeAllContexts();
+    bool quarantine_runtime = false;
+    try {
+      // Free all remaining QNN contexts in ct_map before releasing backend.
+      quarantine_runtime =
+        qnn_data && qnn_data->freeAllContexts() != StatusCode::SUCCESS;
+    } catch (const std::exception &e) {
+      quarantine_runtime = true;
+      ml_loge("Exception during QNN context teardown: %s", e.what());
+    } catch (...) {
+      quarantine_runtime = true;
+      ml_loge("Unknown exception during QNN context teardown");
+    }
+
+    if (quarantine_runtime) {
+      // A failed QNN free has undefined partial-completion semantics. Keep the
+      // function table, handles, metadata, and persistent binary mappings
+      // alive instead of tearing the backend out from under them.
+      // This holder was allocated when QNNContext was constructed, so the
+      // failure path itself cannot fail to allocate after (for example) a
+      // bad_alloc in freeAllContexts(). It is intentionally leaked: a normal
+      // function-static owner would run at DSO/process teardown, and one
+      // shared_ptr slot could overwrite an earlier quarantined runtime.
+      *quarantine_runtime_holder_ = qnn_data;
+      quarantine_runtime_holder_.release();
+      ml_loge("QNN runtime teardown quarantined after context free failure");
+      return;
     }
     if ((qnn_data->m_isBackendInitialized &&
          nullptr != qnn_data->m_qnnFunctionPointers.qnnInterface.backendFree) &&
@@ -304,6 +330,9 @@ private:
   std::string m_backendExtConfigPath;
 
   bool m_isContextCreated;
+
+  /** Preallocated fail-safe owner, intentionally leaked only on quarantine. */
+  std::unique_ptr<std::shared_ptr<QNNVar>> quarantine_runtime_holder_;
 
   static StatusCode
   QnnModel_freeGraphsInfo(qnn_wrapper_api::GraphInfoPtr_t **graphsInfo,
