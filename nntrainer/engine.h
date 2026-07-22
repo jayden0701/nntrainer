@@ -25,6 +25,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <context.h>
@@ -69,29 +70,67 @@ protected:
 
   void add_default_object();
 
-  void registerContext(std::string name, nntrainer::Context *context,
-                       void *library_handle = nullptr,
-                       DestroyContextFunc destroy_func = nullptr) {
-    const std::lock_guard<std::mutex> lock(engine_mutex);
-    static int registerCount = 0;
+  nntrainer::Context *registerContextAndGet(std::string name,
+                                            nntrainer::Context *context) {
+    if (context == nullptr) {
+      throw std::invalid_argument("[Engine] cannot register a null Context");
+    }
 
     std::transform(name.begin(), name.end(), name.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
-    if (engines.find(name) != engines.end()) {
-      // Re-registering an existing Context is a no-op.
-      return;
+    {
+      const std::lock_guard<std::mutex> lock(engine_mutex);
+      auto found = engines.find(name);
+      if (found != engines.end()) {
+        return found->second;
+      }
     }
-    engines.insert(std::make_pair(name, context));
 
-    if (registerCount < RegisterContextMax) {
+    // A plugin can provide its allocator, so do not execute this call while
+    // holding the Engine registry mutex.
+    auto context_allocator = context->getMemAllocator();
+
+    const std::lock_guard<std::mutex> lock(engine_mutex);
+    auto found = engines.find(name);
+    if (found != engines.end()) {
+      return found->second;
+    }
+
+    auto [engine_entry, engine_inserted] = engines.emplace(name, context);
+    if (!engine_inserted) {
+      return engine_entry->second;
+    }
+
+    try {
+      const bool allocator_inserted =
+        allocator.emplace(name, std::move(context_allocator)).second;
+      if (!allocator_inserted) {
+        throw std::logic_error("[Engine] allocator registry is inconsistent");
+      }
+    } catch (...) {
+      engines.erase(engine_entry);
+      throw;
+    }
+
+    static int registerCount = 0;
+    const auto registered_end = nntrainerRegisteredContext + registerCount;
+    const bool context_already_listed =
+      std::find(nntrainerRegisteredContext, registered_end, context) !=
+      registered_end;
+    if (!context_already_listed && registerCount < RegisterContextMax) {
       nntrainerRegisteredContext[registerCount] = context;
       registerCount++;
     }
 
-    auto alloc = context->getMemAllocator();
+    return context;
+  }
 
-    allocator.insert(std::make_pair(name, alloc));
+  void
+  registerContext(std::string name, nntrainer::Context *context,
+                  [[maybe_unused]] void *library_handle = nullptr,
+                  [[maybe_unused]] DestroyContextFunc destroy_func = nullptr) {
+    (void)registerContextAndGet(name, context);
   }
 
 public:
@@ -140,11 +179,13 @@ public:
     std::transform(name.begin(), name.end(), name.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
-    if (engines.find(name) == engines.end()) {
+    const std::lock_guard<std::mutex> lock(engine_mutex);
+    auto found = engines.find(name);
+    if (found == engines.end()) {
       throw std::invalid_argument("[Engine] " + name +
                                   " Context is not registered");
     }
-    return engines.at(name);
+    return found->second;
   }
 
   std::unordered_map<std::string, std::shared_ptr<nntrainer::MemAllocator>>

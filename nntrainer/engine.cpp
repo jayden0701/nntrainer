@@ -11,10 +11,16 @@
  * @bug    No known bugs except for NYI items
  *
  */
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <system_error>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <app_context.h>
@@ -29,6 +35,77 @@ static std::string contextlib_suffix = "context.so";
 static const std::string func_tag = "[Engine] ";
 
 namespace nntrainer {
+
+namespace {
+
+struct ContextPluginRecord {
+  std::once_flag initialization_once;
+  std::string context_name;
+  nntrainer::Context *context = nullptr;
+  void *library_handle = nullptr;
+  DestroyContextFunc destroy_func = nullptr;
+};
+
+struct ContextPluginRegistry {
+  std::mutex mutex;
+  std::unordered_map<std::string, std::shared_ptr<ContextPluginRecord>> records;
+};
+
+struct ContextPluginIdentity {
+  std::string key;
+  std::string load_path;
+};
+
+ContextPluginRegistry &contextPluginRegistry() {
+  // Engine contexts and their DSOs are process-lifetime resources today.
+  // Keep the registry alive as well so static destruction cannot unload a
+  // plugin while a late model destructor still references its Context.
+  static auto *registry = new ContextPluginRegistry();
+  return *registry;
+}
+
+ContextPluginIdentity resolvePluginIdentity(const std::string &path) {
+  const std::filesystem::path requested(path);
+  if (!requested.is_absolute() && requested.parent_path().empty()) {
+    auto loader_name = requested.generic_string();
+#if defined(_WIN32)
+    std::transform(loader_name.begin(), loader_name.end(), loader_name.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+#endif
+    return {"loader-name:" + loader_name, path};
+  }
+
+  const auto load_path =
+    std::filesystem::absolute(requested).lexically_normal();
+  std::error_code error;
+  auto key_path = std::filesystem::weakly_canonical(load_path, error);
+  if (error)
+    key_path = load_path;
+
+  auto file_key = key_path.generic_string();
+#if defined(_WIN32)
+  std::transform(file_key.begin(), file_key.end(), file_key.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+#endif
+  return {"file-path:" + file_key, load_path.string()};
+}
+
+std::shared_ptr<ContextPluginRecord>
+getContextPluginRecord(const std::string &path) {
+  auto &registry = contextPluginRegistry();
+  const std::lock_guard<std::mutex> lock(registry.mutex);
+
+  auto found = registry.records.find(path);
+  if (found != registry.records.end()) {
+    return found->second;
+  }
+
+  auto record = std::make_shared<ContextPluginRecord>();
+  registry.records.emplace(path, record);
+  return record;
+}
+
+} // namespace
 
 std::mutex engine_mutex;
 
@@ -128,7 +205,7 @@ Engine::parseComputeEngine(const std::vector<std::string> &props) const {
 const std::string getFullPath(const std::string &path,
                               const std::string &base) {
   /// if path is absolute, return path
-  if (path[0] == '/') {
+  if (!path.empty() && std::filesystem::path(path).is_absolute()) {
     return path;
   }
 
@@ -167,47 +244,78 @@ void Engine::setWorkingDirectory(const std::string &base) {
 
 int Engine::registerContext(const std::string &library_path,
                             const std::string &base_path) {
+  NNTR_THROW_IF(library_path.empty(), std::invalid_argument)
+    << func_tag << "context plugin path must not be empty";
+
   const std::string full_path = getFullPath(library_path, base_path);
+  const auto plugin_identity = resolvePluginIdentity(full_path);
+  auto plugin_record = getContextPluginRecord(plugin_identity.key);
 
-  void *handle = DynamicLibraryLoader::loadLibrary(full_path.c_str(),
-                                                   RTLD_LAZY | RTLD_LOCAL);
-  std::unique_ptr<void, decltype(&DynamicLibraryLoader::freeLibrary)> library(
-    handle, &DynamicLibraryLoader::freeLibrary);
-  const auto load_error = handle == nullptr
-                            ? DynamicLibraryLoader::getLastErrorString()
-                            : std::string();
+  // Plugin factories must not recursively register the same identity:
+  // std::call_once is intentionally non-reentrant for one record.
+  std::call_once(
+    plugin_record->initialization_once,
+    [plugin_record, load_path = plugin_identity.load_path] {
+      void *handle = DynamicLibraryLoader::loadLibrary(load_path.c_str(),
+                                                       RTLD_LAZY | RTLD_LOCAL);
+      std::unique_ptr<void, decltype(&DynamicLibraryLoader::freeLibrary)>
+        library(handle, &DynamicLibraryLoader::freeLibrary);
+      const auto load_error = handle == nullptr
+                                ? DynamicLibraryLoader::getLastErrorString()
+                                : std::string();
 
-  NNTR_THROW_IF(handle == nullptr, std::invalid_argument)
-    << func_tag << "open plugin failed, reason: " << load_error;
+      NNTR_THROW_IF(handle == nullptr, std::invalid_argument)
+        << func_tag << "open context plugin failed, reason: " << load_error;
 
-  nntrainer::ContextPluggable *pluggable =
-    reinterpret_cast<nntrainer::ContextPluggable *>(
-      DynamicLibraryLoader::loadSymbol(handle, "ml_train_context_pluggable"));
+      auto *pluggable = reinterpret_cast<nntrainer::ContextPluggable *>(
+        DynamicLibraryLoader::loadSymbol(handle, "ml_train_context_pluggable"));
+      const auto symbol_error = pluggable == nullptr
+                                  ? DynamicLibraryLoader::getLastErrorString()
+                                  : std::string();
 
-  const auto symbol_error = pluggable == nullptr
-                              ? DynamicLibraryLoader::getLastErrorString()
-                              : std::string();
-  NNTR_THROW_IF(pluggable == nullptr, std::invalid_argument)
-    << func_tag << "loading symbol failed, reason: " << symbol_error;
+      NNTR_THROW_IF(pluggable == nullptr, std::invalid_argument)
+        << func_tag
+        << "loading context plugin symbol failed, reason: " << symbol_error;
+      NNTR_THROW_IF(pluggable->createfunc == nullptr ||
+                      pluggable->destroyfunc == nullptr,
+                    std::invalid_argument)
+        << func_tag << "context plugin factory is incomplete";
 
-  auto context = pluggable->createfunc();
-  NNTR_THROW_IF(context == nullptr, std::invalid_argument)
-    << func_tag << "created pluggable context is null";
-  auto type = context->getName();
-  NNTR_THROW_IF(type == "", std::invalid_argument)
-    << func_tag << "custom layer must specify type name, but it is empty";
+      auto *candidate = pluggable->createfunc();
+      NNTR_THROW_IF(candidate == nullptr, std::invalid_argument)
+        << func_tag << "created pluggable context is null";
+      std::unique_ptr<nntrainer::Context, DestroyContextFunc> context(
+        candidate, pluggable->destroyfunc);
 
-  // If this type is already registered (e.g. called again for a second
-  // sub-model in a multi-model handle), free the newly-created context
-  // immediately rather than leaking it. The name-based overload is the
-  // authoritative synchronized check; this is just an early-exit path.
-  if (engines.find(type) != engines.end()) {
-    pluggable->destroyfunc(context);
-    return 0;
-  }
+      auto type = context->getName();
+      NNTR_THROW_IF(type.empty(), std::invalid_argument)
+        << func_tag << "custom context must specify a non-empty name";
 
-  (void)library.release();
-  registerContext(type, context);
+      // Publish potentially throwing record state before releasing either
+      // resource. A successful record owns one Context/DSO independent of the
+      // Engine instance that performed the first load.
+      plugin_record->context_name = type;
+      plugin_record->context = context.get();
+      plugin_record->library_handle = library.get();
+      plugin_record->destroy_func = pluggable->destroyfunc;
+      (void)context.release();
+      (void)library.release();
+    });
+
+  NNTR_THROW_IF(plugin_record->context == nullptr ||
+                  plugin_record->context_name.empty(),
+                std::logic_error)
+    << func_tag << "context plugin initialization completed without a Context";
+
+  // A successful process-wide plugin initialization can still need attaching
+  // to another Engine instance. Do not silently bind this path to an unrelated
+  // Context that happens to have the same name in that Engine.
+  auto *registered_context =
+    registerContextAndGet(plugin_record->context_name, plugin_record->context);
+  NNTR_THROW_IF(registered_context != plugin_record->context,
+                std::invalid_argument)
+    << func_tag << "context name collision for plugin " << full_path << ": "
+    << plugin_record->context_name;
 
   return 0;
 }
