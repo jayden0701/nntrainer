@@ -390,10 +390,10 @@ void QNNRpcManager::free(void *ptr) {
     ml_loge("Retaining QNN RPC backing because cleanup is closed: ptr=%p, "
             "reason=%s",
             ptr, e.what());
-    return;
+    throw;
   } catch (...) {
     ml_loge("Retaining QNN RPC backing because cleanup is closed: ptr=%p", ptr);
-    return;
+    throw;
   }
   bool release_backing = false;
   {
@@ -401,7 +401,8 @@ void QNNRpcManager::free(void *ptr) {
     auto allocation = allocations_.find(ptr);
     if (allocation == allocations_.end()) {
       ml_loge("Refusing to free unknown QNN RPC pointer: %p", ptr);
-      return;
+      throw std::invalid_argument(
+        "QNN RPC pointer is not owned by this manager");
     }
 
     auto outer = registrations_.find(ptr);
@@ -419,7 +420,8 @@ void QNNRpcManager::free(void *ptr) {
         ml_loge("Retaining QNN RPC backing after deregistration failure: "
                 "ptr=%p, size=%zu, registrations=%zu",
                 ptr, allocation->second, outer->second.size());
-        return;
+        throw std::runtime_error(
+          "QNN RPC backing retained after deregistration failure");
       }
     }
 
