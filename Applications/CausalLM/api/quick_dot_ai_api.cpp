@@ -596,6 +596,24 @@ static ErrorCode unload_models_locked(CausalLmModel &h) noexcept {
   return status;
 }
 
+#ifdef QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API
+/** Clean up a handle that has not been published to another thread. */
+static ErrorCode unload_unpublished_handle(CausalLmModel *h) noexcept {
+  if (h == nullptr) {
+    return CAUSAL_LM_ERROR_NONE;
+  }
+  try {
+    std::lock_guard<std::mutex> lock(h->mtx);
+    return unload_models_locked(*h);
+  } catch (...) {
+    // A valid, unpublished handle should never fail to lock. If the platform
+    // mutex does fail, keep the C ABI contained and report terminal teardown.
+    h->teardown_status = CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED;
+    return h->teardown_status;
+  }
+}
+#endif
+
 static void update_handle_session_after_run(CausalLmModel &h,
                                             size_t model_index) {
   if (model_index >= h.models.size() || model_index >= h.architectures.size())
@@ -2126,8 +2144,10 @@ ErrorCode loadMultimodalHandleByName(
   BackendType compute, const char *embedding_model_id, const char *llm_model_id,
   ModelQuantizationType quant_type, const char *native_lib_dir,
   const char *model_base_path, CausalLmHandle *out_handle) {
-  if (out_handle == nullptr || embedding_model_id == nullptr ||
-      llm_model_id == nullptr)
+  if (out_handle == nullptr)
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  *out_handle = nullptr;
+  if (embedding_model_id == nullptr || llm_model_id == nullptr)
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
 #ifndef QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API
@@ -2135,7 +2155,6 @@ ErrorCode loadMultimodalHandleByName(
   (void)quant_type;
   (void)native_lib_dir;
   (void)model_base_path;
-  *out_handle = nullptr;
   LOGE("loadMultimodalHandleByName: experimental multimodal nntrainer API is "
        "not enabled");
   return CAUSAL_LM_ERROR_UNSUPPORTED;
@@ -2155,53 +2174,104 @@ ErrorCode loadMultimodalHandleByName(
   // This reuses the proven single-model load path without modifying it.
   CausalLmModel tmp_vision;
   CausalLmModel tmp_llm;
+  std::unique_ptr<CausalLmModel> combined;
+  auto fail_with_cleanup = [&](ErrorCode primary_status) noexcept {
+    bool cleanup_failed = false;
+    if (unload_unpublished_handle(combined.get()) != CAUSAL_LM_ERROR_NONE) {
+      cleanup_failed = true;
+    }
+    if (unload_unpublished_handle(&tmp_llm) != CAUSAL_LM_ERROR_NONE) {
+      cleanup_failed = true;
+    }
+    if (unload_unpublished_handle(&tmp_vision) != CAUSAL_LM_ERROR_NONE) {
+      cleanup_failed = true;
+    }
+    return cleanup_failed ? CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED
+                          : primary_status;
+  };
+
   ErrorCode ec = load_into_handle(tmp_vision, compute, ev->config_name,
                                   quant_type, native_lib_dir, model_base_path);
   if (ec != CAUSAL_LM_ERROR_NONE) {
     LOGE("loadMultimodalHandleByName: vision '%s' load failed (%d)",
          embedding_model_id, ec);
-    return ec;
+    return fail_with_cleanup(ec);
   }
   ec = load_into_handle(tmp_llm, compute, lv->config_name, quant_type,
                         native_lib_dir, model_base_path);
   if (ec != CAUSAL_LM_ERROR_NONE) {
     LOGE("loadMultimodalHandleByName: llm '%s' load failed (%d)", llm_model_id,
          ec);
-    return ec;
+    return fail_with_cleanup(ec);
   }
-  if (tmp_vision.models.empty() || tmp_llm.models.empty())
-    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
+  if (tmp_vision.models.size() != 1 || tmp_llm.models.size() != 1) {
+    LOGE("loadMultimodalHandleByName: each descriptor must load exactly one "
+         "model (vision=%zu, llm=%zu)",
+         tmp_vision.models.size(), tmp_llm.models.size());
+    return fail_with_cleanup(CAUSAL_LM_ERROR_MODEL_LOAD_FAILED);
+  }
 
   // Compatibility check (R5): the LLM must expose an embedding table so the
   // composer can interleave text + image embeddings.
-  if (tmp_llm.models[0]->embeddingBytesPerToken() == 0) {
+  size_t embedding_bytes_per_token = 0;
+  try {
+    embedding_bytes_per_token = tmp_llm.models[0]->embeddingBytesPerToken();
+  } catch (const std::exception &e) {
+    LOGE("loadMultimodalHandleByName: compatibility check failed: %s",
+         e.what());
+    return fail_with_cleanup(CAUSAL_LM_ERROR_MODEL_LOAD_FAILED);
+  } catch (...) {
+    LOGE("loadMultimodalHandleByName: compatibility check failed");
+    return fail_with_cleanup(CAUSAL_LM_ERROR_MODEL_LOAD_FAILED);
+  }
+  if (embedding_bytes_per_token == 0) {
     LOGE("loadMultimodalHandleByName: LLM '%s' has no embedding table — "
          "incompatible pair",
          llm_model_id);
-    return CAUSAL_LM_ERROR_UNSUPPORTED;
+    return fail_with_cleanup(CAUSAL_LM_ERROR_UNSUPPORTED);
   }
 
-  auto *h = new (std::nothrow) CausalLmModel();
-  if (!h)
-    return CAUSAL_LM_ERROR_UNKNOWN;
+  combined.reset(new (std::nothrow) CausalLmModel());
+  if (!combined) {
+    return fail_with_cleanup(CAUSAL_LM_ERROR_UNKNOWN);
+  }
 
   auto move_one = [](CausalLmModel &src, CausalLmModel &dst) {
     dst.models.push_back(std::move(src.models[0]));
-    dst.architectures.push_back(
-      src.architectures.empty() ? std::string() : src.architectures[0]);
-    dst.model_dirs.push_back(src.model_dirs.empty() ? std::string()
-                                                    : src.model_dirs[0]);
-    if (!src.initialization_duration_ms.empty())
-      dst.initialization_duration_ms.push_back(
-        src.initialization_duration_ms[0]);
+    if (src.architectures.empty()) {
+      dst.architectures.emplace_back();
+    } else {
+      dst.architectures.push_back(std::move(src.architectures[0]));
+    }
+    if (src.model_dirs.empty()) {
+      dst.model_dirs.emplace_back();
+    } else {
+      dst.model_dirs.push_back(std::move(src.model_dirs[0]));
+    }
+    dst.initialization_duration_ms.push_back(
+      src.initialization_duration_ms.empty()
+        ? 0.0
+        : src.initialization_duration_ms[0]);
   };
-  move_one(tmp_vision, *h); // index 0 = vision producer
-  move_one(tmp_llm, *h);    // index 1 = LLM consumer
-  if (native_lib_dir != nullptr)
-    h->native_lib_dir = native_lib_dir;
-  h->initialized = true;
+  try {
+    combined->models.reserve(2);
+    combined->architectures.reserve(2);
+    combined->model_dirs.reserve(2);
+    combined->initialization_duration_ms.reserve(2);
+    move_one(tmp_vision, *combined); // index 0 = vision producer
+    move_one(tmp_llm, *combined);    // index 1 = LLM consumer
+    if (native_lib_dir != nullptr)
+      combined->native_lib_dir = native_lib_dir;
+    combined->initialized = true;
+  } catch (const std::exception &e) {
+    LOGE("loadMultimodalHandleByName: handle assembly failed: %s", e.what());
+    return fail_with_cleanup(CAUSAL_LM_ERROR_UNKNOWN);
+  } catch (...) {
+    LOGE("loadMultimodalHandleByName: handle assembly failed");
+    return fail_with_cleanup(CAUSAL_LM_ERROR_UNKNOWN);
+  }
 
-  *out_handle = h;
+  *out_handle = combined.release();
   return CAUSAL_LM_ERROR_NONE;
 #endif
 }

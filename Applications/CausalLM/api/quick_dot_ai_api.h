@@ -261,8 +261,13 @@ WIN_EXPORT ErrorCode configureSpeculativeDecoding(CausalLmHandle h,
  * @param native_lib_dir      Native library directory path. May be NULL.
  * @param model_base_path     Base path for model files. May be NULL.
  * @param out_handle          Out-parameter receiving the new handle on success
- * @return ErrorCode. CAUSAL_LM_ERROR_UNSUPPORTED if the pair is incompatible
- *         (e.g. the chosen LLM exposes no embedding table).
+ * @retval CAUSAL_LM_ERROR_NONE Success.
+ * @retval CAUSAL_LM_ERROR_UNSUPPORTED
+ * The pair is incompatible.
+ * @retval CAUSAL_LM_ERROR_RESOURCE_RELEASE_FAILED
+ * Temporary-model teardown
+ * failed while assembling the pair. @p out_handle
+ * is NULL on every failure.
  */
 WIN_EXPORT ErrorCode loadMultimodalHandleByName(
   BackendType compute, const char *embedding_model_id, const char *llm_model_id,
