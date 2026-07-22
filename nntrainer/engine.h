@@ -16,6 +16,7 @@
 #define __ENGINE_H__
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -148,7 +149,23 @@ public:
 
   std::unordered_map<std::string, std::shared_ptr<nntrainer::MemAllocator>>
   getAllocators() {
+    const std::lock_guard<std::mutex> lock(engine_mutex);
     return allocator;
+  }
+
+  /** @brief Return one registered backend allocator by name. */
+  std::shared_ptr<nntrainer::MemAllocator>
+  getAllocator(std::string name) const {
+    std::transform(name.begin(), name.end(), name.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    const std::lock_guard<std::mutex> lock(engine_mutex);
+    auto found = allocator.find(name);
+    if (found == allocator.end() || !found->second) {
+      throw std::invalid_argument("[Engine] " + name +
+                                  " allocator is not registered");
+    }
+    return found->second;
   }
 
   /**
