@@ -97,6 +97,29 @@ inline std::string format_float_precise(float v) {
   return os.str();
 }
 
+void *allocate_tracked(std::set<void *> &allocated_ptrs, size_t size) {
+  // Reserve the ownership metadata before acquiring the RPC resource. A set
+  // node allocation failure therefore cannot leave an untracked QNN buffer.
+  // C++17 node handles let us replace the temporary key without allocating a
+  // second node after allocate() succeeds.
+  char tracking_placeholder;
+  auto placeholder_result = allocated_ptrs.insert(&tracking_placeholder);
+  if (!placeholder_result.second) {
+    throw std::logic_error("Failed to reserve QNN allocation tracking node");
+  }
+  auto tracking_node = allocated_ptrs.extract(placeholder_result.first);
+
+  void *ptr = allocate(size);
+  tracking_node.value() = ptr;
+  auto tracked_result = allocated_ptrs.insert(std::move(tracking_node));
+  if (!tracked_result.inserted) {
+    // A live allocation must have a unique address. Do not deallocate the
+    // duplicate address here because the existing set entry still owns it.
+    throw std::logic_error("QNN allocator returned a duplicate live pointer");
+  }
+  return ptr;
+}
+
 } // namespace
 
 /**
@@ -214,13 +237,9 @@ causallm::IO_TensorType get_qnn_input_data(TensorInfo tensor_object,
 
   if (qnn_dtype == "QNN_DATATYPE_UFIXED_POINT_16" ||
       qnn_dtype == "QNN_DATATYPE_FLOAT_16") {
-    auto *ptr = (uint16_t *)allocate(size);
-    allocated_ptrs.insert(ptr);
-    return ptr;
+    return static_cast<uint16_t *>(allocate_tracked(allocated_ptrs, size));
   } else if (qnn_dtype == "QNN_DATATYPE_UFIXED_POINT_8") {
-    auto *ptr = (uint8_t *)allocate(size);
-    allocated_ptrs.insert(ptr);
-    return ptr;
+    return static_cast<uint8_t *>(allocate_tracked(allocated_ptrs, size));
   } else {
     LOGE("[MM-DIAG] get_qnn_input_data: UNSUPPORTED qnn_dtype '%s'",
          qnn_dtype.c_str());
@@ -229,9 +248,7 @@ causallm::IO_TensorType get_qnn_input_data(TensorInfo tensor_object,
 }
 
 void *causallm::Quick_Dot_AI_QNN::tracked_allocate(size_t size) {
-  void *ptr = allocate(size);
-  allocated_ptrs_.insert(ptr);
-  return ptr;
+  return allocate_tracked(allocated_ptrs_, size);
 }
 
 bool causallm::Quick_Dot_AI_QNN::deallocate_all() noexcept {
