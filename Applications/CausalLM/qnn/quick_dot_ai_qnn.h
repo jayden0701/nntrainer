@@ -62,6 +62,17 @@ public:
 
   ~Quick_Dot_AI_QNN() override;
 
+  /**
+   * @brief Release model-local QNN resources and report the result.
+   * @return true when every model pool and direct RPC allocation was released;
+   *         false when one or more allocations were quarantined.
+   *
+   * This is a one-phase, repeatable teardown. A partial release cannot be
+   * rolled back, so the owner must preserve a failure as terminal even if a
+   * later destructor retry releases additional quarantined allocations.
+   */
+  bool shutdown() noexcept;
+
   void initialize() override;
   void initialize(const std::string &native_lib_dir);
 
@@ -77,7 +88,7 @@ public:
   void save_weight(const std::string &weight_path) override;
 
   virtual bool supportsKvCachePersistence() const { return false; }
-  virtual int getKvLen() const { return 0; }
+  int getKvLen() const override { return 0; }
   std::string getOutput(int batch_idx = 0) const {
     (void)batch_idx;
     return last_output_;
@@ -235,8 +246,8 @@ protected:
   /// automatic cleanup in the destructor.
   void *tracked_allocate(size_t size);
 
-  /// Deallocate every tracked pointer and clear the set.
-  void deallocate_all();
+  /// Deallocate tracked pointers, retaining failed entries in the set.
+  bool deallocate_all() noexcept;
 
   /**
    * @brief Convert the run() prompt argument into UTF-8 text for tokenization.

@@ -12,6 +12,7 @@
 #include <cstddef>
 
 void *allocate(std::size_t file_size);
+bool try_deallocate(void *pointer) noexcept;
 void deallocate(void *pointer) noexcept;
 
 #endif // __ANDROID_MEMORY_ALLOCATOR_H__

@@ -51,15 +51,22 @@ void *allocate(std::size_t file_size) {
   return buffer;
 }
 
-void deallocate(void *pointer) noexcept {
+bool try_deallocate(void *pointer) noexcept {
   if (pointer == nullptr) {
-    return;
+    return true;
   }
   try {
-    getQnnAllocator()->free(pointer);
+    if (getQnnAllocator()->tryFree(pointer)) {
+      return true;
+    }
+    ml_loge("Retained a CausalLM QNN allocation after release failure: %p",
+            pointer);
   } catch (const std::exception &e) {
     ml_loge("Failed to release a CausalLM QNN allocation: %s", e.what());
   } catch (...) {
     ml_loge("Failed to release a CausalLM QNN allocation");
   }
+  return false;
 }
+
+void deallocate(void *pointer) noexcept { (void)try_deallocate(pointer); }

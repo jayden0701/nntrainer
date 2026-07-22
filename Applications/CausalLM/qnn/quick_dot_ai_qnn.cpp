@@ -234,14 +234,20 @@ void *causallm::Quick_Dot_AI_QNN::tracked_allocate(size_t size) {
   return ptr;
 }
 
-void causallm::Quick_Dot_AI_QNN::deallocate_all() {
+bool causallm::Quick_Dot_AI_QNN::deallocate_all() noexcept {
   LOGD("Quick_Dot_AI_QNN::deallocate_all: freeing %zu tracked pointers",
        allocated_ptrs_.size());
-  for (auto *ptr : allocated_ptrs_) {
-    LOGD("Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=%p", ptr);
-    deallocate(ptr);
+  bool released_all = true;
+  for (auto ptr = allocated_ptrs_.begin(); ptr != allocated_ptrs_.end();) {
+    LOGD("Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=%p", *ptr);
+    if (try_deallocate(*ptr)) {
+      ptr = allocated_ptrs_.erase(ptr);
+    } else {
+      released_all = false;
+      ++ptr;
+    }
   }
-  allocated_ptrs_.clear();
+  return released_all;
 }
 
 std::string causallm::Quick_Dot_AI_QNN::promptToUtf8(const WSTR &prompt) {
@@ -253,16 +259,41 @@ std::string causallm::Quick_Dot_AI_QNN::promptToUtf8(const WSTR &prompt) {
 #endif
 }
 
-causallm::Quick_Dot_AI_QNN::~Quick_Dot_AI_QNN() {
+bool causallm::Quick_Dot_AI_QNN::shutdown() noexcept {
+  bool released_all = true;
+
   // Stop and destroy every graph before releasing application-owned QNN
-  // buffers. deallocate_all() then routes each pointer through QNNRpcManager,
-  // which removes any context-specific memHandle before freeing its RPC
-  // backing.
+  // buffers. Explicit model deallocation preserves its status before the
+  // no-throw destructor fallback runs.
   for (auto &[model_name, model] : models) {
+    if (model.model_handle == nullptr) {
+      // A null entry is a layout-neutral tombstone left by a prior failed
+      // teardown. Never turn that terminal result into a later success.
+      released_all = false;
+      continue;
+    }
+
+    const int status = ml::train::deallocateModel(*model.model_handle);
+    if (status != ML_ERROR_NONE) {
+      LOGE("Quick_Dot_AI_QNN::shutdown: failed to release model '%s' "
+           "(status=%d)",
+           model_name.c_str(), status);
+      released_all = false;
+    }
     model.model_handle.reset();
   }
-  deallocate_all();
+
+  if (!deallocate_all()) {
+    released_all = false;
+  }
+  if (released_all) {
+    models.clear();
+  }
+  is_initialized = false;
+  return released_all;
 }
+
+causallm::Quick_Dot_AI_QNN::~Quick_Dot_AI_QNN() { (void)shutdown(); }
 
 void causallm::Quick_Dot_AI_QNN::initialize(const std::string &native_lib_dir) {
   native_lib_dir_ = native_lib_dir;
@@ -301,7 +332,13 @@ void causallm::Quick_Dot_AI_QNN::initialize() {
       << binary_config_path << "!";
 
     auto &current_graphs_info = graphs_info[graph_name];
-    std::vector<causallm::IO_TensorType> model_inputs;
+    auto [model_it, inserted] = models.emplace(
+      graph_name,
+      QNNModelInfo{current_graphs_info, std::move(current_model), {}});
+    NNTR_THROW_IF(!inserted, std::runtime_error)
+      << "Duplicate QNN graph name: " << graph_name;
+    auto &model_handle = model_it->second.model_handle;
+    auto &model_inputs = model_it->second.model_inputs;
 
     for (const auto &tensor_object : current_graphs_info.raw_inputs) {
       auto &tensor_name = tensor_object.name;
@@ -364,7 +401,7 @@ void causallm::Quick_Dot_AI_QNN::initialize() {
                                       std::to_string(tensor_object.offset)));
         }
 
-        current_model->addLayer(createLayer("embedding_layer", emb_props));
+        model_handle->addLayer(createLayer("embedding_layer", emb_props));
         model_inputs.push_back(
           (float *)tracked_allocate(sizeof(float) * input_size));
       } else {
@@ -376,7 +413,7 @@ void causallm::Quick_Dot_AI_QNN::initialize() {
           input_shape_string += std::to_string(input_shape[i]);
         }
         std::cout << tensor_name << " : " << input_shape_string << std::endl;
-        current_model->addLayer(createLayer(
+        model_handle->addLayer(createLayer(
           "input",
           {withKey("name", tensor_name),
            // Give each input layer the QNN tensor's real dtype. Without it the
@@ -447,30 +484,30 @@ void causallm::Quick_Dot_AI_QNN::initialize() {
        withKey("input_layers", input_names),
        withKey("input_quant_param", in_quant),
        withKey("output_quant_param", out_quant), withKey("engine", "qnn")});
-    current_model->addLayer(qnn_layer);
+    model_handle->addLayer(qnn_layer);
     std::cout << "end qnn graph" << std::endl;
-    current_model->setProperty({withKey("batch_size", 1), withKey("epochs", 1),
-                                withKey("model_tensor_type", "UINT16-UINT16")});
+    model_handle->setProperty({withKey("batch_size", 1), withKey("epochs", 1),
+                               withKey("model_tensor_type", "UINT16-UINT16")});
 
     auto optimizer = createOptimizer("sgd", {withKey("learning_rate", 0.001)});
-    current_model->setOptimizer(std::move(optimizer));
+    model_handle->setOptimizer(std::move(optimizer));
 
-    status = current_model->compile(ExecutionMode::INFERENCE);
+    status = model_handle->compile(ExecutionMode::INFERENCE);
     if (status) {
       LOGE("[MM-DIAG] graph '%s': Model COMPILE failed status=%d",
            graph_name.c_str(), status);
       throw std::invalid_argument("Model compilation failed!");
     }
     std::cout << "end compile" << std::endl;
-    status = current_model->initialize(ExecutionMode::INFERENCE);
+    status = model_handle->initialize(ExecutionMode::INFERENCE);
     if (status) {
       LOGE("[MM-DIAG] graph '%s': Model INITIALIZE failed status=%d",
            graph_name.c_str(), status);
       throw std::invalid_argument("Model initialization failed!");
     }
     std::cout << "end inititlize" << std::endl;
-    current_model->summarize(std::cout,
-                             ml_train_summary_type_e::ML_TRAIN_SUMMARY_MODEL);
+    model_handle->summarize(std::cout,
+                            ml_train_summary_type_e::ML_TRAIN_SUMMARY_MODEL);
 
     // std::shared_ptr<ml::train::Layer>emb;
     // current_model->getLayer("input_embeds", &emb);
@@ -478,8 +515,6 @@ void causallm::Quick_Dot_AI_QNN::initialize() {
     // auto in_dt = node->getInputDimensions()[0].getDataType();
     // std::cout << "embedding input dtype = %d",(int)in_dt);
 
-    models[graph_name] = {current_graphs_info, std::move(current_model),
-                          model_inputs};
     std::cout << "----------------------- end graph" << std::endl;
   }
 
