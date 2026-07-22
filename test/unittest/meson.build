@@ -168,6 +168,7 @@ subdir('layers')
 subdir('datasets')
 subdir('models')
 subdir('singleton')
+subdir('engine')
 if get_option('enable-tflite-interpreter')
   subdir('integration_tests')
 endif
