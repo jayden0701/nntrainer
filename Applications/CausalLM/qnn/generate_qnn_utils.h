@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -72,11 +73,29 @@ struct QnnKvOutputBinding {
   bool is_key;
 };
 
+/**
+ * @brief Compatibility allocator for RoPE caches.
+ *
+ * The caller owns
+ * both returned RPC buffers and must release them with
+ * deallocate(). New
+ * model code should allocate each buffer through its
+ * model-local tracker and
+ * call fill_cos_sin() instead.
+ */
 std::tuple<uint16_t *, uint16_t *>
 get_cos_sin(int context_size, int pos_dim, const double theta,
             const std::string &rope_type = "default",
             double partial_rotary_factor = 1.0,
             double rope_scaling_factor = 1.0, int rope_head_dim = 0);
+
+std::size_t get_cos_sin_buffer_size(int context_size, int pos_dim);
+
+void fill_cos_sin(uint16_t *cos_val, uint16_t *sin_val, int context_size,
+                  int pos_dim, const double theta,
+                  const std::string &rope_type = "default",
+                  double partial_rotary_factor = 1.0,
+                  double rope_scaling_factor = 1.0, int rope_head_dim = 0);
 
 bool qnn_starts_with(const std::string &value, const std::string &prefix);
 
@@ -119,6 +138,7 @@ void fill_attention_mask_with_length(int rows, int columns, int length,
 void fill_attention_mask_with_prev_length(int rows, int columns, int length,
                                           uint16_t *attention_mask);
 
+/// Return caller-owned RPC memory. Release it with deallocate().
 uint16_t *get_zero_memory(int size, int zero_point);
 
 void fill_generation_inputs(

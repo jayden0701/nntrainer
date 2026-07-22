@@ -87,16 +87,38 @@ uint16_t quantize_rope_value(double value, double attention_factor) {
 
 } // namespace
 
-std::tuple<uint16_t *, uint16_t *>
-get_cos_sin(int context_size, int pos_dim, const double theta,
-            const std::string &rope_type, double partial_rotary_factor,
-            double rope_scaling_factor, int rope_head_dim) {
+std::size_t get_cos_sin_buffer_size(int context_size, int pos_dim) {
+  if (context_size <= 0 || pos_dim <= 0) {
+    throw std::invalid_argument("RoPE cache dimensions must be positive");
+  }
+
+  const auto context_elements = static_cast<std::size_t>(context_size);
+  const auto position_elements = static_cast<std::size_t>(pos_dim);
+  const auto max_elements =
+    std::numeric_limits<std::size_t>::max() / sizeof(uint16_t);
+  if (context_elements > max_elements / position_elements) {
+    throw std::length_error("RoPE cache allocation size overflow");
+  }
+  return context_elements * position_elements * sizeof(uint16_t);
+}
+
+void fill_cos_sin(uint16_t *cos_val, uint16_t *sin_val, int context_size,
+                  int pos_dim, const double theta, const std::string &rope_type,
+                  double partial_rotary_factor, double rope_scaling_factor,
+                  int rope_head_dim) {
+  (void)get_cos_sin_buffer_size(context_size, pos_dim);
+  if (cos_val == nullptr || sin_val == nullptr) {
+    throw std::invalid_argument("RoPE cache buffers must not be null");
+  }
+
   double attention_factor = 1.0;
   const double scaling_factor =
     rope_scaling_factor > 0.0 ? rope_scaling_factor : 1.0;
-  const int frequency_dim = rope_head_dim > 0 ? rope_head_dim : pos_dim * 2;
+  const double frequency_dim = rope_head_dim > 0
+                                 ? static_cast<double>(rope_head_dim)
+                                 : static_cast<double>(pos_dim) * 2.0;
   // inv_freq indexes angle pairs, so the exponent advances by 2/head_dim.
-  const double exponent = 2.0 / static_cast<double>(frequency_dim);
+  const double exponent = 2.0 / frequency_dim;
   std::vector<double> inv_freq(pos_dim, 0.0);
 
   if (rope_type == "default") {
@@ -111,8 +133,8 @@ get_cos_sin(int context_size, int pos_dim, const double theta,
         proportion = 0.0;
       if (proportion > 1.0)
         proportion = 1.0;
-      rotary_freq_count = static_cast<int>(
-        std::floor(proportion * static_cast<double>(frequency_dim) / 2.0));
+      rotary_freq_count =
+        static_cast<int>(std::floor(proportion * frequency_dim / 2.0));
       rotary_freq_count = std::max(0, std::min(pos_dim, rotary_freq_count));
     }
 
@@ -139,27 +161,43 @@ get_cos_sin(int context_size, int pos_dim, const double theta,
       effective_dim = pos_dim;
   }
 
-  uint16_t *cos_val =
-    (uint16_t *)allocate(sizeof(uint16_t) * context_size * pos_dim);
-  uint16_t *sin_val =
-    (uint16_t *)allocate(sizeof(uint16_t) * context_size * pos_dim);
-
   // Quantized identity values for non-rotary lanes.
   const uint16_t cos_one = quantize_rope_value(1.0, attention_factor);
   const uint16_t sin_zero = quantize_rope_value(0.0, attention_factor);
 
   for (int i = 0; i < context_size; i++) {
+    const auto row_offset =
+      static_cast<std::size_t>(i) * static_cast<std::size_t>(pos_dim);
     for (int j = 0; j < effective_dim; j++) {
       const double freq = i * inv_freq[j];
-      cos_val[i * pos_dim + j] =
-        quantize_rope_value(std::cos(freq), attention_factor);
-      sin_val[i * pos_dim + j] =
-        quantize_rope_value(std::sin(freq), attention_factor);
+      const auto index = row_offset + static_cast<std::size_t>(j);
+      cos_val[index] = quantize_rope_value(std::cos(freq), attention_factor);
+      sin_val[index] = quantize_rope_value(std::sin(freq), attention_factor);
     }
     for (int j = effective_dim; j < pos_dim; j++) {
-      cos_val[i * pos_dim + j] = cos_one;
-      sin_val[i * pos_dim + j] = sin_zero;
+      const auto index = row_offset + static_cast<std::size_t>(j);
+      cos_val[index] = cos_one;
+      sin_val[index] = sin_zero;
     }
+  }
+}
+
+std::tuple<uint16_t *, uint16_t *>
+get_cos_sin(int context_size, int pos_dim, const double theta,
+            const std::string &rope_type, double partial_rotary_factor,
+            double rope_scaling_factor, int rope_head_dim) {
+  const auto buffer_size = get_cos_sin_buffer_size(context_size, pos_dim);
+  uint16_t *cos_val = nullptr;
+  uint16_t *sin_val = nullptr;
+  try {
+    cos_val = static_cast<uint16_t *>(allocate(buffer_size));
+    sin_val = static_cast<uint16_t *>(allocate(buffer_size));
+    fill_cos_sin(cos_val, sin_val, context_size, pos_dim, theta, rope_type,
+                 partial_rotary_factor, rope_scaling_factor, rope_head_dim);
+  } catch (...) {
+    (void)try_deallocate(sin_val);
+    (void)try_deallocate(cos_val);
+    throw;
   }
   return std::make_tuple(cos_val, sin_val);
 }

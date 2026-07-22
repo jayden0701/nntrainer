@@ -777,36 +777,27 @@ void Gemma4_E2B_QNN::initialize() {
 
   // ── RoPE cache ──
 
-  // std::tuple<uint16_t *, uint16_t *> cos_sin_tuple =
-  //     get_cos_sin(rope_cache_seq_len, pos_dim, rope_theta);
-  // position_ids_cos = std::get<0>(cos_sin_tuple);
-  // position_ids_sin = std::get<1>(cos_sin_tuple);
-  // allocated_ptrs_.insert(position_ids_cos);
-  // allocated_ptrs_.insert(position_ids_sin);
-
-  // std::tuple<uint16_t *, uint16_t *> swa_cos_sin_tuple =
-  //     get_cos_sin(rope_cache_seq_len, swa_pos_dim, local_rope_theta);
-  // swa_position_ids_cos = std::get<0>(swa_cos_sin_tuple);
-  // swa_position_ids_sin = std::get<1>(swa_cos_sin_tuple);
-  // allocated_ptrs_.insert(swa_position_ids_cos);
-  // allocated_ptrs_.insert(swa_position_ids_sin);
-
-  std::tuple<uint16_t *, uint16_t *> cos_sin_tuple =
-    get_cos_sin(rope_cache_seq_len, pos_dim, rope_theta_full, rope_type_full,
-                rope_partial_factor, rope_scaling_factor_full, g_head_dim);
-  position_ids_cos = std::get<0>(cos_sin_tuple);
-  position_ids_sin = std::get<1>(cos_sin_tuple);
-  allocated_ptrs_.insert(position_ids_cos);
-  allocated_ptrs_.insert(position_ids_sin);
+  const auto full_rope_buffer_size =
+    get_cos_sin_buffer_size(rope_cache_seq_len, pos_dim);
+  position_ids_cos =
+    static_cast<uint16_t *>(tracked_allocate(full_rope_buffer_size));
+  position_ids_sin =
+    static_cast<uint16_t *>(tracked_allocate(full_rope_buffer_size));
+  fill_cos_sin(position_ids_cos, position_ids_sin, rope_cache_seq_len, pos_dim,
+               rope_theta_full, rope_type_full, rope_partial_factor,
+               rope_scaling_factor_full, g_head_dim);
 
   // ── Sliding window RoPE (default = no scaling) ──
-  std::tuple<uint16_t *, uint16_t *> swa_cos_sin_tuple = get_cos_sin(
-    rope_cache_seq_len, swa_pos_dim, rope_theta_sliding, rope_type_sliding,
-    /*partial=*/1.0, rope_scaling_factor_sliding, l_head_dim);
-  swa_position_ids_cos = std::get<0>(swa_cos_sin_tuple);
-  swa_position_ids_sin = std::get<1>(swa_cos_sin_tuple);
-  allocated_ptrs_.insert(swa_position_ids_cos);
-  allocated_ptrs_.insert(swa_position_ids_sin);
+  const auto sliding_rope_buffer_size =
+    get_cos_sin_buffer_size(rope_cache_seq_len, swa_pos_dim);
+  swa_position_ids_cos =
+    static_cast<uint16_t *>(tracked_allocate(sliding_rope_buffer_size));
+  swa_position_ids_sin =
+    static_cast<uint16_t *>(tracked_allocate(sliding_rope_buffer_size));
+  fill_cos_sin(swa_position_ids_cos, swa_position_ids_sin, rope_cache_seq_len,
+               swa_pos_dim, rope_theta_sliding, rope_type_sliding,
+               /*partial_rotary_factor=*/1.0, rope_scaling_factor_sliding,
+               l_head_dim);
 
   // ── PLE per-layer dst + scale/offset collection ──
   auto collect_per_layer =
@@ -945,7 +936,6 @@ void Gemma4_E2B_QNN::initialize() {
       // Separate fresh_kv to use as run-start reset state.
       auto *fresh_kv = static_cast<uint8_t *>(tracked_allocate(size));
       std::memset(fresh_kv, zq, size);
-      allocated_ptrs_.insert(fresh_kv);
 
       int kv_input_index = (int)this->kvs.size();
       this->kvs.push_back((uint16_t *)current_kv);
