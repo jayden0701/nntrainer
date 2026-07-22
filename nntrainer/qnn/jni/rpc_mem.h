@@ -6,20 +6,11 @@
  * @date    21 May 2026
  * @see     https://github.com/nnstreamer/nntrainer
  * @author  haehun.yang <haehun.yang@samsung.com>
- * @bug     No known bugs except for NYI items
- * @brief   Single source-of-truth loader for Hexagon RPC memory.
- *
- * @details This is the one place that dlopens libcdsprpc.so and resolves the
- *          rpcmem_alloc / rpcmem_free / rpcmem_to_fd entry points. It replaces
- *          the two duplicated loaders that previously lived in
- *          qnn/jni/qnn_rpc_manager.cpp (QNNRpcManager) and
- *          src/models/qnn/android_memory_allocator.cpp (allocate/deallocate).
- *
- *          The .cpp is compiled into both libqnn_context.so (for QNNRpcManager)
- *          and libquick_dot_ai.so (for allocate/deallocate). Both consumer
- *          libraries are loaded RTLD_LOCAL, so each keeps its own
- * self-contained RpcMem instance; libcdsprpc.so itself is process-global, so
- * buffers allocated by one library can be freed by the other.
+ * @bug     No known bugs
+ * except for NYI items
+ * @brief   Shared QNN backend loader for Hexagon RPC
+ * memory.
+
  */
 #ifndef __QNN_RPC_MEM_H__
 #define __QNN_RPC_MEM_H__
@@ -46,7 +37,9 @@ public:
   static RpcMem &global();
 
   /** @brief whether libcdsprpc.so and the rpcmem symbols were resolved */
-  bool valid() const { return alloc_ != nullptr && free_ != nullptr; }
+  bool valid() const {
+    return alloc_ != nullptr && free_ != nullptr && to_fd_ != nullptr;
+  }
 
   void *alloc(int heapid, uint32_t flags, int size) const {
     return alloc_ ? alloc_(heapid, flags, size) : nullptr;

@@ -27,7 +27,7 @@ namespace nntrainer {
 class QNNGraph : public LayerImpl {
 public:
   QNNGraph();
-  ~QNNGraph();
+  ~QNNGraph() override = default;
 
   inline static const std::string type = "qnn_graph";
 
@@ -62,10 +62,6 @@ public:
    */
   void setProperty(const std::vector<std::string> &values) override;
 
-  StatusCode makeContext(RunLayerContext &context);
-
-  StatusCode freeContext(RunLayerContext &context);
-
   void read(std::ifstream &file, RunLayerContext &run_context, bool opt_var,
             ml::train::ExecutionMode mode, bool trainable,
             TensorDim::DataType defineWeightDataType, bool fsu = false,
@@ -82,15 +78,11 @@ private:
   std::vector<unsigned int> weight_idx;
   std::vector<unsigned int> tensor_idx;
 
-  Qnn_ContextHandle_t m_context = nullptr;
   std::string bin_path;
-  bool m_isContextCreated;
 
   std::vector<props::TensorDataType> t_dtype;
   std::vector<TensorDim> t_dims;
   std::vector<props::TensorType> t_type;
-
-  sample_app::QnnFunctionPointers m_qnnFunctionPointers;
 };
 
 } // namespace nntrainer

@@ -101,11 +101,21 @@ public:
   /** @brief Release QNN resources. */
   ~QNNContext() override {
     auto qnn_data = getQnnData();
+    if (!qnn_data) {
+      return;
+    }
+
     bool quarantine_runtime = false;
+    QNNRpcManager::CleanupGuard shutdown_guard{};
     try {
-      // Free all remaining QNN contexts in ct_map before releasing backend.
-      quarantine_runtime =
-        qnn_data && qnn_data->freeAllContexts() != StatusCode::SUCCESS;
+      // Keep execution admission closed from context cleanup through backend
+      // teardown and dlclose. A waiting forwarding call must not enter the
+      // runtime after ct_map has been drained.
+      if (qnn_data->RpcMem) {
+        shutdown_guard = qnn_data->RpcMem->acquireRuntimeShutdownGuard();
+      }
+      quarantine_runtime = qnn_data->freeAllContextsWithCleanupGuard(
+                             shutdown_guard) != StatusCode::SUCCESS;
     } catch (const std::exception &e) {
       quarantine_runtime = true;
       ml_loge("Exception during QNN context teardown: %s", e.what());
@@ -291,9 +301,20 @@ public:
   }
 
   int load(const std::string &file_path) override {
-
-    StatusCode ret = getQnnData()->makeContext(file_path);
-    return (int)ret;
+    auto qnn_data = getQnnData();
+    if (!qnn_data || !qnn_data->RpcMem) {
+      ml_loge("Cannot load a QNN context without an RPC memory manager");
+      return static_cast<int>(StatusCode::FAILURE);
+    }
+    try {
+      auto cleanup_guard = qnn_data->RpcMem->acquireCleanupGuard();
+      return static_cast<int>(qnn_data->makeContext(file_path));
+    } catch (const std::exception &e) {
+      ml_loge("Cannot load a QNN context after runtime shutdown: %s", e.what());
+    } catch (...) {
+      ml_loge("Cannot load a QNN context after runtime shutdown");
+    }
+    return static_cast<int>(StatusCode::FAILURE);
   }
 
 protected:

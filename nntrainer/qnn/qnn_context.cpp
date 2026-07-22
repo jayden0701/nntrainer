@@ -28,6 +28,7 @@
 #include <iostream>
 #include <limits.h>
 #include <unistd.h>
+#include <utility>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -133,11 +134,11 @@ void QNNContext::initialize() noexcept {
     LOGD("initialize: init() completed");
     ml_logi("qnn init done");
     LOGD("initialize: creating QNNRpcManager");
-    setMemAllocator(std::make_shared<QNNRpcManager>());
-
-    std::static_pointer_cast<QNNBackendVar>(getContextData())
-      ->getVar()
-      ->RpcMem = std::static_pointer_cast<QNNRpcManager>(getMemAllocator());
+    auto qnn_data = getQnnData();
+    auto rpc_manager = std::make_shared<QNNRpcManager>(
+      qnn_data->m_qnnFunctionPointers.qnnInterface);
+    setMemAllocator(rpc_manager);
+    qnn_data->RpcMem = std::move(rpc_manager);
     LOGD("initialize: QNNRpcManager set");
 
     LOGD("initialize: registering QNN layers");

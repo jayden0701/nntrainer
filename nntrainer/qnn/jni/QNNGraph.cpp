@@ -14,11 +14,9 @@
 #include "QNNGraph.h"
 #include "QnnTypes.h"
 #include <cstdint>
-#include <engine.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <memory>
-#include <qnn_context.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -65,51 +63,7 @@ static void *getQnnTensorBuffer(Tensor &tensor, const char *kind,
 }
 
 QNNGraph::QNNGraph() :
-  LayerImpl(), graph_props({}, {}, {}, props::FilePath(), {}, {}) {
-  m_isContextCreated = false;
-}
-
-QNNGraph::~QNNGraph() {
-  if (m_context) {
-    if (QNN_CONTEXT_NO_ERROR !=
-        m_qnnFunctionPointers.qnnInterface.contextFree(m_context, nullptr)) {
-      ml_loge("Failed to free Context");
-    }
-  }
-
-  // Deregister QNN tensor memHandles while the QNN context is still alive,
-  // so memDeRegister succeeds. The context itself is NOT freed — it persists
-  // in ct_map for reuse on the next load, following the same pattern as CPU
-  // (AppContext) and GPU (ClContext) which never free their backend resources
-  // on model unload. Destroying and recreating a QNN context handle on top
-  // of an already-initialised HTP backend leaves dangling memHandles and
-  // corrupts the backend's internal state, causing graphExecute to fail on
-  // every subsequent load (load → unload → load cycle).
-  if (!bin_path.empty()) {
-    LOGD("[QNNGraph] ~QNNGraph: deregistering tensors for bin_path=%s",
-         bin_path.c_str());
-    auto *ctx = Engine::Global().getRegisteredContext("qnn");
-    if (ctx) {
-      auto *qnn_ctx = static_cast<QNNContext *>(ctx);
-      auto qnn_data = qnn_ctx->getQnnData();
-      if (qnn_data) {
-        // Deregister all QNN memHandles while context is still valid.
-        // Multiple QNNGraph instances share the same QNNVar (and thus the
-        // same QNNRpcManager); the first destructor clears the map and
-        // subsequent ones are no-ops.
-        qnn_data->RpcMem->deRegisterQnnTensor();
-        LOGD(
-          "[QNNGraph] ~QNNGraph: deRegisterQnnTensor completed (context kept "
-          "for reuse) bin_path=%s",
-          bin_path.c_str());
-      }
-    } else {
-      LOGD("[QNNGraph] ~QNNGraph: qnn context not registered in Engine");
-    }
-  } else {
-    LOGD("[QNNGraph] ~QNNGraph: bin_path is empty, skipping deRegister");
-  }
-}
+  LayerImpl(), graph_props({}, {}, {}, props::FilePath(), {}, {}) {}
 
 void QNNGraph::finalize(InitLayerContext &context) {
   bin_path = std::get<props::FilePath>(graph_props).get();
@@ -163,28 +117,6 @@ void QNNGraph::setProperty(const std::vector<std::string> &values) {
   LayerImpl::setProperty(remain_props);
 }
 
-StatusCode QNNGraph::freeContext(RunLayerContext &context) {
-  std::shared_ptr<QNNVar> qc_var = getQNNVar(context);
-
-  if (m_context) {
-    if (QNN_CONTEXT_NO_ERROR !=
-        m_qnnFunctionPointers.qnnInterface.contextFree(m_context, nullptr)) {
-      ml_loge("Faile to free Context");
-      return StatusCode::FAILURE;
-    }
-    m_isContextCreated = false;
-  }
-  m_context = nullptr;
-  return StatusCode::SUCCESS;
-}
-
-StatusCode QNNGraph::makeContext(RunLayerContext &context) {
-
-  std::shared_ptr<QNNVar> qc_var = getQNNVar(context);
-
-  return qc_var->makeContext(bin_path);
-}
-
 void QNNGraph::read(std::ifstream &file, RunLayerContext &run_context,
                     bool opt_var, ml::train::ExecutionMode mode, bool trainable,
                     TensorDim::DataType defineWeightDataType, bool fsu,
@@ -192,13 +124,24 @@ void QNNGraph::read(std::ifstream &file, RunLayerContext &run_context,
 
 void QNNGraph::forwarding(RunLayerContext &context, bool training) {
   auto qc_var = getQNNVar(context);
+  NNTR_THROW_IF(!qc_var->RpcMem, std::runtime_error)
+    << "QNN RPC memory manager is unavailable";
+  auto execution_guard = qc_var->RpcMem->acquireExecutionGuard();
 
   auto context_ref = qc_var->findContext(bin_path);
   if (!context_ref) {
-    ml_logw("Context is not created. Create Now");
-    NNTR_THROW_IF(qc_var->makeContext(bin_path) != StatusCode::SUCCESS,
-                  std::runtime_error)
-      << "Failed to create QNN context from " << bin_path;
+    execution_guard.unlock();
+    {
+      auto cleanup_guard = qc_var->RpcMem->acquireCleanupGuard();
+      context_ref = qc_var->findContext(bin_path);
+      if (!context_ref) {
+        ml_logw("Context is not created. Create Now");
+        NNTR_THROW_IF(qc_var->makeContext(bin_path) != StatusCode::SUCCESS,
+                      std::runtime_error)
+          << "Failed to create QNN context from " << bin_path;
+      }
+    }
+    execution_guard = qc_var->RpcMem->acquireExecutionGuard();
     context_ref = qc_var->findContext(bin_path);
   }
 
@@ -263,7 +206,8 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     // NNTrainer QNN tensors already use RPC shared-memory backing. Bind that
     // allocation directly instead of copying into a raw client buffer.
     void *buffer = getQnnTensorBuffer(context.getInput(i), "input", i);
-    qc_var->RpcMem->registerQnnTensor(buffer, inputs[i], context_i.m_context);
+    qc_var->RpcMem->registerQnnTensor(buffer, inputs[i], context_i.m_context,
+                                      execution_guard);
   }
 
   for (size_t i = 0; i < context.getNumOutputs(); ++i) {
@@ -279,7 +223,8 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     outputs[i].v1.quantizeParams.scaleOffsetEncoding.offset = value.second;
     // Outputs are written directly into the NNTrainer RPC allocation as well.
     void *buffer = getQnnTensorBuffer(context.getOutput(i), "output", i);
-    qc_var->RpcMem->registerQnnTensor(buffer, outputs[i], context_i.m_context);
+    qc_var->RpcMem->registerQnnTensor(buffer, outputs[i], context_i.m_context,
+                                      execution_guard);
   }
 
   Qnn_ErrorHandle_t executeStatus = QNN_GRAPH_NO_ERROR;

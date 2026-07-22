@@ -10,202 +10,428 @@
  * @brief   This file contains qnn rpc memory manager
  */
 #include "qnn_rpc_manager.h"
-#include "PAL/DynamicLoading.hpp"
+
 #include "QnnTypes.h"
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <cstdio>
+
+#include <algorithm>
 #include <cstdlib>
-#include <iostream>
+#include <exception>
+#include <inttypes.h>
+#include <limits>
+#include <new>
 #include <nntrainer_log.h>
+#include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace nntrainer {
 
-template <class T>
-static inline T resolveSymbol(void *libHandle, const char *sym) {
-  T ptr = (T)pal::dynamicloading::dlSym(libHandle, sym);
-  if (ptr == nullptr) {
-    ml_loge("Unable to access symbol %s. pal::dynamicloading::dlError()", sym);
-  }
-  return ptr;
-}
-
-QNNRpcManager::QNNRpcManager() {
+QNNRpcManager::QNNRpcManager(const QNN_INTERFACE_VER_TYPE &qnn_interface) :
+  qnnInterface_(qnn_interface) {
 #ifdef ENABLE_QNN
-  // libcdsprpc.so / rpcmem_* are loaded once by the shared RpcMem singleton
-  // (see qnn/jni/rpc_mem.h); fail fast here if it could not be resolved.
   if (!RpcMem::global().valid()) {
-    ml_loge("RpcMem (libcdsprpc.so) is not available");
-    exit(-1);
+    throw std::runtime_error(
+      "QNN RPC memory functions are not available from libcdsprpc");
+  }
+  if (qnnInterface_.memRegister == nullptr ||
+      qnnInterface_.memDeRegister == nullptr) {
+    throw std::runtime_error("QNN memory function pointers are unavailable");
   }
 #endif
-  // Get QNN Interface
-  void *libBackendHandle = pal::dynamicloading::dlOpen(
-    "libQnnHtp.so",
-    pal::dynamicloading::DL_NOW | pal::dynamicloading::DL_GLOBAL);
-  QnnInterfaceGetProvidersFn_t getInterfaceProviders{nullptr};
-  getInterfaceProviders = resolveSymbol<QnnInterfaceGetProvidersFn_t>(
-    libBackendHandle, "QnnInterface_getProviders");
-  QnnInterface_t **interfaceProviders{nullptr};
-  uint32_t numProviders{0};
-  if (QNN_SUCCESS !=
-      getInterfaceProviders((const QnnInterface_t ***)&interfaceProviders,
-                            &numProviders)) {
-    ml_loge("Failed to get interface providers.");
-  }
-  for (size_t pIdx = 0; pIdx < numProviders; pIdx++) {
-    if (QNN_API_VERSION_MAJOR ==
-          interfaceProviders[pIdx]->apiVersion.coreApiVersion.major &&
-        QNN_API_VERSION_MINOR <=
-          interfaceProviders[pIdx]->apiVersion.coreApiVersion.minor) {
-      qnnInterface_ = interfaceProviders[pIdx]->QNN_INTERFACE_VER_NAME;
-      break;
-    }
-  }
 }
 
 QNNRpcManager::~QNNRpcManager() {
 #ifdef ENABLE_QNN
-  for (auto &mem : ptrToFdAndMemHandleMap_) {
-    Qnn_ErrorHandle_t deregisterRet =
-      qnnInterface_.memDeRegister(&mem.second.second.second, 1);
-    if (QNN_SUCCESS != deregisterRet) {
-      // handle errors
-      ml_loge("qnnInterface_.memDeRegister failed");
+  try {
+    auto cleanup_guard = acquireRuntimeShutdownGuard();
+    std::lock_guard<std::mutex> registration_guard(registration_mutex_);
+    const auto report = deRegisterAllLocked();
+
+    size_t retained = 0;
+    for (auto allocation = allocations_.begin();
+         allocation != allocations_.end();) {
+      if (registrations_.find(allocation->first) != registrations_.end()) {
+        ++retained;
+        ++allocation;
+        continue;
+      }
+
+      RpcMem::global().free(allocation->first);
+      allocation = allocations_.erase(allocation);
     }
-    RpcMem::global().free(mem.first);
-    ptrToFdAndMemHandleMap_.erase(mem.first);
+
+    if (!report.success() || retained > 0) {
+      ml_loge("QNN RPC manager retained %zu backing allocations after "
+              "deregistration failure",
+              retained);
+    }
+  } catch (const std::exception &e) {
+    // Destruction must never free backing after an uncertain deregistration.
+    // Losing host bookkeeping is preferable to a driver-visible use-after-free
+    // during process teardown.
+    ml_loge("Exception during QNN RPC manager teardown: %s", e.what());
+  } catch (...) {
+    ml_loge("Unknown exception during QNN RPC manager teardown");
   }
 #endif
+}
+
+QNNRpcManager::ExecutionGuard QNNRpcManager::acquireExecutionGuard() {
+  ExecutionGuard execution_guard(lifecycle_mutex_);
+  if (runtime_shutdown_) {
+    throw std::runtime_error("QNN runtime execution is shut down");
+  }
+  return execution_guard;
+}
+
+QNNRpcManager::CleanupGuard QNNRpcManager::acquireCleanupGuard() {
+  CleanupGuard cleanup_guard(lifecycle_mutex_);
+  if (runtime_shutdown_) {
+    throw std::runtime_error("QNN runtime cleanup is shut down");
+  }
+  return cleanup_guard;
+}
+
+QNNRpcManager::CleanupGuard QNNRpcManager::acquireRuntimeShutdownGuard() {
+  CleanupGuard cleanup_guard(lifecycle_mutex_);
+  runtime_shutdown_ = true;
+  return cleanup_guard;
+}
+
+bool QNNRpcManager::ownsCleanupGuard(
+  const CleanupGuard &cleanup_guard) noexcept {
+  return cleanup_guard.owns_lock() &&
+         cleanup_guard.mutex() == &lifecycle_mutex_;
 }
 
 void QNNRpcManager::alloc(void **ptr, size_t size, size_t alignment) {
-  assert(size > 0);
-#ifdef DEBUGPRINT
-  std::cout << "QNN alloc size: " << size << std::endl;
-#endif
+  (void)alignment;
+  if (ptr == nullptr) {
+    throw std::invalid_argument("QNN RPC allocation output is null");
+  }
+  *ptr = nullptr;
+  if (size == 0) {
+    throw std::invalid_argument("QNN RPC allocation size is zero");
+  }
+
 #ifdef ENABLE_QNN
-  // Allocate the shared buffer
-  uint8_t *memPointer = (uint8_t *)RpcMem::global().alloc(
+  auto execution_guard = acquireExecutionGuard();
+  if (size > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::length_error("QNN RPC allocation exceeds rpcmem size limit");
+  }
+
+  void *mem_pointer = RpcMem::global().alloc(
     kRpcMemHeapIdSystem, kRpcMemDefaultFlags, static_cast<int>(size));
-  if (nullptr == memPointer) {
-    ml_loge("rpcmem_alloc failed");
-    exit(-1);
+  if (mem_pointer == nullptr) {
+    throw std::bad_alloc();
   }
-  qnnMemPtrMap_.insert(memPointer);
 
-  *ptr = memPointer;
+  bool inserted = false;
+  try {
+    std::lock_guard<std::mutex> registration_guard(registration_mutex_);
+    inserted = allocations_.emplace(mem_pointer, size).second;
+  } catch (...) {
+    RpcMem::global().free(mem_pointer);
+    throw;
+  }
+
+  if (!inserted) {
+    // rpcmem must not return an address that is still live. Do not free the
+    // ambiguous address because it may be the previously tracked allocation.
+    ml_loge("QNN RPC allocator returned a duplicate live pointer: %p",
+            mem_pointer);
+    throw std::runtime_error("QNN RPC allocator returned a duplicate pointer");
+  }
+  *ptr = mem_pointer;
 #else
-  *ptr = calloc(size, 1);
-  assert(ptr != nullptr);
+  *ptr = std::calloc(1, size);
+  if (*ptr == nullptr) {
+    throw std::bad_alloc();
+  }
 #endif
 }
 
-bool QNNRpcManager::findMatchingPtr(void *ptr, Qnn_ContextHandle_t &context,
-                                    Qnn_Tensor_t &qnnTensor) {
-  auto mapIt = ptrToFdAndMemHandleMap_.find(ptr);
-
-  if (mapIt != ptrToFdAndMemHandleMap_.end()) {
-    if (mapIt->second.first == context) {
-      qnnTensor.v1.memType = QNN_TENSORMEMTYPE_MEMHANDLE;
-      qnnTensor.v1.memHandle = mapIt->second.second.second;
-      return true;
-    }
-  }
-  return false;
-}
-
-void QNNRpcManager::registerQnnTensor(void *ptr, Qnn_Tensor_t &qnnTensor,
-                                      Qnn_ContextHandle_t &context_) {
-
-  auto tensor_reg_start = std::chrono::system_clock::now();
-  // auto it = qnnMemPtrMap_.find(ptr);
-  // if (it == qnnMemPtrMap_.end()) {
-  //   ml_loge("Ptr is not resistered. Registering");
-  //   exit(-1);
-  //   return;
-  // }
-
-  if (findMatchingPtr(ptr, context_, qnnTensor)) {
-    return;
-  }
-
-  auto start = std::chrono::system_clock::now();
-  int memFd = RpcMem::global().to_fd(ptr);
-  auto end = std::chrono::system_clock::now();
-
-  std::chrono::duration<double> elapsed_seconds = end - start;
-
-  if (-1 == memFd) {
-    ml_loge("rpcmem_to_fd failed");
-    exit(-1);
-    return;
-  }
-
-  Qnn_MemDescriptor_t memDescriptor = QNN_MEM_DESCRIPTOR_INIT;
-  memDescriptor.memShape = {qnnTensor.v1.rank, qnnTensor.v1.dimensions,
-                            nullptr};
-  memDescriptor.dataType = qnnTensor.v1.dataType;
-  memDescriptor.memType = QNN_MEM_TYPE_ION;
-  memDescriptor.ionInfo.fd = memFd;
-  qnnTensor.v1.memType = QNN_TENSORMEMTYPE_MEMHANDLE;
-
-  Qnn_ErrorHandle_t registRet = qnnInterface_.memRegister(
-    context_, &memDescriptor, 1u, &(qnnTensor.v1.memHandle));
-  if (registRet != QNN_SUCCESS) {
-    ml_loge("qnnInterface memRegister failed");
-    exit(-1);
-    return;
-  }
-
-  ptrToFdAndMemHandleMap_.insert(std::make_pair(
-    ptr,
-    std::make_pair(context_, std::make_pair(memFd, qnnTensor.v1.memHandle))));
-  auto tensor_reg_end = std::chrono::system_clock::now();
-  std::chrono::duration<double> tensor_reg_elapsed_seconds =
-    tensor_reg_end - tensor_reg_start;
-  // std::cout << "finished rpcmem_to_fd "
-  //           << "elapsed time: " << elapsed_seconds.count() << "s\n";
-  // std::cout << "finished tensor_registration "
-  //           << "elapsed time: " << tensor_reg_elapsed_seconds.count() <<
-  //           "s\n";
-}
-
-void QNNRpcManager::deRegisterQnnTensor() {
+void QNNRpcManager::registerQnnTensor(void *ptr, Qnn_Tensor_t &qnn_tensor,
+                                      Qnn_ContextHandle_t context,
+                                      const ExecutionGuard &execution_guard) {
 #ifdef ENABLE_QNN
-  // free all buffers if it's not being used
-  for (auto &mem : ptrToFdAndMemHandleMap_) {
-    Qnn_ErrorHandle_t deregisterRet =
-      qnnInterface_.memDeRegister(&mem.second.second.second, 1);
-    if (QNN_SUCCESS != deregisterRet) {
-      ml_loge("qnnInterface_.memDeRegister failed");
-    }
-    // rpcmem_free(mem.first);
-    // clear the map outside the loop.
-    // ptrToFdAndMemHandleMap_.erase(mem.first);
+  if (!execution_guard.owns_lock() ||
+      execution_guard.mutex() != &lifecycle_mutex_) {
+    throw std::logic_error(
+      "QNN tensor registration requires an execution guard");
   }
-  ptrToFdAndMemHandleMap_.clear();
+  if (ptr == nullptr || context == nullptr) {
+    throw std::invalid_argument(
+      "QNN tensor registration requires a pointer and context");
+  }
+  if (qnn_tensor.v1.rank > 0 && qnn_tensor.v1.dimensions == nullptr) {
+    throw std::invalid_argument(
+      "QNN tensor registration requires complete dimensions");
+  }
+
+  std::lock_guard<std::mutex> registration_guard(registration_mutex_);
+  if (allocations_.find(ptr) == allocations_.end()) {
+    throw std::invalid_argument(
+      "QNN tensor pointer is not owned by the RPC allocator");
+  }
+
+  auto outer = registrations_.find(ptr);
+  if (outer != registrations_.end()) {
+    auto existing = outer->second.find(context);
+    if (existing != outer->second.end()) {
+      if (existing->second.state != RegistrationState::ACTIVE) {
+        throw std::runtime_error(
+          "QNN tensor registration is quarantined or incomplete");
+      }
+      const auto &registered_dimensions = existing->second.dimensions;
+      const bool dimensions_match =
+        registered_dimensions.size() == qnn_tensor.v1.rank &&
+        (registered_dimensions.empty() ||
+         std::equal(registered_dimensions.begin(), registered_dimensions.end(),
+                    qnn_tensor.v1.dimensions));
+      if (existing->second.data_type != qnn_tensor.v1.dataType ||
+          !dimensions_match) {
+        throw std::runtime_error(
+          "QNN tensor pointer was reused with an incompatible descriptor");
+      }
+      qnn_tensor.v1.memType = QNN_TENSORMEMTYPE_MEMHANDLE;
+      qnn_tensor.v1.memHandle = existing->second.mem_handle;
+      return;
+    }
+  }
+
+  std::vector<uint32_t> dimensions;
+  if (qnn_tensor.v1.rank > 0) {
+    dimensions.assign(qnn_tensor.v1.dimensions,
+                      qnn_tensor.v1.dimensions + qnn_tensor.v1.rank);
+  }
+
+  outer = registrations_.try_emplace(ptr).first;
+
+  const int mem_fd = RpcMem::global().to_fd(ptr);
+  if (mem_fd == -1) {
+    if (outer->second.empty()) {
+      registrations_.erase(outer);
+    }
+    throw std::runtime_error("rpcmem_to_fd failed for QNN tensor");
+  }
+
+  auto inserted = outer->second.try_emplace(context);
+  auto &registration = inserted.first->second;
+  registration.context = context;
+  registration.fd = mem_fd;
+  registration.data_type = qnn_tensor.v1.dataType;
+  registration.dimensions = std::move(dimensions);
+
+  Qnn_MemDescriptor_t descriptor = QNN_MEM_DESCRIPTOR_INIT;
+  descriptor.memShape = {qnn_tensor.v1.rank, qnn_tensor.v1.dimensions, nullptr};
+  descriptor.dataType = qnn_tensor.v1.dataType;
+  descriptor.memType = QNN_MEM_TYPE_ION;
+  descriptor.ionInfo.fd = mem_fd;
+
+  Qnn_MemHandle_t mem_handle{nullptr};
+  const auto register_status =
+    qnnInterface_.memRegister(context, &descriptor, 1u, &mem_handle);
+  registration.last_error = register_status;
+  registration.mem_handle = mem_handle;
+
+  if (register_status != QNN_SUCCESS) {
+    ml_loge("QNN memRegister failed: error=%" PRIu64
+            ", public_error=%u, ptr=%p, fd=%d, context=%p, mem_handle=%p",
+            static_cast<uint64_t>(register_status),
+            static_cast<unsigned int>(QNN_GET_ERROR_CODE(register_status)), ptr,
+            mem_fd, static_cast<void *>(context),
+            static_cast<void *>(mem_handle));
+    if (mem_handle == nullptr) {
+      outer->second.erase(inserted.first);
+      if (outer->second.empty()) {
+        registrations_.erase(outer);
+      }
+    } else {
+      registration.state = RegistrationState::QUARANTINED;
+    }
+    throw std::runtime_error("QNN tensor memory registration failed");
+  }
+
+  if (mem_handle == nullptr) {
+    registration.state = RegistrationState::QUARANTINED;
+    ml_loge("QNN memRegister succeeded without returning a handle: ptr=%p, "
+            "fd=%d, context=%p",
+            ptr, mem_fd, static_cast<void *>(context));
+    throw std::runtime_error(
+      "QNN tensor memory registration returned a null handle");
+  }
+
+  registration.state = RegistrationState::ACTIVE;
+  qnn_tensor.v1.memType = QNN_TENSORMEMTYPE_MEMHANDLE;
+  qnn_tensor.v1.memHandle = mem_handle;
+#else
+  (void)ptr;
+  (void)qnn_tensor;
+  (void)context;
+  (void)execution_guard;
 #endif
+}
+
+bool QNNRpcManager::deRegisterOneLocked(void *ptr,
+                                        Registration &registration) noexcept {
+#ifdef ENABLE_QNN
+  if (registration.state != RegistrationState::ACTIVE) {
+    registration.state = RegistrationState::QUARANTINED;
+    ml_loge("Refusing to retry non-active QNN registration: ptr=%p, "
+            "context=%p, mem_handle=%p, state=%u",
+            ptr, static_cast<void *>(registration.context),
+            static_cast<void *>(registration.mem_handle),
+            static_cast<unsigned int>(registration.state));
+    return false;
+  }
+  if (qnnInterface_.memDeRegister == nullptr ||
+      registration.mem_handle == nullptr) {
+    registration.state = RegistrationState::QUARANTINED;
+    ml_loge("Cannot deregister QNN memory: ptr=%p, context=%p, "
+            "mem_handle=%p",
+            ptr, static_cast<void *>(registration.context),
+            static_cast<void *>(registration.mem_handle));
+    return false;
+  }
+
+  auto mem_handle = registration.mem_handle;
+  const auto deregister_status = qnnInterface_.memDeRegister(&mem_handle, 1u);
+  if (deregister_status != QNN_SUCCESS) {
+    registration.state = RegistrationState::QUARANTINED;
+    registration.last_error = deregister_status;
+    ml_loge("QNN memDeRegister failed: error=%" PRIu64
+            ", public_error=%u, ptr=%p, fd=%d, context=%p, mem_handle=%p",
+            static_cast<uint64_t>(deregister_status),
+            static_cast<unsigned int>(QNN_GET_ERROR_CODE(deregister_status)),
+            ptr, registration.fd, static_cast<void *>(registration.context),
+            static_cast<void *>(registration.mem_handle));
+    return false;
+  }
+#else
+  (void)ptr;
+  (void)registration;
+#endif
+  return true;
+}
+
+QnnDeregistrationReport QNNRpcManager::deRegisterAllLocked() noexcept {
+  QnnDeregistrationReport report{};
+  for (auto outer = registrations_.begin(); outer != registrations_.end();) {
+    for (auto inner = outer->second.begin(); inner != outer->second.end();) {
+      if (inner->second.state == RegistrationState::QUARANTINED) {
+        ++report.quarantined;
+        ++inner;
+        continue;
+      }
+
+      ++report.attempted;
+      if (deRegisterOneLocked(outer->first, inner->second)) {
+        ++report.succeeded;
+        inner = outer->second.erase(inner);
+      } else {
+        ++report.failed;
+        ++inner;
+      }
+    }
+
+    if (outer->second.empty()) {
+      outer = registrations_.erase(outer);
+    } else {
+      ++outer;
+    }
+  }
+  return report;
+}
+
+size_t QNNRpcManager::registrationCount() const {
+  std::lock_guard<std::mutex> registration_guard(registration_mutex_);
+  size_t count = 0;
+  for (const auto &outer : registrations_) {
+    count += outer.second.size();
+  }
+  return count;
+}
+
+size_t QNNRpcManager::registrationCount(Qnn_ContextHandle_t context) const {
+  std::lock_guard<std::mutex> registration_guard(registration_mutex_);
+  size_t count = 0;
+  for (const auto &outer : registrations_) {
+    if (outer.second.find(context) != outer.second.end()) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+size_t QNNRpcManager::quarantinedRegistrationCount() const {
+  std::lock_guard<std::mutex> registration_guard(registration_mutex_);
+  size_t count = 0;
+  for (const auto &outer : registrations_) {
+    for (const auto &inner : outer.second) {
+      if (inner.second.state == RegistrationState::QUARANTINED) {
+        ++count;
+      }
+    }
+  }
+  return count;
 }
 
 void QNNRpcManager::free(void *ptr) {
 #ifdef ENABLE_QNN
-  // if the ptr has been registered, deregister it
-  auto it = ptrToFdAndMemHandleMap_.find(ptr);
-  if (it != ptrToFdAndMemHandleMap_.end()) {
-    Qnn_ErrorHandle_t deregisterRet =
-      qnnInterface_.memDeRegister(&it->second.second.second, 1);
-    if (QNN_SUCCESS != deregisterRet) {
-      // handle errors
-      ml_loge("qnnInterface_.memDeRegister failed");
-    }
-    ptrToFdAndMemHandleMap_.erase(it);
+  if (ptr == nullptr) {
+    return;
   }
-  RpcMem::global().free(ptr);
+
+  CleanupGuard cleanup_guard{};
+  try {
+    cleanup_guard = acquireCleanupGuard();
+  } catch (const std::exception &e) {
+    ml_loge("Retaining QNN RPC backing because cleanup is closed: ptr=%p, "
+            "reason=%s",
+            ptr, e.what());
+    return;
+  } catch (...) {
+    ml_loge("Retaining QNN RPC backing because cleanup is closed: ptr=%p", ptr);
+    return;
+  }
+  bool release_backing = false;
+  {
+    std::lock_guard<std::mutex> registration_guard(registration_mutex_);
+    auto allocation = allocations_.find(ptr);
+    if (allocation == allocations_.end()) {
+      ml_loge("Refusing to free unknown QNN RPC pointer: %p", ptr);
+      return;
+    }
+
+    auto outer = registrations_.find(ptr);
+    if (outer != registrations_.end()) {
+      for (auto inner = outer->second.begin(); inner != outer->second.end();) {
+        if (deRegisterOneLocked(ptr, inner->second)) {
+          inner = outer->second.erase(inner);
+        } else {
+          ++inner;
+        }
+      }
+      if (outer->second.empty()) {
+        registrations_.erase(outer);
+      } else {
+        ml_loge("Retaining QNN RPC backing after deregistration failure: "
+                "ptr=%p, size=%zu, registrations=%zu",
+                ptr, allocation->second, outer->second.size());
+        return;
+      }
+    }
+
+    allocations_.erase(allocation);
+    release_backing = true;
+  }
+
+  if (release_backing) {
+    RpcMem::global().free(ptr);
+  }
 #else
-  free(ptr);
+  std::free(ptr);
 #endif
 }
 

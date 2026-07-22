@@ -283,7 +283,14 @@ struct QNNVar {
     return StatusCode::SUCCESS;
   }
 
-  StatusCode freeContext(const std::string &bin_path) {
+  StatusCode freeContextWithCleanupGuard(
+    const std::string &bin_path,
+    const QNNRpcManager::CleanupGuard &cleanup_guard) {
+    if (RpcMem && !RpcMem->ownsCleanupGuard(cleanup_guard)) {
+      ml_loge("QNN context cleanup requires an exclusive lifecycle guard");
+      return StatusCode::FAILURE;
+    }
+
     auto it = ct_map.find(bin_path);
     if (it == ct_map.end()) {
       ml_logw("Context not found for: %s", bin_path.c_str());
@@ -309,6 +316,18 @@ struct QNNVar {
       return StatusCode::FAILURE;
     }
 
+    if (RpcMem) {
+      const size_t registration_count =
+        RpcMem->registrationCount(ctx.m_context);
+      if (registration_count > 0) {
+        ml_loge("Cannot free QNN context with live registrations: binary=%s, "
+                "context=%p, registrations=%zu",
+                bin_path.c_str(), static_cast<void *>(ctx.m_context),
+                registration_count);
+        return StatusCode::FAILURE;
+      }
+    }
+
     const auto freeStatus =
       m_qnnFunctionPointers.qnnInterface.contextFree(ctx.m_context, nullptr);
     if (QNN_CONTEXT_NO_ERROR != freeStatus) {
@@ -331,8 +350,30 @@ struct QNNVar {
     return StatusCode::SUCCESS;
   }
 
-  StatusCode freeAllContexts() {
-    // 반복 중 erase하면 안 되므로 키를 먼저 복사
+  StatusCode freeContext(const std::string &bin_path) {
+    QNNRpcManager::CleanupGuard cleanup_guard{};
+    try {
+      if (RpcMem) {
+        cleanup_guard = RpcMem->acquireCleanupGuard();
+      }
+    } catch (const std::exception &e) {
+      ml_loge("Cannot free QNN context after runtime shutdown: %s", e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      ml_loge("Cannot free QNN context after runtime shutdown");
+      return StatusCode::FAILURE;
+    }
+    return freeContextWithCleanupGuard(bin_path, cleanup_guard);
+  }
+
+  StatusCode freeAllContextsWithCleanupGuard(
+    const QNNRpcManager::CleanupGuard &cleanup_guard) {
+    if (RpcMem && !RpcMem->ownsCleanupGuard(cleanup_guard)) {
+      ml_loge("QNN runtime cleanup requires an exclusive lifecycle guard");
+      return StatusCode::FAILURE;
+    }
+
+    // Copy the keys because successful cleanup erases entries from ct_map.
     std::vector<std::string> keys;
     keys.reserve(ct_map.size());
     for (auto &[k, _] : ct_map) {
@@ -343,11 +384,32 @@ struct QNNVar {
         ? StatusCode::FAILURE
         : StatusCode::SUCCESS;
     for (auto &k : keys) {
-      if (freeContext(k) != StatusCode::SUCCESS) {
+      if (freeContextWithCleanupGuard(k, cleanup_guard) !=
+          StatusCode::SUCCESS) {
         returnStatus = StatusCode::FAILURE;
       }
     }
+    if (RpcMem && RpcMem->registrationCount() > 0) {
+      ml_loge("Cannot finish QNN runtime teardown with live registrations");
+      returnStatus = StatusCode::FAILURE;
+    }
     return returnStatus;
+  }
+
+  StatusCode freeAllContexts() {
+    QNNRpcManager::CleanupGuard cleanup_guard{};
+    try {
+      if (RpcMem) {
+        cleanup_guard = RpcMem->acquireCleanupGuard();
+      }
+    } catch (const std::exception &e) {
+      ml_loge("Cannot free QNN contexts after runtime shutdown: %s", e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      ml_loge("Cannot free QNN contexts after runtime shutdown");
+      return StatusCode::FAILURE;
+    }
+    return freeAllContextsWithCleanupGuard(cleanup_guard);
   }
 
   StatusCode makeContext(props::FilePath bin) {
