@@ -1,0 +1,1222 @@
+--------- beginning of main
+07-22 21:43:13.361 32624 32728 I NativeQuickDotAI: load() entered: modelId=gemma4-e2b-qnn backend=NPU quant=W4A32
+07-22 21:43:13.362 32624 32728 I NativeQuickDotAI: load(): modelBasePath=PATH
+07-22 21:43:13.362 32624 32728 I NativeQuickDotAI: load(): calling loadModelHandleByNameNative(backend=2, modelId=gemma4-e2b-qnn, quant=1, nativeLibDir=/data/app/~~st2VCk2a_3zEQigbewOrwQ==/com.example.sampletestapp-Wro6vP5FQEz4SFCtzyfoog==/lib/arm64, modelBasePath=PATH)
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG] load_into_handle: START
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG]   compute: 2
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG]   target_model_name: GEMMA4-E2B-QNN
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG]   quant_type: 1
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG] load_into_handle: Calling register_models...
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG] load_into_handle: register_models done
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG] load_into_handle: input_name = GEMMA4-E2B-QNN
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG] load_into_handle: lookup_name = GEMMA4-E2B-QNN-W4A32
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG] load_into_handle: CASE 2 - External config (file-based)
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG] load_into_handle: model_dir_path = /gemma-4-e2b-qnn
+07-22 21:43:13.362 32624 32728 D QuickAI : [DEBUG] load_into_handle: abs_model_dir = PATH/gemma-4-e2b-qnn
+07-22 21:43:13.374 32624 32728 D QuickAI : [DEBUG] load_into_handle: abs_model_dir = PATH/gemma-4-e2b-qnn
+07-22 21:43:13.374 32624 32728 D QuickAI : [DEBUG] load_into_handle: top_nntr = PATH/gemma-4-e2b-qnn/nntr_config.json
+07-22 21:43:13.374 32624 32728 D QuickAI : [DEBUG] load_into_handle: abs_model_dir = 0 0 0 0 0 0
+07-22 21:43:13.374 32624 32728 D QuickAI : single cfg : PATH/gemma-4-e2b-qnn/config.json
+07-22 21:43:13.379 32624 32728 D QuickAI : single tokenizer : PATH/gemma-4-e2b-qnn/tokenizer.json
+07-22 21:43:13.381 32624 32728 E QuickAI : [Warning] No chat template found in PATH/gemma-4-e2b-qnn. Using hardcoded chat templates.
+07-22 21:43:13.381 32624 32728 D QuickAI : [DEBUG] load_into_handle: weight_file = PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:13.381 32624 32728 D QuickAI : [DEBUG] bianry config data: file = PATH/gemma-4-e2b-qnn/serialized_bin.json
+07-22 21:43:13.381 32624 32728 D QuickAI : [DEBUG] -------------------------- asdfasdfasdfasdfasdfasdf 
+07-22 21:43:13.381 32624 32728 D QuickAI : [DEBUG] load_into_handle: architecture = Gemma4_E2B_QNN
+07-22 21:43:13.381 32624 32728 D QuickAI : [DEBUG] load_into_handle: Creating model via Factory...Gemma4_E2B_QNN 
+07-22 21:43:13.961 32624 32728 D QuickAI : --------------------------------- Quick_Dot_AI_QNN
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------in Quick_Dot_AI_QNN : setupParameters
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------binary_config_path : PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------binary_config_path : PATH/gemma-4-e2b-qnn/serialized_bin.json
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------graphs_to_use : gemma_4_E2B_it_textonly_untied_foldedple_prefill
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------graphs_to_use : gemma_4_E2B_it_textonly_untied_foldedple_generation
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------vocab size : 262144
+07-22 21:43:13.961 32624 32728 D QuickAI : ---------------- uses_embedding : 1
+07-22 21:43:13.961 32624 32728 D QuickAI : ---------------- embedding_file_name : PATH/gemma-4-e2b-qnn/gemma4_embed_lut_export_mse/embed_tokens.json
+07-22 21:43:13.961 32624 32728 D QuickAI : Gemma4 E2B parameters set up 
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------in Quick_Dot_AI_QNN : setupParameters
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------binary_config_path : PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------binary_config_path : PATH/gemma-4-e2b-qnn/serialized_bin.json
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------graphs_to_use : gemma_4_E2B_it_textonly_untied_foldedple_prefill
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------graphs_to_use : gemma_4_E2B_it_textonly_untied_foldedple_generation
+07-22 21:43:13.961 32624 32728 D QuickAI : ----------------vocab size : 262144
+07-22 21:43:13.961 32624 32728 D QuickAI : ---------------- uses_embedding : 1
+07-22 21:43:13.961 32624 32728 D QuickAI : ---------------- embedding_file_name : PATH/gemma-4-e2b-qnn/gemma4_embed_lut_export_mse/embed_tokens.json
+07-22 21:43:13.961 32624 32728 D QuickAI : RoPE full: theta=1000000.000000 partial=0.250000 factor=1.000000 type=proportional
+07-22 21:43:13.961 32624 32728 D QuickAI : RoPE sliding: theta=10000.000000 factor=1.000000 type=default
+07-22 21:43:13.961 32624 32728 D QuickAI : final_logit_softcapping = 30.000000
+07-22 21:43:13.961 32624 32728 D QuickAI : [DEBUG] load_into_handle: Model created successfully
+07-22 21:43:13.961 32624 32728 D QuickAI : [DEBUG] load_into_handle: Calling model->initialize()...
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: sgd, int_key: 1
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: adam, int_key: 0
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: adamw, int_key: 2
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: lion, int_key: 3
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: unknown, int_key: 999
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: constant, int_key: 0
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: exponential, int_key: 1
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: step, int_key: 2
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: cosine, int_key: 3
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: linear, int_key: 4
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: input, int_key: 0
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: weight, int_key: 31
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: add, int_key: 32
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: subtract, int_key: 33
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: multiply, int_key: 34
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: divide, int_key: 35
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: pow, int_key: 38
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: sqrt, int_key: 40
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: sin, int_key: 41
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: cos, int_key: 42
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: tan, int_key: 43
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: matmul, int_key: 44
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: cast, int_key: 50
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: gather, int_key: 47
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: slice, int_key: 49
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: negative, int_key: 46
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: fully_connected, int_key: 1
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: batch_normalization, int_key: 2
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: layer_normalization, int_key: 27
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: conv2d, int_key: 3
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: conv2dtranspose, int_key: 37
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: conv1d, int_key: 19
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: pooling2d, int_key: 4
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: flatten, int_key: 5
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: reshape, int_key: 52
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: activation, int_key: 6
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: addition, int_key: 7
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: concat, int_key: 8
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: multiout, int_key: 9
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: embedding, int_key: 10
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: rnn, int_key: 11
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: rnncell, int_key: 22
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: lstm, int_key: 12
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: lstmcell, int_key: 20
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: zoneout_lstmcell, int_key: 23
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: split, int_key: 13
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: gru, int_key: 14
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: grucell, int_key: 21
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: permute, int_key: 15
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: dropout, int_key: 16
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: attention, int_key: 24
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: mol_attention, int_key: 25
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: multi_head_attention, int_key: 26
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: reduce_mean, int_key: 51
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: reduce_sum, int_key: 48
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: positional_encoding, int_key: 28
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: identity, int_key: 29
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: upsample2d, int_key: 53
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: channel_shuffle, int_key: 45
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: centroid_knn, int_key: 18
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: preprocess_flip, int_key: 300
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: preprocess_translate, int_key: 301
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: preprocess_l2norm, int_key: 302
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: mse, int_key: 500
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: cross_sigmoid, int_key: 501
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: cross_softmax, int_key: 502
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: constant_derivative, int_key: 10002
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: time_dist, int_key: 10000
+07-22 21:43:13.962 32624 32728 D nntrainer: factory has registered with key: unknown, int_key: 999
+07-22 21:43:13.962 32624 32728 D nntrainer: [AppContext]  conf path: /etc/nntrainer.ini
+07-22 21:43:13.962 32624 32728 W nntrainer: [AppContext]  conf path does not exist, skip getting plugin path from the conf
+07-22 21:43:13.966 32624 32728 W nntrainer: Logging not available in the backend.
+07-22 21:43:13.970 32624 32728 I nntrainer: Initialize BAckend Returned Status = 0
+07-22 21:43:14.065 32624 32728 I nntrainer: qnn init done
+07-22 21:43:14.065 32624 32728 D nntrainer: qnn_context: factory has registered with key: qnn_graph, int_key: 1
+07-22 21:43:14.065 32624 32728 I nntrainer: qnn registerFactory done
+07-22 21:43:14.065 32624 32728 D QuickAI : qnn_engine registering .... 
+07-22 21:43:14.065 32624 32728 W nntrainer: Logging not available in the backend.
+07-22 21:43:14.066 32624 32728 I nntrainer: Initialize BAckend Returned Status = 0
+07-22 21:43:14.067 32624 32728 I nntrainer: qnn init done
+07-22 21:43:14.067 32624 32728 D nntrainer: qnn_context: factory has registered with key: qnn_graph, int_key: 1
+07-22 21:43:14.067 32624 32728 I nntrainer: qnn registerFactory done
+07-22 21:43:14.067 32624 32728 D QuickAI : qnn_engine registering done 
+07-22 21:43:14.067 32624 32728 D nntrainer: factory has registered with key: swiglu, int_key: 60
+07-22 21:43:14.067 32624 32728 D nntrainer: factory has registered with key: rms_norm, int_key: 61
+07-22 21:43:14.067 32624 32728 D nntrainer: factory has registered with key: mha_core, int_key: 62
+07-22 21:43:14.067 32624 32728 D nntrainer: factory has registered with key: tie_word_embeddings, int_key: 63
+07-22 21:43:14.067 32624 32728 D nntrainer: factory has registered with key: embedding_layer, int_key: 64
+07-22 21:43:14.079 32624 32728 D nntrainer: initializing neural network, layer size: 50
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out0 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out1 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out2 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out3 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out4 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out5 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out6 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out7 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out8 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out9 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out10 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out11 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out12 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out13 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out14 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out15 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out16 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out17 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out18 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out19 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out20 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out21 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out22 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out23 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out24 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out25 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out26 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out27 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out28 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.325 32624 32728 W nntrainer: given output is being dangled: out29 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:14.334 32624 32728 D nntrainer: initializing neural network, layer size: 73
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out0 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out1 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out2 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out3 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out4 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out5 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out6 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out7 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out8 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out9 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out10 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out11 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out12 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out13 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out14 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out15 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out16 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out17 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out18 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out19 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out20 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out21 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out22 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out23 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out24 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out25 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out26 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out27 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out28 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out29 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 W nntrainer: given output is being dangled: out30 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:14.334 32624 32728 D QuickAI : Quick_Dot_AI_QNN::initialize() done
+07-22 21:43:14.377 32624 32728 D QuickAI : KV layer count = 15 (num_hidden_layers config = 35)
+07-22 21:43:14.385 32624 32728 D QuickAI : KV mapping: gen_inputs=30 pre_inputs=28 pre_outs=30 gen_outs=30 logits_output=30
+07-22 21:43:14.387 32624 32728 D QuickAI : ----------------------- initialize() done
+07-22 21:43:14.387 32624 32728 D QuickAI : [DEBUG] load_into_handle: model->initialize() done
+07-22 21:43:14.387 32624 32728 D QuickAI : [DEBUG] load_into_handle: Calling model->load_weight()...
+07-22 21:43:14.387 32624 32728 D nntrainer: Memory layout efficiency = 1.000000
+07-22 21:43:14.387 32624 32728 I nntrainer: MemoryPool::allocate size: 536832 allocator: qnn
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): input_embeds:out0 : 3080 : address 0x74969ef000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out0 : 264 : address 0x749697f000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out1 : 264 : address 0x74967fa000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out2 : 264 : address 0x74969ed000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out3 : 264 : address 0x74969ec000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out4 : 264 : address 0x74969eb000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out5 : 264 : address 0x74969ea000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out6 : 264 : address 0x74969e9000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out7 : 264 : address 0x74969e8000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out8 : 520 : address 0x74969e7000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out9 : 520 : address 0x7496985000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out10 : 264 : address 0x7496984000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out11 : 264 : address 0x7496983000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out12 : 264 : address 0x7496982000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out13 : 264 : address 0x7496981000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out14 : 264 : address 0x7496980000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out15 : 264 : address 0x74969ee000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out16 : 264 : address 0x74968b0000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out17 : 264 : address 0x749687a000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out18 : 520 : address 0x7496879000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out19 : 520 : address 0x7496878000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out20 : 264 : address 0x7496877000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out21 : 264 : address 0x7496876000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out22 : 264 : address 0x7496875000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out23 : 264 : address 0x7496801000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out24 : 264 : address 0x7496800000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out25 : 264 : address 0x74967ff000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out26 : 264 : address 0x74967fe000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out27 : 264 : address 0x74967fd000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out28 : 520 : address 0x74967fc000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out29 : 520 : address 0x74967fb000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out30 : 524296 : address 0x71bf33f000
+07-22 21:43:14.387 32624 32728 D nntrainer: Memory layout efficiency = 1.000000
+07-22 21:43:14.387 32624 32728 I nntrainer: MemoryPool::allocate size: 3145976 allocator: qnn
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): input_embeds:out0 : 786440 : address 0x71b7c38000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out0 : 65544 : address 0x7480eba000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out1 : 65544 : address 0x7474904000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out2 : 65544 : address 0x748a3b0000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out3 : 65544 : address 0x748a273000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out4 : 65544 : address 0x748a207000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out5 : 65544 : address 0x74889a8000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out6 : 65544 : address 0x748867c000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out7 : 65544 : address 0x7484e65000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out8 : 131080 : address 0x7467e23000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out9 : 131080 : address 0x7467e02000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out10 : 65544 : address 0x7484e07000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out11 : 65544 : address 0x7484a54000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out12 : 65544 : address 0x748101e000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out13 : 65544 : address 0x7480f3d000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out14 : 65544 : address 0x748a5bf000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out15 : 65544 : address 0x747dfcf000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out16 : 65544 : address 0x747de7b000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out17 : 65544 : address 0x747ad52000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out18 : 131080 : address 0x7464b7b000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out19 : 131080 : address 0x7464b5a000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out20 : 65544 : address 0x747a6fb000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out21 : 65544 : address 0x747a6c9000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out22 : 65544 : address 0x747a5b3000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out23 : 65544 : address 0x747a462000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out24 : 65544 : address 0x74773b2000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out25 : 65544 : address 0x7477372000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out26 : 65544 : address 0x74763ad000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out27 : 65544 : address 0x747494e000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out28 : 131080 : address 0x7464b23000
+07-22 21:43:14.387 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out29 : 131080 : address 0x7467e67000
+07-22 21:43:14.387 32624 32728 D QuickAI : [DEBUG] load_into_handle: model->load_weight() done
+07-22 21:43:14.486 32624 32728 D QuickAI : [DEBUG] load_into_handle: SINGLE SUCCESS (init took 1024 ms)
+07-22 21:43:14.486 32624 32728 D QuickAI : [DEBUG] load_into_handle: END (returning CAUSAL_LM_ERROR_NONE)
+07-22 21:43:14.486 32624 32728 I NativeQuickDotAI: load(): SUCCESS, handle=0x-4bffff8cc418aed0, sd=false
+07-22 21:43:14.486 32624 32728 I NativeQuickDotAI: openChatSession(): created session 4e9ea6c2-2053-41d2-9e56-98c3084c1ec7 with handle=0x-4bffff8cc418aed0
+07-22 21:43:15.748 32624 32728 D QuickAI : [DEBUG] runModelHandleWithMessagesStreaming: START
+07-22 21:43:15.749 32624 32728 D QuickAI : [DEBUG]   handle: 0xb40000733be75130
+07-22 21:43:15.749 32624 32728 D QuickAI : [DEBUG]   num_messages: 1
+07-22 21:43:15.749 32624 32728 D QuickAI : [DEBUG] runModelHandleWithMessagesStreaming: Formatting messages...
+07-22 21:43:15.756 32624 32728 E QuickAI : [Warning] Failed to load chat template from PATH/gemma-4-e2b-qnn: No chat template found under: PATH/gemma-4-e2b-qnn
+07-22 21:43:15.756 32624 32728 D QuickAI : APPLYING HARD CODED FALLBACK
+07-22 21:43:15.756 32624 32728 D QuickAI : [DEBUG]   raw messages count: 1
+07-22 21:43:15.756 32624 32728 D QuickAI : [DEBUG]   formatted input length: 56
+07-22 21:43:15.756 32624 32728 D QuickAI : [DEBUG]   formatted input: <bos><|turn>user
+07-22 21:43:15.756 32624 32728 D QuickAI : I bought a red car<turn|>
+07-22 21:43:15.756 32624 32728 D QuickAI : <|turn>model
+07-22 21:43:15.756 32624 32728 D QuickAI : [DEBUG] runModelHandleWithMessagesStreaming: Calling internal helper directly...
+07-22 21:43:15.756 32624 32728 D QuickAI : [DEBUG]   raw input length: 56
+07-22 21:43:15.756 32624 32728 D QuickAI : [DEBUG]   g_use_chat_template: 1
+07-22 21:43:15.756 32624 32728 D QuickAI : [DEBUG]   input_already_formatted=1, using pre-formatted input (length: 56)
+07-22 21:43:15.768 32624 32728 W nntrainer: Context is not created. Create Now
+07-22 21:43:16.690 32624 32728 D QuickAI : 6372 : That
+07-22 21:43:16.721 32624 32728 D QuickAI : 236789 : '
+07-22 21:43:16.750 32624 32728 D QuickAI : 236751 : s
+07-22 21:43:16.779 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:16.808 32624 32728 D QuickAI : 1401 :  very
+07-22 21:43:16.837 32624 32728 D QuickAI : 3364 :  common
+07-22 21:43:16.866 32624 32728 D QuickAI : 3210 :  thing
+07-22 21:43:16.895 32624 32728 D QuickAI : 531 :  to
+07-22 21:43:16.924 32624 32728 D QuickAI : 3717 :  buy
+07-22 21:43:16.954 32624 32728 D QuickAI : 236888 : !
+07-22 21:43:16.983 32624 32728 D QuickAI : 2282 :  To
+07-22 21:43:17.012 32624 32728 D QuickAI : 2583 :  give
+07-22 21:43:17.042 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:17.071 32624 32728 D QuickAI : 506 :  the
+07-22 21:43:17.100 32624 32728 D QuickAI : 1791 :  best
+07-22 21:43:17.130 32624 32728 D QuickAI : 3072 :  response
+07-22 21:43:17.159 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:17.188 32624 32728 D QuickAI : 564 :  I
+07-22 21:43:17.217 32624 32728 D QuickAI : 1202 :  need
+07-22 21:43:17.245 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:17.274 32624 32728 D QuickAI : 2268 :  little
+07-22 21:43:17.304 32624 32728 D QuickAI : 919 :  more
+07-22 21:43:17.333 32624 32728 D QuickAI : 4403 :  context
+07-22 21:43:17.362 32624 32728 D QuickAI : 236761 : .
+07-22 21:43:17.391 32624 32728 D QuickAI : 2900 :  What
+07-22 21:43:17.419 32624 32728 D QuickAI : 776 :  do
+07-22 21:43:17.448 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:17.477 32624 32728 D QuickAI : 1461 :  want
+07-22 21:43:17.504 32624 32728 D QuickAI : 531 :  to
+07-22 21:43:17.532 32624 32728 D QuickAI : 2910 :  talk
+07-22 21:43:17.561 32624 32728 D QuickAI : 1003 :  about
+07-22 21:43:17.590 32624 32728 D QuickAI : 8859 :  regarding
+07-22 21:43:17.619 32624 32728 D QuickAI : 506 :  the
+07-22 21:43:17.647 32624 32728 D QuickAI : 2604 :  red
+07-22 21:43:17.678 32624 32728 D QuickAI : 1295 :  car
+07-22 21:43:17.706 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:17.735 32624 32728 D QuickAI : 108 : 
+07-22 21:43:17.735 32624 32728 D QuickAI : 
+07-22 21:43:17.764 32624 32728 D QuickAI : 2542 : For
+07-22 21:43:17.792 32624 32728 D QuickAI : 2591 :  example
+07-22 21:43:17.821 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:17.849 32624 32728 D QuickAI : 659 :  are
+07-22 21:43:17.878 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:17.906 32624 32728 D QuickAI : 7467 :  interested
+07-22 21:43:17.937 32624 32728 D QuickAI : 528 :  in
+07-22 21:43:17.966 32624 32728 D QuickAI : 236787 : :
+07-22 21:43:17.995 32624 32728 D QuickAI : 108 : 
+07-22 21:43:17.995 32624 32728 D QuickAI : 
+07-22 21:43:18.023 32624 32728 D QuickAI : 236829 : *
+07-22 21:43:18.054 32624 32728 D QuickAI : 5213 :  **
+07-22 21:43:18.083 32624 32728 D QuickAI : 818 : The
+07-22 21:43:18.112 32624 32728 D QuickAI : 3530 :  specific
+07-22 21:43:18.141 32624 32728 D QuickAI : 1386 :  make
+07-22 21:43:18.168 32624 32728 D QuickAI : 532 :  and
+07-22 21:43:18.197 32624 32728 D QuickAI : 2028 :  model
+07-22 21:43:18.226 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:18.254 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:18.283 32624 32728 D QuickAI : 568 :  (
+07-22 21:43:18.312 32624 32728 D QuickAI : 236744 : e
+07-22 21:43:18.341 32624 32728 D QuickAI : 236761 : .
+07-22 21:43:18.369 32624 32728 D QuickAI : 236759 : g
+07-22 21:43:18.398 32624 32728 D QuickAI : 1126 : .,
+07-22 21:43:18.427 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:18.456 32624 32728 D QuickAI : 236743 :  
+07-22 21:43:18.484 32624 32728 D QuickAI : 236778 : 2
+07-22 21:43:18.512 32624 32728 D QuickAI : 236771 : 0
+07-22 21:43:18.541 32624 32728 D QuickAI : 236778 : 2
+07-22 21:43:18.569 32624 32728 D QuickAI : 236771 : 0
+07-22 21:43:18.598 32624 32728 D QuickAI : 31171 :  Honda
+07-22 21:43:18.628 32624 32728 D QuickAI : 71034 :  Civic
+07-22 21:43:18.658 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:18.687 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:18.715 32624 32728 D QuickAI : 9760 :  classic
+07-22 21:43:18.744 32624 32728 D QuickAI : 756 :  '
+07-22 21:43:18.773 32624 32728 D QuickAI : 236810 : 5
+07-22 21:43:18.802 32624 32728 D QuickAI : 236832 : 7
+07-22 21:43:18.831 32624 32728 D QuickAI : 93476 :  Chevy
+07-22 21:43:18.860 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:18.890 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:18.920 32624 32728 D QuickAI : 46446 :  Ferrari
+07-22 21:43:18.950 32624 32728 D QuickAI : 633 :  F
+07-22 21:43:18.977 32624 32728 D QuickAI : 236812 : 4
+07-22 21:43:19.006 32624 32728 D QuickAI : 236771 : 0
+07-22 21:43:19.034 32624 32728 D QuickAI : 236771 : 0
+07-22 21:43:19.064 32624 32728 D QuickAI : 236771 : 0
+07-22 21:43:19.094 32624 32728 D QuickAI : 236768 : )
+07-22 21:43:19.126 32624 32728 D QuickAI : 107 : 
+07-22 21:43:19.154 32624 32728 D QuickAI : 236829 : *
+07-22 21:43:19.184 32624 32728 D QuickAI : 5213 :  **
+07-22 21:43:19.214 32624 32728 D QuickAI : 818 : The
+07-22 21:43:19.243 32624 32728 D QuickAI : 3385 :  price
+07-22 21:43:19.272 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:19.301 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:19.331 32624 32728 D QuickAI : 568 :  (
+07-22 21:43:19.360 32624 32728 D QuickAI : 3910 : How
+07-22 21:43:19.391 32624 32728 D QuickAI : 1623 :  much
+07-22 21:43:19.422 32624 32728 D QuickAI : 1602 :  did
+07-22 21:43:19.453 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:19.483 32624 32728 D QuickAI : 2350 :  pay
+07-22 21:43:19.517 32624 32728 D QuickAI : 17103 : ?)
+07-22 21:43:19.548 32624 32728 D QuickAI : 107 : 
+07-22 21:43:19.578 32624 32728 D QuickAI : 236829 : *
+07-22 21:43:19.610 32624 32728 D QuickAI : 5213 :  **
+07-22 21:43:19.641 32624 32728 D QuickAI : 3689 : What
+07-22 21:43:19.675 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:19.705 32624 32728 D QuickAI : 1133 :  like
+07-22 21:43:19.737 32624 32728 D QuickAI : 236786 : /
+07-22 21:43:19.768 32624 32728 D QuickAI : 13246 : don
+07-22 21:43:19.799 32624 32728 D QuickAI : 236789 : '
+07-22 21:43:19.830 32624 32728 D QuickAI : 236745 : t
+07-22 21:43:19.868 32624 32728 D QuickAI : 1133 :  like
+07-22 21:43:19.899 32624 32728 D QuickAI : 1003 :  about
+07-22 21:43:19.932 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:19.965 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:19.996 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:20.028 32624 32728 D QuickAI : 568 :  (
+07-22 21:43:20.057 32624 32728 D QuickAI : 4602 : Is
+07-22 21:43:20.086 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:20.114 32624 32728 D QuickAI : 4592 :  fast
+07-22 21:43:20.145 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:20.176 32624 32728 D QuickAI : 563 :  is
+07-22 21:43:20.206 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:20.237 32624 32728 D QuickAI : 18762 :  loud
+07-22 21:43:20.267 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:20.298 32624 32728 D QuickAI : 1602 :  did
+07-22 21:43:20.330 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:20.363 32624 32728 D QuickAI : 16438 :  struggle
+07-22 21:43:20.397 32624 32728 D QuickAI : 531 :  to
+07-22 21:43:20.427 32624 32728 D QuickAI : 1586 :  find
+07-22 21:43:20.458 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:20.489 32624 32728 D QuickAI : 2480 :  better
+07-22 21:43:20.521 32624 32728 D QuickAI : 886 :  one
+07-22 21:43:20.552 32624 32728 D QuickAI : 17103 : ?)
+07-22 21:43:20.582 32624 32728 D QuickAI : 107 : 
+07-22 21:43:20.615 32624 32728 D QuickAI : 236829 : *
+07-22 21:43:20.646 32624 32728 D QuickAI : 5213 :  **
+07-22 21:43:20.678 32624 32728 D QuickAI : 3689 : What
+07-22 21:43:20.709 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:20.741 32624 32728 D QuickAI : 1602 :  did
+07-22 21:43:20.773 32624 32728 D QuickAI : 607 :  with
+07-22 21:43:20.805 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:20.835 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:20.865 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:20.898 32624 32728 D QuickAI : 568 :  (
+07-22 21:43:20.929 32624 32728 D QuickAI : 6294 : Do
+07-22 21:43:20.962 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:20.993 32624 32728 D QuickAI : 5697 :  drive
+07-22 21:43:21.024 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:21.054 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:21.087 32624 32728 D QuickAI : 2320 : do
+07-22 21:43:21.120 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:21.151 32624 32728 D QuickAI : 6739 :  sell
+07-22 21:43:21.182 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:21.212 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:21.245 32624 32728 D QuickAI : 733 : are
+07-22 21:43:21.278 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:21.309 32624 32728 D QuickAI : 6995 :  planning
+07-22 21:43:21.342 32624 32728 D QuickAI : 531 :  to
+07-22 21:43:21.372 32624 32728 D QuickAI : 2514 :  keep
+07-22 21:43:21.403 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:21.433 32624 32728 D QuickAI : 653 :  or
+07-22 21:43:21.464 32624 32728 D QuickAI : 974 :  get
+07-22 21:43:21.495 32624 32728 D QuickAI : 11436 :  rid
+07-22 21:43:21.527 32624 32728 D QuickAI : 529 :  of
+07-22 21:43:21.557 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:21.588 32624 32728 D QuickAI : 17103 : ?)
+07-22 21:43:21.620 32624 32728 D QuickAI : 108 : 
+07-22 21:43:21.620 32624 32728 D QuickAI : 
+07-22 21:43:21.651 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:21.683 32624 32728 D QuickAI : 54593 : Tell
+07-22 21:43:21.717 32624 32728 D QuickAI : 786 :  me
+07-22 21:43:21.748 32624 32728 D QuickAI : 919 :  more
+07-22 21:43:21.779 32624 32728 D QuickAI : 236888 : !
+07-22 21:43:21.811 32624 32728 D QuickAI : 103453 :  😊
+07-22 21:43:21.845 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF] Performance Metrics:
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF]   prefill_tokens: 13
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF]   prefill_duration_ms: 876.00
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF]   generation_tokens: 172
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF]   generation_duration_ms: 5268.00
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF]   total_duration_ms: 6144.00
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF]   peak_memory_kb: 1686068
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF]   initialization_duration_ms: 1024.00
+07-22 21:43:21.905 32624 32728 D QuickAI : [PERF]   prefill_tokens_per_sec: 14.84
+07-22 21:43:21.906 32624 32728 D QuickAI : [PERF]   generation_tokens_per_sec: 32.65
+07-22 21:43:24.222 32624 32624 D NativeQuickDotAI: cancel(): START, handle=0x-4bffff8cc418aed0
+07-22 21:43:24.222 32624 32624 D NativeQuickDotAI: cancel(): calling NativeCausalLm.cancelModelHandleNative(handle=0x-4bffff8cc418aed0)
+07-22 21:43:24.222 32624 32624 D QuickAI : [DEBUG] cancelModelHandle: handle=0xb40000733be75130
+07-22 21:43:24.222 32624 32624 D QuickAI : [DEBUG] cancelModelHandle: checking state without mutex, initialized=1, models.size=1
+07-22 21:43:24.222 32624 32624 D QuickAI : requestStop: setting stop_requested_ to true
+07-22 21:43:24.223 32624 32624 D QuickAI : [DEBUG] cancelModelHandle: calling requestStop() on model[0]
+07-22 21:43:24.223 32624 32624 D QuickAI : [DEBUG] cancelModelHandle: returning NONE (success)
+07-22 21:43:24.223 32624 32624 D NativeQuickDotAI: cancel(): cancelModelHandleNative returned 0
+07-22 21:43:24.225 32624 32728 I NativeQuickDotAI: closeChatSession(4e9ea6c2-2053-41d2-9e56-98c3084c1ec7): closed
+07-22 21:43:24.225 32624 32728 D NativeQuickDotAI: cancel(): START, handle=0x-4bffff8cc418aed0
+07-22 21:43:24.225 32624 32728 D NativeQuickDotAI: cancel(): calling NativeCausalLm.cancelModelHandleNative(handle=0x-4bffff8cc418aed0)
+07-22 21:43:24.225 32624 32728 D QuickAI : [DEBUG] cancelModelHandle: handle=0xb40000733be75130
+07-22 21:43:24.226 32624 32728 D QuickAI : [DEBUG] cancelModelHandle: checking state without mutex, initialized=1, models.size=1
+07-22 21:43:24.226 32624 32728 D QuickAI : requestStop: setting stop_requested_ to true
+07-22 21:43:24.226 32624 32728 D QuickAI : [DEBUG] cancelModelHandle: calling requestStop() on model[0]
+07-22 21:43:24.226 32624 32728 D QuickAI : [DEBUG] cancelModelHandle: returning NONE (success)
+07-22 21:43:24.226 32624 32728 D NativeQuickDotAI: cancel(): cancelModelHandleNative returned 0
+07-22 21:43:24.264 32624 32728 D qnn_context: [QNNGraph] ~QNNGraph: deregistering tensors for bin_path=PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:24.397 32624 32728 D qnn_context: [QNNGraph] ~QNNGraph: deRegisterQnnTensor completed (context kept for reuse) bin_path=PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:24.398 32624 32728 D qnn_context: [QNNGraph] ~QNNGraph: deregistering tensors for bin_path=PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:24.398 32624 32728 D qnn_context: [QNNGraph] ~QNNGraph: deRegisterQnnTensor completed (context kept for reuse) bin_path=PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: freeing 155 tracked pointers
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x701b080000
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x701b4c0000
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x701b900000
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x701bd40000
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x701c180000
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x701c5c0000
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7064e7b000
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x70652bc000
+07-22 21:43:24.400 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x70656fd000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7065b3d000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7065f7d000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x70663bd000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707a1c0000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707d207000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707d428000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707d868000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707dc49000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7102dff000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x710701f000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71af01f000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71b381c000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467ec6000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467f4d000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467f6e000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467fef000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468010000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468052000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74680a2000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746814a000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74681b5000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468265000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468286000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74682e7000
+07-22 21:43:24.401 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468398000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74683b9000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74683f5000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468742000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468763000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a60b000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a62c000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a6ed000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a70e000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a76d000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a7a2000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a7fc000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a847000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a877000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a925000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a946000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a9a6000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746aa00000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746aaa6000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746aac7000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746ab40000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746abf7000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746ac48000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746ad01000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746b1df000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c01f000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c040000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c07c000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c0b9000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c0ef000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c12c000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c175000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c1d4000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c1f5000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c2bd000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c2de000
+07-22 21:43:24.402 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c39d000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c3be000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c3df000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e206000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e227000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e248000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e283000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e3df000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471807000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471828000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471849000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74718d6000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74718f7000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471f61000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471f82000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471fa3000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7473211000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7473232000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7473284000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74732c5000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74732fa000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x747331b000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74733df000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7474616000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7474637000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7474680000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74747ac000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74747e0000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x747482c000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74748cf000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7474915000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74749be000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74749df000
+07-22 21:43:24.403 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7476200000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74763be000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74763df000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x747720a000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7477283000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7477383000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74773c3000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x747a473000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x748a681000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x748a701000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497a59000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497a5a000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497a5b000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497af2000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b74000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b75000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b76000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b77000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b78000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b400000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b401000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b402000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b403000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b404000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b559000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55a000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55b000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55c000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55d000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55e000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55f000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b560000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b561000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b5df000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc00000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc01000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc02000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc03000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc04000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc56000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc57000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd5000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd6000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd7000
+07-22 21:43:24.404 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd8000
+07-22 21:43:24.405 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd9000
+07-22 21:43:24.405 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcda000
+07-22 21:43:24.405 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dd26000
+07-22 21:43:24.405 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dd27000
+07-22 21:43:24.405 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dd28000
+07-22 21:43:24.405 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dd6e000
+07-22 21:43:24.405 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749ddb6000
+07-22 21:43:24.405 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749ddb7000
+07-22 21:43:25.794 32624 32728 I NativeQuickDotAI: load() entered: modelId=gemma4-e2b-qnn backend=NPU quant=W4A32
+07-22 21:43:25.794 32624 32728 I NativeQuickDotAI: load(): modelBasePath=PATH
+07-22 21:43:25.794 32624 32728 I NativeQuickDotAI: load(): calling loadModelHandleByNameNative(backend=2, modelId=gemma4-e2b-qnn, quant=1, nativeLibDir=/data/app/~~st2VCk2a_3zEQigbewOrwQ==/com.example.sampletestapp-Wro6vP5FQEz4SFCtzyfoog==/lib/arm64, modelBasePath=PATH)
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG] load_into_handle: START
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG]   compute: 2
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG]   target_model_name: GEMMA4-E2B-QNN
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG]   quant_type: 1
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG] load_into_handle: Calling register_models...
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG] load_into_handle: register_models done
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG] load_into_handle: input_name = GEMMA4-E2B-QNN
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG] load_into_handle: lookup_name = GEMMA4-E2B-QNN-W4A32
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG] load_into_handle: CASE 2 - External config (file-based)
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG] load_into_handle: model_dir_path = /gemma-4-e2b-qnn
+07-22 21:43:25.794 32624 32728 D QuickAI : [DEBUG] load_into_handle: abs_model_dir = PATH/gemma-4-e2b-qnn
+07-22 21:43:25.800 32624 32728 D QuickAI : [DEBUG] load_into_handle: abs_model_dir = PATH/gemma-4-e2b-qnn
+07-22 21:43:25.800 32624 32728 D QuickAI : [DEBUG] load_into_handle: top_nntr = PATH/gemma-4-e2b-qnn/nntr_config.json
+07-22 21:43:25.801 32624 32728 D QuickAI : [DEBUG] load_into_handle: abs_model_dir = 0 0 0 0 0 0
+07-22 21:43:25.801 32624 32728 D QuickAI : single cfg : PATH/gemma-4-e2b-qnn/config.json
+07-22 21:43:25.803 32624 32728 D QuickAI : single tokenizer : PATH/gemma-4-e2b-qnn/tokenizer.json
+07-22 21:43:25.806 32624 32728 E QuickAI : [Warning] No chat template found in PATH/gemma-4-e2b-qnn. Using hardcoded chat templates.
+07-22 21:43:25.806 32624 32728 D QuickAI : [DEBUG] load_into_handle: weight_file = PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:25.806 32624 32728 D QuickAI : [DEBUG] bianry config data: file = PATH/gemma-4-e2b-qnn/serialized_bin.json
+07-22 21:43:25.806 32624 32728 D QuickAI : [DEBUG] -------------------------- asdfasdfasdfasdfasdfasdf 
+07-22 21:43:25.806 32624 32728 D QuickAI : [DEBUG] load_into_handle: architecture = Gemma4_E2B_QNN
+07-22 21:43:25.806 32624 32728 D QuickAI : [DEBUG] load_into_handle: Creating model via Factory...Gemma4_E2B_QNN 
+07-22 21:43:26.402 32624 32728 D QuickAI : --------------------------------- Quick_Dot_AI_QNN
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------in Quick_Dot_AI_QNN : setupParameters
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------binary_config_path : PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------binary_config_path : PATH/gemma-4-e2b-qnn/serialized_bin.json
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------graphs_to_use : gemma_4_E2B_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------graphs_to_use : gemma_4_E2B_it_textonly_untied_foldedple_generation
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------vocab size : 262144
+07-22 21:43:26.402 32624 32728 D QuickAI : ---------------- uses_embedding : 1
+07-22 21:43:26.402 32624 32728 D QuickAI : ---------------- embedding_file_name : PATH/gemma-4-e2b-qnn/gemma4_embed_lut_export_mse/embed_tokens.json
+07-22 21:43:26.402 32624 32728 D QuickAI : Gemma4 E2B parameters set up 
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------in Quick_Dot_AI_QNN : setupParameters
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------binary_config_path : PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------binary_config_path : PATH/gemma-4-e2b-qnn/serialized_bin.json
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------graphs_to_use : gemma_4_E2B_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------graphs_to_use : gemma_4_E2B_it_textonly_untied_foldedple_generation
+07-22 21:43:26.402 32624 32728 D QuickAI : ----------------vocab size : 262144
+07-22 21:43:26.402 32624 32728 D QuickAI : ---------------- uses_embedding : 1
+07-22 21:43:26.402 32624 32728 D QuickAI : ---------------- embedding_file_name : PATH/gemma-4-e2b-qnn/gemma4_embed_lut_export_mse/embed_tokens.json
+07-22 21:43:26.402 32624 32728 D QuickAI : RoPE full: theta=1000000.000000 partial=0.250000 factor=1.000000 type=proportional
+07-22 21:43:26.402 32624 32728 D QuickAI : RoPE sliding: theta=10000.000000 factor=1.000000 type=default
+07-22 21:43:26.402 32624 32728 D QuickAI : final_logit_softcapping = 30.000000
+07-22 21:43:26.402 32624 32728 D QuickAI : [DEBUG] load_into_handle: Model created successfully
+07-22 21:43:26.402 32624 32728 D QuickAI : [DEBUG] load_into_handle: Calling model->initialize()...
+07-22 21:43:26.402 32624 32728 D QuickAI : qnn_engine registering .... 
+07-22 21:43:26.402 32624 32728 W nntrainer: Logging not available in the backend.
+07-22 21:43:26.407 32624 32728 I nntrainer: Initialize BAckend Returned Status = 0
+07-22 21:43:26.409 32624 32728 I nntrainer: qnn init done
+07-22 21:43:26.409 32624 32728 D nntrainer: qnn_context: factory has registered with key: qnn_graph, int_key: 1
+07-22 21:43:26.409 32624 32728 I nntrainer: qnn registerFactory done
+07-22 21:43:26.409 32624 32728 D QuickAI : qnn_engine registering done 
+07-22 21:43:26.421 32624 32728 D nntrainer: initializing neural network, layer size: 50
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out0 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out1 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out2 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out3 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out4 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out5 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out6 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out7 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out8 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out9 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out10 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out11 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out12 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out13 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out14 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out15 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out16 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out17 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out18 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out19 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out20 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out21 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out22 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out23 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out24 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out25 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out26 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out27 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out28 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.643 32624 32728 W nntrainer: given output is being dangled: out29 in context: gemma_4_e2b_it_textonly_untied_foldedple_prefill
+07-22 21:43:26.651 32624 32728 D nntrainer: initializing neural network, layer size: 73
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out0 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out1 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out2 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out3 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out4 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out5 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out6 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out7 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out8 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out9 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out10 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out11 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out12 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out13 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out14 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out15 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out16 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out17 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out18 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out19 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out20 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out21 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out22 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out23 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out24 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out25 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out26 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out27 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out28 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out29 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 W nntrainer: given output is being dangled: out30 in context: gemma_4_e2b_it_textonly_untied_foldedple_generation
+07-22 21:43:26.652 32624 32728 D QuickAI : Quick_Dot_AI_QNN::initialize() done
+07-22 21:43:26.693 32624 32728 D QuickAI : KV layer count = 15 (num_hidden_layers config = 35)
+07-22 21:43:26.701 32624 32728 D QuickAI : KV mapping: gen_inputs=30 pre_inputs=28 pre_outs=30 gen_outs=30 logits_output=30
+07-22 21:43:26.702 32624 32728 D QuickAI : ----------------------- initialize() done
+07-22 21:43:26.702 32624 32728 D QuickAI : [DEBUG] load_into_handle: model->initialize() done
+07-22 21:43:26.702 32624 32728 D QuickAI : [DEBUG] load_into_handle: Calling model->load_weight()...
+07-22 21:43:26.702 32624 32728 D nntrainer: Memory layout efficiency = 1.000000
+07-22 21:43:26.702 32624 32728 I nntrainer: MemoryPool::allocate size: 536832 allocator: qnn
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): input_embeds:out0 : 3080 : address 0x7496984000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out0 : 264 : address 0x74967ff000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out1 : 264 : address 0x749042c000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out2 : 264 : address 0x7496982000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out3 : 264 : address 0x7496981000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out4 : 264 : address 0x7496980000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out5 : 264 : address 0x749697f000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out6 : 264 : address 0x74968b0000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out7 : 264 : address 0x749687a000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out8 : 520 : address 0x7496879000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out9 : 520 : address 0x7496878000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out10 : 264 : address 0x7496877000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out11 : 264 : address 0x7496876000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out12 : 264 : address 0x7496875000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out13 : 264 : address 0x7496801000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out14 : 264 : address 0x7496800000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out15 : 264 : address 0x7496983000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out16 : 264 : address 0x74967fe000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out17 : 264 : address 0x74967fd000
+07-22 21:43:26.702 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out18 : 520 : address 0x74967fc000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out19 : 520 : address 0x74967fb000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out20 : 264 : address 0x74967fa000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out21 : 264 : address 0x7490900000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out22 : 264 : address 0x74908ff000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out23 : 264 : address 0x7490862000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out24 : 264 : address 0x7490861000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out25 : 264 : address 0x74905a2000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out26 : 264 : address 0x74905a1000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out27 : 264 : address 0x7490458000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out28 : 520 : address 0x7490457000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out29 : 520 : address 0x7490456000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_generation:out30 : 524296 : address 0x71bf33f000
+07-22 21:43:26.703 32624 32728 D nntrainer: Memory layout efficiency = 1.000000
+07-22 21:43:26.703 32624 32728 I nntrainer: MemoryPool::allocate size: 3145976 allocator: qnn
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): input_embeds:out0 : 786440 : address 0x71b7c38000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out0 : 65544 : address 0x747de7b000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out1 : 65544 : address 0x7474874000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out2 : 65544 : address 0x748a207000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out3 : 65544 : address 0x74889a8000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out4 : 65544 : address 0x748867c000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out5 : 65544 : address 0x7484e65000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out6 : 65544 : address 0x7484e07000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out7 : 65544 : address 0x7484a54000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out8 : 131080 : address 0x7464b23000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out9 : 131080 : address 0x7463aee000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out10 : 65544 : address 0x748101e000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out11 : 65544 : address 0x7480f3d000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out12 : 65544 : address 0x7480eba000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out13 : 65544 : address 0x747dfcf000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out14 : 65544 : address 0x748a273000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out15 : 65544 : address 0x747ad52000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out16 : 65544 : address 0x747a6fb000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out17 : 65544 : address 0x747a6c9000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out18 : 131080 : address 0x7463a79000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out19 : 131080 : address 0x7463a28000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out20 : 65544 : address 0x747a5b3000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out21 : 65544 : address 0x747a462000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out22 : 65544 : address 0x74773ae000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out23 : 65544 : address 0x7477372000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out24 : 65544 : address 0x74763a8000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out25 : 65544 : address 0x747494e000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out26 : 65544 : address 0x7474904000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out27 : 65544 : address 0x74748be000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out28 : 131080 : address 0x7463a07000
+07-22 21:43:26.703 32624 32728 I nntrainer: Memory Alloc Details (Tensor): gemma_4_e2b_it_textonly_untied_foldedple_prefill:out29 : 131080 : address 0x7464b5a000
+07-22 21:43:26.703 32624 32728 D QuickAI : [DEBUG] load_into_handle: model->load_weight() done
+07-22 21:43:26.802 32624 32728 D QuickAI : [DEBUG] load_into_handle: SINGLE SUCCESS (init took 908 ms)
+07-22 21:43:26.802 32624 32728 D QuickAI : [DEBUG] load_into_handle: END (returning CAUSAL_LM_ERROR_NONE)
+07-22 21:43:26.802 32624 32728 I NativeQuickDotAI: load(): SUCCESS, handle=0x-4bffff8cc418bbf0, sd=false
+07-22 21:43:26.802 32624 32728 I NativeQuickDotAI: openChatSession(): created session abe6e260-9d7b-4da0-a0e1-dacffb342d2f with handle=0x-4bffff8cc418bbf0
+07-22 21:43:27.851 32624 32728 D QuickAI : [DEBUG] runModelHandleWithMessagesStreaming: START
+07-22 21:43:27.851 32624 32728 D QuickAI : [DEBUG]   handle: 0xb40000733be74410
+07-22 21:43:27.851 32624 32728 D QuickAI : [DEBUG]   num_messages: 1
+07-22 21:43:27.851 32624 32728 D QuickAI : [DEBUG] runModelHandleWithMessagesStreaming: Formatting messages...
+07-22 21:43:27.856 32624 32728 E QuickAI : [Warning] Failed to load chat template from PATH/gemma-4-e2b-qnn: No chat template found under: PATH/gemma-4-e2b-qnn
+07-22 21:43:27.856 32624 32728 D QuickAI : APPLYING HARD CODED FALLBACK
+07-22 21:43:27.856 32624 32728 D QuickAI : [DEBUG]   raw messages count: 1
+07-22 21:43:27.856 32624 32728 D QuickAI : [DEBUG]   formatted input length: 56
+07-22 21:43:27.856 32624 32728 D QuickAI : [DEBUG]   formatted input: <bos><|turn>user
+07-22 21:43:27.856 32624 32728 D QuickAI : I bought a red car<turn|>
+07-22 21:43:27.856 32624 32728 D QuickAI : <|turn>model
+07-22 21:43:27.856 32624 32728 D QuickAI : [DEBUG] runModelHandleWithMessagesStreaming: Calling internal helper directly...
+07-22 21:43:27.856 32624 32728 D QuickAI : [DEBUG]   raw input length: 56
+07-22 21:43:27.856 32624 32728 D QuickAI : [DEBUG]   g_use_chat_template: 1
+07-22 21:43:27.856 32624 32728 D QuickAI : [DEBUG]   input_already_formatted=1, using pre-formatted input (length: 56)
+07-22 21:43:27.986 32624 32728 D QuickAI : 6372 : That
+07-22 21:43:28.014 32624 32728 D QuickAI : 236789 : '
+07-22 21:43:28.043 32624 32728 D QuickAI : 236751 : s
+07-22 21:43:28.072 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:28.099 32624 32728 D QuickAI : 3606 :  simple
+07-22 21:43:28.128 32624 32728 D QuickAI : 5456 :  statement
+07-22 21:43:28.155 32624 32728 D QuickAI : 236888 : !
+07-22 21:43:28.184 32624 32728 D QuickAI : 2282 :  To
+07-22 21:43:28.211 32624 32728 D QuickAI : 2583 :  give
+07-22 21:43:28.240 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:28.267 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:28.295 32624 32728 D QuickAI : 11045 :  helpful
+07-22 21:43:28.323 32624 32728 D QuickAI : 3072 :  response
+07-22 21:43:28.352 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:28.379 32624 32728 D QuickAI : 564 :  I
+07-22 21:43:28.408 32624 32728 D QuickAI : 1202 :  need
+07-22 21:43:28.435 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:28.463 32624 32728 D QuickAI : 2268 :  little
+07-22 21:43:28.491 32624 32728 D QuickAI : 919 :  more
+07-22 21:43:28.519 32624 32728 D QuickAI : 4403 :  context
+07-22 21:43:28.547 32624 32728 D QuickAI : 236761 : .
+07-22 21:43:28.575 32624 32728 D QuickAI : 2900 :  What
+07-22 21:43:28.603 32624 32728 D QuickAI : 1093 :  would
+07-22 21:43:28.632 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:28.658 32624 32728 D QuickAI : 1133 :  like
+07-22 21:43:28.687 32624 32728 D QuickAI : 531 :  to
+07-22 21:43:28.714 32624 32728 D QuickAI : 2910 :  talk
+07-22 21:43:28.743 32624 32728 D QuickAI : 1003 :  about
+07-22 21:43:28.770 32624 32728 D QuickAI : 8859 :  regarding
+07-22 21:43:28.799 32624 32728 D QuickAI : 506 :  the
+07-22 21:43:28.827 32624 32728 D QuickAI : 2604 :  red
+07-22 21:43:28.855 32624 32728 D QuickAI : 1295 :  car
+07-22 21:43:28.882 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:28.909 32624 32728 D QuickAI : 10636 :  bought
+07-22 21:43:28.938 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:28.965 32624 32728 D QuickAI : 1701 :  For
+07-22 21:43:28.994 32624 32728 D QuickAI : 2591 :  example
+07-22 21:43:29.023 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:29.051 32624 32728 D QuickAI : 659 :  are
+07-22 21:43:29.080 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:29.106 32624 32728 D QuickAI : 22967 :  wondering
+07-22 21:43:29.135 32624 32728 D QuickAI : 236787 : :
+07-22 21:43:29.162 32624 32728 D QuickAI : 108 : 
+07-22 21:43:29.162 32624 32728 D QuickAI : 
+07-22 21:43:29.191 32624 32728 D QuickAI : 236829 : *
+07-22 21:43:29.219 32624 32728 D QuickAI : 5213 :  **
+07-22 21:43:29.247 32624 32728 D QuickAI : 3689 : What
+07-22 21:43:29.275 32624 32728 D QuickAI : 2712 :  kind
+07-22 21:43:29.303 32624 32728 D QuickAI : 529 :  of
+07-22 21:43:29.331 32624 32728 D QuickAI : 1295 :  car
+07-22 21:43:29.359 32624 32728 D QuickAI : 563 :  is
+07-22 21:43:29.386 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:29.414 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:29.442 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:29.469 32624 32728 D QuickAI : 568 :  (
+07-22 21:43:29.498 32624 32728 D QuickAI : 236776 : A
+07-22 21:43:29.525 32624 32728 D QuickAI : 8568 :  sports
+07-22 21:43:29.554 32624 32728 D QuickAI : 1295 :  car
+07-22 21:43:29.581 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:29.611 32624 32728 D QuickAI : 236746 : a
+07-22 21:43:29.642 32624 32728 D QuickAI : 9685 :  truck
+07-22 21:43:29.669 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:29.697 32624 32728 D QuickAI : 236746 : a
+07-22 21:43:29.726 32624 32728 D QuickAI : 117544 :  commuter
+07-22 21:43:29.756 32624 32728 D QuickAI : 1295 :  car
+07-22 21:43:29.784 32624 32728 D QuickAI : 17103 : ?)
+07-22 21:43:29.812 32624 32728 D QuickAI : 107 : 
+07-22 21:43:29.840 32624 32728 D QuickAI : 236829 : *
+07-22 21:43:29.869 32624 32728 D QuickAI : 5213 :  **
+07-22 21:43:29.899 32624 32728 D QuickAI : 3910 : How
+07-22 21:43:29.930 32624 32728 D QuickAI : 563 :  is
+07-22 21:43:29.958 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:29.988 32624 32728 D QuickAI : 14980 :  performing
+07-22 21:43:30.019 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:30.047 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:30.077 32624 32728 D QuickAI : 568 :  (
+07-22 21:43:30.106 32624 32728 D QuickAI : 4602 : Is
+07-22 21:43:30.137 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:30.164 32624 32728 D QuickAI : 4592 :  fast
+07-22 21:43:30.193 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:30.220 32624 32728 D QuickAI : 1677 :  does
+07-22 21:43:30.249 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:30.276 32624 32728 D QuickAI : 735 :  have
+07-22 21:43:30.307 32624 32728 D QuickAI : 1535 :  good
+07-22 21:43:30.336 32624 32728 D QuickAI : 4065 :  features
+07-22 21:43:30.363 32624 32728 D QuickAI : 17103 : ?)
+07-22 21:43:30.392 32624 32728 D QuickAI : 107 : 
+07-22 21:43:30.421 32624 32728 D QuickAI : 236829 : *
+07-22 21:43:30.449 32624 32728 D QuickAI : 5213 :  **
+07-22 21:43:30.478 32624 32728 D QuickAI : 3689 : What
+07-22 21:43:30.507 32624 32728 D QuickAI : 4137 :  questions
+07-22 21:43:30.538 32624 32728 D QuickAI : 776 :  do
+07-22 21:43:30.566 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:30.594 32624 32728 D QuickAI : 735 :  have
+07-22 21:43:30.623 32624 32728 D QuickAI : 1003 :  about
+07-22 21:43:30.654 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:30.683 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:30.712 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:30.739 32624 32728 D QuickAI : 568 :  (
+07-22 21:43:30.769 32624 32728 D QuickAI : 105318 : Maintenance
+07-22 21:43:30.799 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:30.826 32624 32728 D QuickAI : 101436 : insurance
+07-22 21:43:30.854 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:30.883 32624 32728 D QuickAI : 32132 : selling
+07-22 21:43:30.912 32624 32728 D QuickAI : 625 :  it
+07-22 21:43:30.939 32624 32728 D QuickAI : 17103 : ?)
+07-22 21:43:30.967 32624 32728 D QuickAI : 107 : 
+07-22 21:43:30.998 32624 32728 D QuickAI : 236829 : *
+07-22 21:43:31.028 32624 32728 D QuickAI : 5213 :  **
+07-22 21:43:31.058 32624 32728 D QuickAI : 14219 : Are
+07-22 21:43:31.089 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:31.116 32624 32728 D QuickAI : 2963 :  having
+07-22 21:43:31.145 32624 32728 D QuickAI : 13007 :  trouble
+07-22 21:43:31.173 32624 32728 D QuickAI : 607 :  with
+07-22 21:43:31.202 32624 32728 D QuickAI : 2613 :  something
+07-22 21:43:31.231 32624 32728 D QuickAI : 236881 : ?
+07-22 21:43:31.259 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:31.288 32624 32728 D QuickAI : 568 :  (
+07-22 21:43:31.317 32624 32728 D QuickAI : 236776 : A
+07-22 21:43:31.347 32624 32728 D QuickAI : 12974 :  mechanical
+07-22 21:43:31.378 32624 32728 D QuickAI : 4186 :  issue
+07-22 21:43:31.407 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:31.434 32624 32728 D QuickAI : 236746 : a
+07-22 21:43:31.463 32624 32728 D QuickAI : 2608 :  problem
+07-22 21:43:31.493 32624 32728 D QuickAI : 607 :  with
+07-22 21:43:31.521 32624 32728 D QuickAI : 506 :  the
+07-22 21:43:31.550 32624 32728 D QuickAI : 20925 :  seller
+07-22 21:43:31.580 32624 32728 D QuickAI : 17103 : ?)
+07-22 21:43:31.608 32624 32728 D QuickAI : 108 : 
+07-22 21:43:31.608 32624 32728 D QuickAI : 
+07-22 21:43:31.638 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:31.668 32624 32728 D QuickAI : 54593 : Tell
+07-22 21:43:31.698 32624 32728 D QuickAI : 786 :  me
+07-22 21:43:31.726 32624 32728 D QuickAI : 919 :  more
+07-22 21:43:31.754 32624 32728 D QuickAI : 236888 : !
+07-22 21:43:31.783 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:31.812 32624 32728 D QuickAI : 1701 :  For
+07-22 21:43:31.842 32624 32728 D QuickAI : 5705 :  instance
+07-22 21:43:31.873 32624 32728 D QuickAI : 236764 : ,
+07-22 21:43:31.900 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:31.930 32624 32728 D QuickAI : 1451 :  could
+07-22 21:43:31.961 32624 32728 D QuickAI : 1879 :  say
+07-22 21:43:31.989 32624 32728 D QuickAI : 53121 : :**
+07-22 21:43:32.018 32624 32728 D QuickAI : 236775 : "
+07-22 21:43:32.046 32624 32728 D QuickAI : 236777 : I
+07-22 21:43:32.074 32624 32728 D QuickAI : 10636 :  bought
+07-22 21:43:32.101 32624 32728 D QuickAI : 496 :  a
+07-22 21:43:32.129 32624 32728 D QuickAI : 2604 :  red
+07-22 21:43:32.157 32624 32728 D QuickAI : 236743 :  
+07-22 21:43:32.186 32624 32728 D QuickAI : 236778 : 2
+07-22 21:43:32.215 32624 32728 D QuickAI : 236771 : 0
+07-22 21:43:32.242 32624 32728 D QuickAI : 236778 : 2
+07-22 21:43:32.269 32624 32728 D QuickAI : 236771 : 0
+07-22 21:43:32.299 32624 32728 D QuickAI : 31171 :  Honda
+07-22 21:43:32.330 32624 32728 D QuickAI : 71034 :  Civic
+07-22 21:43:32.359 32624 32728 D QuickAI : 1781 : ."
+07-22 21:43:32.387 32624 32728 D QuickAI : 1018 : **
+07-22 21:43:32.415 32624 32728 D QuickAI : 108 : 
+07-22 21:43:32.415 32624 32728 D QuickAI : 
+07-22 21:43:32.442 32624 32728 D QuickAI : 236777 : I
+07-22 21:43:32.471 32624 32728 D QuickAI : 236789 : '
+07-22 21:43:32.502 32624 32728 D QuickAI : 236757 : m
+07-22 21:43:32.532 32624 32728 D QuickAI : 5508 :  ready
+07-22 21:43:32.561 32624 32728 D QuickAI : 1056 :  when
+07-22 21:43:32.589 32624 32728 D QuickAI : 611 :  you
+07-22 21:43:32.617 32624 32728 D QuickAI : 659 :  are
+07-22 21:43:32.646 32624 32728 D QuickAI : 236888 : !
+07-22 21:43:32.674 32624 32728 D QuickAI : 103453 :  😊
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF] Performance Metrics:
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   prefill_tokens: 13
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   prefill_duration_ms: 76.00
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   generation_tokens: 165
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   generation_duration_ms: 4796.00
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   total_duration_ms: 4872.00
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   peak_memory_kb: 1686068
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   initialization_duration_ms: 908.00
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   prefill_tokens_per_sec: 171.05
+07-22 21:43:32.732 32624 32728 D QuickAI : [PERF]   generation_tokens_per_sec: 34.40
+07-22 21:43:35.648 32624 32624 D NativeQuickDotAI: cancel(): START, handle=0x-4bffff8cc418bbf0
+07-22 21:43:35.648 32624 32624 D NativeQuickDotAI: cancel(): calling NativeCausalLm.cancelModelHandleNative(handle=0x-4bffff8cc418bbf0)
+07-22 21:43:35.648 32624 32624 D QuickAI : [DEBUG] cancelModelHandle: handle=0xb40000733be74410
+07-22 21:43:35.648 32624 32624 D QuickAI : [DEBUG] cancelModelHandle: checking state without mutex, initialized=1, models.size=1
+07-22 21:43:35.648 32624 32624 D QuickAI : requestStop: setting stop_requested_ to true
+07-22 21:43:35.648 32624 32624 D QuickAI : [DEBUG] cancelModelHandle: calling requestStop() on model[0]
+07-22 21:43:35.648 32624 32624 D QuickAI : [DEBUG] cancelModelHandle: returning NONE (success)
+07-22 21:43:35.648 32624 32624 D NativeQuickDotAI: cancel(): cancelModelHandleNative returned 0
+07-22 21:43:35.650 32624 32728 I NativeQuickDotAI: closeChatSession(abe6e260-9d7b-4da0-a0e1-dacffb342d2f): closed
+07-22 21:43:35.650 32624 32728 D NativeQuickDotAI: cancel(): START, handle=0x-4bffff8cc418bbf0
+07-22 21:43:35.650 32624 32728 D NativeQuickDotAI: cancel(): calling NativeCausalLm.cancelModelHandleNative(handle=0x-4bffff8cc418bbf0)
+07-22 21:43:35.650 32624 32728 D QuickAI : [DEBUG] cancelModelHandle: handle=0xb40000733be74410
+07-22 21:43:35.650 32624 32728 D QuickAI : [DEBUG] cancelModelHandle: checking state without mutex, initialized=1, models.size=1
+07-22 21:43:35.650 32624 32728 D QuickAI : requestStop: setting stop_requested_ to true
+07-22 21:43:35.650 32624 32728 D QuickAI : [DEBUG] cancelModelHandle: calling requestStop() on model[0]
+07-22 21:43:35.650 32624 32728 D QuickAI : [DEBUG] cancelModelHandle: returning NONE (success)
+07-22 21:43:35.650 32624 32728 D NativeQuickDotAI: cancel(): cancelModelHandleNative returned 0
+07-22 21:43:35.680 32624 32728 D qnn_context: [QNNGraph] ~QNNGraph: deregistering tensors for bin_path=PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:35.773 32624 32728 D qnn_context: [QNNGraph] ~QNNGraph: deRegisterQnnTensor completed (context kept for reuse) bin_path=PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:35.774 32624 32728 D qnn_context: [QNNGraph] ~QNNGraph: deregistering tensors for bin_path=PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:35.774 32624 32728 D qnn_context: [QNNGraph] ~QNNGraph: deRegisterQnnTensor completed (context kept for reuse) bin_path=PATH/gemma-4-e2b-qnn/gemma-4-E2B-it-textonly-untied-foldedple-merged-quantized.serialized_v3.bin
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: freeing 155 tracked pointers
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x706fd7e000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x70701be000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x70705fe000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7070a3e000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7070e7e000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x70712be000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x70716fe000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7071b3f000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7071f80000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x70723c0000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707a1c0000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707d36a000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707d7aa000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x707dbea000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71071df000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71af01f000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71b161f000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71bca96000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71bccb7000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71bd0b8000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x71bd499000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7464b7b000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467e02000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467e23000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467e67000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467ec6000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467f4d000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467f6e000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7467fef000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468010000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468052000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74680a2000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746814a000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74681b5000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468265000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468286000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74682e7000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468398000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74683b9000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74683f5000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468742000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7468763000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a60b000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a62c000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a6ed000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a70e000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a76d000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a7a2000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a7fc000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a847000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a877000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a925000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a946000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746a9a6000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746aa00000
+07-22 21:43:35.775 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746aaa6000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746aac7000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746ab40000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746abf7000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746ac48000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746ad01000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746b1df000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c01f000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c040000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c07c000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c0b9000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c0ef000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c12c000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c175000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c1d4000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c1f5000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c2bd000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c2de000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c39d000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c3be000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746c3df000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e206000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e227000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e248000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e283000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x746e3df000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471807000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471828000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471849000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74718d6000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74718f7000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471f61000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471f82000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7471fa3000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7473211000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7473232000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7473284000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74732c5000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74732fa000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x747331b000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74733df000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7474616000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7474637000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7474680000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74747ac000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74747e0000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x747482c000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74748cf000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7474915000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74749be000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74749df000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7476200000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x747720a000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7477283000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7477383000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x748a3b0000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x748a5bf000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7496985000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969e7000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969e8000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969e9000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969ea000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969eb000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969ec000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969ed000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969ee000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x74969ef000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497a59000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497a5a000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497a5b000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497af2000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b74000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b75000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b76000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b77000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x7497b78000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b400000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b401000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b402000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b403000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b404000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b559000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55a000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55b000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55c000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b55d000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749b5df000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc56000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dc57000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd5000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd6000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd7000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd8000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcd9000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dcda000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dd26000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dd27000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dd28000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749dd6e000
+07-22 21:43:35.776 32624 32728 D QuickAI : Quick_Dot_AI_QNN::deallocate_all: deallocating ptr=0x749ddb6000
