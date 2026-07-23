@@ -188,7 +188,7 @@ direct allocation free
 
 ## 8. 정적 코드 감사 결과와 현재 상태
 
-이 절은 최초 감사에서 발견한 결함을 현재 source HEAD `32f6575d` 기준으로 다시 분류한다. “해결”은 source와 정적 compile 수준이며 실제 QNN device 검증은 별도다.
+이 절은 최초 감사에서 발견한 결함을 현재 source HEAD `473e8255` 기준으로 다시 분류한다. “해결”은 source와 정적 compile 수준이며 실제 QNN device 검증은 별도다.
 
 ### 8.1 P0: reload correctness와 안전에 직접 관련
 
