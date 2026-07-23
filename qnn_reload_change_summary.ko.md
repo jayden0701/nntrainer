@@ -3,7 +3,7 @@
 - 기준 source HEAD: `473e8255 [qnn] include required QNN SDK interfaces`
 - 변경 범위: 기준 commit `8cdc4dd3` 이후 22개 source commit
 - 대상 문제: QNN model의 `load → run → unload → load → run` 반복 시 두 번째 실행 실패
-- 검증 수준: 강한 정적 분석과 부분 cross-compile 완료, 실제 QNN device 반복 시험은 남음
+- 검증 수준: 강한 정적 분석, 부분 cross-compile과 외부 Linux 전체 QNN Android build 완료; 실제 QNN device 반복 시험은 남음
 
 이 문서는 이번 세션의 결과를 빠르게 읽기 위한 안내서다. 세부 근거와 앞으로의 설계는 다음 문서에 있다.
 
@@ -151,6 +151,7 @@ normal unload에서 사라지는 것과 남는 것도 구분해야 한다.
 - 임시 최소 QNN type stub을 사용한 `ENABLE_QNN` manager compile 및 non-QNN host compile
 - Issue #49의 실제 과거 QNN API 2.36/QAIRT 2.47 호환 header로 6개 오류 재현 후 수정본 syntax compile
 - 분리된 fake `QnnInterface.h`/`QnnMem.h`로 clang++/g++ QNN-enabled compile과 header-alone self-containment 검사
+- 사용자 Linux 환경에서 `build_android.sh --enable-qnn --install --clean` 전체 build 성공 확인
 
 ### 수행하지 못함
 

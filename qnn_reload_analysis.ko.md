@@ -617,4 +617,5 @@ DynamicLoadUtil.hpp
 - `15873b03`이 sample-app utility header를 제거하면서 `QnnInterface.h`/`QnnMem.h`의 전이 include도 잃은 회귀를 확인했다.
 - build option, source inclusion, `ENABLE_QNN`, vendor include directory는 정상이며 Meson 수정이 필요하지 않음을 확인했다.
 - `473e8255`에서 `qnn_rpc_manager.h`와 `.cpp`가 실제 사용하는 SDK header를 직접 include하도록 수정했다.
-- 실제 API 2.36/QAIRT 2.47 호환 header 재현과 clang++/g++ fake-header compile을 통과했다. 전체 Android application link와 device run은 다른 Linux 환경의 재검증이 필요하다.
+- 실제 API 2.36/QAIRT 2.47 호환 header 재현과 clang++/g++ fake-header compile을 통과했다.
+- 사용자가 다른 Linux 환경에서 전체 `build_android.sh --enable-qnn --install --clean` 성공을 확인했다. 실제 QNN device run과 반복 lifecycle 검증은 여전히 남아 있다.

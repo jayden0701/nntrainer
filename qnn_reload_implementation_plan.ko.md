@@ -328,7 +328,7 @@ reload 구조가 안정된 뒤 수행한다.
 
 ## 6. 테스트 설계
 
-현재 환경에서는 전체 vendor QNN link와 device run이 불가능하다. Android NDK arm64 부분 syntax/object compile, Quick JNI object, Kotlin offline compile은 수행했지만 concrete QNN failure-injection seam은 여전히 필요하다.
+현재 로컬 환경에서는 전체 vendor QNN link와 device run이 불가능하다. Android NDK arm64 부분 syntax/object compile, Quick JNI object, Kotlin offline compile을 수행했고, 사용자의 외부 Linux 환경에서 전체 QNN Android build도 성공했다. concrete QNN failure-injection seam은 여전히 필요하다.
 
 ### 6.1 Host fake 단위 테스트
 
@@ -529,4 +529,4 @@ before log의 실패한 두 번째 run은 성능 baseline으로 쓰지 않는다
 - `15873b03`의 lossless registration 변경 자체는 유지하고, 해당 commit에서 제거된 sample utility의 전이 include만 직접 SDK header로 대체한다.
 - `qnn_rpc_manager.h`는 public declaration에 필요한 `QnnInterface.h`, `.cpp`는 descriptor 생성에 필요한 `QnnMem.h`를 직접 include한다.
 - 이 수정은 PR 4의 build completeness에 속하므로 최종 stacked PR에서는 `15873b03`과 같은 PR에 배치하거나 squash한다.
-- 완료 조건은 issue의 여섯 unknown-type 오류 제거, header-alone compile, QNN-enabled translation-unit compile이다. 실제 Linux full Android build 결과는 사용자 환경에서 재확인한다.
+- 완료 조건인 issue의 여섯 unknown-type 오류 제거, header-alone compile, QNN-enabled translation-unit compile과 사용자 Linux 환경의 full Android build 성공을 모두 확인했다. 다음 gate는 실제 QNN device lifecycle 실행이다.

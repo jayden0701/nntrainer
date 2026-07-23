@@ -5,7 +5,7 @@
 - source HEAD: `473e8255 [qnn] include required QNN SDK interfaces` (후속 문서 commit 제외)
 - 현재 세션의 source 변경: PR 1~11 + Issue #49 build repair 완료, 총 22개 commit
 - 현재 세션의 산출물: 분석/계획/현황/요약 Markdown 4개 갱신
-- 검증 제한: Android NDK 부분 compile과 Kotlin offline compile은 수행했지만 전체 app/QNN SDK link와 device run은 불가
+- 검증 제한: 부분 compile과 사용자 Linux 환경의 전체 app/QNN SDK build는 통과했지만 실제 device run은 미수행
 - SDK 호환 기준: QAIRT/QNN 2.47 — 버전별 workaround가 아니라 lifecycle/ownership 계약이 분석의 중심
 
 이 문서는 실제 구현된 코드와 앞으로의 설계를 구분하는 source of truth다. 체크박스는 코드와 검증이 모두 끝난 경우에만 완료로 바꾼다.
@@ -214,7 +214,7 @@ workaround 당시 잔여점과 현재 HEAD 처리:
 - [x] direct RPC/RoPE/manager allocation의 ownership-first 전환
 - [x] 두 QNN model 조립 실패의 temporary-owner checked cleanup
 - [x] clang-format/diff check, host compile, Android NDK 부분 compile, JNI object, Kotlin offline compile
-- [ ] 전체 Android app/QNN SDK link와 device build
+- [x] 사용자 Linux 환경의 전체 Android app/QNN SDK build
 - [ ] device validation
 
 ## 8. 현재 구현 경계와 다음 단위
@@ -318,10 +318,10 @@ PR 5 진행 체크포인트:
 - PR 11 experimental multimodal macro OFF/ON Android NDK arm64 syntax compile
 - Issue #49 실제 과거 QNN API 2.36/QAIRT 2.47 호환 header에서 수정 전 6개 오류 재현 및 수정 후 syntax compile
 - Issue #49 fake header 기반 clang++/g++ QNN-enabled translation-unit compile과 header-alone compile
+- 사용자 Linux 환경의 `build_android.sh --enable-qnn --install --clean` 전체 build 성공
 
 ### 수행하지 못함
 
-- 전체 Android application/QNN SDK link 및 package build
 - host QNN unit test — 기본 Meson/공개 CI가 QNN source를 빌드하지 않고 fake seam이 없음
 - QNN device cycle test
 - strict context purge/recreate
@@ -523,7 +523,7 @@ PR 5 진행 체크포인트:
 - 회귀는 `15873b03`에서 `Utils/DynamicLoadUtil.hpp`를 제거할 때 `QNN.hpp → QnnInterface.h → QnnMem.h` 전이 경로도 함께 사라져 발생했다.
 - Meson source, `ENABLE_QNN`, generated `vendor/QNN` include path는 정상이라 build configuration은 바꾸지 않았다.
 - 실제 과거 QNN API 2.36/QAIRT 2.47 호환 header와 분리 fake header의 clang++/g++ compile을 통과했다.
-- runtime/ABI/성능 변화는 없으며, Linux의 전체 `build_android.sh --enable-qnn --install --clean` 재검증은 사용자 환경에 남아 있다.
+- runtime/ABI/성능 변화는 없으며, 사용자가 Linux에서 전체 `build_android.sh --enable-qnn --install --clean` 성공을 확인했다. 실제 device lifecycle 검증은 남아 있다.
 - 최종 PR stack에서는 별도 기능 PR보다 PR 4 (`15873b03`)에 함께 넣거나 squash하는 것이 맞다.
 
 ### 2026-07-22 — 기존 reload workaround
