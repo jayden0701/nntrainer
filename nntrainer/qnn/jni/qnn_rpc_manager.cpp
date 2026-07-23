@@ -11,7 +11,7 @@
  */
 #include "qnn_rpc_manager.h"
 
-#include "QnnTypes.h"
+#include "QnnMem.h"
 
 #include <algorithm>
 #include <cstdlib>

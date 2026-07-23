@@ -11,7 +11,7 @@
  */
 #ifndef __QNN_RPC_MANAGER_H__
 #define __QNN_RPC_MANAGER_H__
-#include "QnnTypes.h"
+#include "QnnInterface.h"
 #include "rpc_mem.h"
 
 #include <cstddef>
