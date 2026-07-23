@@ -23,7 +23,7 @@
 1. context가 살아 있을 때 모든 QNN memHandle을 먼저 deregister한다.
 2. SDK context와 graph를 `ct_map`에 남겨 다음 load에서 재사용한다.
 
-이후 로그에서는 deregistration 실패와 두 번째 run의 graph 실행 실패가 모두 사라졌다. 따라서 이 변경은 제공된 한 사이클에서 유효한 **keep-warm workaround**다. 현재 branch에는 그 위로 PR 1~11의 21개 source commit을 구현해 global graph-destructor sweep을 pointer/context별 lossless allocator cleanup과 explicit shutdown으로 교체했다. 현재 HEAD는 Android NDK 부분 compile과 Kotlin offline compile을 통과했지만 실제 QNN device cycle로 검증되지 않았다.
+이후 로그에서는 deregistration 실패와 두 번째 run의 graph 실행 실패가 모두 사라졌다. 따라서 이 변경은 제공된 한 사이클에서 유효한 **keep-warm workaround**다. 현재 branch에는 그 위로 PR 1~11의 21개 lifecycle source commit을 구현해 global graph-destructor sweep을 pointer/context별 lossless allocator cleanup과 explicit shutdown으로 교체했고, Issue #49 build repair를 더해 총 22개 source commit이 있다. 현재 HEAD는 Android NDK 부분 compile과 Kotlin offline compile을 통과했지만 실제 QNN device cycle로 검증되지 않았다.
 
 다만 다음 결론은 아직 성립하지 않는다.
 
@@ -454,7 +454,30 @@ PR 11은 공개되기 전의 combined/LLM/vision owner를 모두 explicit unload
 
 성공 경로의 inference 성능에는 영향이 없다. 실패 경로에서만 최대 세 handle의 checked cleanup을 수행한다. 구조적 이점은 단일-model load와 두-model 조립이 같은 terminal teardown 의미를 갖는다는 점이다. 자동 failure injection이 없고 experimental macro가 기본 build에서 꺼져 있다는 검증 한계는 남는다. 따라서 이는 주 reload 해결의 보조 안전망이며, 단일 QNN model의 반복 device cycle보다 우선순위가 높지 않다.
 
-## 19. 현재 남은 핵심 질문
+## 19. Issue #49 QNN SDK header build 회귀 분석
+
+Linux의 `build_android.sh --enable-qnn --install --clean`에서 다음 이름을 찾지 못하는 오류가 보고됐다.
+
+- `QNN_INTERFACE_VER_TYPE`
+- `Qnn_MemDescriptor_t`
+- `QNN_MEM_DESCRIPTOR_INIT`
+- `QNN_MEM_TYPE_ION`
+
+빌드 wiring은 정상이다. `qnn_rpc_manager.cpp`는 QNN source 목록에 있고, generated `vendor/QNN` include directory와 `ENABLE_QNN=1`도 전달된다. 원인은 `15873b03`에서 broad sample-app utility include를 제거하면서 숨어 있던 전이 의존성이 드러난 것이다.
+
+```text
+기존 우연한 경로
+DynamicLoadUtil.hpp
+  → QNN.hpp
+    → QnnInterface.h
+      → QnnMem.h
+```
+
+`QnnTypes.h`는 기본 handle/tensor type을 제공하지만 interface version table이나 memory registration descriptor를 정의하지 않는다. 따라서 public declaration에서 `QNN_INTERFACE_VER_TYPE`을 쓰는 `qnn_rpc_manager.h`는 `QnnInterface.h`를 직접 include해야 하고, memory descriptor를 만드는 `.cpp`는 `QnnMem.h`를 직접 include해야 한다.
+
+`473e8255`는 이 직접 의존성을 복구한다. 실제 과거 QNN API 2.36/QAIRT 2.47 호환 vendored header에서 수정 전 여섯 오류를 재현했고, 수정 후 translation-unit 및 header-alone syntax compile이 성공했다. runtime code, class layout, function signature는 바뀌지 않아 실행 성능과 ABI 위험은 없다. compile 시 `QnnInterface.h`가 여는 header 범위가 `QnnTypes.h`보다 넓어지는 작은 compile-time 비용만 있다.
+
+## 20. 현재 남은 핵심 질문
 
 1. 올바른 순서로 clean shutdown한 뒤 `contextFree/recreate`를 50~100회 반복해도 성공하는가?
 2. keep-warm context에서 100회 reload 후 host/RPC/DSP/HTP 메모리가 plateau를 이루는가?
@@ -464,7 +487,7 @@ PR 11은 공개되기 전의 combined/LLM/vision owner를 모두 explicit unload
 6. same path의 binary를 교체했을 때 stale context를 절대로 재사용하지 않는가?
 7. deregister/contextFree 실패를 주입했을 때 backing을 보존하고 unload 오류를 반환하는가?
 
-## 20. 갱신 기록
+## 21. 갱신 기록
 
 ### 2026-07-23 — reload 중심 재정리
 
@@ -588,3 +611,10 @@ PR 11은 공개되기 전의 combined/LLM/vision owner를 모두 explicit unload
 - SDK-free fake context DSO 테스트는 실제 `loadLibrary → symbol lookup → createfunc → call_once → Engine attach` 경로를 사용한다. 따라서 QNN SDK 없이도 동일 path 중복 create와 host registry race는 회귀 검증할 수 있지만, QNN backend/device/RPC teardown 자체는 검증하지 못한다.
 - retry test는 첫 factory 호출이 null을 반환하도록 한 뒤 같은 record에서 두 번째 호출이 성공하는지 검사한다. 실패 상태 counter를 유지하려고 probe DSO handle을 잡고 있으므로 Engine 쪽 실패 handle의 실제 OS unload 여부까지 증명하는 테스트는 아니다. RAII refcount 감소는 정적 경로로만 확인된다.
 - Windows에서는 `context.h`가 이미 무attribute로 선언한 `ml_train_context_pluggable`에 뒤늦게 `__declspec(dllexport)`를 붙이면 clang-cl/MSVC 경고가 Werror가 된다. test plugin은 `.def`로 entry와 probe symbol을 export해 generic plugin ABI 선언을 바꾸지 않는다.
+
+### 2026-07-23 — Issue #49 Linux/Android build repair
+
+- `15873b03`이 sample-app utility header를 제거하면서 `QnnInterface.h`/`QnnMem.h`의 전이 include도 잃은 회귀를 확인했다.
+- build option, source inclusion, `ENABLE_QNN`, vendor include directory는 정상이며 Meson 수정이 필요하지 않음을 확인했다.
+- `473e8255`에서 `qnn_rpc_manager.h`와 `.cpp`가 실제 사용하는 SDK header를 직접 include하도록 수정했다.
+- 실제 API 2.36/QAIRT 2.47 호환 header 재현과 clang++/g++ fake-header compile을 통과했다. 전체 Android application link와 device run은 다른 Linux 환경의 재검증이 필요하다.

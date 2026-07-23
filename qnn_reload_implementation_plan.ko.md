@@ -8,7 +8,7 @@
 - 제외: CPU 통합형 멀티모달 구현, 초기 단계의 embedding zero-copy 최적화
 - SDK 호환 기준: QAIRT/QNN 2.47. 설계는 특정 버전 workaround가 아니라 lifecycle/ownership 불변식에 둔다.
 
-현재 위치: source PR 1~11의 21개 commit까지 완료했다. 다음 구현 중심은 `ContextLease`, `RegistrationScope`, bounded cache이며 실제 QNN device gate는 아직 통과하지 못했다.
+현재 위치: source PR 1~11과 Issue #49 build repair의 22개 commit까지 완료했다. 다음 구현 중심은 `ContextLease`, `RegistrationScope`, bounded cache이며 실제 QNN device gate는 아직 통과하지 못했다.
 
 이 계획은 `qnn_reload_analysis.ko.md`의 확정된 근거를 구현 순서로 옮긴 문서다. 소스가 변경될 때마다 완료 항목, 변경 파일, 검증 결과와 남은 위험을 `qnn_reload_implementation_status.ko.md`에도 반영한다.
 
@@ -523,3 +523,10 @@ before log의 실패한 두 번째 run은 성능 baseline으로 쓰지 않는다
 - PR 11 경계는 `32f6575d` 한 commit이다. 두 임시 QNN handle 조립의 모든 실패 경로를 explicit checked cleanup으로 통합하고 cleanup error 7을 우선한다.
 - 멀티모달 구조 자체를 재설계하지 않았고, 주 reload 로드맵의 context lease/scoped registration 순서는 그대로다.
 - 다음 중심 단계는 `RegistrationScope`를 바로 크게 도입하기 전에 현재 pointer/context registration 생성·해제의 prepare/commit 경계를 더 작게 분리할 수 있는지 감사한다. 큰 registry PR은 fake failure seam과 함께만 시작한다.
+
+### 2026-07-23 — Issue #49 build repair
+
+- `15873b03`의 lossless registration 변경 자체는 유지하고, 해당 commit에서 제거된 sample utility의 전이 include만 직접 SDK header로 대체한다.
+- `qnn_rpc_manager.h`는 public declaration에 필요한 `QnnInterface.h`, `.cpp`는 descriptor 생성에 필요한 `QnnMem.h`를 직접 include한다.
+- 이 수정은 PR 4의 build completeness에 속하므로 최종 stacked PR에서는 `15873b03`과 같은 PR에 배치하거나 squash한다.
+- 완료 조건은 issue의 여섯 unknown-type 오류 제거, header-alone compile, QNN-enabled translation-unit compile이다. 실제 Linux full Android build 결과는 사용자 환경에서 재확인한다.

@@ -1,7 +1,7 @@
 # QNN reload 개선 작업 요약
 
-- 기준 source HEAD: `32f6575d [CausalLM] preserve multimodal load cleanup failures`
-- 변경 범위: 기준 commit `8cdc4dd3` 이후 21개 source commit
+- 기준 source HEAD: `473e8255 [qnn] include required QNN SDK interfaces`
+- 변경 범위: 기준 commit `8cdc4dd3` 이후 22개 source commit
 - 대상 문제: QNN model의 `load → run → unload → load → run` 반복 시 두 번째 실행 실패
 - 검증 수준: 강한 정적 분석과 부분 cross-compile 완료, 실제 QNN device 반복 시험은 남음
 
@@ -20,7 +20,7 @@
 3. 다음 load/run에서 `graphExecute`가 실패해도 상위 API가 실패를 삼키고 token 생성을 계속했다.
 4. model-local resource, process-wide allocator, SDK context의 수명 경계가 명확하지 않았다.
 
-`8cdc4dd3`은 context/graph를 keep-warm하고 live context에서 먼저 deregister해 제공된 한 cycle을 성공시켰다. 다만 이 중간 workaround는 `QNNGraph` destructor에서 process-wide registration sweep을 실행했으므로 다른 handle/binary까지 건드릴 수 있는 새 구조적 위험이 있었다. 현재 21개 source commit은 이 global sweep도 pointer/context별 owner cleanup으로 교체했다.
+`8cdc4dd3`은 context/graph를 keep-warm하고 live context에서 먼저 deregister해 제공된 한 cycle을 성공시켰다. 다만 이 중간 workaround는 `QNNGraph` destructor에서 process-wide registration sweep을 실행했으므로 다른 handle/binary까지 건드릴 수 있는 새 구조적 위험이 있었다. 이후 21개 lifecycle source commit은 이 global sweep도 pointer/context별 owner cleanup으로 교체했고, 22번째 source commit은 Issue #49 build 회귀를 보완했다.
 
 이번 변경은 이 문제를 다음 원칙으로 정리했다.
 
@@ -66,6 +66,7 @@ flowchart TD
 | RPC registration | 초기에는 context 조기 free 뒤 stale deregister; `8cdc4dd3`에서는 global sweep/map clear | `(pointer, context)`별 관리, 성공한 entry만 제거 | 다른 graph/handle의 registration 파괴 범위 축소 |
 | RPC backing | deregister 실패 뒤에도 free 가능 | 실패 entry와 backing을 quarantine/retention | DSP가 참조할 수 있는 메모리의 조기 해제 방지 |
 | allocator 소유권 | Engine과 CausalLM이 별도 rpcmem manager를 가질 수 있음 | QNN plugin의 process-wide allocator를 공유 | allocation/registration ledger가 하나로 모임 |
+| QNN SDK header 의존성 | sample-app utility의 전이 include에 의존 | `QnnInterface.h`와 `QnnMem.h`를 사용 위치에서 직접 include | Linux/Android QNN translation unit의 unknown-type 빌드 오류 제거 |
 | plugin 초기화 | 중복 여부 확인 전에 임시 runtime을 만들 수 있음 | process당 once 초기화 | reload 때 불필요한 backend/device 초기화 위험 감소 |
 | model unload | destructor 중심이라 해제 실패를 반환하기 어려움 | terminal·idempotent explicit shutdown | unload/destroy 실패를 호출자가 알 수 있음 |
 | Android 상태 | native 오류와 Kotlin 상태가 어긋날 수 있음 | C API → JNI → Kotlin sticky teardown status | 실패 뒤 안전하지 않은 reload를 차단 |
@@ -148,6 +149,8 @@ normal unload에서 사라지는 것과 남는 것도 구분해야 한다.
 - 실제 Quick JNI object build와 Kotlin offline compile
 - experimental multimodal macro OFF/ON compile
 - 임시 최소 QNN type stub을 사용한 `ENABLE_QNN` manager compile 및 non-QNN host compile
+- Issue #49의 실제 과거 QNN API 2.36/QAIRT 2.47 호환 header로 6개 오류 재현 후 수정본 syntax compile
+- 분리된 fake `QnnInterface.h`/`QnnMem.h`로 clang++/g++ QNN-enabled compile과 header-alone self-containment 검사
 
 ### 수행하지 못함
 
@@ -174,7 +177,7 @@ QAIRT/QNN 2.47은 호환 기준일 뿐이다. 이번 변경은 특정 버전의 
 
 ## 7. 권장 PR 분할
 
-현재 21개 source commit의 순서를 유지한 stacked PR을 권장한다. 각 PR base는 바로 앞 PR이다. 리뷰 주제와 revert 경계를 엄격히 유지하면 다음 14개가 가장 안전하다.
+21개 lifecycle source commit의 순서를 유지한 stacked PR을 권장한다. 각 PR base는 바로 앞 PR이다. 리뷰 주제와 revert 경계를 엄격히 유지하면 다음 14개가 가장 안전하며, 22번째 Issue #49 build repair는 아래 설명처럼 PR 4에 포함한다.
 
 | PR | commit (범위는 양 끝 포함) | 주제 |
 |---|---|---|
@@ -195,9 +198,22 @@ QAIRT/QNN 2.47은 호환 기준일 뿐이다. 이번 변경은 특정 버전의 
 
 분할 경계는 각 표의 마지막 commit 직후다. 더 적은 PR이 필요하면 PR 6+7과 PR 9+10+11을 각각 합쳐 기존 문서의 11개 구분으로 축약할 수 있다. 반대로 PR 4와 PR 8은 각각 하나의 ownership 계약을 여러 계층에서 함께 완성하므로 더 쪼개지 않는 편이 안전하다.
 
+Issue #49 build repair `473e8255`는 독립 동작 변경이 아니라 `15873b03`에서 누락된 직접 header 의존성을 복구한다. 최종 stacked PR에서는 PR 4에 함께 넣거나 squash하는 것이 맞다.
+
 문서 commit은 source 변경과 별개이므로 마지막에 독립 `[docs]` commit으로 둔다.
 
-## 8. 현재 판단
+## 8. Issue #49 Linux/Android QNN 빌드 보완
+
+`build_android.sh --enable-qnn`에서 보고된 여섯 오류는 QNN SDK version workaround가 아니라 C++ header self-containment 문제였다.
+
+- `QNN_INTERFACE_VER_TYPE`의 정의 위치: `QnnInterface.h`
+- `Qnn_MemDescriptor_t`, `QNN_MEM_DESCRIPTOR_INIT`, `QNN_MEM_TYPE_ION`의 정의 위치: `QnnMem.h`
+- 회귀 원인: `15873b03`에서 `DynamicLoadUtil.hpp → QNN.hpp → QnnInterface.h → QnnMem.h`라는 우연한 전이 include를 제거하면서 실제 직접 의존성을 추가하지 않음
+- 수정: manager header는 `QnnInterface.h`, implementation은 `QnnMem.h`를 직접 include
+
+Meson의 source 목록, `ENABLE_QNN`, vendor/QNN include directory는 정상이라 build 설정 변경은 필요하지 않았다. 이 수정은 runtime object layout, ABI, 실행 성능을 바꾸지 않고 compile-time include graph만 명확히 한다.
+
+## 9. 현재 판단
 
 정적 코드 관점에서는 원래 실패의 가장 위험한 조합인 “공유 context 조기 free + deregister 실패 후 ownership 손실 + execute 실패 은폐”를 제거했고, `8cdc4dd3`의 process-wide global sweep도 owner별 cleanup으로 바꿨다. 따라서 이전보다 reload 실패를 일으킬 가능성과, 실패했는데 성공처럼 보일 가능성이 모두 크게 낮아졌다.
 

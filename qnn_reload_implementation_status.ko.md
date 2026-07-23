@@ -2,8 +2,8 @@
 
 - 최종 갱신: 2026-07-23
 - branch: `codex/qnn-reload-lifecycle-hardening`
-- source HEAD: `32f6575d [CausalLM] preserve multimodal load cleanup failures` (후속 문서 commit 제외)
-- 현재 세션의 source 변경: PR 1~11 완료, 총 21개 commit
+- source HEAD: `473e8255 [qnn] include required QNN SDK interfaces` (후속 문서 commit 제외)
+- 현재 세션의 source 변경: PR 1~11 + Issue #49 build repair 완료, 총 22개 commit
 - 현재 세션의 산출물: 분석/계획/현황/요약 Markdown 4개 갱신
 - 검증 제한: Android NDK 부분 compile과 Kotlin offline compile은 수행했지만 전체 app/QNN SDK link와 device run은 불가
 - SDK 호환 기준: QAIRT/QNN 2.47 — 버전별 workaround가 아니라 lifecycle/ownership 계약이 분석의 중심
@@ -12,7 +12,7 @@
 
 ## 1. 현재 상태 한 줄 요약
 
-제공된 Gemma 한 사이클에서는 기존 keep-warm workaround가 reload 실패를 해결했다. PR 4는 process-wide deregistration을 pointer/context별 lossless 정리로 바꿨고, PR 5~6은 allocator/plugin 중복 소유를 정리했다. PR 7~8은 해제 ownership과 앱 오류 전파를 닫았고, PR 9~10은 model-local set과 process-wide allocator ledger를 backing acquisition 전 선확보한다. PR 11은 보조적인 두-QNN-model 조립 실패에도 같은 teardown 오류 계약을 적용한다. Android NDK 정적 compile과 Kotlin compile은 통과했으나 실제 QNN device cycle과 bounded context cache는 아직 미검증·미구현이다.
+제공된 Gemma 한 사이클에서는 기존 keep-warm workaround가 reload 실패를 해결했다. PR 4는 process-wide deregistration을 pointer/context별 lossless 정리로 바꿨고, PR 5~6은 allocator/plugin 중복 소유를 정리했다. PR 7~8은 해제 ownership과 앱 오류 전파를 닫았고, PR 9~10은 model-local set과 process-wide allocator ledger를 backing acquisition 전 선확보한다. PR 11은 보조적인 두-QNN-model 조립 실패에도 같은 teardown 오류 계약을 적용한다. `473e8255`는 Issue #49에서 드러난 PR 4의 SDK header self-containment 회귀를 고쳤다. 부분 compile은 통과했으나 실제 QNN device cycle과 bounded context cache는 아직 미검증·미구현이다.
 
 ## 2. 분석에 사용한 입력
 
@@ -316,6 +316,8 @@ PR 5 진행 체크포인트:
 - PR 9 CausalLM direct RPC/RoPE 변경 Android NDK arm64 syntax compile
 - PR 10 임시 최소 QNN type stub 기반 `ENABLE_QNN` Android NDK arm64 syntax compile과 non-QNN host compile
 - PR 11 experimental multimodal macro OFF/ON Android NDK arm64 syntax compile
+- Issue #49 실제 과거 QNN API 2.36/QAIRT 2.47 호환 header에서 수정 전 6개 오류 재현 및 수정 후 syntax compile
+- Issue #49 fake header 기반 clang++/g++ QNN-enabled translation-unit compile과 header-alone compile
 
 ### 수행하지 못함
 
@@ -513,6 +515,16 @@ PR 5 진행 체크포인트:
 - Android NDK r27 arm64에서 experimental macro OFF/ON 두 구성을 `ENABLE_QNN_MODELS`와 함께 syntax compile했다. 기존 Bert/Gemma missing-override 경고 두 개 외 새 경고는 없다.
 - 이 지점은 PR 11로 독립 제출 가능한 경계다: `32f6575d`.
 - 자동 failure-injection seam은 없으며, 주 단일-model reload device test보다 우선하지 않는다.
+
+### 2026-07-23 — Issue #49: QNN SDK header self-containment
+
+- commit `473e8255 [qnn] include required QNN SDK interfaces`를 완료했다.
+- `QNN_INTERFACE_VER_TYPE`을 사용하는 manager header가 `QnnInterface.h`를 직접 include하고, memory descriptor를 생성하는 `.cpp`가 `QnnMem.h`를 직접 include한다.
+- 회귀는 `15873b03`에서 `Utils/DynamicLoadUtil.hpp`를 제거할 때 `QNN.hpp → QnnInterface.h → QnnMem.h` 전이 경로도 함께 사라져 발생했다.
+- Meson source, `ENABLE_QNN`, generated `vendor/QNN` include path는 정상이라 build configuration은 바꾸지 않았다.
+- 실제 과거 QNN API 2.36/QAIRT 2.47 호환 header와 분리 fake header의 clang++/g++ compile을 통과했다.
+- runtime/ABI/성능 변화는 없으며, Linux의 전체 `build_android.sh --enable-qnn --install --clean` 재검증은 사용자 환경에 남아 있다.
+- 최종 PR stack에서는 별도 기능 PR보다 PR 4 (`15873b03`)에 함께 넣거나 squash하는 것이 맞다.
 
 ### 2026-07-22 — 기존 reload workaround
 
