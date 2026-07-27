@@ -17,6 +17,7 @@
 
 #include <mem_allocator.h>
 #include <memory>
+#include <utility>
 
 namespace nntrainer {
 
@@ -63,9 +64,13 @@ public:
     return dynamic_cast<const T *>(this);
   }
 
-  std::shared_ptr<MemAllocator> getMemAllocator() { return mem_allocator; }
+  std::shared_ptr<MemAllocator> getMemAllocator() {
+    return std::atomic_load(&mem_allocator);
+  }
 
-  void setMemAllocator(std::shared_ptr<MemAllocator> m) { mem_allocator = m; }
+  void setMemAllocator(std::shared_ptr<MemAllocator> m) {
+    std::atomic_store(&mem_allocator, std::move(m));
+  }
 
   /**
    * @brief Get the compute ops table for this context

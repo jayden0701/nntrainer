@@ -148,6 +148,11 @@ public:
 
   std::unordered_map<std::string, std::shared_ptr<nntrainer::MemAllocator>>
   getAllocators() {
+    const std::lock_guard<std::mutex> lock(engine_mutex);
+    for (const auto &[name, context] : engines) {
+      allocator[name] =
+        context == nullptr ? nullptr : context->getMemAllocator();
+    }
     return allocator;
   }
 

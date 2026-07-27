@@ -23,13 +23,66 @@
 #include <gtest/gtest.h>
 
 #include <fstream>
+#include <memory>
+#include <string>
+#include <utility>
 
+#include <context.h>
+#include <context_data.h>
+#include <engine.h>
+#include <mem_allocator.h>
 #include <neuralnet.h>
 #include <nntrainer_error.h>
 #include <optimizer.h>
 #include <util_func.h>
 
 #include <nntrainer_test_util.h>
+
+namespace {
+
+class LateAllocatorContext final : public nntrainer::Context {
+public:
+  LateAllocatorContext() :
+    nntrainer::Context(std::make_shared<nntrainer::ContextData>()) {}
+
+  std::string getName() override { return "late_allocator_test"; }
+
+  void publishAllocator(std::shared_ptr<nntrainer::MemAllocator> allocator) {
+    getContextData()->setMemAllocator(std::move(allocator));
+  }
+};
+
+class TestEngine final : public nntrainer::Engine {
+public:
+  void registerTestContext(const std::string &name,
+                           nntrainer::Context *context) {
+    registerContext(name, context);
+  }
+};
+
+} // namespace
+
+/**
+ * @brief Engine allocator snapshots reflect allocators published after
+ * context
+ * registration.
+ */
+TEST(nntrainer_Engine, late_allocator_publication) {
+  static LateAllocatorContext context;
+  TestEngine engine;
+  engine.registerTestContext(context.getName(), &context);
+
+  auto allocators = engine.getAllocators();
+  ASSERT_EQ(allocators.count(context.getName()), 1u);
+  EXPECT_EQ(allocators.at(context.getName()), nullptr);
+
+  auto allocator = std::make_shared<nntrainer::MemAllocator>();
+  context.publishAllocator(allocator);
+
+  allocators = engine.getAllocators();
+  ASSERT_EQ(allocators.count(context.getName()), 1u);
+  EXPECT_EQ(allocators.at(context.getName()), allocator);
+}
 
 /**
  * @brief Optimizer create
