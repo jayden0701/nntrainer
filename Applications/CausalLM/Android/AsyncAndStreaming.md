@@ -1,52 +1,12 @@
-# Android Native Async & Streaming 🔄
+# QuickDotAI asynchronous and streaming behavior
 
-Quick.AI streaming is synchronous at the native C boundary and asynchronous at
-the host-app boundary. The native call blocks the worker thread while invoking a
-callback for each token delta; the app decides how to dispatch those deltas to
-UI or transport layers.
+`runText` and `runOpenAI` are synchronous, streaming calls. They block the
+invoking thread until generation succeeds, fails, or is cancelled. Run them on
+a worker thread, not Android's main thread.
 
-## 🧭 Scope
+## Event contract
 
-This document covers the current `QuickDotAI` AAR path:
-
-```text
-QuickDotAI.kt
-  └── NativeQuickDotAI.kt
-      └── NativeCausalLm.kt
-          └── quickai_jni.cpp
-              └── quick_dot_ai_api.h / libquick_dot_ai_api.so
-```
-
-It does not describe the planned REST/foreground-service layer.
-
-## 🧵 Streaming Contract
-
-Native streaming functions are synchronous:
-
-```c
-ErrorCode runModelHandleStreaming(
-    CausalLmHandle handle,
-    const char *inputTextPrompt,
-    CausalLmTokenCallback callback,
-    void *user_data);
-```
-
-While the function runs, it calls:
-
-```c
-typedef int (*CausalLmTokenCallback)(const char *delta, void *user_data);
-```
-
-Returning `0` continues generation. Returning non-zero requests cooperative
-cancellation at the next token boundary.
-
-## 🔌 JNI Bridge
-
-`quickai_jni.cpp` converts native token callbacks into Kotlin listener calls.
-Because callbacks run on the same thread that entered JNI, the bridge can use
-the current `JNIEnv *` without attaching a new thread.
-
-Kotlin then forwards deltas to `StreamSink`:
+Generated output is delivered to:
 
 ```kotlin
 interface StreamSink {
@@ -57,42 +17,80 @@ interface StreamSink {
 }
 ```
 
-## 🧱 QuickDotAI Methods
+One run emits zero or more delta events followed by exactly one terminal event:
 
-Current streaming methods include:
+- `onDone()` for success or cooperative cancellation;
+- `onError(...)` for failure.
 
-| Method | Input shape |
-|---|---|
-| `runModelHandleWithMessagesStreaming()` | `List<QuickAiChatMessage>` |
-| `runModelHandleWithJsonStreaming()` | OpenAI-style JSON string |
-| `runMultimodalHandleWithMessagesStreaming()` | OpenAI-style messages with image parts |
-| `runMultimodalHandleStreaming()` | `List<PromptPart>` |
-| `runChatModelHandleStreaming()` | Active chat session + text |
-| `runChatMultimodalHandleStreaming()` | Active chat session + image/text parts |
+Callbacks are not marshalled to the main thread. Native callbacks execute on
+the thread that entered the JNI call; another backend may use its own callback
+thread. A UI consumer must dispatch updates explicitly.
 
-The removed flat methods (`runStreaming`, `runWithMessagesStreaming`, and
-`chatRunStreaming`) should not be used in new docs or app code.
+The blocking method also returns `BackendResult<Unit>`. The terminal callback
+and return value describe the same run; do not start a second request from a
+terminal callback.
 
-## 🚦 Cancellation
+## Reentrancy and ownership
 
-- `QuickDotAI.cancel()` forwards to the native handle cancel path when the
-  engine supports it.
-- `QuickDotAI.chatCancel()` cancels the active chat session.
-- Native cancellation is cooperative and may stop at the next generated token.
-- `LiteRTLm` uses its Kotlin-side cancellation flag/session logic.
+Callbacks are non-reentrant. While a run is active, a callback must not call
+`load`, `runText`, `runOpenAI`, `metrics`, `encode`, `unload`, or `close` on the
+same engine. The native backend holds its handle lock during generation.
 
-## ✅ Failure Semantics
+`cancel` is the only operation intended for another thread. It requests
+cooperative cancellation; a backend may stop at its next token or polling
+boundary. Calling it does not make other engine operations concurrently safe.
 
-Each streaming call should emit exactly one terminal sink event:
+Use one worker/queue per engine:
 
-- `onDone()` on success
-- `onError(error, message)` on failure
+```kotlin
+withContext(Dispatchers.IO) {
+    engine.runOpenAI(request, sink)
+}
+```
 
-Native non-zero `ErrorCode` values are mapped through `QuickAiError.fromNativeCode`.
+Call `close()` after the worker has stopped using the engine. `close()` is
+idempotent.
 
-## 📎 Related Docs
+## Request state
 
-- [QuickDotAI AAR API](QuickDotAI/README.md)
-- [Android Architecture](Architecture.md)
-- [Chat and OpenAI Usage Examples](../docs/ChatAndOpenAIUsage.md)
-- [C API Reference](../api/README.md)
+QuickDotAI does not retain a chat session or image store. Each `runOpenAI`
+request must include the full conversation history in its `messages` array.
+Images are request-scoped:
+
+- native requests provide ordered `OpenAIImageTensorSidecar` tensors whose
+  sources exactly match the JSON `image_url` occurrences;
+- LiteRT-LM resolves a supported data URL or absolute file URL directly and
+  does not accept tensor sidecars.
+
+Native extension dispatch remains inside the same blocking run. If an image
+extension callback is invoked, its status is authoritative and the core never
+falls back to another multimodal path. A nonzero token-callback result is
+forwarded as a stop request to the active extension models.
+
+## Native C boundary
+
+The equivalent public C calls are:
+
+```c
+ErrorCode quickAiRunText(
+  CausalLmHandle handle,
+  const char *input,
+  CausalLmTokenCallback callback,
+  void *user_data);
+
+ErrorCode quickAiRunOpenAI(
+  CausalLmHandle handle,
+  const char *json_request,
+  const QuickAiImageTensorV1 *images,
+  size_t image_count,
+  CausalLmTokenCallback callback,
+  void *user_data);
+```
+
+They invoke the callback synchronously. Returning nonzero from
+`CausalLmTokenCallback` requests cancellation. JNI uses private arm/disarm
+coordination so a Kotlin `cancel()` issued from another thread reaches the
+currently active native run.
+
+See [QuickDotAI/README.md](QuickDotAI/README.md) for request examples and
+[../api/README.md](../api/README.md) for the C API contract.

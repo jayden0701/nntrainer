@@ -1,32 +1,35 @@
-# ☄️ CausalLM Inference with NNTrainer
+# CausalLM inference with NNTrainer
 
-This application provides a standalone executable and an optional C API to run causal LLM models using NNTrainer.
-It supports *inference* mode (text generation) on various devices, including Android.
+CausalLM runs transformer inference on NNTrainer. The directory provides:
 
-## Features
+- `nntr_causallm`, a path-based command-line application.
+- `libcausallm`, the model, tokenizer, and grammar runtime.
+- `libquick_dot_ai_api`, a handle-based C API.
+- the Android `QuickDotAI` AAR, with native and LiteRT-LM backends.
 
-- **Standalone Application (`nntr_causallm`)**: A command-line tool to load models and generate text.
-- **C API (Optional)**: A lightweight C interface (`libquick_dot_ai_api.so`) for integrating LLM capabilities into other applications (e.g., Android JNI, iOS, or other C/C++ apps).
-- **Core Library**: The core implementation is separated into `libcausallm.so` for modularity.
-- **Supported Backends**: CPU by default, with optional QNN support on Android.
+CPU is the default backend. Android QNN support is opt-in.
 
 ## Supported models
 
 - Llama
-- Qwen3 (0.6B, 1.7B, 4B, 7B, 14B, 32B) [[link](https://huggingface.co/Qwen/Qwen3-4B)]
-- Qwen3-MoE (30B-A3B) [[link](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507)]
-- GPT-OSS (MoE: 20B, 120B) [[link](https://huggingface.co/openai/gpt-oss-20b)]
-- You can try your own model with custom layers!
-- Feel free to contribute! 😊
+- Qwen3 (0.6B, 1.7B, 4B, 8B, 14B, 32B)
+  [[link](https://huggingface.co/Qwen/Qwen3-4B)]
+- Qwen3-MoE (30B-A3B)
+  [[link](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507)]
+- GPT-OSS (MoE: 20B, 120B)
+  [[link](https://huggingface.co/openai/gpt-oss-20b)]
+- Custom models implemented with NNTrainer layers
 
-For more details, please refer to the [Model Documentation](models/README.md).
+See [models/README.md](models/README.md) for model-specific configuration and
+conversion notes.
 
 ## Performance
 
 Measured on a **Galaxy S26 Ultra (SM-S948U)**, CPU backend, with **Qwen3-0.6B**
-quantized to **Q4_0** FC weights + **Q6_K** embedding / LM head. `prefill` =
-prompt-encode throughput, `decode` = autoregressive generation throughput
-(32 new tokens). Flash (GEMM) attention engages for prompts ≥ 32 tokens.
+quantized to **Q4_0** FC weights + **Q6_K** embedding / LM head. `prefill` is
+prompt-encode throughput, and `decode` is autoregressive generation throughput
+for 32 new tokens. Flash (GEMM) attention engages for prompts with at least 32
+tokens.
 
 | Activation | Threads | Prompt | Prefill (tok/s) | Decode (tok/s) |
 | --- | --- | --- | --- | --- |
@@ -37,46 +40,59 @@ prompt-encode throughput, `decode` = autoregressive generation throughput
 | Q4_0-FP32 | 8 | 1003 | 299 | 50 |
 | Q4_0-FP32 | 4 | 1003 | 206 | 45 |
 
-`Q4_0-FP16` (FP16 activation) is the recommended device config: ~2× the prefill
-throughput of the FP32-activation path on the FP16 build, and token-coherent with
-it. Prefill throughput drops as the prompt grows (attention is O(n²)); a very
-short prompt (e.g. the 18-token default `sample_input`) reports a much lower
-number (~240 tok/s) because it is below the flash-attention threshold and is
-dominated by fixed setup cost — not representative of sustained throughput.
-Peak RSS ≈ 0.94 GB.
+`Q4_0-FP16` (FP16 activation) is the recommended device configuration: it
+provides about twice the prefill throughput of the FP32-activation path on the
+FP16 build and is token-coherent with it. Prefill throughput drops as the
+prompt grows because attention is O(n²). A very short prompt, such as the
+18-token default `sample_input`, reports a much lower number (about 240 tok/s)
+because it is below the flash-attention threshold and dominated by fixed setup
+cost. Peak RSS is approximately 0.94 GB.
 
-## CausalLM API
+## QuickDotAI API
 
-The CausalLM application exposes a C API for easy integration with other applications (e.g., Android JNI).
-The API allows loading models, running inference, and retrieving performance metrics.
+The public API is a handle-based C interface. Load a catalog descriptor with
+`loadModelHandleByName()`, then use one of the two generation contracts:
 
-For detailed documentation, please refer to [API Documentation](api/README.md).
+- `quickAiRunText()` accepts non-empty, already-formatted model input exactly
+  as supplied. It does not add a chat template, roles, or conversation history.
+- `quickAiRunOpenAI()` accepts one complete OpenAI Chat Completions-style JSON
+  object. It renders messages with the model's Hugging Face chat template and
+  the request must include the complete history for that run.
 
-## Chat Template
+Both calls stream synchronous UTF-8 deltas through a callback. The API has no
+hidden chat session. Native image requests use the separate, versioned model
+extension ABI and have no generic or legacy multimodal fallback.
 
-CausalLM supports automatic chat template formatting by reading the `chat_template` field from HuggingFace's `tokenizer_config.json`. This eliminates the need for hardcoded per-model chat formatting.
+See [api/README.md](api/README.md) for lifecycle, ownership, capability, image,
+extension ABI, and exact error-code contracts.
 
-### How It Works
+## Model directory
 
-Most HuggingFace models include a `tokenizer_config.json` with a `chat_template` field (Jinja2 format) that defines how to format conversations. CausalLM includes a built-in mini Jinja2 renderer that processes these templates at runtime.
+A native model directory normally contains:
 
-When a `tokenizer_config.json` is present in the model directory:
-- **CLI (`nntr_causallm`)**: Raw user input provided as a command-line argument is automatically wrapped with the chat template.
-- **C API**: The `apply_chat_template()` function uses the dynamic template instead of hardcoded formats.
+- `config.json`
+- `generation_config.json`
+- `tokenizer.json`
+- `tokenizer_config.json`
+- `nntr_config.json`
+- the weight file named by `nntr_config.json`
 
-If `tokenizer_config.json` is absent or does not contain a `chat_template` field, a warning is printed and raw input is passed through unchanged.
+When `tokenizer_config.json` contains a Hugging Face `chat_template`,
+OpenAI-style requests are rendered with that template. `quickAiRunText`, by
+contrast, accepts already-formatted text exactly as supplied.
 
-### Supported Template Features
+### Chat template renderer
 
-The built-in Jinja2 renderer supports the following constructs commonly used in HuggingFace chat templates:
+CausalLM includes a small Jinja2-compatible renderer for the constructs
+commonly used by Hugging Face chat templates:
 
 | Feature | Example |
-|---------|---------|
+| --- | --- |
 | For loops | `{% for message in messages %}...{% endfor %}` |
 | Conditionals | `{% if %}...{% elif %}...{% else %}...{% endif %}` |
 | Output expressions | `{{ bos_token }}` |
 | Variable assignment | `{% set offset = 1 %}` |
-| Dict/array access | `message['role']`, `messages[0]` |
+| Dictionary and array access | `message['role']`, `messages[0]` |
 | String concatenation | `'<\|im_start\|>' + message['role']` |
 | Comparison operators | `==`, `!=`, `>`, `<`, `>=`, `<=` |
 | Boolean operators | `and`, `or`, `not` |
@@ -87,95 +103,82 @@ The built-in Jinja2 renderer supports the following constructs commonly used in 
 | Namespace | `namespace()` for cross-scope variable mutation |
 | Whitespace control | `{%- -%}`, `{{- -}}` |
 
-### Required Files
+The path-based `nntr_causallm` CLI treats an explicit command-line prompt as
+exact input. When the prompt is omitted, it applies the model template to
+`nntr_config.json`'s `chat_input`. The C API makes the distinction explicit:
+`quickAiRunOpenAI()` performs message rendering, while `quickAiRunText()` is
+the exact-input entry point.
 
-To use chat templates, ensure `tokenizer_config.json` is in your model directory alongside the other config files. This file is included by default when downloading models from HuggingFace.
+## Linux build
 
-### Example
-
-```bash
-# With tokenizer_config.json present, raw input is auto-formatted:
-./nntr_causallm /path/to/model "What is machine learning?"
-
-# The input will be automatically wrapped, e.g. for Qwen3:
-# <|im_start|>user
-# What is machine learning?<|im_end|>
-# <|im_start|>assistant
-```
-
-### Multi-turn Conversations (API)
-
-The C API supports multi-turn conversations through `ChatMessage`:
-
-```cpp
-#include "chat_template.h"
-
-causallm::ChatTemplate tmpl = causallm::ChatTemplate::fromFile("tokenizer_config.json");
-
-std::vector<causallm::ChatMessage> messages = {
-  {"system", "You are a helpful assistant."},
-  {"user", "Hello!"},
-  {"assistant", "Hi there!"},
-  {"user", "How are you?"}
-};
-
-std::string formatted = tmpl.apply(messages);
-```
-
-## How to run
-
-### 1. Prepare Model Files
-- Download and copy the model files from huggingface to `res/{model}` directory.
-- The folder should contain:
-    - `config.json`
-    - `generation_config.json`
-    - `tokenizer.json`
-    - `tokenizer_config.json`
-    - `vocab.json`
-    - `nntr_config.json`
-    - nntrainer weight binfile (matches with the name in `nntr_config.json`)
-
-### 2. PC Build & Test
-
-Compile the application with transformer support enabled.
+Initialize the nested dependencies, configure the transformer application, and
+build:
 
 ```bash
-$ meson build -Denable-fp16=true -Dthread-backend=omp -Denable-transformer=true
-$ ninja -C build
+git submodule update --init --recursive
+meson setup build-causallm \
+  -Denable-transformer=true \
+  -Denable-api=true
+ninja -C build-causallm
 ```
 
-Run the model:
+Run a native model:
 
 ```bash
-$ export NNTR_NUM_THREADS=4
-$ ./build/Applications/CausalLM/nntr_causallm {your model config folder}
+export NNTR_NUM_THREADS=4
+./build-causallm/Applications/CausalLM/nntr_causallm \
+  /path/to/model "Hello"
 ```
 
-e.g.,
+The C API library and model-dependent client are
+`build-causallm/Applications/CausalLM/libquick_dot_ai_api.so` and
+`quick_dot_ai_test`. See [api/README.md](api/README.md) for the API contract.
+
+### x86 Linux validation
+
+The request parser and xgrammar tests are registered under these exact Meson
+names:
+
 ```bash
-$ ./build/Applications/CausalLM/nntr_causallm /tmp/nntrainer/Applications/CausalLM/res/qwen3/qwen3-4b/
+meson setup build-causallm-check \
+  -Denable-transformer=true \
+  -Denable-api=true \
+  -Denable-test=true
+ninja -C build-causallm-check \
+  quick_dot_ai_test \
+  unittest_openai_request \
+  unittest_xgrammar_manager
+meson test -C build-causallm-check --print-errorlogs \
+  unittest_openai_request \
+  unittest_xgrammar_manager
 ```
 
-### 3. Windows Build & Test
+`quick_dot_ai_test` is a model-dependent client rather than a registered unit
+test. Run it separately with a compatible model installation when validating
+inference.
 
-Windows CausalLM builds need a `tokenizers_c.lib` that matches the local
-MSVC toolchain. The repository keeps the Linux static library in
+## Windows build
+
+Windows CausalLM builds need a `tokenizers_c.lib` that matches the local MSVC
+toolchain. The repository keeps the Linux static library in
 `Applications/CausalLM/lib/`; Windows builds generate the matching library from
 source instead of carrying a checked-in binary.
 
-#### Prerequisites
+### Prerequisites
 
 - Visual Studio Build Tools with the MSVC C++ toolchain
 - Meson and Ninja
 - Rust (`cargo`) from https://rustup.rs/
 
-#### Build tokenizer library
+### Build the tokenizer library
 
 Meson builds the default `tokenizers_c.lib` automatically when it is missing.
 The helper can also be run directly to pre-build or refresh the library:
 
 ```powershell
-PS> powershell -ExecutionPolicy Bypass -File Applications\CausalLM\build_tokenizer_windows.ps1 -BuildDir build-causallm-win
+powershell -ExecutionPolicy Bypass `
+  -File Applications\CausalLM\build_tokenizer_windows.ps1 `
+  -BuildDir build-causallm-win
 ```
 
 The build writes the default Meson input under the build directory:
@@ -184,53 +187,60 @@ The build writes the default Meson input under the build directory:
 build-causallm-win\tokenizers_c_win\target\release\tokenizers_c.lib
 ```
 
-For Windows cross builds, Meson passes the matching Rust target triple and the
-library is written under `target\<triple>\release\`.
+For Windows cross builds, Meson passes the matching Rust target triple and
+writes the library under `target\<triple>\release\`.
 
 If you already have a compatible `tokenizers_c.lib`, pass it explicitly during
 Meson setup:
 
 ```powershell
-PS> meson setup build-causallm-win -Dplatform=windows -Denable-transformer=true -Dcausallm-tokenizer-lib=C:\path\to\tokenizers_c.lib
+meson setup build-causallm-win `
+  -Dplatform=windows `
+  -Denable-transformer=true `
+  -Dcausallm-tokenizer-lib=C:\path\to\tokenizers_c.lib
 ```
 
 When using a DLL import library instead of a static library, make sure the
 matching `tokenizers_c.dll` is available on `PATH` at runtime.
 
-#### Build and run
+### Build and run
 
 ```powershell
-PS> meson setup build-causallm-win -Dplatform=windows -Denable-transformer=true -Denable-test=false
-PS> ninja -C build-causallm-win nntr_causallm
-PS> $build = Resolve-Path build-causallm-win
-PS> $dllDirs = Get-ChildItem $build -Filter *.dll -Recurse | ForEach-Object { Split-Path -Parent $_.FullName } | Sort-Object -Unique
-PS> $env:PATH = (($dllDirs + @($build, "$build\Applications\CausalLM")) -join ";") + ";" + $env:PATH
-PS> $env:NNTR_NUM_THREADS = "4"
-PS> .\build-causallm-win\Applications\CausalLM\nntr_causallm.exe C:\path\to\model "Hello from Windows"
+meson setup build-causallm-win `
+  -Dplatform=windows `
+  -Denable-transformer=true `
+  -Denable-test=false
+ninja -C build-causallm-win nntr_causallm
+$build = Resolve-Path build-causallm-win
+$dllDirs = Get-ChildItem $build -Filter *.dll -Recurse |
+  ForEach-Object { Split-Path -Parent $_.FullName } |
+  Sort-Object -Unique
+$env:PATH = (($dllDirs + @($build, "$build\Applications\CausalLM")) -join ";") +
+  ";" + $env:PATH
+$env:NNTR_NUM_THREADS = "4"
+.\build-causallm-win\Applications\CausalLM\nntr_causallm.exe `
+  C:\path\to\model "Hello from Windows"
 ```
 
-### 4. Android Build & Test
+## Android build
 
-`build_android.sh` is the single entry point for the Android native libraries,
-QuickDotAI AAR, and sample app. With no options, it builds the six canonical
-CPU native artifacts with Meson, without invoking Gradle or modifying a device.
+`build_android.sh` is the single Android entry point. It builds the public CPU
+native artifacts by default and does not invoke Gradle or modify a device:
 
-#### Prerequisites
+### Prerequisites
 
 - Android NDK (`ANDROID_NDK` or `NDK_ROOT`)
-- Meson, Ninja, CMake, and Rust (for tokenizers-cpp)
+- Meson, Ninja, CMake, and Rust for tokenizers-cpp
 - ADB only when using `--install`
 - QNN SDK (`QNN_SDK_ROOT`) only when using `--qnn`
 
-#### Build
-
 ```bash
-export ANDROID_NDK=/path/to/your/android-ndk
+export ANDROID_NDK=/path/to/android-ndk
 cd Applications/CausalLM
 ./build_android.sh
 ```
 
-CPU native artifacts are written under `builddir_app/cpu/`; QNN artifacts use
+CPU and QNN native outputs are placed in `builddir_app/cpu/` and
 `builddir_app/qnn/`. To additionally build the standalone app and AAR without
 installing them, run `./build_android.sh --app`. That mode stages
 `libcausallm.so`, `libquick_dot_ai_api.so`, and their runtime dependencies;
@@ -240,155 +250,193 @@ Gradle adds `libquickai_jni.so` and writes the debug AAR under
 The most useful options are:
 
 | Option | Behavior |
-|---|---|
+| --- | --- |
 | `--app` | Add the QuickDotAI AAR and sample APK to the canonical native build. |
-| `--install` | Push the native libraries and tools; with `--app`, also install the built APK. |
+| `--install` | Push native libraries and tools; with `--app`, also install the built APK. |
 | `--qnn` | Build the QNN variant and include its runtime libraries; requires `QNN_SDK_ROOT`. CPU is the default. |
-| `--cache` | Reuse a compatible existing nntrainer Android engine build, or build it when absent. |
+| `--cache` | Reuse a compatible nntrainer Android engine build, or build it when absent. |
 | `--clean` | Recreate the selected CPU or QNN CausalLM build directory. |
-| `--nntr-threads=N` | Set the positive nntrainer compute-thread count. |
+| `--nntr-threads=N` | Set the positive NNTrainer compute-thread count. |
 
 `--app`, `--install`, and QNN selection are independent. For example,
 `--install` pushes only native artifacts, while `--app --install` also installs
 the APK. Set `ANDROID_SERIAL` when more than one device is connected.
+
+To build the QNN variant:
+
+```bash
+export QNN_SDK_ROOT=/path/to/qnn-sdk
+./build_android.sh --qnn --app
+```
+
 QNN deployment supports HTP V75, V79, and V81 SDK runtimes and requires at
 least one complete matching Stub/Skel pair.
 
-## Quantizing Models
+The public build stages neither a proprietary `libqai_ext_model.so` model
+extension nor `htp_backend_ext_config.json`. A downstream package may add the
+plugin after `libquickai_jni.so` is loaded, but the plugin must use the exact
+extension ABI, build tag, and Transformer ABI from the same source revision and
+must remain loaded for the process lifetime.
 
-NNTrainer provides a quantization utility (`nntr_quantize`) that converts FP32 CausalLM model weights to lower-precision data types, reducing model size for efficient on-device inference.
+For a QNN model, the native loader uses
+`QUICK_DOT_AI_QNN_BACKEND_EXT_CONFIG_PATH` when that environment variable is
+set. Otherwise it appends `htp_backend_ext_config.json` to
+`modelBasePath`; if that path ends in `/models`, it uses the parent directory.
+This setting is process-wide: the environment or first QNN load determines the
+path reused by later loads. The packager is responsible for putting the JSON at
+that resolved location.
 
-### Supported Quantization Types
+See [Android/QuickDotAI/README.md](Android/QuickDotAI/README.md) for AAR usage.
 
-| Data Type | Description |
-|-----------|-------------|
-| `FP32`    | 32-bit floating point (default for embedding/LM head) |
-| `FP16`    | 16-bit floating point |
-| `Q4_0`    | 4-bit quantization (default for FC layers) |
-| `Q4_K`    | 4-bit K-quant quantization |
-| `Q6_K`    | 6-bit K-quant quantization |
+## Quantizing models
 
-> **Note (Q4_0 platform dependency):** `Q4_0` quantization produces platform-specific binary formats — the output generated on x86 is **not compatible** with ARM, and vice versa. You must run `nntr_quantize` on the **same platform architecture** where the quantized model will be used for inference. Cross-platform quantization is not yet supported.
+`nntr_quantize` converts FP32 CausalLM weights to lower-precision data types,
+reducing model size for efficient on-device inference.
 
+### Supported quantization types
+
+| Data type | Description |
+| --- | --- |
+| `FP32` | 32-bit floating point (default for embedding and LM head) |
+| `FP16` | 16-bit floating point |
+| `Q4_0` | 4-bit quantization (default for fully connected layers) |
+| `Q4_K` | 4-bit K-quant quantization |
+| `Q6_K` | 6-bit K-quant quantization |
+
+> **Q4_0 platform dependency:** `Q4_0` uses architecture-specific binary
+> layouts. Use `--isa ARM` when producing an ARM artifact on x86, or quantize
+> on the target architecture. An x86-layout output is not directly compatible
+> with ARM and vice versa.
 
 ### Prerequisites
 
-The model directory must contain the following files:
-- `config.json` – model architecture configuration
-- `generation_config.json` – generation parameters
-- `nntr_config.json` – NNTrainer-specific configuration
-- `.bin` weight file – FP32 model weights
+The source model directory must contain:
 
-### Building
+- `config.json`
+- `generation_config.json`
+- `nntr_config.json`
+- the FP32 `.bin` or `.safetensors` weight file referenced by
+  `model_file_name` in `nntr_config.json`
 
-The quantization utility is built automatically with the CausalLM application:
+The quantization utility is built with the CausalLM application:
 
 ```bash
-meson build && ninja -C build
-# The executable is: build/Applications/CausalLM/nntr_quantize
+ninja -C build-causallm nntr_quantize
 ```
 
 ### Usage
 
-```
+```text
 nntr_quantize <model_path> [options]
 ```
 
-**Options:**
-
 | Option | Description | Default |
-|--------|-------------|---------|
+| --- | --- | --- |
 | `--output`, `-o <path>` | Output directory | Same as `<model_path>` |
-| `--fc_dtype <type>` | Target dtype for FC (fully-connected) layers | `Q4_0` |
-| `--embd_dtype <type>` | Target dtype for embedding layer | `FP32` |
-| `--lmhead_dtype <type>` | Target dtype for LM head layer | Same as `embd_dtype` |
+| `--fc_dtype <type>` | Target dtype for fully connected layers | `Q4_0` |
+| `--embd_dtype <type>` | Target dtype for the embedding layer | `FP32` |
+| `--lmhead_dtype <type>` | Target dtype for the LM head | Same as `embd_dtype` |
 | `--output_bin <name>` | Output weight filename | Auto-generated |
 | `--output_format <bin\|safetensors>` | Output weight container format | `bin` |
-| `--config <path>` | Use a target `nntr_config.json` for dtype settings | – |
-| `--isa <x86|ARM|DEFAULT>` | Target ISA for quantization | `DEFAULT` |
+| `--config <path>` | Target `nntr_config.json` carrying dtype settings | None |
+| `--isa <x86\|ARM\|DEFAULT>` | Target ISA for quantization | `DEFAULT` |
 
-> The input weight format (`.bin` or `.safetensors`) is auto-detected from the
-> file referenced by `model_file_name` in `nntr_config.json`, so any of the four
-> input/output combinations is supported.
+The input container (`.bin` or `.safetensors`) is auto-detected from
+`model_file_name`, so all four input/output container combinations are
+supported.
 
 ### Examples
+
 ```bash
-# Quantize FC layers to Q4_0 (default), embedding stays FP32:
+# Q4_0 fully connected layers; embedding and LM head stay FP32.
 nntr_quantize /path/to/qwen3-4b
 
-# Quantize FC layers to Q4_0 and embedding to Q6_K:
-nntr_quantize /path/to/qwen3-4b --fc_dtype Q4_0 --embd_dtype Q6_K
+# Q4_0 fully connected layers and Q6_K embedding/LM head.
+nntr_quantize /path/to/qwen3-4b \
+  --fc_dtype Q4_0 \
+  --embd_dtype Q6_K
 
-# Quantize FC layers to Q4_0 and embedding to Q6_K in ARM format:
-nntr_quantize /path/to/qwen3-4b --fc_dtype Q4_0 --embd_dtype Q6_K --isa ARM
+# Produce an ARM Q4_0 layout while running the tool on x86.
+nntr_quantize /path/to/qwen3-4b \
+  --fc_dtype Q4_0 \
+  --embd_dtype Q6_K \
+  --isa ARM
 
-# Quantize to a different output directory:
+# Write to a separate, self-contained model directory.
 nntr_quantize /path/to/qwen3-4b -o /output/qwen3-4b-q4
 
-# Use a pre-configured target nntr_config.json:
-nntr_quantize /path/to/qwen3-4b --config /path/to/target_nntr_config.json
+# Use a preconfigured target nntr_config.json.
+nntr_quantize /path/to/qwen3-4b \
+  --config /path/to/target/nntr_config.json
 
-# Quantize FC layers to Q4_0 and write a .safetensors file instead of .bin:
-nntr_quantize /path/to/qwen3-4b --fc_dtype Q4_0 --output_format safetensors
+# Store quantized weights in a safetensors container.
+nntr_quantize /path/to/qwen3-4b \
+  --fc_dtype Q4_0 \
+  --output_format safetensors
 ```
 
 ### Output
 
 The utility produces:
-1. A quantized `.bin` weight file (filename auto-generated or specified via `--output_bin`)
-2. A new `nntr_config_quantized.json` (or `nntr_config.json` if output directory differs from source)
 
-After quantization, run the quantized model:
+1. A quantized `.bin` or `.safetensors` weight file.
+2. A new `nntr_config_quantized.json`, or `nntr_config.json` when the output
+   directory differs from the source.
+
+If output stays in the source directory, activate the generated configuration
+before running the model:
+
 ```bash
-# If output is in the same directory:
-mv /path/to/model/nntr_config_quantized.json /path/to/model/nntr_config.json
+mv /path/to/model/nntr_config_quantized.json \
+  /path/to/model/nntr_config.json
 nntr_causallm /path/to/model
-
-# If output is in a different directory (-o), the tool copies config.json,
-# generation_config.json and the tokenizer files automatically, so the
-# output directory is self-contained:
-nntr_causallm /output/dir
 ```
 
-## Quantized Safetensors Format
+With `-o`, the tool copies `config.json`, `generation_config.json`, and the
+tokenizer files, so the output directory is self-contained:
 
-NNTrainer can store quantized weights (`Q4_0` / `Q4_K` / `Q6_K`) in the
+```bash
+nntr_causallm /output/qwen3-4b-q4
+```
+
+## Quantized safetensors format
+
+NNTrainer can store quantized weights (`Q4_0`, `Q4_K`, and `Q6_K`) in the
 [safetensors](https://github.com/huggingface/safetensors) container in addition
-to the raw `.bin` format. The quantized payload is byte-for-byte identical to
-the `.bin` payload — only the container differs.
+to raw `.bin`. The quantized payload is byte-for-byte identical; only the
+container differs.
 
-### How it fits together
+### Data flow
 
-```
-                      ┌──────────────────────────────┐
-   FP32 weights ─────▶│          nntr_quantize         │
+```text
+                      ┌─────────────────────────────────┐
+   FP32 weights ─────▶│          nntr_quantize          │
  (.bin / .safetensors)│  GgmlQuantizer (Q4_0/Q4_K/Q6_K)│
-                      └───────────────┬────────────────┘
-                                      │  --output_format
-                          ┌───────────┴───────────┐
-                          ▼                         ▼
-                  quantized .bin           quantized .safetensors
+                      └───────────────┬─────────────────┘
+                                      │ --output_format
+                          ┌───────────┴────────────┐
+                          ▼                        ▼
+                  quantized .bin          quantized .safetensors
                                             (self-describing header)
                                                     │
                   ┌─────────────────────────────────┤
-                  ▼                                  ▼
-       nntr_safetensors_info               nntr_causallm (runtime)
-       (header-only inspection)        1. read header  → byte offsets
-                                       2. mmap data section (no full read)
-                                       3. weight tensors point at the
-                                          quantized blocks directly
+                  ▼                                 ▼
+       nntr_safetensors_info              nntr_causallm runtime
+       (header-only inspection)       1. parse header and offsets
+                                      2. mmap the data section
+                                      3. point tensors at quantized blocks
 ```
 
-At load time the runtime only parses the (small) JSON header to obtain each
-tensor's byte offset, then memory-maps the data section — the large file is
-**never read twice**.
+At load time, the runtime parses only the small JSON header to obtain tensor
+offsets, then memory-maps the data section. The large payload is not read
+twice.
 
 ### Header layout
 
-A safetensors file is `[8-byte header length][JSON header][packed tensor data]`.
-Quantized tensors are stored as opaque byte blobs so that standard safetensors
-tooling can still read the file, while the native nntrainer type and logical
-(pre-quantization) shape are preserved in extension fields:
+A safetensors file consists of
+`[8-byte header length][JSON header][packed tensor data]`. Quantized tensors
+are opaque byte blobs, while extension fields preserve the native NNTrainer
+type and logical pre-quantization shape:
 
 ```json
 {
@@ -413,33 +461,34 @@ tooling can still read the file, while the native nntrainer type and logical
 ```
 
 | Field | Meaning |
-|-------|---------|
-| `dtype` | Standard safetensors dtype. `U8` for any block-quantized tensor. |
-| `shape` | Standard shape. For quantized tensors this is the raw byte length. |
-| `nntr_dtype` | Native nntrainer type (`Q4_0` / `Q4_K` / `Q6_K`). Absent for FP32/FP16. |
-| `nntr_shape` | Logical (pre-quantization) `[N, C, H, W]` shape. Absent for FP32/FP16. |
-| `data_offsets` | `[start, end)` byte range within the data section. |
+| --- | --- |
+| `dtype` | Standard safetensors dtype; `U8` for a block-quantized tensor |
+| `shape` | Standard shape; raw byte length for a quantized tensor |
+| `nntr_dtype` | Native type (`Q4_0`, `Q4_K`, or `Q6_K`); absent for FP32/FP16 |
+| `nntr_shape` | Logical pre-quantization `[N, C, H, W]` shape; absent for FP32/FP16 |
+| `data_offsets` | Half-open `[start, end)` range within the data section |
 
-FP32/FP16 tensors are written with their standard `dtype`/`shape` and no
-extension fields, so plain (non-quantized) files stay fully standard.
+FP32 and FP16 tensors use their standard `dtype` and `shape` without extension
+fields, so unquantized files remain standard safetensors files.
 
-`Q4_0` is repacked into an ISA-specific layout (x86: `q4_0x8`, ARM: `q4_0x4`)
-that the header bytes alone cannot distinguish, so files containing a `Q4_0`
-tensor record `nntr_q4_0_isa` (`x86` / `arm`) under `__metadata__`. This is the
-layout chosen by `--isa` (with `DEFAULT` resolving to the build platform), so a
-file cross-quantized on x86 with `--isa ARM` is tagged `arm` and is identifiable
-before it is loaded on the wrong architecture.
+`Q4_0` is repacked into an ISA-specific layout (`q4_0x8` on x86 and `q4_0x4` on
+ARM) that cannot be inferred from the tensor bytes alone. A file containing a
+`Q4_0` tensor therefore records `nntr_q4_0_isa` (`x86` or `arm`) under
+`__metadata__`. The value follows `--isa`, with `DEFAULT` resolving to the
+build platform. A file cross-quantized on x86 with `--isa ARM` is consequently
+tagged `arm` and can be identified before loading on the wrong architecture.
 
 ### Inspecting a file
 
-Use `nntr_safetensors_info` to read just the header and print the embedded
-metadata plus a per-tensor table — no weight data is loaded:
+`nntr_safetensors_info` reads only the header and prints metadata and a
+per-tensor table:
 
 ```bash
-nntr_safetensors_info /path/to/model.safetensors
+./build-causallm/Applications/CausalLM/nntr_safetensors_info \
+  /path/to/model.safetensors
 ```
 
-```
+```text
 file: model.safetensors
 header bytes: 24960
 
@@ -454,5 +503,5 @@ tensors: 2
   output_norm:weight   F32       4096          [1,1,1,1024]
 ```
 
-This makes a quantized `.safetensors` file self-describing: the quantization
-type of each weight is visible without an accompanying `nntr_config.json`.
+This makes a quantized `.safetensors` file self-describing: each weight's
+quantization type is visible without an accompanying `nntr_config.json`.

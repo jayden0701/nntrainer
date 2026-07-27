@@ -1,175 +1,140 @@
-# Android Architecture 📱
+# QuickDotAI Android architecture
 
-This document describes the current Android state of Quick.AI and separates it
-from the planned REST/foreground-service layer that older documents described
-as if it already existed.
-
-## ✅ Current Gradle Modules
-
-The Android build currently includes:
+The Android tree contains two Gradle modules:
 
 ```text
 Android/
-├── QuickDotAI/       # AAR module
-└── SampleTestAPP/    # Direct sample app using the AAR
+  QuickDotAI/       reusable AAR
+  SampleTestAPP/    direct AAR consumer
 ```
 
-`Android/settings.gradle.kts` includes only `:QuickDotAI` and
-`:SampleTestAPP`.
+There is no service, socket, or hidden session layer. An application owns a
+`QuickDotAI` instance and calls it directly.
 
-## 🧱 QuickDotAI AAR
+## Public layer
 
-`QuickDotAI` exposes the public Kotlin API in
-`com.example.quickdotai`.
+Package `com.example.quickdotai` exposes:
 
-Key files:
+- `QuickDotAI.kt`: lifecycle, generation, cancellation, and streaming
+  contracts.
+- `Types.kt`: load requests, OpenAI image sidecars, errors, and metrics.
+- `ModelCatalog.kt`: native and LiteRT model descriptors and selection helpers.
 
-| File | Role |
-|---|---|
-| `QuickDotAI.kt` | Public interface and `BackendResult` / `StreamSink` contracts |
-| `Types.kt` | Serializable request/response DTOs, model enums, errors, metrics |
-| `NativeQuickDotAI.kt` | Kotlin wrapper around one native `CausalLmHandle` |
-| `NativeCausalLm.kt` | Low-level JNI declarations |
-| `LiteRTLm.kt` | LiteRT-LM engine wrapper for the `gemma4` (`ModelIds.GEMMA4`) model |
-| `NativeChatSession.kt` | Native chat-session helper |
-| `LiteRTLmChatSession.kt` | LiteRT-LM chat-session helper |
-| `ImageStore.kt` | Per-session image cache (SHA-256 dedup) |
-| `LlavaNextImageProcessor.kt` | Native multimodal preprocessing helper (any-resolution patching) |
-| `PilloBilinearResizer.kt` | Pillow-compatible bilinear resize used by the image processors |
-| `src/main/cpp/quickai_jni.cpp` | JNI bridge to `quick_dot_ai_api.h` |
-| `src/main/cpp/CMakeLists.txt` | Builds `libquickai_jni.so` and links `libquick_dot_ai_api.so` |
+The public engine lifecycle is:
 
-## 🔌 Native Path
+```text
+createEngine(descriptor)
+  -> load(request)
+  -> runText(...) or runOpenAI(...)
+  -> metrics() / encode(...) as supported
+  -> unload() or close()
+```
 
-`NativeQuickDotAI` owns one native handle:
+There is no chat session retained between calls. A backend may create a
+request-local conversation object while `runOpenAI` is active, but every
+request contains the complete message history and all images needed for that
+run.
+
+## Native runtime
+
+The native implementation is arranged as:
 
 ```text
 NativeQuickDotAI
-  └── NativeCausalLm.ensureLoaded()
-      ├── optionally loads libqnn_context.so when it is packaged
-      └── loads libquickai_jni.so
-            └── links/calls libquick_dot_ai_api.so
-                  └── links/calls libcausallm.so
+  -> NativeCausalLm JNI declarations
+  -> libquickai_jni.so
+  -> libquick_dot_ai_api.so
+  -> libcausallm.so and NNTrainer
 ```
 
-The native API surface is declared in `api/quick_dot_ai_api.h`.
-The preferred calls are handle-based:
+`NativeCausalLm` first attempts to load the optional `libqnn_context.so`, then
+loads the owner library `libquickai_jni.so`. After that it attempts to load an
+optional downstream `libqai_ext_model.so`, whose initializer may register
+model descriptors and callbacks through `quick_dot_ai_extension_api.h`.
+The extension API does not register a C++ model constructor. A plugin that
+introduces a new architecture must also arrange for that architecture to be
+registered with the shared CausalLM `Factory`.
 
-- `loadModelHandleByName` (dispatched from Kotlin via the
-  `loadModelHandleByNameNative` JNI declaration in `NativeCausalLm.kt`)
-- `runModelHandleWithMessagesStreaming`
-- `runModelHandleWithJsonStreaming`
-- `runMultimodalHandleStreaming`
-- `cancelModelHandle`
-- `destroyModelHandle`
+The public build does not create or stage `libqai_ext_model.so`. A downstream
+plugin must match the host's exact extension ABI, build tag, and Transformer
+ABI, and must remain loaded for the process lifetime.
 
-## ModelCatalog
+Text-only OpenAI requests run in the public core. Native image requests require
+preprocessed tensor sidecars and a registered versioned extension. Once an
+extension callback is invoked, its result is final; there is no generic or
+legacy multimodal fallback.
 
-Model selection in the AAR is driven by the `ModelCatalog` singleton. Models
-are identified by string ids rather than an enum.
+## LiteRT-LM runtime
 
-### Seeding
+`LiteRTLm` wraps a `.litertlm` model through LiteRT-LM. The built-in `gemma4`
+descriptor is GPU-only and supports streaming OpenAI requests. `runText` is
+unsupported because LiteRT-LM cannot guarantee the exact-text contract.
 
-`ModelCatalog` is seeded on first access by calling `nativeQueryCatalog()`
-through JNI, which delegates to `getModelCatalogJson()` in
-`libquick_dot_ai_api.so`. Hardcoded LiteRT descriptors (e.g., `gemma4`) are
-merged in at the Kotlin layer.
+For an image request:
 
-### Key types
+- `LoadModelRequest.visionBackend` must be configured.
+- the OpenAI request uses `data:image/...;base64,...` or an absolute `file://`
+  URL.
+- preprocessed `OpenAIImageTensorSidecar` data is unsupported.
+- the current descriptor lacks `MULTI_IMAGE`, so it accepts at most one image.
 
-| Type | Role |
-|---|---|
-| `enum class RuntimeKind { NATIVE, LITERT }` | Selects the engine path |
-| `enum class Capability { STREAMING, MESSAGES_API, MULTIMODAL, TOOL_USE, EMBEDDING, MULTI_IMAGE }` | Per-model feature flags |
-| `data class ModelDescriptor(id, family, displayName, runtime, backends, capabilities)` | Descriptor from the catalog |
-| `object ModelIds` | String constants for well-known model ids |
-| `object ModelCatalog` | Singleton: `all()`, `families()`, `selectable()`, `selectableFamilies()`, `runtimesFor(family)`, `backendsFor(family, rt)`, `resolve(family, rt, backend)`, `byId(id)` |
+## Catalog and engine selection
 
-### 3-axis cascading UI
+`ModelCatalog` obtains native descriptors from `getModelCatalogJson()` and
+adds LiteRT-only descriptors in Kotlin. Model IDs are strings and each
+descriptor supplies its runtime, supported backends, capabilities, and
+optional speculative-decoding variant.
 
-`SampleTestAPP` presents a 3-axis cascading UI:
+A descriptor is available to the generation picker exactly when:
 
-1. **Family** — populated from `ModelCatalog.selectableFamilies()`
-2. **Runtime chip row** — populated from `ModelCatalog.runtimesFor(selectedFamily)`
-3. **Backend chip row** — populated from `ModelCatalog.backendsFor(selectedFamily, selectedRuntime)`
-
-The app lists only **selectable** (generative) models. Embedding-only models
-such as `tiny-bert` — which expose only the `EMBEDDING` capability and have no
-public output path — are filtered out by `selectableFamilies()`. They remain in
-the AAR catalog and are still reachable through `ModelCatalog.all()` /
-`ModelCatalog.byId(...)`.
-
-The resolved descriptor is obtained via `ModelCatalog.resolve(family, runtime, backend)`
-and passed directly to `createEngine()`.
-
-### Engine factory
-
-```kotlin
-QuickDotAI.createEngine(context, descriptor: ModelDescriptor): QuickDotAI
+```text
+(STREAMING or OPENAI_API) and not VISION_ENCODER
 ```
 
-`createEngine` dispatches to `NativeQuickDotAI` (for `RuntimeKind.NATIVE`) or
-`LiteRTLm` (for `RuntimeKind.LITERT`) based on `descriptor.runtime`.
+In a QNN-enabled build, the standalone `vjepa2-qnn` `VISION_ENCODER` remains
+visible through `ModelCatalog.all()` and `byId()`, but is excluded from the
+generative family/runtime/backend picker. `createEngine(descriptor)` selects
+`NativeQuickDotAI` or `LiteRTLm` from `descriptor.runtime`; `load` then verifies
+the model ID, backend, and speculative variant against that descriptor.
 
-### LoadModelRequest
+## Threading
 
-`LoadModelRequest.modelId` is a `String` catalog id. The cache key is
-`"$modelId:${quantization.name}"`. The JNI call dispatched on load is
-`loadModelHandleByNameNative`.
+Generation blocks its invoking worker thread while delivering stream events.
+A `QuickDotAI` instance is not generally thread-safe:
 
-## 🌗 LiteRT Runtime Path
+- serialize `load`, generation, `metrics`, `encode`, `unload`, and `close`;
+- do not call those methods from a `StreamSink` callback;
+- use `cancel` as the only cross-thread operation;
+- marshal callbacks to Android's main thread before updating UI.
 
-`LiteRTLm` is selected for the `gemma4` (`ModelIds.GEMMA4`) model and takes a `.litertlm` file path
-through `LoadModelRequest.modelPath`. `visionBackend != null` enables
-multimodal calls for engines/models that support image input.
+See [AsyncAndStreaming.md](AsyncAndStreaming.md) for the detailed event
+contract.
 
-## 🧵 Threading Model
+## Packaging
 
-A `QuickDotAI` instance is not internally thread-safe. Host apps should drive a
-loaded engine from one worker thread. `SampleTestAPP` follows this pattern with
-a background dispatcher.
+From `Applications/CausalLM`, a CPU package is the default:
 
-Streaming callbacks are delivered to the caller-provided `StreamSink`.
-Apps that update UI must marshal callbacks to the main thread.
+```bash
+export ANDROID_NDK=/path/to/android-ndk
+./build_android.sh --app
+```
 
-## 🧪 SampleTestAPP
+QNN is opt-in:
 
-`SampleTestAPP` is the current runnable Android sample. It links the
-`:QuickDotAI` module directly; it does not start a REST service and does not
-communicate over sockets.
+```bash
+export QNN_SDK_ROOT=/path/to/qnn-sdk
+./build_android.sh --qnn --app
+```
 
-## 🗺️ Planned Service Layer
+The script stages public native dependencies into
+`Android/QuickDotAI/prebuilt_libs/`; Gradle builds `libquickai_jni.so` and the
+AAR. It does not stage a proprietary model plugin or
+`htp_backend_ext_config.json`.
 
-The following pieces are design targets, not current Gradle modules:
+For QNN, the native loader first honors
+`QUICK_DOT_AI_QNN_BACKEND_EXT_CONFIG_PATH`. Otherwise it looks for
+`htp_backend_ext_config.json` under `modelBasePath`, or under the parent when
+`modelBasePath` ends in `/models`. This is process-wide: the environment or
+first QNN load determines the path reused by later loads.
 
-| Planned component | Status |
-|---|---|
-| `LauncherApp` foreground-service bootstrap UI | Planned |
-| `QuickAIService` remote foreground service | Planned |
-| NanoHTTPD loopback REST server | Planned |
-| `RequestDispatcher`, `ModelRegistry`, `ModelWorker` | Planned |
-| Standalone REST client app | Planned |
-
-When implemented, the service layer should wrap the same `QuickDotAI` AAR
-contract rather than inventing a separate model API.
-
-## 📦 Packaging
-
-`../build_android.sh` owns the current Android packaging workflow. Its
-no-option mode builds the canonical CPU native artifacts with Meson. `--app`
-adds the standalone app, stages `libcausallm.so`,
-`libquick_dot_ai_api.so`, and their nntrainer dependencies into
-`QuickDotAI/prebuilt_libs/`, and assembles the QuickDotAI AAR and
-SampleTestAPP without touching a device.
-
-Use `--qnn` with `QNN_SDK_ROOT` to select the QNN variant; CPU is the default.
-`--install` pushes the canonical native libraries and
-tools, and installs SampleTestAPP only when combined with `--app`. Use
-`ANDROID_SERIAL` to select a device when necessary. `--cache` reuses a
-compatible engine build when available and rebuilds it on a cache miss.
-
-## 📎 Related Docs
-
-- [QuickDotAI AAR API](QuickDotAI/README.md)
-- [Android Native Async & Streaming](AsyncAndStreaming.md)
-- [Main README](../README.md)
+See [QuickDotAI/README.md](QuickDotAI/README.md) for application integration.
