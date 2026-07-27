@@ -31,6 +31,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <future>
 #include <iomanip>
@@ -1178,25 +1179,46 @@ void NeuralNetwork::load(const std::string &file_path,
     NNTR_THROW_IF(!isFileExist(props::FilePath(v[0])), std::invalid_argument)
       << "Cannot open QNN context bin file";
 
-    std::thread qnn_load([this, &v]() {
-      int ret =
-        ct_engine->getRegisteredContext("qnn")->load(props::FilePath(v[0]));
-      throw_status(ret);
-    });
-
     if (!fsu_mode && v.size() > 1) {
       NNTR_THROW_IF(!isFileExist(props::FilePath(v[1])), std::invalid_argument)
         << "Cannot open weight bin file";
-      load(props::FilePath(v[1]), ml::train::ModelFormat::MODEL_FORMAT_BIN);
     } else if (fsu_mode) {
       NNTR_THROW_IF(v.size() <= 1, std::invalid_argument)
         << "Swap mode should run with loading a weight-bin file";
       NNTR_THROW_IF(!isFileExist(props::FilePath(v[1])), std::invalid_argument)
         << "Cannot open weight bin file";
-      // model_graph.setFsuWeightPath(v[1]);
+    }
+
+    const std::string qnn_path = v[0];
+    std::exception_ptr qnn_error;
+    std::thread qnn_load([this, qnn_path, &qnn_error]() noexcept {
+      try {
+        int ret = ct_engine->getRegisteredContext("qnn")->load(
+          props::FilePath(qnn_path));
+        throw_status(ret);
+      } catch (...) {
+        qnn_error = std::current_exception();
+      }
+    });
+
+    std::exception_ptr weight_error;
+    try {
+      if (!fsu_mode && v.size() > 1) {
+        load(props::FilePath(v[1]), ml::train::ModelFormat::MODEL_FORMAT_BIN);
+      } else if (fsu_mode) {
+        // model_graph.setFsuWeightPath(v[1]);
+      }
+    } catch (...) {
+      weight_error = std::current_exception();
     }
 
     qnn_load.join();
+    if (weight_error) {
+      std::rethrow_exception(weight_error);
+    }
+    if (qnn_error) {
+      std::rethrow_exception(qnn_error);
+    }
     break;
   }
   case ml::train::ModelFormat::MODEL_FORMAT_SAFETENSORS: {

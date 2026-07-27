@@ -19,6 +19,7 @@
 #include <inttypes.h>
 #include <memory>
 #include <qnn_context.h>
+#include <stdexcept>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -92,7 +93,6 @@ QNNGraph::~QNNGraph() {
     LOGD("[QNNGraph] ~QNNGraph: bin_path is empty, skipping deRegister");
   }
 }
-
 
 void QNNGraph::finalize(InitLayerContext &context) {
   bin_path = std::get<props::FilePath>(graph_props).get();
@@ -179,21 +179,23 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
   auto qc_var = getQNNVar(context);
   unsigned int graphIdx = 0;
 
-  if (!qc_var->findContext(bin_path)) {
+  auto context_ref = qc_var->findContext(bin_path);
+  if (!context_ref) {
     ml_logw("Context is not created. Create Now");
-
-    qc_var->makeContext(bin_path);
+    NNTR_THROW_IF(qc_var->makeContext(bin_path) != StatusCode::SUCCESS,
+                  std::runtime_error)
+      << "Failed to create QNN context from " << bin_path;
+    context_ref = qc_var->findContext(bin_path);
   }
 
+  NNTR_THROW_IF(!context_ref, std::runtime_error)
+    << "QNN context is unavailable after creation for " << bin_path;
+
   auto graphInfo = qc_var->graphRetrieve(bin_path, context.getName());
-
-  std::optional<std::reference_wrapper<Qnn_Context_Graph_t>> op =
-    qc_var->findContext(bin_path);
-
-  Qnn_Context_Graph_t &context_i = *op;
-
   NNTR_THROW_IF(!graphInfo, std::invalid_argument)
     << "cannot retrieve graph " << context.getName() << " from " << bin_path;
+
+  Qnn_Context_Graph_t &context_i = context_ref->get();
 
   NNTR_THROW_IF(context.getNumInputs() != graphInfo->numInputTensors,
                 std::invalid_argument)
