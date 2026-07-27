@@ -19,8 +19,7 @@ typedef enum {
 
 typedef enum {
   QDA_CAP_STREAMING = 1u << 0,
-  QDA_CAP_OPENAI_API = 1u << 1,              /**< OpenAI-compatible JSON API */
-  QDA_CAP_MESSAGES_API = QDA_CAP_OPENAI_API, /**< Deprecated source alias */
+  QDA_CAP_OPENAI_API = 1u << 1, /**< OpenAI-compatible JSON API */
   QDA_CAP_MULTIMODAL = 1u << 2,
   QDA_CAP_TOOL_USE = 1u << 3,
   QDA_CAP_EMBEDDING = 1u << 4,
@@ -44,12 +43,12 @@ typedef struct {
   RuntimeKind runtime;       /**< QDA_RUNTIME_NATIVE */
   unsigned int backend_mask; /**< bit i set => BackendType i supported */
   unsigned int capabilities; /**< CapabilityFlag OR */
+  const char *config_name;   /**< Canonical file-based loader key */
   const char
-    *config_name; /**< g_model_registry lookup key e.g. "Qwen3-0.6B-W4A32" */
-  const char *arch_string; /**< causallm::Factory key e.g. "Qwen3ForCausalLM" */
-  const char *sd_variant_id; /**< catalog id of the speculative-decoding
-                                  variant to load when SD is enabled; NULL if
-                                  none */
+    *sd_variant_id; /**< catalog id of the speculative-decoding
+ variant to load
+                       when SD is enabled; NULL if
+ none */
 } ModelDescriptor;
 
 #ifdef __cplusplus
@@ -59,11 +58,12 @@ typedef struct {
 #ifdef __cplusplus
 namespace quick_dot_ai {
 /**
- * @brief Register a descriptor into g_descriptor_registry.
- * Duplicate ids
- * and speculative-variant aliases are rejected. The
- *        speculative
- * capability and non-empty variant id must appear together.
+ * @brief Register a built-in model descriptor.
+ *
+ * Duplicate IDs and
+ * speculative-variant aliases are rejected. The speculative
+ * capability and a
+ * non-empty variant ID must appear together.
  */
 void register_model_descriptor(const ModelDescriptor *desc);
 } // namespace quick_dot_ai

@@ -357,7 +357,10 @@ if get_option('enable-api')
     include_directories('xgrammar' / '3rdparty' / 'dlpack' / 'include'),
   ]
 
-  quick_dot_ai_api_cpp_args = ['-DQUICK_AI_EXTENSION_API_BUILD=1']
+  quick_dot_ai_api_cpp_args = [
+    '-DQUICK_AI_API_BUILD=1',
+    '-DQUICK_AI_EXTENSION_API_BUILD=1',
+  ]
   if get_option('enable-qnn-models')
     quick_dot_ai_api_inc += [
       include_directories('qnn'),
@@ -369,7 +372,6 @@ if get_option('enable-api')
   quick_dot_ai_api_src = [
     meson.current_source_dir() / 'api' / 'quick_dot_ai_api.cpp',
     meson.current_source_dir() / 'api' / 'model_callbacks.cpp',
-    meson.current_source_dir() / 'api' / 'model_config.cpp',
     meson.current_source_dir() / 'api' / 'model_descriptors_public.cpp',
     meson.current_source_dir() / 'api' / 'callback_streamer.cpp',
   ]
@@ -389,6 +391,7 @@ if get_option('enable-api')
   )
 
   install_headers(
+    meson.current_source_dir() / 'api' / 'quick_dot_ai_api.h',
     meson.current_source_dir() / 'api' / 'quick_dot_ai_extension_api.h',
     install_dir: nntrainer_includedir / 'causallm',
   )

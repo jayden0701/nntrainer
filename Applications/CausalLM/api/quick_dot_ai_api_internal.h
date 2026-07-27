@@ -22,13 +22,13 @@ extern "C" {
  * Every successful arm must be paired with quickAiDisarmRunCancellation(),
  * including when argument marshalling fails before generation starts.
  */
-WIN_EXPORT ErrorCode quickAiArmRunCancellation(CausalLmHandle handle);
+QUICK_AI_API_EXPORT ErrorCode quickAiArmRunCancellation(CausalLmHandle handle);
 
 /**
  * @brief Clear an adapter announcement not consumed by a generation call.
  * @param handle Handle previously passed to quickAiArmRunCancellation()
  */
-WIN_EXPORT void quickAiDisarmRunCancellation(CausalLmHandle handle);
+QUICK_AI_API_EXPORT void quickAiDisarmRunCancellation(CausalLmHandle handle);
 
 #ifdef __cplusplus
 }

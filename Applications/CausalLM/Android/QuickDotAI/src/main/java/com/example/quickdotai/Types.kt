@@ -398,8 +398,10 @@ data class OpenAIRequest(
  *
  * [modelPath], [visionBackend], [cacheDir], and [maxNumTokens] configure the
  * LiteRT-LM engine. [nativeLibDir] and [modelBasePath] configure the native
- * engine. [quantization] is native-only. Backend-specific fields that do not
- * apply to the selected engine are ignored as documented below.
+ * engine. [quantization] is a native-only compatibility field; current
+ * file-based catalog entries select their concrete variant independently.
+ * Backend-specific fields that do not apply to the selected engine are ignored
+ * as documented below.
  */
 @Serializable
 data class LoadModelRequest(
@@ -448,26 +450,13 @@ data class LoadModelRequest(
     @SerialName("model_base_path") val modelBasePath: String? = null,
 
     /**
-     * Optional QNN HTP backend-extension config path retained for compatibility
-     * with the current Android build. The by-name native loader derives its
-     * active config from [modelBasePath] and currently only diagnoses this
-     * field rather than forwarding it.
-     */
-    @SerialName("htp_backend_config_path")
-    val htpBackendConfigPath: String? = null,
-
-    /**
      * Enable the native model's speculative-decoding path. LiteRT-LM returns
      * [QuickAiError.UNSUPPORTED] when this is true. [modelId] must name the
      * descriptor's declared speculative variant.
      */
     @SerialName("use_speculative_decoding")
     val useSpeculativeDecoding: Boolean = false,
-) {
-    /** Canonical key shared across the stack for one loaded model handle. */
-    val modelKey: String
-        get() = "$modelId:${quantization.name}:sd=$useSpeculativeDecoding"
-}
+)
 
 /**
  * Performance metrics for the most recent run.

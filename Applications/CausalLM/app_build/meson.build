@@ -246,7 +246,10 @@ causallm_src = [
 ]
 
 causallm_core_cpp_args = []
-quick_dot_ai_api_cpp_args = ['-DQUICK_AI_EXTENSION_API_BUILD=1']
+quick_dot_ai_api_cpp_args = [
+  '-DQUICK_AI_API_BUILD=1',
+  '-DQUICK_AI_EXTENSION_API_BUILD=1',
+]
 quick_dot_ai_test_cpp_args = []
 
 # Single QNN switch. Keep the QNN ABI-affecting definitions on the targets
@@ -379,7 +382,6 @@ if get_option('enable-api')
   quick_dot_ai_api_lib = shared_library('quick_dot_ai_api',
       causallm_root / 'api' / 'quick_dot_ai_api.cpp',
       causallm_root / 'api' / 'model_callbacks.cpp',
-      causallm_root / 'api' / 'model_config.cpp',
       causallm_root / 'api' / 'model_descriptors_public.cpp',
       causallm_root / 'api' / 'callback_streamer.cpp',
       dependencies: [nntrainer_dep, causallm_dep, openmp_dep, thread_dep, log_dep],
@@ -394,6 +396,7 @@ if get_option('enable-api')
   )
 
   install_headers(
+      causallm_root / 'api' / 'quick_dot_ai_api.h',
       causallm_root / 'api' / 'quick_dot_ai_extension_api.h',
       install_dir: get_option('includedir') / 'nntrainer' / 'causallm',
   )

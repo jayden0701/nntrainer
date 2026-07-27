@@ -10,38 +10,6 @@
 #include <algorithm>
 #include <utility>
 
-ModelCallbackRegistry &ModelCallbackRegistry::instance() {
-  static ModelCallbackRegistry registry;
-  return registry;
-}
-
-bool ModelCallbackRegistry::register_for(const std::string &architecture,
-                                         ModelCallbacks callbacks) {
-  if (architecture.empty())
-    return false;
-
-  std::lock_guard<std::mutex> lock(mutex_);
-  return by_architecture_.emplace(architecture, std::move(callbacks)).second;
-}
-
-std::optional<ModelCallbacks>
-ModelCallbackRegistry::lookup(const std::string &architecture) const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  const auto iterator = by_architecture_.find(architecture);
-  if (iterator == by_architecture_.end())
-    return std::nullopt;
-  return iterator->second;
-}
-
-bool ModelCallbackRegistry::any_requires_htp() const {
-  std::lock_guard<std::mutex> lock(mutex_);
-  for (const auto &entry : by_architecture_) {
-    if (entry.second.requires_htp)
-      return true;
-  }
-  return false;
-}
-
 ModelExtensionRegistry &ModelExtensionRegistry::instance() {
   static ModelExtensionRegistry registry;
   return registry;

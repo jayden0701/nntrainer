@@ -50,19 +50,27 @@ internal class NativeQuickDotAI(
                 "modelId must not be blank"
             )
         }
-        if (!req.htpBackendConfigPath.isNullOrBlank()) {
-            Log.w(
-                TAG,
-                "htpBackendConfigPath is not forwarded separately by the catalog load path; " +
-                    "the native loader resolves QNN configuration from modelBasePath"
-            )
-        }
         val modelBasePath = req.modelBasePath?.takeIf { it.isNotBlank() }
         if (!NativeCausalLm.ensureLoaded()) {
             return BackendResult.Err(
                 QuickAiError.MODEL_LOAD_FAILED,
                 "libquickai_jni.so or one of its packaged native dependencies is unavailable"
             )
+        }
+
+        var pendingHandle = 0L
+        fun releasePendingHandle() {
+            val handleToRelease = pendingHandle
+            pendingHandle = 0L
+            if (handleToRelease == 0L) return
+            try {
+                val error = NativeCausalLm.destroyModelHandleNative(handleToRelease)
+                if (error != 0) {
+                    Log.e(TAG, "Native handle cleanup failed with error $error")
+                }
+            } catch (cleanupFailure: Throwable) {
+                Log.e(TAG, "Native handle cleanup threw", cleanupFailure)
+            }
         }
 
         return try {
@@ -73,7 +81,9 @@ internal class NativeQuickDotAI(
                 nativeLibDir = req.nativeLibDir,
                 modelBasePath = modelBasePath
             )
+            pendingHandle = loadResult.handle
             if (loadResult.errorCode != 0 || loadResult.handle == 0L) {
+                releasePendingHandle()
                 val error = QuickAiError.fromNativeCode(loadResult.errorCode)
                     .takeUnless { it == QuickAiError.NONE }
                     ?: QuickAiError.MODEL_LOAD_FAILED
@@ -92,7 +102,7 @@ internal class NativeQuickDotAI(
                 0
             }
             if (speculativeError != 0) {
-                NativeCausalLm.destroyModelHandleNative(loadResult.handle)
+                releasePendingHandle()
                 val error = QuickAiError.fromNativeCode(speculativeError)
                 return BackendResult.Err(
                     error,
@@ -101,10 +111,12 @@ internal class NativeQuickDotAI(
             }
 
             handle = loadResult.handle
+            pendingHandle = 0L
             loadedRequest = req
             modelId = req.modelId
             BackendResult.Ok(Unit)
         } catch (t: Throwable) {
+            releasePendingHandle()
             Log.e(TAG, "Native model load failed", t)
             BackendResult.Err(
                 QuickAiError.MODEL_LOAD_FAILED,
