@@ -72,7 +72,7 @@ object ModelCatalog {
     // Fallback when native query fails (public NATIVE subset).
     private val nativeFallback = listOf(
         ModelDescriptor(ModelIds.QWEN3_0_6B, "qwen3-0.6b", "Qwen3 0.6B",
-            RuntimeKind.NATIVE, setOf(BackendType.CPU, BackendType.GPU),
+            RuntimeKind.NATIVE, setOf(BackendType.CPU),
             setOf(Capability.STREAMING, Capability.OPENAI_API, Capability.TOOL_USE)),
         ModelDescriptor(ModelIds.GEMMA4_CPU, "gemma4", "Gemma4 (CPU)",
             RuntimeKind.NATIVE, setOf(BackendType.CPU),

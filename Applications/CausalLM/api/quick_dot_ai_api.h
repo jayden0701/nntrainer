@@ -55,7 +55,10 @@ enum {
   QUICK_AI_RUNTIME_LITERT = 1,
 };
 
-/** Bit values emitted in the catalog JSON @c backend_mask field. */
+/**
+ * Bit values emitted in the catalog JSON @c backend_mask field.
+ * Native descriptors emit exactly one bit for each concrete model variant.
+ */
 typedef uint32_t QuickAiBackendMask;
 enum {
   QUICK_AI_BACKEND_MASK_CPU = 1u << 0,
@@ -164,19 +167,24 @@ QUICK_AI_API_EXPORT ErrorCode setOptions(Config config);
 /**
  * @brief Load a model selected by its catalog identifier.
  *
- * @param compute Backend requested from the model descriptor
+ * @param expected_backend Concrete backend selected by the catalog entry and
+ *        model configuration. This value is a compatibility assertion; this
+ *        function does not switch a model between backends.
  * @param model_id Catalog identifier or alias
  * @param quant_type Compatibility selector; validated, but current file-based
  *        descriptors select the concrete variant without a path suffix
  * @param native_lib_dir Native library directory, or NULL
- * @param model_base_path Base directory containing model files, or NULL
+ * @param model_base_path Base directory containing model files. NULL or an
+ *        empty string selects the platform default: the app download directory
+ *        on Android and `./models`, relative to the process working directory,
+ *        elsewhere.
  * @param out_handle Receives a newly allocated handle on success and NULL on
  *        failure
  */
 QUICK_AI_API_EXPORT ErrorCode loadModelHandleByName(
-  BackendType compute, const char *model_id, ModelQuantizationType quant_type,
-  const char *native_lib_dir, const char *model_base_path,
-  CausalLmHandle *out_handle);
+  BackendType expected_backend, const char *model_id,
+  ModelQuantizationType quant_type, const char *native_lib_dir,
+  const char *model_base_path, CausalLmHandle *out_handle);
 
 /**
  * @brief Enable or disable speculative decoding for a loaded handle.

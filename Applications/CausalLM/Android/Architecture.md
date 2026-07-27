@@ -83,7 +83,9 @@ For an image request:
 `ModelCatalog` obtains native descriptors from `getModelCatalogJson()` and
 adds LiteRT-only descriptors in Kotlin. Model IDs are strings and each
 descriptor supplies its runtime, supported backends, capabilities, and
-optional speculative-decoding variant.
+optional speculative-decoding variant. Every native descriptor represents one
+concrete backend variant and therefore carries exactly one backend; the load
+request verifies that selection rather than switching the model at runtime.
 
 A descriptor is available to the generation picker exactly when:
 

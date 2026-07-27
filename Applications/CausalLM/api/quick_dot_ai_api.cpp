@@ -329,6 +329,13 @@ static const std::map<std::string, std::string> g_model_path_map = {
 #endif
 };
 
+#ifdef __ANDROID__
+static constexpr const char *DEFAULT_MODEL_BASE_PATH =
+  "/sdcard/Download/aistudio-mobile/models/";
+#else
+static constexpr const char *DEFAULT_MODEL_BASE_PATH = "./models";
+#endif
+
 // ---------------------------------------------------------------------------
 // T4: string-id descriptor registry + catalog JSON
 // ---------------------------------------------------------------------------
@@ -365,6 +372,17 @@ static_assert(static_cast<uint32_t>(QUICK_AI_BACKEND_MASK_GPU) ==
               (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_GPU)));
 static_assert(static_cast<uint32_t>(QUICK_AI_BACKEND_MASK_NPU) ==
               (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_NPU)));
+
+static constexpr uint32_t KNOWN_BACKEND_MASK =
+  static_cast<uint32_t>(QUICK_AI_BACKEND_MASK_CPU) |
+  static_cast<uint32_t>(QUICK_AI_BACKEND_MASK_GPU) |
+  static_cast<uint32_t>(QUICK_AI_BACKEND_MASK_NPU);
+
+static bool has_single_backend(uint32_t backend_mask) {
+  return backend_mask != 0 && (backend_mask & ~KNOWN_BACKEND_MASK) == 0 &&
+         (backend_mask & (backend_mask - 1)) == 0;
+}
+
 static_assert(static_cast<uint32_t>(QUICK_AI_CAP_STREAMING) ==
               static_cast<uint32_t>(QDA_CAP_STREAMING));
 static_assert(static_cast<uint32_t>(QUICK_AI_CAP_OPENAI_API) ==
@@ -468,6 +486,12 @@ namespace quick_dot_ai {
 void register_model_descriptor(const ModelDescriptor *desc) {
   if (!desc || !desc->id || desc->id[0] == '\0')
     return;
+
+  if (!has_single_backend(desc->backend_mask)) {
+    LOGE("register_model_descriptor: '%s' must select exactly one backend",
+         desc->id);
+    return;
+  }
 
   const bool has_speculative_variant =
     desc->sd_variant_id != nullptr && desc->sd_variant_id[0] != '\0';
@@ -783,10 +807,6 @@ validate_extension_registration(const QuickAiModelExtensionV1 &extension) {
     QUICK_AI_EXTENSION_FEATURE_GRAMMAR |
     QUICK_AI_EXTENSION_FEATURE_MULTI_IMAGE |
     QUICK_AI_EXTENSION_FEATURE_SPECULATIVE;
-  constexpr uint32_t KNOWN_BACKENDS =
-    (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_CPU)) |
-    (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_GPU)) |
-    (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_NPU));
   constexpr uint32_t KNOWN_CAPABILITIES =
     QDA_CAP_STREAMING | QDA_CAP_OPENAI_API | QDA_CAP_MULTIMODAL |
     QDA_CAP_TOOL_USE | QDA_CAP_EMBEDDING | QDA_CAP_MULTI_IMAGE |
@@ -820,8 +840,7 @@ validate_extension_registration(const QuickAiModelExtensionV1 &extension) {
       (extension.feature_mask & QUICK_AI_EXTENSION_FEATURE_OPENAI_MULTIMODAL) ==
         0 ||
       extension.run_openai == nullptr ||
-      extension.descriptor.backend_mask == 0 ||
-      (extension.descriptor.backend_mask & ~KNOWN_BACKENDS) != 0 ||
+      !has_single_backend(extension.descriptor.backend_mask) ||
       (extension.descriptor.capabilities & ~KNOWN_CAPABILITIES) != 0) {
     return false;
   }
@@ -1425,13 +1444,14 @@ static void ensure_qnn_backend_ext_config(const std::string &base_dir) {
 #endif
 
 /** Internal overload: config_name already resolved (T4 byName path). */
-static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
+static ErrorCode load_into_handle(CausalLmModel &h,
+                                  BackendType expected_backend,
                                   const char *target_model_name,
                                   ModelQuantizationType quant_type,
                                   const char *native_lib_dir,
                                   const char *model_base_path) {
   LOGD("[DEBUG] load_into_handle: START");
-  LOGD("[DEBUG]   compute: %d", compute);
+  LOGD("[DEBUG]   expected_backend: %d", expected_backend);
   LOGD("[DEBUG]   target_model_name: %s",
        target_model_name ? target_model_name : "(null)");
   LOGD("[DEBUG]   quant_type: %d", quant_type);
@@ -1467,7 +1487,7 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     std::string base_dir =
       (model_base_path != nullptr && strlen(model_base_path) > 0)
         ? model_base_path
-        : "/sdcard/Download/aistudio-mobile/models/";
+        : DEFAULT_MODEL_BASE_PATH;
 
 #ifdef ENABLE_QNN_MODELS
     // Set the QNN backend-extensions config path up front so it is in effect
@@ -1863,7 +1883,8 @@ static ErrorCode metrics_on_handle(CausalLmModel &h,
   return CAUSAL_LM_ERROR_NONE;
 }
 
-ErrorCode loadModelHandleByName(BackendType compute, const char *model_id,
+ErrorCode loadModelHandleByName(BackendType expected_backend,
+                                const char *model_id,
                                 ModelQuantizationType quant_type,
                                 const char *native_lib_dir,
                                 const char *model_base_path,
@@ -1873,7 +1894,7 @@ ErrorCode loadModelHandleByName(BackendType compute, const char *model_id,
   *out_handle = nullptr;
   if (model_id == nullptr || model_id[0] == '\0')
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  if (!is_valid_backend(compute) || !is_valid_quantization(quant_type))
+  if (!is_valid_backend(expected_backend) || !is_valid_quantization(quant_type))
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
   try {
@@ -1889,18 +1910,18 @@ ErrorCode loadModelHandleByName(BackendType compute, const char *model_id,
            model_id);
       return CAUSAL_LM_ERROR_INVALID_PARAMETER;
     }
-    if (((descriptor.backend_mask >> (unsigned)compute) & 1u) == 0u) {
+    if (((descriptor.backend_mask >> (unsigned)expected_backend) & 1u) == 0u) {
       LOGE("loadModelHandleByName: backend %d not in mask 0x%x for '%s'",
-           compute, descriptor.backend_mask, model_id);
+           expected_backend, descriptor.backend_mask, model_id);
       return CAUSAL_LM_ERROR_INVALID_PARAMETER;
     }
 
     std::unique_ptr<CausalLmModel> handle(new (std::nothrow) CausalLmModel());
     if (!handle)
       return CAUSAL_LM_ERROR_UNKNOWN;
-    const ErrorCode load_result =
-      load_into_handle(*handle, compute, descriptor.config_name.c_str(),
-                       quant_type, native_lib_dir, model_base_path);
+    const ErrorCode load_result = load_into_handle(
+      *handle, expected_backend, descriptor.config_name.c_str(), quant_type,
+      native_lib_dir, model_base_path);
     if (load_result != CAUSAL_LM_ERROR_NONE)
       return load_result;
 
@@ -2097,12 +2118,7 @@ run_model_streaming_on_handle(CausalLmModel &h, const std::string &raw_input,
   try {
     LOGD("[DEBUG]   model input length: %zu", raw_input.length());
 
-#if defined(_WIN32)
-    m->run(std::wstring(raw_input.begin(), raw_input.end()), false, L"", L"",
-           h.verbose);
-#else
     m->run(raw_input, false, "", "", h.verbose);
-#endif
 
     if (grammar_processor && grammar_processor->failed()) {
       LOGE("run_model_streaming_on_handle: grammar rejected a token");

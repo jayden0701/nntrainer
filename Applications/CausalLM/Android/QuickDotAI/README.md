@@ -95,7 +95,10 @@ val loaded = engine.load(
 )
 ```
 
-`load` validates the requested ID and backend against the descriptor.
+`load` validates the requested ID and backend against the descriptor. Each
+native descriptor selects one concrete backend through its model
+configuration; the backend field is a compatibility assertion, not a runtime
+CPU/GPU/NPU switch.
 Speculative decoding additionally requires a descriptor with `SPECULATIVE` and
 requires the caller to pass its declared `sdVariantId` as `modelId` together
 with `useSpeculativeDecoding = true`; variant selection is not automatic.

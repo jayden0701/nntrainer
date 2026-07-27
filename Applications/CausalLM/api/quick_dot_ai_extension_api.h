@@ -42,13 +42,13 @@ extern "C" {
 /**
  * ABI versions are intentionally independent of the product version.
  * QUICK_AI_EXTENSION_BUILD_TAG must be changed whenever the opaque
- * Transformer ABI or callback semantics change.
+ * Transformer ABI or any registration/callback contract semantics change.
  */
 #define QUICK_AI_EXTENSION_ABI_MAJOR 1u
 #define QUICK_AI_EXTENSION_ABI_MINOR 0u
 #define QUICK_AI_EXTENSION_TRANSFORMER_ABI_VERSION 1u
 #define QUICK_AI_EXTENSION_BUILD_TAG                                           \
-  "nntrainer.quickai.extension-v1.transformer-v1.contract-r1"
+  "nntrainer.quickai.extension-v1.transformer-v1.contract-r2"
 
 typedef int32_t QuickAiExtensionStatus;
 
@@ -195,7 +195,9 @@ typedef QuickAiExtensionStatus (*QuickAiExtensionConfigureSpeculativeV1)(
 
 /**
  * Descriptor published atomically with its callbacks. All mandatory strings
- * must be non-empty. sd_variant_id may be NULL/zero.
+ * must be non-empty. backend_mask must contain exactly one backend because the
+ * catalog/configuration selects a concrete backend variant; registration does
+ * not provide runtime backend switching. sd_variant_id may be NULL/zero.
  */
 typedef struct {
   uint32_t struct_size;

@@ -37,18 +37,14 @@ typedef enum {
  * stores pointers, not copies.
  */
 typedef struct {
-  const char *id;            /**< "Qwen3-0.6B"  (catalog key) */
+  const char *id;            /**< "Qwen3-0.6B" (catalog key) */
   const char *family;        /**< "qwen3-0.6b" */
   const char *display_name;  /**< "Qwen3 0.6B" */
   RuntimeKind runtime;       /**< QDA_RUNTIME_NATIVE */
-  unsigned int backend_mask; /**< bit i set => BackendType i supported */
+  unsigned int backend_mask; /**< Exactly one concrete BackendType bit */
   unsigned int capabilities; /**< CapabilityFlag OR */
   const char *config_name;   /**< Canonical file-based loader key */
-  const char
-    *sd_variant_id; /**< catalog id of the speculative-decoding
- variant to load
-                       when SD is enabled; NULL if
- none */
+  const char *sd_variant_id; /**< Speculative variant catalog ID, or NULL */
 } ModelDescriptor;
 
 #ifdef __cplusplus
@@ -60,7 +56,9 @@ namespace quick_dot_ai {
 /**
  * @brief Register a built-in model descriptor.
  *
- * Duplicate IDs and
+ * Descriptors without
+ * exactly one known backend bit are rejected. Duplicate
+ * IDs and
  * speculative-variant aliases are rejected. The speculative
  * capability and a
  * non-empty variant ID must appear together.

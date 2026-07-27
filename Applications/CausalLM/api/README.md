@@ -68,6 +68,15 @@ file-based descriptors select their concrete model variant through the catalog
 ID and configuration; the loader does not append a quantization suffix to the
 model directory.
 
+When `model_base_path` is NULL or empty, Android retains its download-directory
+default and desktop platforms use `./models` relative to the process working
+directory.
+
+Each native descriptor advertises one concrete backend. The backend argument
+to `loadModelHandleByName()` verifies that selection; it does not dynamically
+move the same catalog entry between CPU, GPU, and NPU. Backends with different
+model/configuration requirements need distinct catalog entries.
+
 The maintained surface is:
 
 - `setOptions`
@@ -144,6 +153,10 @@ expected by the host. Registration copies descriptor strings, but callback
 function pointers and `user_data` remain plugin-owned. A successfully
 registered plugin must remain loaded for the rest of the process; unregister
 and plugin unload are unsupported.
+
+The `contract-r2` descriptor contract requires exactly one backend bit. Plugins
+built against `contract-r1` must be rebuilt and select one concrete backend
+variant before registration.
 
 Extension callback arguments are borrowed only for the synchronous invocation,
 and C++ exceptions must never cross the ABI. Packages should build the host and
