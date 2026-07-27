@@ -50,15 +50,21 @@
 #include "chat_template.h"
 #include "gemma3_causallm.h"
 #include "gemma4_causallm.h"
+#if !defined(_WIN32)
 #include "gptoss_cached_slim_causallm.h"
+#endif
 #include "gptoss_causallm.h"
 #include "json.hpp"
 #include "model_callbacks.h"
 #include "model_descriptor.h"
+#if !defined(_WIN32)
 #include "multilingual_tinybert_16mb.h"
+#endif
 #include "openai_request.h"
 #include "qwen2_causallm.h"
+#if !defined(_WIN32)
 #include "qwen3_cached_slim_moe_causallm.h"
+#endif
 #include "qwen3_causallm.h"
 #include "qwen3_moe_causallm.h"
 #include "qwen3_slim_moe_causallm.h"
@@ -310,12 +316,16 @@ static bool request_model_stop(causallm::Transformer *model) {
 static const std::map<std::string, std::string> g_model_path_map = {
   {"QWEN3-0.6B", "qwen3-0.6b"},
   {"QWEN3-1.7B-Q40", "qwen3-1.7b-q40-arm"},
+#if !defined(_WIN32)
   {"TINY_BERT", "tiny_bert"},
+#endif
   {"FUNCTION_GEMMA", "function_gemma"},
   {"GEMMA4_CPU", "gemma4_cpu"},
 #ifdef ENABLE_QNN_MODELS
   {"GEMMA4-E2B-QNN", "gemma-4-e2b-qnn"},
+#if !defined(_WIN32)
   {"VJEPA2-QNN", "vjepa2-qnn"},
+#endif
 #endif
 };
 
@@ -950,23 +960,27 @@ static void register_models() {
         return std::make_unique<causallm::Qwen3SlimMoECausalLM>(
           cfg, generation_cfg, nntr_cfg);
       });
+#if !defined(_WIN32)
     causallm::Factory::Instance().registerModel(
       "Qwen3CachedSlimMoeForCausalLM",
       [](json cfg, json generation_cfg, json nntr_cfg) {
         return std::make_unique<causallm::Qwen3CachedSlimMoECausalLM>(
           cfg, generation_cfg, nntr_cfg);
       });
+#endif
     causallm::Factory::Instance().registerModel(
       "GptOssForCausalLM", [](json cfg, json generation_cfg, json nntr_cfg) {
         return std::make_unique<causallm::GptOssForCausalLM>(
           cfg, generation_cfg, nntr_cfg);
       });
+#if !defined(_WIN32)
     causallm::Factory::Instance().registerModel(
       "GptOssCachedSlimCausalLM",
       [](json cfg, json generation_cfg, json nntr_cfg) {
         return std::make_unique<causallm::GptOssCachedSlimCausalLM>(
           cfg, generation_cfg, nntr_cfg);
       });
+#endif
     causallm::Factory::Instance().registerModel(
       "Gemma3ForCausalLM", [](json cfg, json generation_cfg, json nntr_cfg) {
         return std::make_unique<causallm::Gemma3CausalLM>(cfg, generation_cfg,
@@ -977,11 +991,13 @@ static void register_models() {
         return std::make_unique<causallm::Gemma4CausalLM>(cfg, generation_cfg,
                                                           nntr_cfg);
       });
+#if !defined(_WIN32)
     causallm::Factory::Instance().registerModel(
       "MultilingualTinyBert", [](json cfg, json generation_cfg, json nntr_cfg) {
         return std::make_unique<causallm::MultilingualTinyBert>(
           cfg, generation_cfg, nntr_cfg);
       });
+#endif
 #ifdef ENABLE_QNN_MODELS
     causallm::Factory::Instance().registerModel(
       "Gemma4_E2B_QNN", [](json cfg, json generation_cfg, json nntr_cfg) {

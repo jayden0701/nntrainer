@@ -13,7 +13,11 @@ With a normal Meson install, both headers are installed under:
 ```
 
 Link applications against `libquick_dot_ai_api`; its `libcausallm` and
-NNTrainer dependencies must also be visible to the platform loader.
+NNTrainer dependencies must also be visible to the platform loader. On
+non-Windows platforms, the in-tree Meson install places
+`libquick_dot_ai_api`, `libcausallm`, and the CausalLM layer libraries together
+under `<bindir>/applications` (`<prefix>/examples` in the Android staging
+layout).
 `quick_dot_ai_api_internal.h` contains JNI-only cancellation coordination and
 is not an installed application header.
 

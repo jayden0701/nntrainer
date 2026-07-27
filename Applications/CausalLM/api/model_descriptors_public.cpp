@@ -25,8 +25,10 @@ struct RegisterPublicDescriptors {
       {"qwen3-1.7b-q40", "qwen3-1.7b", "Qwen3 1.7B (Q40)", QDA_RUNTIME_NATIVE,
        B(0) | B(1), QDA_CAP_STREAMING | QDA_CAP_OPENAI_API | QDA_CAP_TOOL_USE,
        "QWEN3-1.7B-Q40"},
+#if !defined(_WIN32)
       {"tiny-bert", "tiny-bert", "Tiny BERT", QDA_RUNTIME_NATIVE, B(0),
        QDA_CAP_EMBEDDING, "TINY_BERT"},
+#endif
       {"function-gemma", "function-gemma", "Function Gemma", QDA_RUNTIME_NATIVE,
        B(0) | B(1), QDA_CAP_STREAMING | QDA_CAP_OPENAI_API | QDA_CAP_TOOL_USE,
        "FUNCTION_GEMMA"},
@@ -35,8 +37,10 @@ struct RegisterPublicDescriptors {
 #ifdef ENABLE_QNN_MODELS
       {"gemma4-e2b-qnn", "gemma4", "Gemma4 E2B (QNN)", QDA_RUNTIME_NATIVE, B(2),
        QDA_CAP_STREAMING | QDA_CAP_OPENAI_API, "GEMMA4-E2B-QNN"},
+#if !defined(_WIN32)
       {"vjepa2-qnn", "vjepa", "V-JEPA 2 (QNN)", QDA_RUNTIME_NATIVE, B(2),
        QDA_CAP_VISION_ENCODER, "VJEPA2-QNN"},
+#endif
 #endif
     };
     for (const auto &d : kPublic)

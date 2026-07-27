@@ -260,6 +260,12 @@ if get_option('enable-qnn-models')
     ]
 endif
 
+if get_option('platform') == 'android'
+    causallm_log_dep = cxx.find_library('log', required: true)
+else
+    causallm_log_dep = dependency('', required: false)
+endif
+
 if get_option('platform') == 'windows'
     causallm = static_library('causallm',
         causallm_src,
@@ -267,7 +273,8 @@ if get_option('platform') == 'windows'
             nntrainer_dep,
             nntrainer_ccapi_dep,
             causallm_layer_dependencies,
-            tokenizer_dependencies
+            tokenizer_dependencies,
+            causallm_log_dep
         ],
         include_directories: [
             causallm_inc,
@@ -286,7 +293,8 @@ else
             nntrainer_dep,
             nntrainer_ccapi_dep,
             causallm_layer_dependencies,
-            tokenizer_dependencies
+            tokenizer_dependencies,
+            causallm_log_dep
         ],
         include_directories: [
             causallm_inc,
@@ -376,13 +384,30 @@ if get_option('enable-api')
     meson.current_source_dir() / 'api' / 'callback_streamer.cpp',
   ]
 
-  quick_dot_ai_api_lib = shared_library('quick_dot_ai_api',
-    quick_dot_ai_api_src,
-    include_directories: quick_dot_ai_api_inc,
-    dependencies: [nntrainer_dep, causallm_dep, dependency('threads')],
-    cpp_args: quick_dot_ai_api_cpp_args,
-    install: true,
-  )
+  quick_dot_ai_api_deps = [
+    nntrainer_dep,
+    causallm_dep,
+    dependency('threads'),
+    causallm_log_dep,
+  ]
+  if get_option('platform') == 'windows'
+    quick_dot_ai_api_lib = shared_library('quick_dot_ai_api',
+      quick_dot_ai_api_src,
+      include_directories: quick_dot_ai_api_inc,
+      dependencies: quick_dot_ai_api_deps,
+      cpp_args: quick_dot_ai_api_cpp_args,
+      install: true,
+    )
+  else
+    quick_dot_ai_api_lib = shared_library('quick_dot_ai_api',
+      quick_dot_ai_api_src,
+      include_directories: quick_dot_ai_api_inc,
+      dependencies: quick_dot_ai_api_deps,
+      cpp_args: quick_dot_ai_api_cpp_args,
+      install: true,
+      install_dir: application_install_dir,
+    )
+  endif
 
   quick_dot_ai_api_dep = declare_dependency(
     link_with: quick_dot_ai_api_lib,
@@ -550,33 +575,39 @@ if get_option('enable-test')
     platform in model_unittest_platforms and not get_option('enable-fp16')
   )
   if enable_causallm_model_unittest
+    causallm_model_unittest_src = [
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'causallm_test_utils.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gemma3.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gemma3_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gemma4.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gemma4_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_moe.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_moe_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_slim_moe.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gpt_oss.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen2.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen2_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_embedding_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen2_embedding_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_embedding_gemma_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_tinybert_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_deberta_v2_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_xlm_roberta_reference.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_lfm2.cpp',
+      meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_lfm2_reference.cpp',
+    ]
+    if platform != 'windows'
+      causallm_model_unittest_src += [
+        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_cached_slim_moe.cpp',
+        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gpt_oss_cached_slim.cpp',
+      ]
+    endif
+
     unittest_causallm_models = executable(
       'unittest_causallm_models',
-      [
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'causallm_test_utils.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gemma3.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gemma3_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gemma4.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gemma4_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_moe.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_moe_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_slim_moe.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_cached_slim_moe.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gpt_oss.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_gpt_oss_cached_slim.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen2.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen2_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen3_embedding_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_qwen2_embedding_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_embedding_gemma_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_tinybert_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_deberta_v2_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_xlm_roberta_reference.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_lfm2.cpp',
-        meson.source_root() / 'test' / 'unittest' / 'models' / 'unittest_causallm_lfm2_reference.cpp',
-      ],
+      causallm_model_unittest_src,
       dependencies: [
         nntrainer_dep,
         nntrainer_ccapi_dep,
