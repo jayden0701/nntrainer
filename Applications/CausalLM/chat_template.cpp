@@ -11,6 +11,7 @@
  */
 
 #include "chat_template.h"
+#include "api/openai_request.h"
 
 #include <minja/chat-template.hpp>
 
@@ -105,24 +106,9 @@ std::string findToken(const nlohmann::json &tokenizer_config,
 }
 
 std::string textFromContentParts(const nlohmann::json &content) {
-  std::string text;
-  for (const auto &part : content) {
-    if (!part.is_object() || !part.contains("type") ||
-        !part["type"].is_string()) {
-      throw std::runtime_error("Chat content parts must include a string type");
-    }
-
-    const std::string type = part["type"].get<std::string>();
-    if (type == "text") {
-      if (part.contains("text") && part["text"].is_string())
-        text += part["text"].get<std::string>();
-    } else {
-      throw std::runtime_error("Unsupported non-text chat content part: " +
-                               type);
-    }
-  }
-
-  return text;
+  const auto parts =
+    openai::parseContentParts(content, "chat_input.messages[].content");
+  return openai::renderContentWithImagePlaceholders(parts);
 }
 
 bool shouldAddGenerationPrompt(const OrderedJson &messages,

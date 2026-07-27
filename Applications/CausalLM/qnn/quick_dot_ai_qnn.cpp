@@ -567,40 +567,61 @@ void causallm::Quick_Dot_AI_QNN::setupParameters(json &cfg,
   lora_path = nntr_cfg.value("lora_path", "");
 }
 
-int causallm::Quick_Dot_AI_QNN::sample(uint16_t *pointer, int length,
-                                       int *tokens, int number_of_tokens,
-                                       float logit_scale, int logit_offset,
-                                       float repetition_penalty,
-                                       float temperature, float top_p,
-                                       int top_k) {
-  // Apply grammar mask if xgrammar_ is provided (from base class)
+int causallm::Quick_Dot_AI_QNN::sample(
+  uint16_t *pointer, int length, int *tokens, int number_of_tokens,
+  float logit_scale, int logit_offset, float repetition_penalty,
+  float temperature, float top_p, int top_k, float final_logit_softcapping) {
+  const int32_t *allowed_token_bitmask = nullptr;
+  size_t allowed_token_bitmask_size = 0;
+  xgrammar::GrammarMatcher *grammar_matcher = nullptr;
   if (xgrammar_ != nullptr && xgrammar_->isGrammarEnabled()) {
-    xgrammar_->applyGrammarMask(pointer, vocab_size, logit_scale, logit_offset);
+    const auto &bitmask = xgrammar_->getBitmaskData();
+    if (bitmask.empty())
+      throw std::runtime_error("XGrammar produced an empty token bitmask");
+    grammar_matcher = xgrammar_->getGrammarMatcher();
+    if (grammar_matcher == nullptr)
+      throw std::runtime_error("XGrammar matcher is not initialized");
+    allowed_token_bitmask = bitmask.data();
+    allowed_token_bitmask_size = bitmask.size();
   }
 
-  // Call the free function sample from generate_qnn_utils.cpp
-  int token =
-    ::sample(pointer, length, tokens, number_of_tokens, logit_scale,
-             logit_offset, repetition_penalty, temperature, top_p, top_k);
+  const int token = ::sample(
+    pointer, length, tokens, number_of_tokens, logit_scale, logit_offset,
+    repetition_penalty, temperature, top_p, top_k, rng_,
+    final_logit_softcapping, allowed_token_bitmask, allowed_token_bitmask_size);
 
-  if (token == eos_token || token == padding_token) {
-    return token;
+  if (grammar_matcher != nullptr) {
+    if (!grammar_matcher->AcceptToken(token)) {
+      xgrammar_failed_ = true;
+      requestStop();
+      return token;
+    }
+    if (grammar_matcher->IsCompleted() || grammar_matcher->IsTerminated()) {
+      requestStop();
+      return token;
+    }
+    grammar_matcher->FillNextTokenBitmask(&xgrammar_->getBitmaskTensor());
   }
 
-  // Accept token in grammar matcher if xgrammar_ is provided (from base class)
-  if (xgrammar_ != nullptr && xgrammar_->isGrammarEnabled()) {
-    xgrammar_->getGrammarMatcher()->AcceptToken(token);
-    // Update bitmask for next token
-    xgrammar_->getGrammarMatcher()->FillNextTokenBitmask(
-      &xgrammar_->getBitmaskTensor());
-  }
   return token;
 }
 
+void causallm::Quick_Dot_AI_QNN::prepareForRun() {
+  clearStopRequest();
+  stop_prepared_for_run_.store(true, std::memory_order_release);
+}
+
+void causallm::Quick_Dot_AI_QNN::prepareStopRequestForRun() {
+  if (!stop_prepared_for_run_.exchange(false, std::memory_order_acq_rel))
+    clearStopRequest();
+}
+
 void causallm::Quick_Dot_AI_QNN::resetXGrammar() {
-  if (xgrammar_ != nullptr) {
-    xgrammar_->resetGrammar();
-  }
+  XGrammar *grammar = xgrammar_;
+  xgrammar_ = nullptr;
+  xgrammar_failed_ = false;
+  if (grammar != nullptr)
+    grammar->resetGrammar();
 }
 
 // Note: this TU has both `using namespace ml::train;` and `using namespace

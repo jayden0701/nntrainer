@@ -21,6 +21,7 @@
 #ifndef __cplusplus
 #include <stdbool.h>
 #endif
+#include <stdint.h>
 
 /* ── Extended model types (src additions) ────────────────────── */
 #ifdef __CAUSAL_LM_API_H__
@@ -189,6 +190,107 @@ WIN_EXPORT ErrorCode applyChatTemplate(const CausalLMChatMessage *messages,
 typedef struct CausalLmModel *CausalLmHandle;
 
 /**
+ * @brief Memory layout of one dense patch in an image tensor sidecar.
+ *
+ *
+ * This is a fixed-width integer rather than a C enum so the public structure
+ *
+ * layout is stable across compilers and shared-library boundaries.
+ */
+typedef uint32_t QuickAiImageLayout;
+enum {
+  QUICK_AI_IMAGE_LAYOUT_MODEL_NATIVE = 0,
+  QUICK_AI_IMAGE_LAYOUT_HWC = 1,
+  QUICK_AI_IMAGE_LAYOUT_CHW = 2,
+};
+
+/**
+ * @brief Versioned sidecar for one OpenAI image_url content part.
+ *
+ * Set
+ * @c struct_size to @c sizeof(QuickAiImageTensorV1). @c source must
+ * exactly
+ * match the corresponding messages[].content[].image_url.url value.
+ * Sidecars
+ * follow image occurrence order; the library does not download URLs.
+ */
+typedef struct {
+  uint32_t struct_size;
+  const char *source;
+  const float *values;
+  size_t value_count;
+  QuickAiImageLayout layout;
+  uint32_t patch_count;
+  uint32_t channels;
+  uint32_t patch_height;
+  uint32_t patch_width;
+  uint32_t original_height;
+  uint32_t original_width;
+} QuickAiImageTensorV1;
+
+/**
+ * @brief Generate from exact, already-formatted UTF-8 text.
+ *
+ * No JSON
+ * parsing, chat template, role marker, grammar, or previous turn is
+ * added.
+ * The callback is invoked synchronously until generation completes.
+ *
+ *
+ * @param handle Handle returned by a loadModelHandle function
+ * @param input
+ * Exact model input; must be non-empty
+ * @param callback Token delta callback
+
+ * * @param user_data Opaque pointer forwarded to @p callback
+ * @return
+ * ErrorCode
+ */
+WIN_EXPORT ErrorCode quickAiRunText(CausalLmHandle handle, const char *input,
+                                    CausalLmTokenCallback callback,
+                                    void *user_data);
+
+/**
+ * @brief Generate from an OpenAI Chat Completions-compatible JSON request.
+
+ * *
+ * The request is strictly validated and rendered by the loaded tokenizer
+ * chat
+ * template. For text-only requests, pass NULL and zero for @p images
+ * and
+ * @p image_count. The loaded handle, not the optional JSON model field,
+
+ * * selects the model. The V1 image sidecar is reserved for the extension
+ *
+ * multimodal dispatcher; this native PR returns CAUSAL_LM_ERROR_UNSUPPORTED
+ *
+ * for non-zero @p image_count. Because this entry point is callback-streaming,
+
+ * * stream=false is unsupported. Function strict flags and non-strict response
+
+ * * schemas are also rejected rather than silently ignored.
+ *
+ * @param handle
+ * Handle returned by a loadModelHandle function
+ * @param json_request
+ * OpenAI-compatible request JSON
+ * @param images Image tensor sidecars in
+ * image occurrence order
+ * @param image_count Number of entries in @p images
+
+ * * @param callback Token delta callback
+ * @param user_data Opaque pointer
+ * forwarded to @p callback
+ * @return ErrorCode
+ */
+WIN_EXPORT ErrorCode quickAiRunOpenAI(CausalLmHandle handle,
+                                      const char *json_request,
+                                      const QuickAiImageTensorV1 *images,
+                                      size_t image_count,
+                                      CausalLmTokenCallback callback,
+                                      void *user_data);
+
+/**
  * @brief Load a model and return a newly-allocated handle.
  *
  * Calling this multiple times with different parameters returns independent
@@ -270,12 +372,13 @@ WIN_EXPORT ErrorCode loadMultimodalHandleByName(
 
 /**
  * @brief Run inference on a specific handle.
- *
- * The returned outputText pointer is owned by the handle and remains valid
- * until the next runModelHandleWithMessages call on the same handle or until
- * the handle is destroyed. Different handles are safe to call concurrently from
- * different threads; the same handle is serialized by its own internal
- * mutex.
+ * @deprecated Use
+ * quickAiRunOpenAI() for structured requests.
+ * The returned outputText
+ * pointer is owned by the handle and remains valid until the next
+ * runModelHandleWithMessages call on the same handle or until the handle is
+ * destroyed. Different handles are safe to call concurrently from different
+ * threads; the same handle is serialized by its own internal mutex.
  *
  * Single-model API: drives models[0] only even when the handle was
  * populated with multiple sub-models. Use runMultimodalHandleWithMessages for
@@ -293,12 +396,14 @@ WIN_EXPORT ErrorCode runModelHandleWithMessages(
   size_t num_messages, bool add_generation_prompt, const char **outputText);
 
 /**
- * @brief Streaming inference with OpenAI message format on a specific handle.
- *
- * Format the messages array through the chat template, then drive
- * generation token-by-token, invoking @p callback for each delta.
- * Blocks on the invoking thread until generation finishes or an error
- * occurs. Semantics are otherwise identical to runModelHandleStreaming.
+ * @brief Streaming inference with OpenAI message format on a specific
+ * handle.
+ * @deprecated Use quickAiRunOpenAI().
+ * Format the messages array
+ * through the chat template, then drive generation token-by-token, invoking @p
+ * callback for each delta. Blocks on the invoking thread until generation
+ * finishes or an error occurs. Semantics are otherwise identical to
+ * runModelHandleStreaming.
  *
  * @param handle              Handle returned by loadModelHandle
  * @param messages            Array of chat messages with role and content
@@ -370,13 +475,14 @@ WIN_EXPORT ErrorCode unloadModelHandle(CausalLmHandle handle);
 
 /**
  * @brief Streaming counterpart of runModelHandle.
- *
- * Synchronously drives inference on @p handle and invokes @p callback
- * once per decoded-token boundary with a UTF-8 delta string. The call
- * blocks on the invoking thread until generation finishes, hits an EOS
- * token, reaches NUM_TO_GENERATE, the callback returns non-zero (which
- * requests cancellation at the next token boundary), or an error
- * occurs.
+ * @deprecated Use
+ * quickAiRunText() for exact text or quickAiRunOpenAI().
+ * Synchronously
+ * drives inference on @p handle and invokes @p callback once per decoded-token
+ * boundary with a UTF-8 delta string. The call blocks on the invoking thread
+ * until generation finishes, hits an EOS token, reaches NUM_TO_GENERATE, the
+ * callback returns non-zero (which requests cancellation at the next token
+ * boundary), or an error occurs.
  *
  * The @p delta pointer passed into the callback is owned by the
  * streaming runtime and is only valid for the duration of the callback
@@ -469,8 +575,11 @@ WIN_EXPORT void freeImageEmbedding(void *embedding);
 
 /**
  * @brief Run inference on a handle with a tool schema for constrained
- * generation.
  *
+ * generation.
+ * @deprecated Express the tool in a quickAiRunOpenAI() request.
+
+ * *
  * @param handle          Handle returned by loadModelHandle
  * @param inputTextPrompt Input prompt text
  * @param outputText      Buffer to store output text (owned by the handle)
@@ -654,9 +763,10 @@ WIN_EXPORT ErrorCode runMultimodalMultiImageHandleWithMessagesStreaming(
 
 /**
  * @brief Streaming inference with OpenAI JSON format.
- *
- * Parses the JSON request and applies the chat template, then drives
- * generation token-by-token invoking @p callback for each delta.
+ * @deprecated Use
+ * quickAiRunOpenAI().
+ * Parses the JSON request and applies the chat template,
+ * then drives generation token-by-token invoking @p callback for each delta.
  *
  * @param handle       Handle returned by loadModelHandle
  * @param jsonRequest  OpenAI format JSON string (UTF-8, NUL-terminated)

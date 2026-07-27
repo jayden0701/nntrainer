@@ -35,7 +35,7 @@ static int callback_streamer_put(BaseStreamer *self, const char *decoded_utf8) {
 
 static void callback_streamer_end(BaseStreamer * /*self*/) {
   // Intentionally empty. Stream termination is reported to the caller
-  // through the return value of runModelHandleStreaming(); there is no
+  // through the generation function's return value; there is no
   // "done" payload to forward here.
 }
 

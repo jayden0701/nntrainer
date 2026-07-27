@@ -617,7 +617,6 @@ Gemma4_E2B_QNN::~Gemma4_E2B_QNN() {
 // =====================================================================
 void Gemma4_E2B_QNN::initialize_kv_cache() {
   kv_len = 0;
-  conversation_started_ = false;
   for (int i = 0; i < (int)kvs.size(); ++i) {
     std::memcpy(kvs[i], fresh_kvs[i], kv_sizes[i]);
   }
@@ -1165,14 +1164,27 @@ void Gemma4_E2B_QNN::setupParameters(json &cfg, json &generation_cfg,
 // =====================================================================
 // run()
 // =====================================================================
-void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
+void Gemma4_E2B_QNN::run(const WSTR prompt, bool do_sample,
                          const WSTR /*system_prompt*/,
                          const WSTR /*tail_prompt*/, bool log_output) {
   last_output_.clear();
+  has_run_ = false;
+  performance_metrics = {};
+  raw_exec_seconds = {};
 
+  struct StreamerEndGuard {
+    BaseStreamer *streamer;
+    ~StreamerEndGuard() { streamer_end(streamer); }
+  } streamer_end_guard{streamer_};
+
+  // This model does not implement the architecture callbacks required to
+  // turn a full prompt into an incremental continuation. Treat every run as
+  // an independent conversation so stale KV state cannot affect the prompt.
   resetKvCache();
 
-  stop_requested_.store(false, std::memory_order_release);
+  prepareStopRequestForRun();
+  if (stop_requested_.load(std::memory_order_acquire))
+    return;
 
   std::string prefill_graph = graphs_to_use[0];
   std::string generation_graph = graphs_to_use[1];
@@ -1183,10 +1195,10 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
 
   const std::string model_prompt = promptToUtf8(prompt);
   auto _input = tokenizer->Encode(model_prompt);
-  if (_input.size() <= 1) {
-    std::cout << "[Error] Empty input\n";
-    return;
-  }
+  if (_input.size() <= 1)
+    throw std::invalid_argument(
+      "Gemma4 QNN input must contain a prefill token and a seed token");
+
   unsigned int input_len = _input.size() - 1;
   int token = _input.back();
   // Similar with n / m but ceiling of the float n / m result, instead of floor.
@@ -1230,7 +1242,9 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
   // ── Prefill ──
   auto start_prefill = std::chrono::system_clock::now();
 
-  for (int c = 0; c < (int)n_chunks; ++c) {
+  for (int c = 0; c < static_cast<int>(n_chunks) &&
+                  !stop_requested_.load(std::memory_order_acquire);
+       ++c) {
     int chunk_len = ((c + 1) * context_size < (int)input_len)
                       ? context_size
                       : ((int)input_len - c * context_size);
@@ -1327,6 +1341,9 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
     kv_len += chunk_len;
   }
 
+  if (stop_requested_.load(std::memory_order_acquire))
+    return;
+
   // ── Debug: Post-prefill KV cache state ──
   std::cout << "\n=== Post-prefill KV cache debug ===" << std::endl;
   std::cout << "KV cache layers: " << kvs.size() / 2 << std::endl;
@@ -1375,9 +1392,12 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
   auto start = std::chrono::system_clock::now();
   int idx;
   int prefill_len = kv_len;
+  unsigned int generated_tokens = 0;
   // Tokens decoded-but-not-yet-streamed because they end mid-character.
   std::vector<int32_t> pending_stream;
-  for (idx = prefill_len; idx < generation_full_kv_past_length; ++idx) {
+  for (idx = prefill_len; idx < generation_full_kv_past_length &&
+                          !stop_requested_.load(std::memory_order_acquire);
+       ++idx) {
     fill_generation_inputs(
       generation_sample, token, generation_attention_mask,
       generation_attention_mask_elements, generation_sliding_attention_mask,
@@ -1503,11 +1523,13 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
                                  generation_graph, &kv_columns);
     }
     kv_len += 1;
-    token = ::sample(
-      std::get<uint16_t *>(outputs[generation_logits_output_index]), vocab_size,
-      _input.data(), _input.size(), logit_scale, logit_offset,
-      repetition_penalty, temperature, top_p, top_k, final_logit_softcapping);
+    token =
+      sample(std::get<uint16_t *>(outputs[generation_logits_output_index]),
+             vocab_size, _input.data(), _input.size(), logit_scale,
+             logit_offset, repetition_penalty, do_sample ? temperature : 0.0f,
+             top_p, top_k, final_logit_softcapping);
     output.push_back(token);
+    ++generated_tokens;
 
     bool reached_eos = false;
     for (auto eos : eos_tokens) {
@@ -1551,7 +1573,7 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
   // Flush any tail held while waiting for an incomplete character to finish.
   if (!pending_stream.empty()) {
     std::string tail = tokenizer->Decode(pending_stream);
-    if (!tail.empty()) {
+    if (!tail.empty() && !utf8stream::shouldHold(tail, pending_stream.size())) {
       last_output_ += tail;
       if (streamer_)
         streamer_put(streamer_, tail.c_str());
@@ -1560,8 +1582,6 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
     }
   }
 
-  if (streamer_)
-    streamer_end(streamer_);
   auto end = std::chrono::system_clock::now();
   this->raw_exec_seconds = end - start;
 
@@ -1570,8 +1590,6 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
                       .count();
   auto gen_ms =
     std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-  unsigned int generated_tokens =
-    (idx > prefill_len) ? static_cast<unsigned int>(idx - prefill_len) : 0U;
 
   performance_metrics.prefill_tokens = static_cast<unsigned int>(input_len);
   performance_metrics.prefill_duration_ms = static_cast<double>(prefill_ms);
@@ -1582,7 +1600,6 @@ void Gemma4_E2B_QNN::run(const WSTR prompt, bool /*do_sample*/,
   performance_metrics.peak_memory_kb = getPeakMemoryKb();
 
   has_run_ = true;
-  conversation_started_ = true;
 
   if (log_output) {
     std::cout << "\n\nGeneration exec_time : " << this->raw_exec_seconds.count()

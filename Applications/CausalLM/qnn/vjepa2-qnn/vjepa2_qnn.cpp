@@ -10,10 +10,12 @@
 
 #include "vjepa2_qnn.h"
 #include "factory.h"
+#include "generate_qnn_utils.h"
 #include "nntrainer_error.h"
 #include <model_descriptor.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -72,6 +74,20 @@ rebase_relative_to_model_file(const std::string &path,
   if (base.empty())
     return path;
   return base + "/" + path;
+}
+
+template <typename Destination, typename Source>
+static Destination requantize_clamped(Source value, double scale,
+                                      double offset) {
+  const double quantized = scale * static_cast<double>(value) + offset;
+  NNTR_THROW_IF(!std::isfinite(quantized), std::runtime_error)
+    << "V-JEPA2 output requantization produced a non-finite value";
+
+  const double lower =
+    static_cast<double>((std::numeric_limits<Destination>::lowest)());
+  const double upper =
+    static_cast<double>((std::numeric_limits<Destination>::max)());
+  return static_cast<Destination>(std::max(lower, std::min(upper, quantized)));
 }
 
 causallm::VJEPA2_QNN::~VJEPA2_QNN() {
@@ -261,6 +277,8 @@ void causallm::VJEPA2_QNN::run(const WSTR prompt, bool do_sample,
 }
 
 void causallm::VJEPA2_QNN::set_quant_param(float scale, int offset) {
+  NNTR_THROW_IF(!std::isfinite(scale) || scale <= 0.0f, std::invalid_argument)
+    << "V-JEPA2 consumer quantization scale must be finite and positive";
   llm_quant_param_given_ = true;
   llm_scale_ = scale;
   llm_offset_ = offset;
@@ -273,9 +291,21 @@ void causallm::VJEPA2_QNN::requantEmbedding(void *from, void *to,
   std::string modelInputDataType = "QNN_DATATYPE_UFIXED_POINT_16";
   NNTR_THROW_IF(!llm_quant_param_given_, std::runtime_error)
     << "Please give LLM quant param!";
+  NNTR_THROW_IF(!std::isfinite(llm_scale_) || llm_scale_ <= 0.0f,
+                std::runtime_error)
+    << "V-JEPA2 consumer quantization scale must be finite and positive";
+  NNTR_THROW_IF(!std::isfinite(output_info.scale) || output_info.scale <= 0.0f,
+                std::runtime_error)
+    << "V-JEPA2 encoder quantization scale must be finite and positive";
 
-  double requant_scale = output_info.scale / llm_scale_;
-  double requant_offset = requant_scale * output_info.offset - llm_offset_;
+  const double requant_scale =
+    static_cast<double>(output_info.scale) / static_cast<double>(llm_scale_);
+  const double requant_offset =
+    requant_scale * static_cast<double>(output_info.offset) -
+    static_cast<double>(llm_offset_);
+  NNTR_THROW_IF(!std::isfinite(requant_scale) || !std::isfinite(requant_offset),
+                std::runtime_error)
+    << "V-JEPA2 output requantization parameters must be finite";
 
   LOGD("%zu : %s, %s, %f, %f", length, encoderOutputDataType.c_str(),
        modelInputDataType.c_str(), requant_scale, requant_offset);
@@ -283,36 +313,36 @@ void causallm::VJEPA2_QNN::requantEmbedding(void *from, void *to,
   for (size_t i = 0; i < length; i++) {
     if (encoderOutputDataType == "QNN_DATATYPE_SFIXED_POINT_8" &&
         modelInputDataType == "QNN_DATATYPE_SFIXED_POINT_8") {
-      static_cast<int8_t *>(to)[i] = static_cast<int8_t>(
-        requant_scale * static_cast<int8_t *>(from)[i] + requant_offset);
+      static_cast<int8_t *>(to)[i] = requantize_clamped<int8_t>(
+        static_cast<int8_t *>(from)[i], requant_scale, requant_offset);
     } else if (encoderOutputDataType == "QNN_DATATYPE_SFIXED_POINT_8" &&
                modelInputDataType == "QNN_DATATYPE_SFIXED_POINT_16") {
-      static_cast<int16_t *>(to)[i] = static_cast<int16_t>(
-        requant_scale * static_cast<int8_t *>(from)[i] + requant_offset);
+      static_cast<int16_t *>(to)[i] = requantize_clamped<int16_t>(
+        static_cast<int8_t *>(from)[i], requant_scale, requant_offset);
     } else if (encoderOutputDataType == "QNN_DATATYPE_UFIXED_POINT_8" &&
                modelInputDataType == "QNN_DATATYPE_UFIXED_POINT_8") {
-      static_cast<uint8_t *>(to)[i] = static_cast<uint8_t>(
-        requant_scale * static_cast<uint8_t *>(from)[i] + requant_offset);
+      static_cast<uint8_t *>(to)[i] = requantize_clamped<uint8_t>(
+        static_cast<uint8_t *>(from)[i], requant_scale, requant_offset);
     } else if (encoderOutputDataType == "QNN_DATATYPE_UFIXED_POINT_8" &&
                modelInputDataType == "QNN_DATATYPE_UFIXED_POINT_16") {
-      static_cast<uint16_t *>(to)[i] = static_cast<uint16_t>(
-        requant_scale * static_cast<uint8_t *>(from)[i] + requant_offset);
+      static_cast<uint16_t *>(to)[i] = requantize_clamped<uint16_t>(
+        static_cast<uint8_t *>(from)[i], requant_scale, requant_offset);
     } else if (encoderOutputDataType == "QNN_DATATYPE_SFIXED_POINT_16" &&
                modelInputDataType == "QNN_DATATYPE_SFIXED_POINT_8") {
-      static_cast<int8_t *>(to)[i] = static_cast<int8_t>(
-        requant_scale * static_cast<int16_t *>(from)[i] + requant_offset);
+      static_cast<int8_t *>(to)[i] = requantize_clamped<int8_t>(
+        static_cast<int16_t *>(from)[i], requant_scale, requant_offset);
     } else if (encoderOutputDataType == "QNN_DATATYPE_SFIXED_POINT_16" &&
                modelInputDataType == "QNN_DATATYPE_SFIXED_POINT_16") {
-      static_cast<int16_t *>(to)[i] = static_cast<int16_t>(
-        requant_scale * static_cast<int16_t *>(from)[i] + requant_offset);
+      static_cast<int16_t *>(to)[i] = requantize_clamped<int16_t>(
+        static_cast<int16_t *>(from)[i], requant_scale, requant_offset);
     } else if (encoderOutputDataType == "QNN_DATATYPE_UFIXED_POINT_16" &&
                modelInputDataType == "QNN_DATATYPE_UFIXED_POINT_8") {
-      static_cast<uint8_t *>(to)[i] = static_cast<uint8_t>(
-        requant_scale * static_cast<uint16_t *>(from)[i] + requant_offset);
+      static_cast<uint8_t *>(to)[i] = requantize_clamped<uint8_t>(
+        static_cast<uint16_t *>(from)[i], requant_scale, requant_offset);
     } else if (encoderOutputDataType == "QNN_DATATYPE_UFIXED_POINT_16" &&
                modelInputDataType == "QNN_DATATYPE_UFIXED_POINT_16") {
-      static_cast<uint16_t *>(to)[i] = static_cast<uint16_t>(
-        requant_scale * static_cast<uint16_t *>(from)[i] + requant_offset);
+      static_cast<uint16_t *>(to)[i] = requantize_clamped<uint16_t>(
+        static_cast<uint16_t *>(from)[i], requant_scale, requant_offset);
     }
   }
 }
@@ -322,10 +352,20 @@ void causallm::VJEPA2_QNN::preprocessToQnnInput(const float *raw_nchw, int B,
                                                 uint16_t *qnn_hwc_dest,
                                                 float scale, int offset) {
 
-  int Dp = T / tubelet_size_;
+  NNTR_THROW_IF(raw_nchw == nullptr || qnn_hwc_dest == nullptr,
+                std::invalid_argument)
+    << "preprocessToQnnInput requires non-null source and destination buffers";
+  NNTR_THROW_IF(B <= 0 || T <= 0 || C <= 0 || H <= 0 || W <= 0,
+                std::invalid_argument)
+    << "preprocessToQnnInput dimensions must be positive";
+  NNTR_THROW_IF(tubelet_size_ <= 0, std::invalid_argument)
+    << "preprocessToQnnInput tubelet_size must be positive";
   NNTR_THROW_IF(T % tubelet_size_ != 0, std::invalid_argument)
     << "preprocessToQnnInput: T (" << T
     << ") must be divisible by tubelet_size (" << tubelet_size_ << ")";
+  NNTR_THROW_IF(!std::isfinite(scale) || scale <= 0.0f, std::invalid_argument)
+    << "preprocessToQnnInput quantization scale must be finite and positive";
+  const int Dp = T / tubelet_size_;
 
   for (int b = 0; b < B; ++b) {
     for (int d = 0; d < Dp; ++d) {
@@ -361,11 +401,33 @@ causallm::VJEPA2_QNN::frameToDepth(const float *raw_nchw, int B, int T, int C,
                                    int H, int W, int tubelet_size, float scale,
                                    int offset) {
 
-  int Dp = T / tubelet_size;
+  NNTR_THROW_IF(raw_nchw == nullptr, std::invalid_argument)
+    << "frameToDepth source buffer is null";
+  NNTR_THROW_IF(B <= 0 || T <= 0 || C <= 0 || H <= 0 || W <= 0,
+                std::invalid_argument)
+    << "frameToDepth dimensions must be positive";
+  NNTR_THROW_IF(tubelet_size <= 0, std::invalid_argument)
+    << "frameToDepth tubelet_size must be positive";
   NNTR_THROW_IF(T % tubelet_size != 0, std::invalid_argument)
     << "frameToDepth: T must be divisible by tubelet_size";
+  NNTR_THROW_IF(!std::isfinite(scale) || scale <= 0.0f, std::invalid_argument)
+    << "frameToDepth quantization scale must be finite and positive";
+  const int Dp = T / tubelet_size;
 
-  size_t num_elements = static_cast<size_t>(B * Dp * H * W * tubelet_size * C);
+  size_t num_elements = 1;
+  const int output_dimensions[] = {B, Dp, H, W, tubelet_size, C};
+  for (const int dimension : output_dimensions) {
+    const size_t unsigned_dimension = static_cast<size_t>(dimension);
+    NNTR_THROW_IF(num_elements >
+                    (std::numeric_limits<size_t>::max)() / unsigned_dimension,
+                  std::overflow_error)
+      << "frameToDepth output element count overflows size_t";
+    num_elements *= unsigned_dimension;
+  }
+  NNTR_THROW_IF(num_elements >
+                  (std::numeric_limits<size_t>::max)() / sizeof(uint16_t),
+                std::overflow_error)
+    << "frameToDepth output buffer size overflows size_t";
   std::vector<uint8_t> buffer(num_elements * sizeof(uint16_t));
   uint16_t *dest = reinterpret_cast<uint16_t *>(buffer.data());
 
@@ -375,12 +437,27 @@ causallm::VJEPA2_QNN::frameToDepth(const float *raw_nchw, int B, int T, int C,
         for (int w = 0; w < W; ++w) {
           for (int tau = 0; tau < tubelet_size; ++tau) {
             for (int c = 0; c < C; ++c) {
-              size_t src_idx = static_cast<size_t>(b) * T * C * H * W +
-                               (d * tubelet_size + tau) * C * H * W +
-                               c * H * W + h * W + w;
-              size_t dst_idx =
-                static_cast<size_t>(b * Dp + d) * H * W * tubelet_size * C +
-                h * W * tubelet_size * C + w * tubelet_size * C + tau * C + c;
+              const size_t src_idx =
+                ((((static_cast<size_t>(b) * static_cast<size_t>(T) +
+                    static_cast<size_t>(d) * static_cast<size_t>(tubelet_size) +
+                    static_cast<size_t>(tau)) *
+                     static_cast<size_t>(C) +
+                   static_cast<size_t>(c)) *
+                    static_cast<size_t>(H) +
+                  static_cast<size_t>(h)) *
+                   static_cast<size_t>(W) +
+                 static_cast<size_t>(w));
+              const size_t dst_idx =
+                (((((static_cast<size_t>(b) * static_cast<size_t>(Dp) +
+                     static_cast<size_t>(d)) *
+                      static_cast<size_t>(H) +
+                    static_cast<size_t>(h)) *
+                     static_cast<size_t>(W) +
+                   static_cast<size_t>(w)) *
+                    static_cast<size_t>(tubelet_size) +
+                  static_cast<size_t>(tau)) *
+                   static_cast<size_t>(C) +
+                 static_cast<size_t>(c));
 
               float val = raw_nchw[src_idx];
               if (std::isfinite(val)) {
@@ -407,6 +484,11 @@ static inline void
 preprocessToQnnInput_FixedShape_Helper(const float *__restrict raw,
                                        uint16_t *__restrict dst, float scale,
                                        int offset) {
+
+  NNTR_THROW_IF(raw == nullptr || dst == nullptr, std::invalid_argument)
+    << "Fixed-shape V-JEPA2 preprocessing requires non-null buffers";
+  NNTR_THROW_IF(!std::isfinite(scale) || scale <= 0.0f, std::invalid_argument)
+    << "Fixed-shape V-JEPA2 quantization scale must be finite and positive";
 
   constexpr int B = 1, T = 24, C = 3, H = 256, W = 256, t = 2;
   constexpr int Dp = T / t;                 // 12
@@ -565,6 +647,9 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
     << "V-JEPA2 QNN input tensor must use 16-bit elements";
 
   const size_t preprocessed_float_bytes = input_elements * sizeof(float);
+  NNTR_THROW_IF(!std::isfinite(input_info.scale) || input_info.scale <= 0.0f,
+                std::runtime_error)
+    << "V-JEPA2 QNN input quantization scale must be finite and positive";
   NNTR_THROW_IF(image_height <= 0 || image_width <= 0, std::invalid_argument)
     << "Video dimensions must be positive";
   constexpr size_t RAW_FRAMES = 24;
@@ -578,18 +663,23 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
   const size_t raw_float_bytes =
     RAW_FRAMES * RAW_CHANNELS * static_cast<size_t>(image_height) *
     static_cast<size_t>(image_width) * sizeof(float);
+  const bool matches_preprocessed = image.second == preprocessed_float_bytes;
+  const bool matches_raw = image.second == raw_float_bytes;
 
   bool use_preprocessed = false;
   bool use_raw = false;
   if (input_format_ == "preprocessed") {
-    use_preprocessed = image.second == preprocessed_float_bytes;
+    use_preprocessed = matches_preprocessed;
   } else if (input_format_ == "raw") {
-    use_raw = image.second == raw_float_bytes;
+    use_raw = matches_raw;
   } else if (input_format_ == "auto") {
-    // Preserve the existing preference for preprocessed input when the two
-    // layouts have the same byte count and therefore cannot be distinguished.
-    use_preprocessed = image.second == preprocessed_float_bytes;
-    use_raw = !use_preprocessed && image.second == raw_float_bytes;
+    // The public image encoder contract supplies raw pixels and the original
+    // dimensions. Frame-to-depth only reorders those values, so raw and
+    // preprocessed buffers normally have the same byte count. Prefer raw in
+    // that ambiguous case; callers with preprocessed data must opt in through
+    // vjepa2_input_format.
+    use_raw = matches_raw;
+    use_preprocessed = !use_raw && matches_preprocessed;
   } else {
     NNTR_THROW_IF(true, std::invalid_argument)
       << "Unsupported vjepa2_input_format: " << input_format_;
@@ -599,9 +689,41 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
     << "Unexpected video buffer size " << image.second << ". Expected "
     << preprocessed_float_bytes << " (preprocessed) or " << raw_float_bytes
     << " (raw frames). V-JEPA2 run_image accepts exactly one video clip.";
-  NNTR_THROW_IF(use_raw && raw_float_bytes != preprocessed_float_bytes,
-                std::invalid_argument)
-    << "Raw video dimensions do not match the V-JEPA2 QNN input tensor";
+  if (use_raw) {
+    NNTR_THROW_IF(tubelet_size_ <= 0 ||
+                    RAW_FRAMES % static_cast<size_t>(tubelet_size_) != 0,
+                  std::invalid_argument)
+      << "Raw V-JEPA2 input requires a positive tubelet_size that divides "
+      << RAW_FRAMES;
+    NNTR_THROW_IF(input_info.dimensions.size() != 4 &&
+                    input_info.dimensions.size() != 5,
+                  std::invalid_argument)
+      << "Raw V-JEPA2 input requires QNN tensor layout "
+         "[batch, frames/tubelet, height, width, tubelet*channels] (or the "
+         "same layout without an explicit batch dimension); configure "
+         "vjepa2_input_format=\"preprocessed\" for an already transformed "
+         "buffer";
+
+    const size_t expected_depth =
+      RAW_FRAMES / static_cast<size_t>(tubelet_size_);
+    const size_t expected_packed_channels =
+      static_cast<size_t>(tubelet_size_) * RAW_CHANNELS;
+    const size_t dimension_offset = input_info.dimensions.size() == 5 ? 1U : 0U;
+    const bool batch_matches =
+      dimension_offset == 0 || input_info.dimensions[0] == 1;
+    const bool raw_layout_matches =
+      batch_matches &&
+      static_cast<size_t>(input_info.dimensions[dimension_offset]) ==
+        expected_depth &&
+      input_info.dimensions[dimension_offset + 1] == image_height &&
+      input_info.dimensions[dimension_offset + 2] == image_width &&
+      static_cast<size_t>(input_info.dimensions[dimension_offset + 3]) ==
+        expected_packed_channels;
+    NNTR_THROW_IF(!raw_layout_matches, std::invalid_argument)
+      << "Raw V-JEPA2 dimensions or tubelet_size do not match the QNN input "
+         "tensor; configure vjepa2_input_format=\"preprocessed\" only when "
+         "the supplied buffer already uses the graph layout";
+  }
 
   NNTR_THROW_IF(output_info.dimensions.size() != 3, std::runtime_error)
     << "V-JEPA2 QNN output tensor must have shape [batch, tokens, embedding]";
@@ -648,7 +770,7 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
                            static_cast<int>(input_elements), input_info.scale,
                            input_info.offset);
   } else {
-    if (image_height == 256 && image_width == 256) {
+    if (image_height == 256 && image_width == 256 && tubelet_size_ == 2) {
       preprocessToQnnInput_FixedShape(src, pixel_values_input_,
                                       input_info.scale, input_info.offset);
     } else {
@@ -659,7 +781,7 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
                            input_info.offset);
     }
   }
-  auto qnn_outputs = model->inference(1, model_input);
+  auto qnn_outputs = run_qnn_inference(model, 1, model_input, model_info);
   NNTR_THROW_IF(qnn_outputs.empty(), std::runtime_error)
     << "V-JEPA2 QNN graph returned no output tensors";
   void *vision_encoder_output =

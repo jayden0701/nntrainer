@@ -10,24 +10,22 @@
  * @bug    No known bugs except for NYI items
  */
 
-#ifndef XGRAMMAR_XGRAMMAR_H_
-#define XGRAMMAR_XGRAMMAR_H_
+#ifndef NNTRAINER_CAUSALLM_XGRAMMAR_WRAPPER_H_
+#define NNTRAINER_CAUSALLM_XGRAMMAR_WRAPPER_H_
 
 #pragma once
+#ifndef WIN_EXPORT
 #ifdef _WIN32
 #define WIN_EXPORT __declspec(dllexport)
-#define WSTR std::wstring
-#define WCHAR_P wchar_t *
 #else
 #define WIN_EXPORT
-#define WSTR std::string
-#define WCHAR_P std::string &
+#endif
 #endif
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
-
-#include <transformer.h>
 
 #include <dlpack/dlpack.h>
 #include <xgrammar/compiler.h>
@@ -47,25 +45,28 @@ namespace causallm {
  * @brief Grammar-guided generation helper wrapping xgrammar's compiler and
  * matcher.
  */
-WIN_EXPORT class XGrammar {
+class WIN_EXPORT XGrammar {
 
 public:
   XGrammar();
 
   /**
-   * @brief Destroy the CausalLM object
+   * @brief Destroy the grammar helper
    */
-  virtual ~XGrammar() {}
+  virtual ~XGrammar() = default;
 
   /**
    * @brief Initialize xgrammar for grammar-guided generation
    * @param grammar_type Type of grammar ("json", "ebnf", "regex")
-   * @param json_schema Optional JSON schema for JSON grammar type
-   * @param tokenizer Tokenizer instance to extract vocabulary
+   * @param grammar_payload Optional JSON schema for "json", or the required
+
+   * * EBNF grammar/regular expression for "ebnf"/"regex"
+   * @param tokenizer
+   * Tokenizer instance to extract vocabulary
    * @param vocab_size Size of the vocabulary
    */
   void initializeGrammar(const std::string &grammar_type = "json",
-                         const std::string &json_schema = "",
+                         const std::string &grammar_payload = "",
                          tokenizers::Tokenizer *tokenizer = nullptr,
                          unsigned int vocab_size = 0);
 
@@ -74,12 +75,15 @@ public:
    * GrammarCompiler This is optimized for cases where multiple grammars share
    * the same tokenizer.
    * @param grammar_type Type of grammar ("json", "ebnf", "regex")
-   * @param json_schema Optional JSON schema for JSON grammar type
-   * @param grammar_compiler Pre-created GrammarCompiler (shared, not owned)
+   * @param grammar_payload Optional JSON schema for "json", or the required
+
+   * * EBNF grammar/regular expression for "ebnf"/"regex"
+   * @param
+   * grammar_compiler Pre-created GrammarCompiler (shared, not owned)
    * @param vocab_size Size of the vocabulary (for bitmask allocation)
    */
   void initializeGrammar(const std::string &grammar_type,
-                         const std::string &json_schema,
+                         const std::string &grammar_payload,
                          xgrammar::GrammarCompiler *grammar_compiler,
                          unsigned int vocab_size);
 
@@ -112,25 +116,55 @@ public:
 
   /**
    * @brief Get bitmask data
+   * @return Mutable grammar bitmask storage
+
    */
   std::vector<int32_t> &getBitmaskData();
 
   /**
    * @brief Get bitmask tensor
+   * @return DLPack view over the grammar
+   * bitmask
    */
   DLTensor &getBitmaskTensor();
 
   /**
    * @brief Get bitmask size
+   * @return Number of 32-bit bitmask
+   * elements
    */
   int64_t getBitmaskSize();
 
   /**
    * @brief Get grammar matcher pointer
+   * @return Non-owning matcher
+   * pointer
    */
   xgrammar::GrammarMatcher *getGrammarMatcher();
 
+  /**
+   * @brief Apply the current grammar mask to floating-point logits
+   *
+   * @param logits Mutable logit buffer
+   * @param vocab_size Number of logits
+   * in the buffer
+   */
   void applyGrammarMask(float *logits, int vocab_size);
+
+  /**
+   * @brief Report that in-place masking of quantized logits is
+   * unsupported
+   * @param logits Mutable quantized logit buffer
+   * @param
+   * vocab_size Number of logits in the buffer
+   * @param logit_scale
+   * Quantization scale
+   * @param logit_offset Quantization offset
+   *
+   * @throws std::logic_error Quantized masking cannot represent negative
+   *
+   * infinity and is unsupported; use the bitmask directly instead
+   */
   void applyGrammarMask(uint16_t *logits, int vocab_size, float logit_scale,
                         int logit_offset);
 
@@ -140,7 +174,7 @@ private:
    * methods)
    */
   void compileGrammar(const std::string &grammar_type,
-                      const std::string &json_schema,
+                      const std::string &grammar_payload,
                       xgrammar::GrammarCompiler *grammar_compiler,
                       unsigned int vocab_size);
 
@@ -152,13 +186,13 @@ protected:
   std::unique_ptr<xgrammar::GrammarMatcher> grammar_matcher_;
 
   // Optimized bitmask storage (reused across generations)
-  DLTensor bitmask_tensor_;
+  DLTensor bitmask_tensor_{};
   std::vector<int32_t> bitmask_data_;
-  int64_t bitmask_size_;
+  int64_t bitmask_size_ = 0;
 
   bool grammar_enabled = false;
 };
 
 } // namespace causallm
 
-#endif // XGRAMMAR_XGRAMMAR_H_
+#endif // NNTRAINER_CAUSALLM_XGRAMMAR_WRAPPER_H_

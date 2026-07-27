@@ -29,6 +29,9 @@
 # into libcausallm.so above.
 causallm_src = [
     meson.current_source_dir() / 'chat_template.cpp',
+    # chat_template.cpp consumes the strict request parser. Keep its single
+    # production definition in libcausallm, not libquick_dot_ai_api.
+    meson.current_source_dir() / 'api' / 'openai_request.cpp',
     meson.current_source_dir() / 'huggingface_tokenizer.cpp',
     meson.current_source_dir() / 'llm_util.cpp',
     meson.current_source_dir() / 'kv_cache_manager.cpp',
@@ -240,6 +243,17 @@ if get_option('enable-qnn-models')
         include_directories('qnn' / 'gemma4-e2b-qnn'),
     ]
 
+    # V-JEPA2 uses POSIX mmap/unistd and is currently supported on the
+    # Android/Linux QNN path, not Windows.
+    if host_machine.system() != 'windows'
+        causallm_src += [
+            meson.current_source_dir() / 'qnn' / 'vjepa2-qnn' / 'vjepa2_qnn.cpp',
+        ]
+        causallm_extra_inc += [
+            include_directories('qnn' / 'vjepa2-qnn'),
+        ]
+    endif
+
     cpp_args += [
         '-DENABLE_QNN=1',
         '-DENABLE_QNN_MODELS=1',
@@ -418,6 +432,31 @@ if get_option('enable-test')
     suite: 'unittests'
   )
 
+  # generate_qnn_utils.cpp is already part of libcausallm in this gate.
+  # Link that definition instead of compiling the production source twice.
+  if get_option('enable-qnn-models')
+    unittest_generate_qnn_sample = executable(
+      'unittest_generate_qnn_sample',
+      meson.current_source_dir() / 'qnn' / 'unittest_generate_qnn_sample.cpp',
+      dependencies: [
+        nntrainer_dep,
+        nntrainer_ccapi_dep,
+        gtest_main_dep,
+        causallm_dep,
+      ],
+      include_directories: causallm_inc + [include_directories('qnn')],
+      build_by_default: true,
+      install: false,
+    )
+
+    test('unittest_generate_qnn_sample', unittest_generate_qnn_sample,
+      args: '--gtest_output=xml:@0@/@1@.xml'.format(
+        meson.build_root(), 'unittest_generate_qnn_sample'),
+      timeout: 60,
+      suite: 'unittests'
+    )
+  endif
+
   # Extract causallm_reference fixture binaries from packaging/
   causallm_fixture_tars = [
     meson.source_root() / 'packaging' / 'causallm_reference_generation.tar.gz',
@@ -453,6 +492,39 @@ if get_option('enable-test')
 
   test('unittest_callback_streamer', unittest_callback_streamer,
     args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_callback_streamer'),
+    timeout: 60,
+    suite: 'unittests'
+  )
+
+  unittest_openai_request = executable(
+    'unittest_openai_request',
+    meson.current_source_dir() / 'api' / 'unittest_openai_request.cpp',
+    dependencies: [causallm_dep, gtest_main_dep],
+    include_directories: causallm_inc + [
+      causallm_inc_minja_inc,
+      causallm_inc_nlohmann_inc,
+    ],
+    build_by_default: true,
+    install: false,
+  )
+
+  test('unittest_openai_request', unittest_openai_request,
+    args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_openai_request'),
+    timeout: 60,
+    suite: 'unittests'
+  )
+
+  unittest_xgrammar_manager = executable(
+    'unittest_xgrammar_manager',
+    meson.current_source_dir() / 'api' / 'unittest_xgrammar_manager.cpp',
+    dependencies: [causallm_dep, gtest_main_dep],
+    include_directories: causallm_inc + causallm_xgrammar_inc,
+    build_by_default: true,
+    install: false,
+  )
+
+  test('unittest_xgrammar_manager', unittest_xgrammar_manager,
+    args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_xgrammar_manager'),
     timeout: 60,
     suite: 'unittests'
   )

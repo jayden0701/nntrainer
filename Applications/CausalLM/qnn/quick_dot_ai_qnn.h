@@ -27,6 +27,7 @@
 #include "streamer.h"
 #include <atomic>
 #include <iostream>
+#include <random>
 #include <set>
 #include <string>
 #include <transformer.h>
@@ -77,8 +78,8 @@ public:
   void save_weight(const std::string &weight_path) override;
 
   virtual bool supportsKvCachePersistence() const { return false; }
-  virtual int getKvLen() const { return 0; }
-  std::string getOutput(int batch_idx = 0) const {
+  int getKvLen() const override { return 0; }
+  std::string getOutput(int batch_idx = 0) const override {
     (void)batch_idx;
     return last_output_;
   }
@@ -104,21 +105,38 @@ public:
    */
   int sample(uint16_t *pointer, int length, int *tokens, int number_of_tokens,
              float logit_scale, int logit_offset, float repetition_penalty,
-             float temperature, float top_p, int top_k);
+             float temperature, float top_p, int top_k,
+             float final_logit_softcapping = 0.0f);
 
   /**
    * @brief Attach (or detach) a BaseStreamer to intercept per-token output.
    *        Passing nullptr detaches any currently-attached streamer.
    */
-  void setStreamer(::BaseStreamer *streamer) { streamer_ = streamer; }
+  void setStreamer(::BaseStreamer *streamer) override { streamer_ = streamer; }
 
   /**
    * @brief Attach an XGrammar instance for grammar-constrained generation.
    */
-  void setXGrammar(XGrammar *grammar) { xgrammar_ = grammar; }
+  void setXGrammar(XGrammar *grammar) {
+    xgrammar_ = grammar;
+    xgrammar_failed_ = false;
+  }
 
   /**
-   * @brief Reset the XGrammar matcher state after generation.
+   * @brief Check whether the active grammar rejected a sampled token.
+
+   * * @return true after a matcher rejection in the current run
+   */
+  bool hasXGrammarFailure() const { return xgrammar_failed_; }
+
+  /**
+   * @brief Clear stale cancellation state before publishing a new run.
+
+   */
+  void prepareForRun() override;
+
+  /**
+   * @brief Reset and detach the XGrammar matcher after generation.
    */
   void resetXGrammar();
 
@@ -129,7 +147,7 @@ public:
    * generation loop to exit at the next token boundary. Safe to call
    * from any thread (e.g., from a UI cancel button handler).
    */
-  void requestStop() {
+  void requestStop() override {
 #ifdef __ANDROID__
     __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG,
                         "requestStop: setting stop_requested_ to true");
@@ -172,6 +190,12 @@ public:
                                      float scale, int offset);
 
 protected:
+  /**
+   * @brief Clear stale cancellation state unless prepareForRun() armed
+   * it.
+   */
+  void prepareStopRequestForRun();
+
   // nntr_config
   std::string model_file_name;
   std::string embedding_path;
@@ -209,8 +233,12 @@ protected:
   // Streaming support
   ::BaseStreamer *streamer_ = nullptr;
 
-  // XGrammar instance for grammar-constrained generation (non-owning)
+  // XGrammar instance for the current generation only (non-owning)
   XGrammar *xgrammar_ = nullptr;
+  bool xgrammar_failed_ = false;
+
+  // Per-model sampler state avoids cross-handle races on a process-global RNG.
+  std::mt19937 rng_;
 
   /**
    * @brief Cooperative cancellation flag set by the attached streamer's
@@ -222,6 +250,7 @@ protected:
    * cancel button handler in UI thread).
    */
   std::atomic<bool> stop_requested_{false};
+  std::atomic<bool> stop_prepared_for_run_{false};
 
   /// Raw execution timing for console output (replaces global variable).
   std::chrono::duration<double> raw_exec_seconds;

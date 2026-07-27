@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -31,8 +32,6 @@
 
 using ModelHandle = std::unique_ptr<ml::train::Model>;
 using IO_TensorType = causallm::IO_TensorType;
-
-extern std::mt19937 rng;
 
 /**
  * @brief Run a QNN graph through the main nntrainer Model::inference API.
@@ -149,6 +148,8 @@ void fill_generation_inputs_u16(
 int sample(uint16_t *pointer, int length, int *tokens, int number_of_tokens,
            float logit_scale, int logit_offset, float repetition_penalty,
            float temperature, float top_p, int top_k,
-           float final_logit_softcapping = 0.0f);
+           std::mt19937 &random_engine, float final_logit_softcapping = 0.0f,
+           const int32_t *allowed_token_bitmask = nullptr,
+           size_t allowed_token_bitmask_size = 0);
 
 #endif // __GENERATE_QNN_UTILS_HPP__

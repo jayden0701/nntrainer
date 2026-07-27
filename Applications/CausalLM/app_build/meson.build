@@ -190,6 +190,9 @@ endif
 # models/. This is the canonical Android core source manifest.
 causallm_src = [
   causallm_root / 'chat_template.cpp',
+  # chat_template.cpp consumes the strict request parser. Keep its single
+  # production definition in libcausallm, not libquick_dot_ai_api.
+  causallm_root / 'api' / 'openai_request.cpp',
   causallm_root / 'factory.cpp',
   causallm_root / 'huggingface_tokenizer.cpp',
   causallm_root / 'kv_cache_manager.cpp',
@@ -277,6 +280,7 @@ if enable_qnn
     causallm_root / 'qnn' / 'generate_qnn_utils.cpp',
     causallm_root / 'qnn' / 'qnn_kv_cache_manager.cpp',
     causallm_root / 'qnn' / 'gemma4-e2b-qnn' / 'gemma4_e2b_qnn.cpp',
+    causallm_root / 'qnn' / 'vjepa2-qnn' / 'vjepa2_qnn.cpp',
   ]
 endif
 

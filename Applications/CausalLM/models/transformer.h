@@ -52,6 +52,8 @@
 #include <tokenizers_c.h>
 #include <tokenizers_cpp.h>
 
+struct BaseStreamer;
+
 namespace causallm {
 
 /*** ALIAS ****/
@@ -174,6 +176,57 @@ public:
   virtual void run(const WSTR prompt, bool do_sample = false,
                    const WSTR system_prompt = WSTR(),
                    const WSTR tail_prompt = WSTR(), bool log_output = true);
+
+  /**
+   * @brief Check whether this model implements autoregressive text
+   * generation.
+   * @return true when run() produces text retrievable through
+   * getOutput()
+   */
+  virtual bool supportsTextGeneration() const { return false; }
+
+  /**
+   * @brief Return the most recent generated text.
+   * @param batch_idx
+   * Batch item to query
+   * @return Generated text, or an empty string for
+   * non-generative models
+   */
+  virtual std::string getOutput(int batch_idx = 0) const {
+    (void)batch_idx;
+    return {};
+  }
+
+  /**
+   * @brief Attach a non-owning streamer for decoded output deltas.
+   *
+   * @param streamer Streamer owned by the caller, or nullptr to detach
+   */
+  virtual void setStreamer(::BaseStreamer *streamer) { (void)streamer; }
+
+  /**
+   * @brief Cooperatively request cancellation of an active generation.
+
+   */
+  virtual void requestStop() {}
+
+  /**
+   * @brief Clear stale cancellation state before publishing a new run.
+
+   * *
+   * Request-oriented callers invoke this immediately before making a
+   * run
+   * cancellable. Implementations preserve a requestStop() call that
+   * races
+   * between this method and run().
+   */
+  virtual void prepareForRun() {}
+
+  /**
+   * @brief Reset conversation state retained by previous generation
+   * calls.
+   */
+  virtual void resetConversationState() {}
 
   // ── Multimodal composition interface (model-agnostic) ──────────────────
   // Lets a generic composer drive any [vision producer, LLM consumer] pair

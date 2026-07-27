@@ -20,13 +20,12 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include <model.h>
 #include <tokenizers_cpp.h>
-
-std::mt19937 rng;
 
 std::vector<IO_TensorType>
 run_qnn_inference(ModelHandle &model, unsigned int batch,
@@ -459,105 +458,147 @@ void fill_generation_inputs_u16(
 int sample(uint16_t *pointer, int length, int *tokens, int number_of_tokens,
            float logit_scale, int logit_offset, float repetition_penalty,
            float temperature, float top_p, int top_k,
-           float final_logit_softcapping) {
-  // Priority queue!
-  std::priority_queue<std::pair<int, int>, std::vector<std::pair<int, int>>,
-                      std::greater<std::pair<int, int>>>
-    top_k_elements;
-  for (int i = 0; i < top_k && i < length; i++) {
-    top_k_elements.push(std::make_pair(pointer[i], i));
+           std::mt19937 &random_engine, float final_logit_softcapping,
+           const int32_t *allowed_token_bitmask,
+           size_t allowed_token_bitmask_size) {
+  if (pointer == nullptr)
+    throw std::invalid_argument("Sampling logits must not be null");
+  if (length <= 0)
+    throw std::invalid_argument("Sampling vocabulary size must be positive");
+  if (number_of_tokens < 0 || (number_of_tokens > 0 && tokens == nullptr)) {
+    throw std::invalid_argument("Sampling token history is invalid");
   }
-  for (int i = top_k; i < length; i++) {
-    if (top_k_elements.top().first < pointer[i]) {
-      top_k_elements.pop();
-      top_k_elements.push(std::make_pair(pointer[i], i));
-    }
+  if (top_k <= 0)
+    throw std::invalid_argument("Sampling top_k must be positive");
+  if (!std::isfinite(logit_scale) || logit_scale <= 0.0f)
+    throw std::invalid_argument("Sampling logit_scale must be positive");
+  if (!std::isfinite(repetition_penalty) || repetition_penalty <= 0.0f)
+    throw std::invalid_argument("Sampling repetition_penalty must be positive");
+  if (!std::isfinite(temperature) || temperature < 0.0f)
+    throw std::invalid_argument("Sampling temperature must be non-negative");
+  if (!std::isfinite(top_p) || top_p < 0.0f || top_p > 1.0f)
+    throw std::invalid_argument("Sampling top_p must be in [0, 1]");
+  if (!std::isfinite(final_logit_softcapping) ||
+      final_logit_softcapping < 0.0f) {
+    throw std::invalid_argument(
+      "Sampling final_logit_softcapping must be non-negative");
   }
-  length = top_k_elements.size();
+  if ((allowed_token_bitmask == nullptr) != (allowed_token_bitmask_size == 0)) {
+    throw std::invalid_argument("Sampling token mask pointer/size mismatch");
+  }
 
-  // Convert to float, dequant, then apply Gemma final-logit soft-cap.
-  // Soft-cap: l = soft_cap * tanh(l / soft_cap). Without it, a few raw
-  // logits dominate softmax and the model collapses into repetition.
-  std::vector<int> indices(length);
-  std::vector<float> logits(length);
+  const size_t required_mask_size = (static_cast<size_t>(length) + 31U) / 32U;
+  if (allowed_token_bitmask != nullptr &&
+      allowed_token_bitmask_size < required_mask_size) {
+    throw std::invalid_argument(
+      "Sampling token mask does not cover the vocabulary");
+  }
+
+  std::unordered_set<int> repeated_tokens;
+  repeated_tokens.reserve(static_cast<size_t>(number_of_tokens));
+  for (int i = 0; i < number_of_tokens; ++i) {
+    if (tokens[i] >= 0 && tokens[i] < length)
+      repeated_tokens.insert(tokens[i]);
+  }
+
+  struct Candidate {
+    float logit;
+    int token;
+  };
+  auto lower_priority = [](const Candidate &lhs, const Candidate &rhs) {
+    if (lhs.logit != rhs.logit)
+      return lhs.logit > rhs.logit;
+    return lhs.token < rhs.token;
+  };
+  std::priority_queue<Candidate, std::vector<Candidate>,
+                      decltype(lower_priority)>
+    top_candidates(lower_priority);
+
+  const auto is_allowed = [&](int token_id) {
+    if (allowed_token_bitmask == nullptr)
+      return true;
+    const size_t block = static_cast<size_t>(token_id) / 32U;
+    const auto bits = static_cast<uint32_t>(allowed_token_bitmask[block]);
+    const auto bit = static_cast<unsigned int>(token_id) % 32U;
+    return ((bits >> bit) & 1U) != 0;
+  };
+
   const bool use_softcap = final_logit_softcapping > 0.0f;
-  const float inv_softcap = use_softcap ? 1.0f / final_logit_softcapping : 0.0f;
-  for (int i = 0; i < length; i++) {
-    auto element = top_k_elements.top();
-    float l = (1.0f * element.first + logit_offset) * logit_scale;
-    if (use_softcap) {
-      l = final_logit_softcapping * std::tanh(l * inv_softcap);
-    }
-    logits[i] = l;
-    indices[i] = element.second;
-    top_k_elements.pop();
-  }
+  const float inverse_softcap =
+    use_softcap ? 1.0f / final_logit_softcapping : 0.0f;
+  for (int token_id = 0; token_id < length; ++token_id) {
+    if (!is_allowed(token_id))
+      continue;
 
-  for (unsigned int i = 0; i < number_of_tokens; ++i) {
-    const int t = tokens[i];
-    for (int j = 0; j < length; ++j) {
-      if (indices[j] == tokens[i]) {
-        if (logits[j] > 0.0f)
-          logits[j] /= repetition_penalty;
-        else
-          logits[j] *= repetition_penalty;
-        break;
+    float logit =
+      (static_cast<float>(pointer[token_id]) + logit_offset) * logit_scale;
+    if (use_softcap) {
+      logit = final_logit_softcapping * std::tanh(logit * inverse_softcap);
+    }
+    if (repeated_tokens.count(token_id) != 0) {
+      logit =
+        logit > 0.0f ? logit / repetition_penalty : logit * repetition_penalty;
+    }
+    if (!std::isfinite(logit))
+      throw std::invalid_argument("Sampling produced a non-finite logit");
+
+    const Candidate candidate{logit, token_id};
+    if (top_candidates.size() < static_cast<size_t>(top_k)) {
+      top_candidates.push(candidate);
+    } else {
+      const Candidate &lowest = top_candidates.top();
+      if (candidate.logit > lowest.logit ||
+          (candidate.logit == lowest.logit && candidate.token < lowest.token)) {
+        top_candidates.pop();
+        top_candidates.push(candidate);
       }
     }
   }
 
-  std::vector<std::pair<int, float>> top_indices_and_logits(length);
-  for (int i = 0; i < length; ++i) {
-    if (temperature > 1e-5)
-      logits[i] = logits[i] / temperature;
-    top_indices_and_logits[i] = {i, logits[i]};
-  }
-  sort(top_indices_and_logits.begin(), top_indices_and_logits.end(),
-       [](auto &a, auto &b) { return a.second > b.second; });
+  if (top_candidates.empty())
+    throw std::runtime_error("Sampling mask does not allow any token");
 
-  const float max_logit = top_indices_and_logits[0].second;
-  std::vector<float> probs(length);
-  float sum_exp = 0.0f;
-  for (int i = 0; i < length; ++i) {
-    probs[i] = std::exp(top_indices_and_logits[i].second - max_logit);
-    sum_exp += probs[i];
+  std::vector<Candidate> candidates;
+  candidates.reserve(top_candidates.size());
+  while (!top_candidates.empty()) {
+    candidates.push_back(top_candidates.top());
+    top_candidates.pop();
   }
-  if (sum_exp <= 0.0f)
-    sum_exp = 1.0f;
-  for (int i = 0; i < length; ++i) {
-    probs[i] /= sum_exp;
-  }
+  std::sort(candidates.begin(), candidates.end(),
+            [](const Candidate &lhs, const Candidate &rhs) {
+              if (lhs.logit != rhs.logit)
+                return lhs.logit > rhs.logit;
+              return lhs.token < rhs.token;
+            });
 
-  float cum_prob = 0.0f;
-  unsigned int top_index = 0;
-  while (top_index < (unsigned)length && cum_prob < top_p) {
-    cum_prob += probs[top_index];
-    ++top_index;
-  }
-  if (top_index == 0)
-    top_index = 1;
+  if (temperature <= 1e-5f)
+    return candidates.front().token;
 
-  // Apply Top-P: nuke beyond top_index
-  for (int i = 0; i < length; ++i)
-    logits[i] = -INFINITY;
-  for (unsigned int i = 0; i < top_index; ++i) {
-    logits[top_indices_and_logits[i].first] = top_indices_and_logits[i].second;
-  }
+  for (auto &candidate : candidates)
+    candidate.logit /= temperature;
 
-  // Final softmax for sampling
-  const float final_max = top_indices_and_logits[0].second;
-  float final_sum_exp = 0.0f;
-  for (int i = 0; i < length; ++i) {
-    float ex = std::exp(logits[i] - final_max);
-    final_sum_exp += ex;
-    logits[i] = ex;
+  const double max_logit = static_cast<double>(candidates.front().logit);
+  std::vector<double> weights;
+  weights.reserve(candidates.size());
+  double weight_sum = 0.0;
+  for (const auto &candidate : candidates) {
+    const double weight =
+      std::exp(static_cast<double>(candidate.logit) - max_logit);
+    weights.push_back(weight);
+    weight_sum += weight;
   }
-  if (final_sum_exp <= 0.0f)
-    final_sum_exp = 1.0f;
-  for (int i = 0; i < length; ++i)
-    logits[i] /= final_sum_exp;
+  if (!std::isfinite(weight_sum) || weight_sum <= 0.0)
+    throw std::runtime_error("Sampling probability normalization failed");
 
-  // Sample
-  std::discrete_distribution<int> dist(logits.data(), logits.data() + length);
-  return indices[dist(rng)];
+  size_t nucleus_size = 0;
+  double cumulative_probability = 0.0;
+  do {
+    cumulative_probability += weights[nucleus_size] / weight_sum;
+    ++nucleus_size;
+  } while (nucleus_size < weights.size() &&
+           cumulative_probability < static_cast<double>(top_p));
+
+  std::discrete_distribution<size_t> distribution(
+    weights.begin(), weights.begin() + nucleus_size);
+  return candidates[distribution(random_engine)].token;
 }

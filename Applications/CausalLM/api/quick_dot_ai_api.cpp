@@ -11,14 +11,16 @@
  */
 
 #include "quick_dot_ai_api.h"
+#include "quick_dot_ai_api_internal.h"
 #ifdef ENABLE_QNN_MODELS
 #include "quick_dot_ai_qnn.h"
 #endif
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
-#include <cxxabi.h>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -28,8 +30,15 @@
 #include <new>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <typeinfo>
+#include <unordered_map>
 #include <vector>
+
+#ifndef _WIN32
+#include <cxxabi.h>
+#endif
 
 #include "causal_lm.h"
 #include "chat_template.h"
@@ -42,6 +51,7 @@
 #include "model_config_internal.h"
 #include "model_descriptor.h"
 #include "multilingual_tinybert_16mb.h"
+#include "openai_request.h"
 #include "qwen2_causallm.h"
 #include "qwen3_cached_slim_moe_causallm.h"
 #include "qwen3_causallm.h"
@@ -70,7 +80,9 @@
 #endif
 #include <fstream>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -83,6 +95,14 @@
 #endif
 
 using json = nlohmann::json;
+
+static int set_environment_variable(const char *name, const char *value) {
+#ifdef _WIN32
+  return _putenv_s(name, value);
+#else
+  return setenv(name, value, 1);
+#endif
+}
 
 /**
  * @brief Per-handle state for a loaded CausalLM model instance.
@@ -100,25 +120,130 @@ using json = nlohmann::json;
  */
 struct CausalLmModel {
   std::mutex mtx;
+  std::mutex cancellation_mtx;
+  bool run_announced = false;
+  bool run_active = false;
+  bool cancellation_pending = false;
   std::vector<std::unique_ptr<causallm::Transformer>> models;
+  std::vector<causallm::Transformer *> cancellation_targets;
   std::vector<std::string> architectures;
   std::vector<std::string> model_dirs;
+  std::vector<std::string> tokenizer_paths;
+  std::vector<std::optional<causallm::ChatTemplate>> chat_templates;
+  std::unique_ptr<causallm::XGrammarManager> grammar_manager;
+  std::unordered_map<std::string, std::string> dynamic_grammar_schemas;
   std::string last_output;
   std::string native_lib_dir;
   std::vector<double> initialization_duration_ms;
+  bool verbose = false;
+  std::string chat_template_name;
   bool initialized = false;
   int kv_len = 0;
+};
+
+/**
+ * @brief Clear model ownership while excluding cross-thread cancellation.
+
+ * *
+ * The caller must hold @c CausalLmModel::mtx.
+ */
+static void clear_handle_models(CausalLmModel &h) {
+  std::lock_guard<std::mutex> cancellation_lock(h.cancellation_mtx);
+  h.run_announced = false;
+  h.run_active = false;
+  h.cancellation_pending = false;
+  h.cancellation_targets.clear();
+  h.models.clear();
+}
+
+static bool is_valid_backend(BackendType backend) {
+  return backend >= CAUSAL_LM_BACKEND_CPU && backend <= CAUSAL_LM_BACKEND_NPU;
+}
+
+static bool is_valid_quantization(ModelQuantizationType quantization) {
+  return quantization >= CAUSAL_LM_QUANTIZATION_UNKNOWN &&
+         quantization <= CAUSAL_LM_QUANTIZATION_W32A32;
+}
+
+static void publish_cancellation_targets(CausalLmModel &h) {
+  std::lock_guard<std::mutex> cancellation_lock(h.cancellation_mtx);
+  h.cancellation_targets.clear();
+  h.cancellation_targets.reserve(h.models.size());
+  for (const auto &model : h.models) {
+    if (model)
+      h.cancellation_targets.push_back(model.get());
+  }
+}
+
+class ScopedRunRequest final {
+public:
+  explicit ScopedRunRequest(CausalLmModel &handle) : handle_(handle) {
+    std::lock_guard<std::mutex> lock(handle_.cancellation_mtx);
+    if (!handle_.run_announced) {
+      handle_.run_announced = true;
+      handle_.cancellation_pending = false;
+    }
+  }
+
+  ScopedRunRequest(const ScopedRunRequest &) = delete;
+  ScopedRunRequest &operator=(const ScopedRunRequest &) = delete;
+
+  ~ScopedRunRequest() {
+    std::lock_guard<std::mutex> lock(handle_.cancellation_mtx);
+    if (!handle_.run_active) {
+      handle_.run_announced = false;
+      handle_.cancellation_pending = false;
+    }
+  }
+
+private:
+  CausalLmModel &handle_;
+};
+
+class ScopedGeneration final {
+public:
+  explicit ScopedGeneration(CausalLmModel &handle) : handle_(handle) {
+    std::lock_guard<std::mutex> lock(handle_.cancellation_mtx);
+    for (auto *model : handle_.cancellation_targets) {
+      if (model)
+        model->prepareForRun();
+    }
+    handle_.run_active = true;
+    if (handle_.cancellation_pending) {
+      handle_.cancellation_pending = false;
+      for (auto *model : handle_.cancellation_targets) {
+        if (model)
+          model->requestStop();
+      }
+    }
+  }
+
+  ScopedGeneration(const ScopedGeneration &) = delete;
+  ScopedGeneration &operator=(const ScopedGeneration &) = delete;
+
+  ~ScopedGeneration() {
+    std::lock_guard<std::mutex> lock(handle_.cancellation_mtx);
+    handle_.run_active = false;
+    handle_.run_announced = false;
+    handle_.cancellation_pending = false;
+  }
+
+private:
+  CausalLmModel &handle_;
 };
 
 // Globals shared across all handles — options set via setOptions() apply
 // process-wide regardless of which handle is active.
 static std::mutex g_registry_mutex;
+static std::mutex g_options_mutex;
 static bool g_use_chat_template = true;
 static bool g_verbose = false;
 static std::string g_last_output = "";
 static std::optional<causallm::ChatTemplate> g_chat_template;
 static std::string g_formatted_template;
 static std::string g_chat_template_name = "default";
+static bool g_default_verbose = false;
+static std::string g_default_chat_template_name;
 
 // Default handle backing the legacy non-handle API.
 static CausalLmModel &get_default_handle() {
@@ -148,6 +273,10 @@ public:
     }
     auto *matcher = grammar_->getGrammarMatcher();
     if (!matcher->AcceptToken(static_cast<int32_t>(token_id))) {
+      failed_ = true;
+      if (on_completed_) {
+        on_completed_();
+      }
       return;
     }
     if (matcher->IsCompleted() || matcher->IsTerminated()) {
@@ -161,19 +290,19 @@ public:
   }
 
   void reset() override {
+    failed_ = false;
     if (grammar_ != nullptr) {
       grammar_->resetGrammar();
     }
   }
 
+  bool failed() const { return failed_; }
+
 private:
   causallm::XGrammar *grammar_;
   std::function<void()> on_completed_;
+  bool failed_ = false;
 };
-
-static causallm::CausalLM *as_causal_lm(causallm::Transformer *model) {
-  return dynamic_cast<causallm::CausalLM *>(model);
-}
 
 #ifdef ENABLE_QNN_MODELS
 static causallm::Quick_Dot_AI_QNN *as_qnn_model(causallm::Transformer *model) {
@@ -182,57 +311,30 @@ static causallm::Quick_Dot_AI_QNN *as_qnn_model(causallm::Transformer *model) {
 #endif
 
 static bool model_supports_text_output(causallm::Transformer *model) {
-  if (as_causal_lm(model) != nullptr)
-    return true;
-#ifdef ENABLE_QNN_MODELS
-  if (as_qnn_model(model) != nullptr)
-    return true;
-#endif
-  return false;
+  return model != nullptr && model->supportsTextGeneration();
 }
 
 static bool get_model_output(causallm::Transformer *model,
                              std::string &output) {
-  if (auto *causal_model = as_causal_lm(model)) {
-    output = causal_model->getOutput(0);
-    return true;
-  }
-#ifdef ENABLE_QNN_MODELS
-  if (auto *qnn_model = as_qnn_model(model)) {
-    output = qnn_model->getOutput(0);
-    return true;
-  }
-#endif
-  return false;
+  if (!model_supports_text_output(model))
+    return false;
+  output = model->getOutput(0);
+  return true;
 }
 
 static bool set_model_streamer(causallm::Transformer *model,
                                ::BaseStreamer *streamer) {
-  if (auto *causal_model = as_causal_lm(model)) {
-    causal_model->setStreamer(streamer);
-    return true;
-  }
-#ifdef ENABLE_QNN_MODELS
-  if (auto *qnn_model = as_qnn_model(model)) {
-    qnn_model->setStreamer(streamer);
-    return true;
-  }
-#endif
-  return false;
+  if (!model_supports_text_output(model))
+    return false;
+  model->setStreamer(streamer);
+  return true;
 }
 
 static bool request_model_stop(causallm::Transformer *model) {
-  if (auto *causal_model = as_causal_lm(model)) {
-    causal_model->requestStop();
-    return true;
-  }
-#ifdef ENABLE_QNN_MODELS
-  if (auto *qnn_model = as_qnn_model(model)) {
-    qnn_model->requestStop();
-    return true;
-  }
-#endif
-  return false;
+  if (!model_supports_text_output(model))
+    return false;
+  model->requestStop();
+  return true;
 }
 
 static std::map<std::string, std::string> g_model_path_map = {
@@ -780,6 +882,56 @@ static bool check_file_exists(const std::string &path) {
   return (stat(path.c_str(), &buffer) == 0);
 }
 
+static bool initialize_handle_grammar(CausalLmModel &h, size_t model_index) {
+  if (model_index >= h.models.size() || !h.models[model_index] ||
+      model_index >= h.model_dirs.size()) {
+    return false;
+  }
+
+  if (!h.grammar_manager)
+    h.grammar_manager = std::make_unique<causallm::XGrammarManager>();
+
+  auto *tokenizer = h.models[model_index]->getTokenizer();
+  const unsigned int vocab_size = h.models[model_index]->getVocabSize();
+  const std::string tokenizer_path =
+    model_index < h.tokenizer_paths.size() &&
+        !h.tokenizer_paths[model_index].empty()
+      ? h.tokenizer_paths[model_index]
+      : h.model_dirs[model_index] + "/tokenizer.json";
+  std::ifstream tokenizer_file(tokenizer_path, std::ios::binary);
+  if (!tokenizer_file.is_open()) {
+    LOGE("Cannot initialize xgrammar: tokenizer metadata is missing: %s",
+         tokenizer_path.c_str());
+    return false;
+  }
+
+  std::ostringstream tokenizer_json;
+  tokenizer_json << tokenizer_file.rdbuf();
+  try {
+    const std::string metadata =
+      xgrammar::TokenizerInfo::DetectMetadataFromHF(tokenizer_json.str());
+    if (!h.grammar_manager->initialize(tokenizer, vocab_size, metadata))
+      return false;
+
+    const std::string toolset_path =
+      h.model_dirs[model_index] + "/Toolset.json";
+    if (check_file_exists(toolset_path) &&
+        !h.grammar_manager->loadToolset(toolset_path, tokenizer, vocab_size)) {
+      LOGE("Failed to load toolset for model[%zu]: %s", model_index,
+           toolset_path.c_str());
+      return false;
+    }
+  } catch (const std::exception &e) {
+    LOGE("Cannot initialize xgrammar for model[%zu]: %s", model_index,
+         e.what());
+    return false;
+  } catch (...) {
+    LOGE("Cannot initialize xgrammar for model[%zu]", model_index);
+    return false;
+  }
+  return true;
+}
+
 static void validate_models() {
   LOGD("[DEBUG] Validating model files...");
   // Iterate over all known model names in map
@@ -855,12 +1007,19 @@ static void validate_models() {
 }
 
 ErrorCode setOptions(Config config) {
-  // Currently no options are being handled
-  g_use_chat_template = config.use_chat_template;
-  g_verbose = config.verbose;
-  g_chat_template_name = (config.chat_template_name != nullptr)
-                           ? config.chat_template_name
-                           : "default";
+  {
+    std::lock_guard<std::mutex> lock(g_options_mutex);
+    // Keep the legacy globals for compatibility entry points while new
+    // handles snapshot request-independent defaults at load time.
+    g_use_chat_template = config.use_chat_template;
+    g_verbose = config.verbose;
+    g_chat_template_name = config.chat_template_name != nullptr
+                             ? config.chat_template_name
+                             : "default";
+    g_default_verbose = config.verbose;
+    g_default_chat_template_name =
+      config.chat_template_name != nullptr ? config.chat_template_name : "";
+  }
   if (config.debug_mode) {
     // Ensure models are registered so we can validate them
     register_models();
@@ -883,10 +1042,17 @@ ErrorCode loadToolset(const char *toolset_path,
   LOGD("[LoadToolset] load toolset path: %s", toolset_path);
 
   try {
-    // Load and pre-compile all tool grammars
-    bool success = causallm::XGrammarManager::Instance().loadToolset(
+    auto &handle = get_default_handle();
+    std::lock_guard<std::mutex> lock(handle.mtx);
+    if (!handle.grammar_manager)
+      handle.grammar_manager = std::make_unique<causallm::XGrammarManager>();
+    if (!handle.grammar_manager->isInitialized() &&
+        !handle.grammar_manager->initialize(tokenizer, vocab_size)) {
+      return CAUSAL_LM_ERROR_UNKNOWN;
+    }
+    bool success = handle.grammar_manager->loadToolset(
       std::string(toolset_path), tokenizer, vocab_size);
-    LOGD("causallm::XGrammarManager::loadToolset() done");
+    LOGD("handle XGrammarManager::loadToolset() done");
     if (!success) {
       return CAUSAL_LM_ERROR_UNKNOWN;
     }
@@ -902,6 +1068,7 @@ ErrorCode registerModelArchitecture(const char *arch_name,
                                     ModelArchConfig config) {
   if (arch_name == nullptr)
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
   std::string name(arch_name);
   std::transform(name.begin(), name.end(), name.begin(), ::toupper);
   g_arch_config_map[name] = config;
@@ -912,6 +1079,7 @@ ErrorCode registerModel(const char *model_name, const char *arch_name,
                         ModelRuntimeConfig config) {
   if (model_name == nullptr || arch_name == nullptr)
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  std::lock_guard<std::mutex> lock(g_registry_mutex);
   std::string name(model_name);
   std::transform(name.begin(), name.end(), name.begin(), ::toupper);
 
@@ -959,7 +1127,8 @@ static void ensure_qnn_backend_ext_config(const std::string &base_dir) {
     config_path = config_path.substr(0, config_path.length() - 7);
   }
   config_path += "/htp_backend_ext_config.json";
-  setenv("QUICK_DOT_AI_QNN_BACKEND_EXT_CONFIG_PATH", config_path.c_str(), 1);
+  set_environment_variable("QUICK_DOT_AI_QNN_BACKEND_EXT_CONFIG_PATH",
+                           config_path.c_str());
 }
 #endif
 
@@ -984,12 +1153,22 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
 
   std::lock_guard<std::mutex> lock(h.mtx);
   try {
-    h.models.clear();
+    clear_handle_models(h);
     h.architectures.clear();
     h.model_dirs.clear();
+    h.tokenizer_paths.clear();
+    h.chat_templates.clear();
+    h.grammar_manager = std::make_unique<causallm::XGrammarManager>();
+    h.dynamic_grammar_schemas.clear();
+    h.last_output.clear();
     h.initialization_duration_ms.clear();
     h.initialized = false;
     reset_handle_session_state(h);
+    {
+      std::lock_guard<std::mutex> options_lock(g_options_mutex);
+      h.verbose = g_default_verbose;
+      h.chat_template_name = g_default_chat_template_name;
+    }
 
     // Check if it's a registered in-memory config
     std::string input_name = std::string(target_model_name);
@@ -1021,6 +1200,7 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     json cfg;
     json generation_cfg;
     json nntr_cfg;
+    std::optional<causallm::ChatTemplate> loaded_chat_template;
     std::string model_dir_path;
     std::string abs_model_dir;
     std::string base_dir =
@@ -1251,7 +1431,7 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
 
           auto sub_t0 = std::chrono::high_resolution_clock::now();
           if (native_lib_dir != nullptr && strlen(native_lib_dir) > 0) {
-            setenv("ADSP_LIBRARY_PATH", native_lib_dir, 1);
+            set_environment_variable("ADSP_LIBRARY_PATH", native_lib_dir);
           }
           m->initialize();
 
@@ -1268,27 +1448,42 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
           h.models.push_back(std::move(m));
           h.architectures.push_back(arch_i);
           h.model_dirs.push_back(sub_dir);
+          h.tokenizer_paths.push_back(
+            sub_nntr.contains("tokenizer_file") &&
+                sub_nntr["tokenizer_file"].is_string()
+              ? sub_nntr["tokenizer_file"].get<std::string>()
+              : sub_dir + "/tokenizer.json");
           h.initialization_duration_ms.push_back(sub_ms);
           LOGD("[DEBUG]   [%zu] loaded (%.1f ms)", i, sub_ms);
 
-          // Load chat template from model directory if available.
+          // Store one template per sub-model so handles cannot overwrite one
+          // another's rendering state.
           if (causallm::ChatTemplate::Exists(sub_dir)) {
             try {
-              g_chat_template = causallm::ChatTemplate::Load(sub_dir);
+              h.chat_templates.emplace_back(
+                causallm::ChatTemplate::Load(sub_dir));
               std::cout << "[Info] Chat template loaded from " << sub_dir
                         << std::endl;
             } catch (const std::exception &e) {
               std::cerr << "[Warning] Chat template load failed: " << e.what()
-                        << ". Falling back to hardcoded templates."
+                        << ". Continuing without a model-provided template."
                         << std::endl;
-              g_chat_template.reset();
+              h.chat_templates.emplace_back(std::nullopt);
             }
+          } else {
+            h.chat_templates.emplace_back(std::nullopt);
           }
         }
 
         if (native_lib_dir != nullptr)
           h.native_lib_dir = native_lib_dir;
+        const size_t text_model_index = text_generation_model_index(h);
+        if (!initialize_handle_grammar(h, text_model_index)) {
+          LOGE("[Warning] Grammar unavailable for text model[%zu]",
+               text_model_index);
+        }
         h.initialized = true;
+        publish_cancellation_targets(h);
 
         auto finish_init = std::chrono::high_resolution_clock::now();
         auto e2e = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1326,18 +1521,17 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     // Load chat template from model directory if available.
     if (causallm::ChatTemplate::Exists(abs_model_dir)) {
       try {
-        g_chat_template = causallm::ChatTemplate::Load(abs_model_dir);
+        loaded_chat_template = causallm::ChatTemplate::Load(abs_model_dir);
         LOGD("[Info] Chat template loaded from %s", abs_model_dir.c_str());
       } catch (const std::exception &e) {
-        LOGE("[Warning] Chat template load failed: %s. Falling back to "
-             "hardcoded templates.",
+        LOGE("[Warning] Chat template load failed: %s. Continuing without a "
+             "model-provided template.",
              e.what());
-        g_chat_template.reset();
+        loaded_chat_template.reset();
       }
     } else {
-      g_chat_template.reset();
-      LOGE("[Warning] No chat template found in %s. Using hardcoded chat "
-           "templates.",
+      loaded_chat_template.reset();
+      LOGE("[Warning] No model-provided chat template found in %s.",
            abs_model_dir.c_str());
     }
 
@@ -1419,7 +1613,7 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
 
     LOGD("[DEBUG] load_into_handle: Calling model->initialize()...");
     if (native_lib_dir != nullptr && strlen(native_lib_dir) > 0) {
-      setenv("ADSP_LIBRARY_PATH", native_lib_dir, 1);
+      set_environment_variable("ADSP_LIBRARY_PATH", native_lib_dir);
     }
     m->initialize();
     LOGD("[DEBUG] load_into_handle: model->initialize() done");
@@ -1443,21 +1637,19 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     h.models.push_back(std::move(m));
     h.architectures.push_back(architecture);
     h.model_dirs.push_back(abs_model_dir);
+    h.tokenizer_paths.push_back(
+      nntr_cfg.contains("tokenizer_file") &&
+          nntr_cfg["tokenizer_file"].is_string()
+        ? nntr_cfg["tokenizer_file"].get<std::string>()
+        : abs_model_dir + "/tokenizer.json");
+    h.chat_templates.push_back(std::move(loaded_chat_template));
     h.initialization_duration_ms.push_back(
       static_cast<double>(init_duration.count()));
     h.initialized = true;
 
-    // XGrammarManager Initalize
-    auto *tokenizer = h.models[0]->getTokenizer();
-    unsigned int vocab_size = h.models[0]->getVocabSize();
-    causallm::XGrammarManager::Instance().initialize(tokenizer, vocab_size);
-
-    // XGrammarManager Toolset Load
-    std::string default_toolset_path = abs_model_dir + "/Toolset.json";
-    bool toolset_file_exists = check_file_exists(default_toolset_path);
-    if (toolset_file_exists) {
-      loadToolset(default_toolset_path.c_str(), tokenizer, vocab_size);
-    }
+    if (!initialize_handle_grammar(h, 0))
+      LOGE("[Warning] Grammar unavailable for model[0]");
+    publish_cancellation_targets(h);
 
     LOGD("[DEBUG] load_into_handle: SINGLE SUCCESS (init took %lld ms)",
          (long long)init_duration.count());
@@ -1466,6 +1658,7 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     // exception's typeinfo directly via the Itanium ABI hook. This
     // works even when catching by concrete types fails due to typeinfo
     // duplication between libnntrainer.so and libquick_dot_ai_api.so.
+#ifndef _WIN32
     const std::type_info *ti = abi::__cxa_current_exception_type();
     const char *raw = ti ? ti->name() : "(null)";
     int status = 0;
@@ -1475,6 +1668,9 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     LOGE("[DEBUG] load_into_handle: unknown exception, type=%s",
          demangled ? demangled : raw);
     std::free(demangled);
+#else
+    LOGE("[DEBUG] load_into_handle: unknown exception");
+#endif
 
     // Also try once more via rethrow — in case std::exception RTTI does
     // match from this catch-site (we already tried above but leaving
@@ -1538,6 +1734,7 @@ run_on_handle(CausalLmModel &h, const char *inputTextPrompt,
            model_index);
       return CAUSAL_LM_ERROR_UNSUPPORTED;
     }
+    ScopedGeneration generation(h);
 
     std::unique_ptr<XGrammarLogitsProcessor> grammar_processor;
 
@@ -1581,9 +1778,9 @@ run_on_handle(CausalLmModel &h, const char *inputTextPrompt,
 // We assume single batch request for this API
 #if defined(_WIN32)
     model->run(std::wstring(input.begin(), input.end()), false, L"", L"",
-               g_verbose);
+               h.verbose);
 #else
-    model->run(input, false, "", "", g_verbose);
+    model->run(input, false, "", "", h.verbose);
 #endif
 
     if (!get_model_output(model, h.last_output))
@@ -1676,10 +1873,11 @@ convertMessages(const CausalLMChatMessage *messages, size_t num_messages) {
  */
 static std::string apply_chat_template_messages(
   const std::string &architecture, const std::vector<ChatMessage> &messages,
-  bool add_generation_prompt, const std::string &model_dir = "") {
+  bool add_generation_prompt, const std::string &model_dir = "",
+  const causallm::ChatTemplate *handle_template = nullptr) {
   // If g_chat_template is not loaded but a model_dir is provided,
   // try loading tokenizer_config.json from that directory at run time.
-  if (!g_chat_template && !model_dir.empty()) {
+  if (handle_template == nullptr && !g_chat_template && !model_dir.empty()) {
     std::string tc_path = model_dir + "/tokenizer_config.json";
     if (check_file_exists(tc_path)) {
       try {
@@ -1702,8 +1900,13 @@ static std::string apply_chat_template_messages(
     }
   }
 
-  // Use Enhanced Chat Template if available
-  if (g_chat_template) {
+  // Prefer the template owned by this handle. The process-wide optional is
+  // retained only for the deprecated non-handle compatibility API.
+  const causallm::ChatTemplate *chat_template =
+    handle_template != nullptr
+      ? handle_template
+      : (g_chat_template ? &g_chat_template.value() : nullptr);
+  if (chat_template != nullptr) {
     nlohmann::json request;
     request["messages"] = nlohmann::json::array();
     for (const auto &msg : messages) {
@@ -1713,7 +1916,7 @@ static std::string apply_chat_template_messages(
     request["add_generation_prompt"] = add_generation_prompt;
 
     try {
-      return g_chat_template->apply(request);
+      return chat_template->apply(request);
     } catch (const std::exception &e) {
       LOGE("Chat template apply failed: %s", e.what());
       // fallback to hardcoded
@@ -1865,8 +2068,12 @@ ErrorCode runModelHandleWithMessages(CausalLmHandle handle,
       std::string arch = h.architectures.size() > model_index
                            ? h.architectures[model_index]
                            : std::string();
+      const causallm::ChatTemplate *chat_template =
+        model_index < h.chat_templates.size() && h.chat_templates[model_index]
+          ? &h.chat_templates[model_index].value()
+          : nullptr;
       formattedInput = apply_chat_template_messages(
-        arch, chat_messages, add_generation_prompt, model_dir);
+        arch, chat_messages, add_generation_prompt, model_dir, chat_template);
     }
 
     return run_on_handle(h, formattedInput.c_str(), outputText,
@@ -1884,42 +2091,38 @@ ErrorCode runModelHandleWithTool(CausalLmHandle handle,
   if (handle == nullptr) {
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   }
+  if (tool_name == nullptr || tool_name[0] == '\0')
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
-  causallm::XGrammar *grammar = nullptr;
-  // Step 1: Check if tool exists in XGrammarManager
-  if (causallm::XGrammarManager::Instance().hasTool(tool_name)) {
-    LOGD("[runModelWithToolHandle] Tool '%s' found in XGrammarManager, using "
-         "existing grammar",
-         tool_name);
-    grammar = causallm::XGrammarManager::Instance().getGrammar(tool_name);
-  } else {
-    // Step 2: Tool doesn't exist, create and register it
-    if (tool_schema == nullptr) {
-      LOGE("Error: Tool '%s' not found and no schema provided", tool_name);
-      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  causallm::XGrammarManager::GrammarPtr grammar;
+  {
+    std::lock_guard<std::mutex> lock(handle->mtx);
+    if (!handle->initialized)
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+    if (!handle->grammar_manager || !handle->grammar_manager->isInitialized())
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+
+    if (handle->grammar_manager->hasTool(tool_name)) {
+      grammar = handle->grammar_manager->getGrammarShared(tool_name);
+    } else {
+      if (tool_schema == nullptr)
+        return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+      if (!handle->grammar_manager->registerTool(tool_name, tool_schema)) {
+        LOGE("Error: Failed to register tool '%s'", tool_name);
+        return CAUSAL_LM_ERROR_UNKNOWN;
+      }
+      grammar = handle->grammar_manager->getGrammarShared(tool_name);
     }
-
-    LOGD("[runModelWithToolHandle] Tool '%s' not found, creating new grammar",
-         tool_name);
-    bool registered = causallm::XGrammarManager::Instance().registerTool(
-      tool_name, tool_schema);
-
-    if (!registered) {
-      LOGE("Error: Failed to register tool '%s'", tool_name);
-      return CAUSAL_LM_ERROR_UNKNOWN;
-    }
-
-    grammar = causallm::XGrammarManager::Instance().getGrammar(tool_name);
   }
 
-  if (grammar == nullptr) {
+  if (!grammar) {
     LOGE("Error: Failed to get grammar for tool '%s'", tool_name);
     return CAUSAL_LM_ERROR_UNKNOWN;
   }
 
   return run_on_handle(*handle, inputTextPrompt, outputText,
                        /*input_already_formatted=*/false,
-                       kAutoTextGenerationModelIndex, grammar);
+                       kAutoTextGenerationModelIndex, grammar.get());
 }
 
 /**===========================================================================
@@ -1929,6 +2132,8 @@ ErrorCode runModelHandleWithTool(CausalLmHandle handle,
 ErrorCode loadModel(BackendType compute, ModelType modeltype,
                     ModelQuantizationType quant_type,
                     const char *model_base_path) {
+  if (!is_valid_backend(compute) || !is_valid_quantization(quant_type))
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   return load_into_handle(get_default_handle(), compute, modeltype, quant_type,
                           nullptr, model_base_path);
 }
@@ -1971,6 +2176,9 @@ ErrorCode loadModelHandle(BackendType compute, ModelType modeltype,
     LOGE("[DEBUG] loadModelHandle:%d out_handle is nullptr", __LINE__);
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   }
+  *out_handle = nullptr;
+  if (!is_valid_backend(compute) || !is_valid_quantization(quant_type))
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   auto *h = new (std::nothrow) CausalLmModel();
   if (h == nullptr) {
     LOGE("[DEBUG] loadModelHandle:%d Failed to allocate CausalLmModel",
@@ -2005,6 +2213,9 @@ ErrorCode loadModelHandleByName(BackendType compute, const char *model_id,
                                 const char *model_base_path,
                                 CausalLmHandle *out_handle) {
   if (out_handle == nullptr || model_id == nullptr)
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  *out_handle = nullptr;
+  if (!is_valid_backend(compute) || !is_valid_quantization(quant_type))
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
   register_models(); // ensure factory + public descriptors registered
@@ -2124,6 +2335,12 @@ ErrorCode loadMultimodalHandleByName(
       src.architectures.empty() ? std::string() : src.architectures[0]);
     dst.model_dirs.push_back(src.model_dirs.empty() ? std::string()
                                                     : src.model_dirs[0]);
+    dst.tokenizer_paths.push_back(
+      src.tokenizer_paths.empty() ? std::string() : src.tokenizer_paths[0]);
+    if (!src.chat_templates.empty())
+      dst.chat_templates.push_back(std::move(src.chat_templates[0]));
+    else
+      dst.chat_templates.emplace_back(std::nullopt);
     if (!src.initialization_duration_ms.empty())
       dst.initialization_duration_ms.push_back(
         src.initialization_duration_ms[0]);
@@ -2132,7 +2349,12 @@ ErrorCode loadMultimodalHandleByName(
   move_one(tmp_llm, *h);    // index 1 = LLM consumer
   if (native_lib_dir != nullptr)
     h->native_lib_dir = native_lib_dir;
+  h->verbose = tmp_llm.verbose;
+  h->chat_template_name = tmp_llm.chat_template_name;
+  if (!initialize_handle_grammar(*h, 1))
+    LOGE("[Warning] Grammar unavailable for combined text model[1]");
   h->initialized = true;
+  publish_cancellation_targets(*h);
 
   *out_handle = h;
   return CAUSAL_LM_ERROR_NONE;
@@ -2172,12 +2394,11 @@ ErrorCode getPerformanceMetricsHandle(CausalLmHandle handle,
  * Internal streaming helper
  *============================================================================*/
 
-static ErrorCode run_model_streaming_on_handle(CausalLmModel &h,
-                                               const std::string &raw_input,
-                                               CausalLmTokenCallback callback,
-                                               void *user_data,
-                                               bool input_already_formatted,
-                                               size_t model_index) {
+static ErrorCode
+run_model_streaming_on_handle(CausalLmModel &h, const std::string &raw_input,
+                              CausalLmTokenCallback callback, void *user_data,
+                              bool input_already_formatted, size_t model_index,
+                              causallm::XGrammar *grammar = nullptr) {
   if (model_index >= h.models.size() || !h.models[model_index]) {
     return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
@@ -2189,22 +2410,52 @@ static ErrorCode run_model_streaming_on_handle(CausalLmModel &h,
     return CAUSAL_LM_ERROR_UNSUPPORTED;
   }
 
+  ScopedGeneration generation(h);
   CallbackStreamer streamer;
   callback_streamer_init(&streamer, callback, user_data);
   if (!set_model_streamer(m, &streamer.base))
     return CAUSAL_LM_ERROR_UNSUPPORTED;
 
+  std::unique_ptr<XGrammarLogitsProcessor> grammar_processor;
   struct Detach {
     causallm::Transformer *t;
-    ~Detach() { set_model_streamer(t, nullptr); }
+    bool detach_logits = false;
+#ifdef ENABLE_QNN_MODELS
+    causallm::Quick_Dot_AI_QNN *qnn_model = nullptr;
+#endif
+    ~Detach() {
+      set_model_streamer(t, nullptr);
+      if (detach_logits)
+        t->setLogitsProcessor(nullptr);
+#ifdef ENABLE_QNN_MODELS
+      if (qnn_model)
+        qnn_model->resetXGrammar();
+#endif
+    }
   } detach_guard{m};
+
+  bool qnn_grammar_attached = false;
+#ifdef ENABLE_QNN_MODELS
+  if (grammar != nullptr) {
+    if (auto *qnn_model = as_qnn_model(m)) {
+      qnn_model->setXGrammar(grammar);
+      detach_guard.qnn_model = qnn_model;
+      qnn_grammar_attached = true;
+    }
+  }
+#endif
+  if (grammar != nullptr && !qnn_grammar_attached) {
+    grammar_processor = std::make_unique<XGrammarLogitsProcessor>(
+      grammar, [m]() { request_model_stop(m); });
+    m->setLogitsProcessor(grammar_processor.get());
+    detach_guard.detach_logits = true;
+  }
 
   try {
     std::string input = prepare_input_for_model(h, model_index, raw_input,
                                                 input_already_formatted);
 
     LOGD("[DEBUG]   raw input length: %zu", raw_input.length());
-    LOGD("[DEBUG]   g_use_chat_template: %d", g_use_chat_template);
     if (input_already_formatted) {
       LOGD("[DEBUG]   input_already_formatted=1, using pre-formatted input "
            "(length: %zu)",
@@ -2217,9 +2468,21 @@ static ErrorCode run_model_streaming_on_handle(CausalLmModel &h,
 
 #if defined(_WIN32)
     m->run(std::wstring(input.begin(), input.end()), false, L"", L"",
-           g_verbose);
+           h.verbose);
 #else
-    m->run(input, false, "", "", true);
+    m->run(input, false, "", "", h.verbose);
+#endif
+
+    if (grammar_processor && grammar_processor->failed()) {
+      LOGE("run_model_streaming_on_handle: grammar rejected a token");
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
+#ifdef ENABLE_QNN_MODELS
+    if (detach_guard.qnn_model &&
+        detach_guard.qnn_model->hasXGrammarFailure()) {
+      LOGE("run_model_streaming_on_handle: QNN grammar rejected a token");
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
 #endif
 
     if (!get_model_output(m, h.last_output))
@@ -2262,6 +2525,38 @@ static ErrorCode run_model_streaming_on_handle(CausalLmModel &h,
   }
 
   return CAUSAL_LM_ERROR_NONE;
+}
+
+ErrorCode quickAiRunText(CausalLmHandle handle, const char *input,
+                         CausalLmTokenCallback callback, void *user_data) {
+  if (handle == nullptr || input == nullptr || input[0] == '\0' ||
+      callback == nullptr) {
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  }
+
+  auto &h = *handle;
+  std::lock_guard<std::mutex> lock(h.mtx);
+  if (!h.initialized || h.models.empty())
+    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+  ScopedRunRequest request(h);
+
+  try {
+    const size_t model_index = text_generation_model_index(h);
+    if (model_index >= h.models.size() || !h.models[model_index])
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+    h.last_output.clear();
+    h.models[model_index]->resetConversationState();
+    reset_handle_session_state(h);
+    return run_model_streaming_on_handle(h, input, callback, user_data,
+                                         /*input_already_formatted=*/true,
+                                         model_index);
+  } catch (const std::exception &e) {
+    LOGE("quickAiRunText: inference failed: %s", e.what());
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  } catch (...) {
+    LOGE("quickAiRunText: unknown failure");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
 }
 
 ErrorCode runModelHandleStreaming(CausalLmHandle handle,
@@ -2363,9 +2658,14 @@ ErrorCode unloadModelHandle(CausalLmHandle handle) {
     return CAUSAL_LM_ERROR_NONE;
   }
   std::lock_guard<std::mutex> lock(handle->mtx);
-  handle->models.clear();
+  clear_handle_models(*handle);
   handle->architectures.clear();
   handle->model_dirs.clear();
+  handle->tokenizer_paths.clear();
+  handle->chat_templates.clear();
+  handle->grammar_manager.reset();
+  handle->dynamic_grammar_schemas.clear();
+  handle->last_output.clear();
   handle->initialization_duration_ms.clear();
   handle->initialized = false;
   reset_handle_session_state(*handle);
@@ -2382,9 +2682,14 @@ ErrorCode destroyModelHandle(CausalLmHandle handle) {
   // freed memory after this point — documented as "valid until destroy".
   {
     std::lock_guard<std::mutex> lock(handle->mtx);
-    handle->models.clear();
+    clear_handle_models(*handle);
     handle->architectures.clear();
     handle->model_dirs.clear();
+    handle->tokenizer_paths.clear();
+    handle->chat_templates.clear();
+    handle->grammar_manager.reset();
+    handle->dynamic_grammar_schemas.clear();
+    handle->last_output.clear();
     handle->initialization_duration_ms.clear();
     handle->initialized = false;
     reset_handle_session_state(*handle);
@@ -2402,34 +2707,58 @@ ErrorCode cancelModelHandle(CausalLmHandle handle) {
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   }
 
-  // NOTE: We intentionally do NOT take the mutex here to avoid blocking
-  // when run() is holding the lock. The requestStop() method is thread-safe
-  // (uses atomic<bool>), and the models vector is not modified during run()
-  // (only during load/unload which do take the mutex). This allows immediate
-  // cancellation from any thread (e.g., UI cancel button handler).
-  LOGD("[DEBUG] cancelModelHandle: checking state without mutex, "
-       "initialized=%d, models.size=%zu",
-       handle->initialized, handle->models.size());
-
-  if (!handle->initialized || handle->models.empty()) {
+  // Do not take the inference mutex: generation holds it for the full decode.
+  // Model lifetime and the active request epoch are protected separately.
+  std::lock_guard<std::mutex> lock(handle->cancellation_mtx);
+  if (handle->cancellation_targets.empty()) {
     LOGE(
       "[DEBUG] cancelModelHandle: not initialized, returning NOT_INITIALIZED");
     return CAUSAL_LM_ERROR_NOT_INITIALIZED;
   }
 
-  // Set stop flag on all models (primarily affects models[0] for LLM)
-  for (size_t i = 0; i < handle->models.size(); ++i) {
-    if (handle->models[i]) {
-      if (!request_model_stop(handle->models[i].get())) {
-        LOGD("[DEBUG] cancelModelHandle: model[%zu] is not cancellable", i);
-        continue;
-      }
-      LOGD("[DEBUG] cancelModelHandle: calling requestStop() on model[%zu]", i);
+  if (!handle->run_active && handle->run_announced) {
+    handle->cancellation_pending = true;
+    return CAUSAL_LM_ERROR_NONE;
+  }
+  if (!handle->run_active)
+    return CAUSAL_LM_ERROR_NONE;
+
+  for (size_t i = 0; i < handle->cancellation_targets.size(); ++i) {
+    if (!request_model_stop(handle->cancellation_targets[i])) {
+      LOGD("[DEBUG] cancelModelHandle: model[%zu] is not cancellable", i);
+      continue;
     }
+    LOGD("[DEBUG] cancelModelHandle: requested stop on model[%zu]", i);
   }
 
   LOGD("[DEBUG] cancelModelHandle: returning NONE (success)");
   return CAUSAL_LM_ERROR_NONE;
+}
+
+ErrorCode quickAiArmRunCancellation(CausalLmHandle handle) {
+  if (handle == nullptr)
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+  std::lock_guard<std::mutex> lock(handle->cancellation_mtx);
+  if (handle->cancellation_targets.empty())
+    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+  if (handle->run_announced || handle->run_active)
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+  handle->run_announced = true;
+  handle->cancellation_pending = false;
+  return CAUSAL_LM_ERROR_NONE;
+}
+
+void quickAiDisarmRunCancellation(CausalLmHandle handle) {
+  if (handle == nullptr)
+    return;
+
+  std::lock_guard<std::mutex> lock(handle->cancellation_mtx);
+  if (!handle->run_active) {
+    handle->run_announced = false;
+    handle->cancellation_pending = false;
+  }
 }
 
 /**===========================================================================
@@ -2459,6 +2788,7 @@ static ErrorCode execute_multimodal(CausalLmModel &h,
                                     const std::string &prompt,
                                     CausalLmTokenCallback callback,
                                     void *user_data) {
+  ScopedGeneration generation(h);
   auto *tok = llm->getTokenizer();
   if (tok == nullptr) {
     LOGE("[MM] llm has no tokenizer");
@@ -2807,8 +3137,12 @@ ErrorCode runMultimodalHandleWithMessages(
                        : std::string();
   std::string model_dir =
     h.model_dirs.size() > llm_index ? h.model_dirs[llm_index] : std::string();
+  const causallm::ChatTemplate *chat_template =
+    llm_index < h.chat_templates.size() && h.chat_templates[llm_index]
+      ? &h.chat_templates[llm_index].value()
+      : nullptr;
   std::string prompt = apply_chat_template_messages(
-    arch, chat_messages, add_generation_prompt, model_dir);
+    arch, chat_messages, add_generation_prompt, model_dir, chat_template);
   LOGD("[DEBUG]   formatted prompt length: %zu", prompt.length());
   LOGD("[DEBUG]   formatted prompt preview: %.100s%s", prompt.c_str(),
        prompt.length() > 100 ? "..." : "");
@@ -2906,8 +3240,12 @@ ErrorCode runModelHandleWithMessagesStreaming(
     std::string arch = h.architectures.size() > model_index
                          ? h.architectures[model_index]
                          : std::string();
+    const causallm::ChatTemplate *chat_template =
+      model_index < h.chat_templates.size() && h.chat_templates[model_index]
+        ? &h.chat_templates[model_index].value()
+        : nullptr;
     std::string formattedInput = apply_chat_template_messages(
-      arch, chat_messages, add_generation_prompt, model_dir);
+      arch, chat_messages, add_generation_prompt, model_dir, chat_template);
 
     LOGD("[DEBUG]   raw messages count: %zu", num_messages);
     LOGD("[DEBUG]   formatted input length: %zu", formattedInput.length());
@@ -2972,8 +3310,12 @@ ErrorCode runMultimodalHandleWithMessagesStreaming(
       std::string model_dir = h.model_dirs.size() > llm_index
                                 ? h.model_dirs[llm_index]
                                 : std::string();
+      const causallm::ChatTemplate *chat_template =
+        llm_index < h.chat_templates.size() && h.chat_templates[llm_index]
+          ? &h.chat_templates[llm_index].value()
+          : nullptr;
       formattedInput = apply_chat_template_messages(
-        arch, chat_messages, add_generation_prompt, model_dir);
+        arch, chat_messages, add_generation_prompt, model_dir, chat_template);
     }
 
     LOGD("[DEBUG]   raw messages count: %zu", num_messages);
@@ -3006,68 +3348,7 @@ ErrorCode runModelHandleWithJsonStreaming(CausalLmHandle handle,
                                           const char *jsonRequest,
                                           CausalLmTokenCallback callback,
                                           void *user_data) {
-  LOGD("[DEBUG] runModelHandleWithJsonStreaming: START");
-  LOGD("[DEBUG]   handle: %p", (void *)handle);
-  LOGD("[DEBUG]   jsonRequest length: %zu",
-       jsonRequest ? strlen(jsonRequest) : 0);
-
-  if (handle == nullptr || jsonRequest == nullptr || callback == nullptr) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: INVALID_PARAMETER");
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-
-  auto &h = *handle;
-  std::lock_guard<std::mutex> lock(h.mtx);
-
-  if (!h.initialized || h.models.empty()) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: NOT_INITIALIZED");
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  }
-  const size_t model_index = text_generation_model_index(h);
-  if (model_index >= h.models.size() || !h.models[model_index]) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: text model is missing");
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  }
-
-  try {
-    LOGD("[DEBUG] runModelHandleWithJsonStreaming: Parsing JSON request...");
-
-    // Parse JSON request
-    json request = json::parse(jsonRequest);
-    LOGD("[DEBUG]   JSON parsed successfully");
-
-    // Apply chat template using the existing g_chat_template
-    // The chat_template.apply() method handles messages, tools, functions, etc.
-    std::string formattedInput;
-    if (g_chat_template.has_value()) {
-      LOGD(
-        "[DEBUG] runModelHandleWithJsonStreaming: Applying chat template...");
-      formattedInput = g_chat_template->apply(request);
-      LOGD("[DEBUG]   Formatted input length: %zu", formattedInput.length());
-      LOGD("[DEBUG]   Formatted input preview: %.100s%s",
-           formattedInput.c_str(), formattedInput.length() > 100 ? "..." : "");
-    } else {
-      LOGE(
-        "[DEBUG] runModelHandleWithJsonStreaming: Chat template not available");
-      return CAUSAL_LM_ERROR_UNSUPPORTED;
-    }
-
-    LOGD("[DEBUG] runModelHandleWithJsonStreaming: Running inference...");
-    return run_model_streaming_on_handle(h, formattedInput, callback, user_data,
-                                         /*input_already_formatted=*/true,
-                                         model_index);
-  } catch (const json::exception &e) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: JSON parse error: %s",
-         e.what());
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  } catch (const std::exception &e) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: Exception caught: %s",
-         e.what());
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  } catch (...) {
-    LOGE("[DEBUG] runModelHandleWithJsonStreaming: Unknown exception caught");
-    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
-  }
+  return quickAiRunOpenAI(handle, jsonRequest, nullptr, 0, callback, user_data);
 }
 
 // ---------------------------------------------------------------------------
@@ -3132,6 +3413,7 @@ static ErrorCode run_video_on_combined_handle(
   CausalLmModel &h, const std::string &prompt, const std::string &system_prompt,
   const float *pixelValues, int numFloats, int numImages,
   CausalLmTokenCallback callback, void *user_data) {
+  ScopedGeneration generation(h);
   if (numImages < 1 || numFloats < numImages || (numFloats % numImages) != 0) {
     LOGE("run_video_on_combined_handle: bad shape numFloats=%d numImages=%d",
          numFloats, numImages);
@@ -3289,6 +3571,251 @@ ErrorCode runMultimodalMultiImageHandleWithMessagesStreaming(
   return runMultimodalHandleWithMessagesStreaming(
     handle, messages, num_messages, add_generation_prompt, pixelValues,
     numPatches, originalHeights[0], originalWidths[0], callback, user_data);
+}
+
+static ErrorCode
+prepare_openai_grammar(CausalLmModel &h,
+                       const causallm::openai::GrammarSelection &selection,
+                       causallm::XGrammar **grammar, std::string &grammar_key) {
+  *grammar = nullptr;
+  grammar_key.clear();
+  if (selection.kind == causallm::openai::GrammarKind::NONE)
+    return CAUSAL_LM_ERROR_NONE;
+  if (!h.grammar_manager || !h.grammar_manager->isInitialized())
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+
+  json schema = selection.kind == causallm::openai::GrammarKind::JSON_OBJECT
+                  ? json{{"type", "object"}}
+                  : selection.schema;
+  const std::string schema_text = schema.dump();
+  const std::string key_prefix =
+    "__openai_" + std::to_string(std::hash<std::string>{}(schema_text));
+  grammar_key = key_prefix;
+  size_t collision = 0;
+  while (true) {
+    const auto existing = h.dynamic_grammar_schemas.find(grammar_key);
+    if (existing != h.dynamic_grammar_schemas.end() &&
+        existing->second == schema_text) {
+      break;
+    }
+    if (existing == h.dynamic_grammar_schemas.end() &&
+        !h.grammar_manager->hasTool(grammar_key)) {
+      break;
+    }
+    grammar_key = key_prefix + "_" + std::to_string(++collision);
+  }
+
+  if (!h.grammar_manager->hasTool(grammar_key)) {
+    constexpr size_t MAX_DYNAMIC_GRAMMARS = 16;
+    if (h.dynamic_grammar_schemas.size() >= MAX_DYNAMIC_GRAMMARS) {
+      const auto victim = h.dynamic_grammar_schemas.begin();
+      h.grammar_manager->unregisterTool(victim->first);
+      h.dynamic_grammar_schemas.erase(victim);
+    }
+    if (!h.grammar_manager->registerTool(grammar_key, schema_text))
+      return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
+
+  h.dynamic_grammar_schemas[grammar_key] = schema_text;
+  h.grammar_manager->resetGrammar(grammar_key);
+  *grammar = h.grammar_manager->getGrammar(grammar_key);
+  return *grammar ? CAUSAL_LM_ERROR_NONE : CAUSAL_LM_ERROR_INFERENCE_FAILED;
+}
+
+static ErrorCode
+validate_openai_images(const causallm::openai::Request &request,
+                       const QuickAiImageTensorV1 *images, size_t image_count) {
+  if (request.image_sources.size() != image_count ||
+      (image_count > 0 && images == nullptr)) {
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  }
+
+  for (size_t i = 0; i < image_count; ++i) {
+    const auto &image = images[i];
+    if (image.struct_size != sizeof(QuickAiImageTensorV1) ||
+        image.source == nullptr || image.values == nullptr ||
+        image.value_count == 0 || image.patch_count == 0 ||
+        image.channels == 0 || image.patch_height == 0 ||
+        image.patch_width == 0 || image.original_height == 0 ||
+        image.original_width == 0 ||
+        image.original_height >
+          static_cast<uint32_t>((std::numeric_limits<int>::max)()) ||
+        image.original_width >
+          static_cast<uint32_t>((std::numeric_limits<int>::max)()) ||
+        request.image_sources[i] != image.source ||
+        image.layout > QUICK_AI_IMAGE_LAYOUT_CHW) {
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
+
+    for (size_t value = 0; value < image.value_count; ++value) {
+      if (!std::isfinite(image.values[value]))
+        return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
+
+    if (image.layout != QUICK_AI_IMAGE_LAYOUT_MODEL_NATIVE) {
+      size_t expected = image.patch_count;
+      for (uint32_t dimension :
+           {image.channels, image.patch_height, image.patch_width}) {
+        if (expected > (std::numeric_limits<size_t>::max)() / dimension)
+          return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+        expected *= dimension;
+      }
+      if (expected != image.value_count)
+        return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
+  }
+  return CAUSAL_LM_ERROR_NONE;
+}
+
+static ErrorCode render_openai_prompt(CausalLmModel &h, size_t model_index,
+                                      const causallm::openai::Request &request,
+                                      std::string &formatted_input) {
+  if (model_index < h.chat_templates.size() && h.chat_templates[model_index]) {
+    causallm::ChatTemplate::Options options;
+    options.template_name = h.chat_template_name;
+    formatted_input =
+      h.chat_templates[model_index]->apply(request.original, options);
+    return CAUSAL_LM_ERROR_NONE;
+  }
+
+  if (model_index >= h.architectures.size() ||
+      (h.architectures[model_index] != "Gemma4ForCausalLM" &&
+       h.architectures[model_index] != "Gemma4_E2B_QNN")) {
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
+  if (!request.tools.empty())
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+
+  formatted_input = "<bos>";
+  for (size_t i = 0; i < request.messages.size(); ++i) {
+    const auto &message = request.messages[i];
+    const auto &original = request.original["messages"][i];
+    if (message.role == "tool" || original.contains("tool_calls") ||
+        original.contains("function_call")) {
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+
+    std::string role = message.role;
+    if (role == "assistant")
+      role = "model";
+    else if (role == "developer")
+      role = "system";
+    formatted_input += "<|turn>" + role + "\n";
+    formatted_input +=
+      causallm::openai::renderContentWithImagePlaceholders(message.content);
+    formatted_input += "<turn|>\n";
+  }
+
+  bool add_generation_prompt = request.messages.back().role != "assistant";
+  if (request.original.contains("add_generation_prompt")) {
+    add_generation_prompt =
+      request.original["add_generation_prompt"].get<bool>();
+  }
+  if (add_generation_prompt)
+    formatted_input += "<|turn>model\n";
+  return CAUSAL_LM_ERROR_NONE;
+}
+
+ErrorCode quickAiRunOpenAI(CausalLmHandle handle, const char *json_request,
+                           const QuickAiImageTensorV1 *images,
+                           size_t image_count, CausalLmTokenCallback callback,
+                           void *user_data) {
+  if (handle == nullptr || json_request == nullptr || callback == nullptr ||
+      (images == nullptr && image_count != 0)) {
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  }
+
+  auto &h = *handle;
+  std::lock_guard<std::mutex> lock(h.mtx);
+  if (!h.initialized || h.models.empty())
+    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+  ScopedRunRequest request_scope(h);
+
+  try {
+    const auto request =
+      causallm::openai::parseRequest(std::string(json_request));
+    if (request.original.contains("stream") &&
+        !request.original["stream"].get<bool>()) {
+      LOGE("quickAiRunOpenAI: stream=false is incompatible with callback API");
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+    if (request.original.contains("response_format")) {
+      const auto &format = request.original["response_format"];
+      if (format.is_object() && format.contains("json_schema") &&
+          format["json_schema"].is_object() &&
+          format["json_schema"].contains("strict") &&
+          !format["json_schema"]["strict"].get<bool>()) {
+        LOGE("quickAiRunOpenAI: non-strict JSON schema is unsupported");
+        return CAUSAL_LM_ERROR_UNSUPPORTED;
+      }
+    }
+    for (const char *field : {"tools", "functions"}) {
+      if (!request.original.contains(field))
+        continue;
+      for (const auto &entry : request.original[field]) {
+        const auto &function = field[0] == 't' ? entry["function"] : entry;
+        if (function.contains("strict")) {
+          LOGE("quickAiRunOpenAI: function strict mode is unsupported");
+          return CAUSAL_LM_ERROR_UNSUPPORTED;
+        }
+      }
+    }
+    if (!request.unsupported_fields.empty()) {
+      LOGE("quickAiRunOpenAI: unsupported request field: %s",
+           request.unsupported_fields.front().c_str());
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+    const ErrorCode image_result =
+      validate_openai_images(request, images, image_count);
+    if (image_result != CAUSAL_LM_ERROR_NONE)
+      return image_result;
+
+    // Extension multimodal dispatch is introduced in the later dedicated PR.
+    if (image_count != 0)
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+
+    const size_t model_index = text_generation_model_index(h);
+    if (model_index >= h.models.size() || !h.models[model_index])
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+
+    std::string formatted_input;
+    const ErrorCode render_result =
+      render_openai_prompt(h, model_index, request, formatted_input);
+    if (render_result != CAUSAL_LM_ERROR_NONE)
+      return render_result;
+
+    causallm::XGrammar *grammar = nullptr;
+    std::string grammar_key;
+    const ErrorCode grammar_result =
+      prepare_openai_grammar(h, request.grammar, &grammar, grammar_key);
+    if (grammar_result != CAUSAL_LM_ERROR_NONE)
+      return grammar_result;
+
+    struct GrammarReset {
+      causallm::XGrammarManager *manager;
+      const std::string *key;
+      ~GrammarReset() {
+        if (manager && key && !key->empty())
+          manager->resetGrammar(*key);
+      }
+    } grammar_reset{h.grammar_manager.get(), &grammar_key};
+
+    h.last_output.clear();
+    h.models[model_index]->resetConversationState();
+    reset_handle_session_state(h);
+    return run_model_streaming_on_handle(
+      h, formatted_input, callback, user_data,
+      /*input_already_formatted=*/true, model_index, grammar);
+  } catch (const std::invalid_argument &e) {
+    LOGE("quickAiRunOpenAI: invalid request: %s", e.what());
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  } catch (const std::exception &e) {
+    LOGE("quickAiRunOpenAI: inference failed: %s", e.what());
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  } catch (...) {
+    LOGE("quickAiRunOpenAI: unknown failure");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
 }
 
 } // extern "C"
