@@ -139,8 +139,12 @@ public:
     }
     qnn_data->m_isBackendInitialized = false;
     this->release();
-    if (qnn_data->m_backendLibraryHandle) {
-      pal::dynamicloading::dlClose(qnn_data->m_backendLibraryHandle);
+    void *backend_library_handle = qnn_data->m_backendLibraryHandle;
+    qnn_data->m_backendLibraryHandle = nullptr;
+    if (qnn_data->m_backendLibraryLifetime) {
+      qnn_data->m_backendLibraryLifetime.reset();
+    } else if (backend_library_handle != nullptr) {
+      pal::dynamicloading::dlClose(backend_library_handle);
     }
   }
 

@@ -46,7 +46,9 @@ public:
   static RpcMem &global();
 
   /** @brief whether libcdsprpc.so and the rpcmem symbols were resolved */
-  bool valid() const { return alloc_ != nullptr && free_ != nullptr; }
+  bool valid() const {
+    return alloc_ != nullptr && free_ != nullptr && to_fd_ != nullptr;
+  }
 
   void *alloc(int heapid, uint32_t flags, int size) const {
     return alloc_ ? alloc_(heapid, flags, size) : nullptr;

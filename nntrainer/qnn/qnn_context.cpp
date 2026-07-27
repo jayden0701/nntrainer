@@ -132,16 +132,22 @@ void QNNContext::initialize() noexcept {
     LOGD("initialize: initBackend() completed");
     ml_logi("qnn init done");
     LOGD("initialize: creating QNNRpcManager");
-    auto rpc_mem = std::make_shared<QNNRpcManager>();
+    auto qnn_data = getQnnData();
+    NNTR_THROW_IF(qnn_data->m_backendLibraryHandle == nullptr ||
+                    !qnn_data->m_backendLibraryLifetime,
+                  std::runtime_error)
+      << "QNN backend library lifetime is unavailable";
+
+    auto rpc_mem = std::make_shared<QNNRpcManager>(
+      qnn_data->m_qnnFunctionPointers.qnnInterface,
+      qnn_data->m_backendLibraryLifetime);
 
     LOGD("initialize: registering QNN layers");
     registerFactory(nntrainer::createLayer<QNNGraph>, QNNGraph::type, -1);
     ml_logi("qnn registerFactory done");
     LOGD("initialize: registerFactory done");
 
-    std::static_pointer_cast<QNNBackendVar>(getContextData())
-      ->getVar()
-      ->RpcMem = rpc_mem;
+    qnn_data->RpcMem = rpc_mem;
     setMemAllocator(std::move(rpc_mem));
     LOGD("initialize: QNNRpcManager set");
     qnn_initialized = true;
@@ -226,6 +232,30 @@ int QNNContext::initBackend() {
     // call below). Fail init() cleanly here so the caller can keep the CPU
     // path alive instead of taking the whole process down.
     return -1;
+  }
+
+  if (qnn_data->m_backendLibraryHandle == nullptr) {
+    qnn_data->m_qnnFunctionPointers = {};
+    ml_loge("QNN function-pointer loading succeeded without a backend handle");
+    return -1;
+  }
+
+  // Establish shared ownership before any vendor resource is created. The RPC
+  // allocator can outlive QNNContext through MemoryPool, so both retain this
+  // one loader handle instead of independently reopening the backend.
+  try {
+    qnn_data->m_backendLibraryLifetime = std::shared_ptr<void>(
+      qnn_data->m_backendLibraryHandle, [](void *handle) noexcept {
+        if (handle != nullptr) {
+          pal::dynamicloading::dlClose(handle);
+        }
+      });
+  } catch (...) {
+    // shared_ptr invokes the deleter when control-block allocation fails.
+    // Invalidate the copied table so teardown cannot call into the closed DSO.
+    qnn_data->m_backendLibraryHandle = nullptr;
+    qnn_data->m_qnnFunctionPointers = {};
+    throw;
   }
 
   LOGD("init: calling getQnnSystemFunctionPointers");

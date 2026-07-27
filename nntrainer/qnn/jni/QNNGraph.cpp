@@ -101,8 +101,14 @@ size_t getQnnTensorElementSize(Qnn_DataType_t qnn_type) {
   }
 }
 
-void *getQnnTensorBuffer(Tensor &tensor, const Qnn_Tensor_t &qnn_tensor,
-                         const char *kind, size_t index) {
+struct QnnTensorBuffer {
+  void *data;
+  size_t required_bytes;
+};
+
+QnnTensorBuffer getQnnTensorBuffer(Tensor &tensor,
+                                   const Qnn_Tensor_t &qnn_tensor,
+                                   const char *kind, size_t index) {
   NNTR_THROW_IF(qnn_tensor.version != QNN_TENSOR_VERSION_1,
                 std::invalid_argument)
     << "Unsupported QNN " << kind << " tensor descriptor version at index "
@@ -137,7 +143,7 @@ void *getQnnTensorBuffer(Tensor &tensor, const Qnn_Tensor_t &qnn_tensor,
   void *buffer = tensor.getData<void>();
   NNTR_THROW_IF(buffer == nullptr, std::runtime_error)
     << "NNTrainer " << kind << " tensor " << index << " has no backing buffer";
-  return buffer;
+  return {buffer, required_bytes};
 }
 
 using QuantParamMap = std::map<std::string, std::pair<float, int>>;
@@ -340,18 +346,18 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
 
   for (size_t i = 0; i < context.getNumInputs(); ++i) {
     applyQuantParam(inputs[i], input_quant_params, "input", i);
-    void *buffer =
+    const auto buffer =
       getQnnTensorBuffer(context.getInput(i), inputs[i], "input", i);
-    qnn_data->RpcMem->registerQnnTensor(buffer, inputs[i],
-                                        context_info.m_context);
+    qnn_data->RpcMem->registerQnnTensor(
+      buffer.data, inputs[i], context_info.m_context, buffer.required_bytes);
   }
 
   for (size_t i = 0; i < context.getNumOutputs(); ++i) {
     applyQuantParam(outputs[i], output_quant_params, "output", i);
-    void *buffer =
+    const auto buffer =
       getQnnTensorBuffer(context.getOutput(i), outputs[i], "output", i);
-    qnn_data->RpcMem->registerQnnTensor(buffer, outputs[i],
-                                        context_info.m_context);
+    qnn_data->RpcMem->registerQnnTensor(
+      buffer.data, outputs[i], context_info.m_context, buffer.required_bytes);
   }
 
   auto &qnn_interface = qnn_data->m_qnnFunctionPointers.qnnInterface;

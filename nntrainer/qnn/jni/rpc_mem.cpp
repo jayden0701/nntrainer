@@ -40,8 +40,11 @@ RpcMem::RpcMem() {
 }
 
 RpcMem &RpcMem::global() {
-  static RpcMem instance;
-  return instance;
+  // The resolved function pointers can be needed by late allocator cleanup
+  // during static destruction. Keep this process-wide loader alive instead of
+  // depending on cross-translation-unit destruction order.
+  static RpcMem *instance = new RpcMem();
+  return *instance;
 }
 
 } // namespace nntrainer

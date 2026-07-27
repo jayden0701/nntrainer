@@ -202,6 +202,7 @@ struct QNNVar {
   sample_app::ProfilingLevel m_profilingLevel = sample_app::ProfilingLevel::OFF;
   bool m_isBackendInitialized = false;
   void *m_backendLibraryHandle = nullptr;
+  std::shared_ptr<void> m_backendLibraryLifetime;
   Qnn_LogHandle_t m_logHandle = nullptr;
   Qnn_ProfileHandle_t m_profileBackendHandle = nullptr;
   sample_app::QnnFunctionPointers m_qnnFunctionPointers{};
@@ -391,6 +392,18 @@ struct QNNVar {
       m_hasContextQuarantine = true;
       ml_loge("Cannot free QNN context for: %s", bin_path.c_str());
       return StatusCode::FAILURE;
+    }
+
+    if (RpcMem) {
+      const size_t registration_count =
+        RpcMem->registrationCount(context.m_context);
+      if (registration_count > 0) {
+        ml_loge("Refusing to free QNN context with live RPC registrations: "
+                "binary=%s, context=%p, registrations=%zu",
+                bin_path.c_str(), static_cast<void *>(context.m_context),
+                registration_count);
+        return StatusCode::FAILURE;
+      }
     }
 
     const auto free_status = m_qnnFunctionPointers.qnnInterface.contextFree(
