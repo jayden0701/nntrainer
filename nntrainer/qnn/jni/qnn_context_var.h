@@ -206,18 +206,25 @@ struct QNNVar {
   Qnn_LogHandle_t m_logHandle = nullptr;
   Qnn_ProfileHandle_t m_profileBackendHandle = nullptr;
   sample_app::QnnFunctionPointers m_qnnFunctionPointers{};
+  std::shared_ptr<QNNRuntimeLifecycle> runtime_lifecycle{
+    std::make_shared<QNNRuntimeLifecycle>()};
   std::shared_ptr<QNNRpcManager> RpcMem;
   IOTensorWrapper m_ioTensor;
   std::string name = "qnn_backend_param";
   std::map<std::string, Qnn_Context_Graph_t>
     ct_map; /** bin file name - Context map **/
   /**
-   * Serializes registry mutation, context creation, and graph-handle
-   * publication. References returned by this registry remain valid under the
-   * existing owner contract: QNNContext teardown starts only after all QNN
-   * layers stop using the shared runtime. Concurrent teardown is unsupported.
+   * Serializes registry mutation and graph-handle publication. A reference
+   * remains valid only while its caller also holds runtime_lifecycle's
+   * execution lease.
    */
   std::mutex context_registry_mutex;
+  /**
+   * Serializes shared extension state, the profile handle, and graph execution.
+   * Forwarding acquires this before the lifecycle lease. Teardown never takes
+   * this mutex; its exclusive lifecycle lease drains active forwarding.
+   */
+  std::mutex forwarding_mutex;
   bool m_hasSystemContextFreeFailure = false;
   bool m_hasContextQuarantine = false;
   /**
@@ -248,7 +255,12 @@ struct QNNVar {
   std::optional<MalformedMetadataQuarantine> m_malformedMetadataQuarantine;
 
   std::optional<std::reference_wrapper<Qnn_Context_Graph_t>>
-  findContext(const std::string &bin_path) {
+  findContext(const QNNRuntimeLifecycle::ExecutionGuard &guard,
+              const std::string &bin_path) {
+    if (!runtime_lifecycle || !runtime_lifecycle->ownsExecutionGuard(guard)) {
+      ml_loge("QNN context lookup requires a runtime execution lease");
+      return std::nullopt;
+    }
     const std::lock_guard<std::mutex> lock(context_registry_mutex);
     return findContextLocked(bin_path);
   }
@@ -364,7 +376,12 @@ struct QNNVar {
     return StatusCode::SUCCESS;
   }
 
-  StatusCode freeContextLocked(const std::string &bin_path) {
+  StatusCode freeContextLocked(const QNNRuntimeLifecycle::CleanupGuard &guard,
+                               const std::string &bin_path) {
+    if (!runtime_lifecycle || !runtime_lifecycle->ownsCleanupGuard(guard)) {
+      ml_loge("QNN context free requires a runtime cleanup lease");
+      return StatusCode::FAILURE;
+    }
     if (m_hasSystemContextFreeFailure || m_hasContextQuarantine) {
       ml_loge("QNN runtime is quarantined; refusing further context teardown");
       return StatusCode::FAILURE;
@@ -396,7 +413,7 @@ struct QNNVar {
 
     if (RpcMem) {
       const size_t registration_count =
-        RpcMem->registrationCount(context.m_context);
+        RpcMem->registrationCount(guard, context.m_context);
       if (registration_count > 0) {
         ml_loge("Refusing to free QNN context with live RPC registrations: "
                 "binary=%s, context=%p, registrations=%zu",
@@ -429,12 +446,38 @@ struct QNNVar {
   }
 
   StatusCode freeContext(const std::string &bin_path) {
+    auto lifecycle = runtime_lifecycle;
+    if (!lifecycle) {
+      ml_loge("QNN runtime lifecycle is unavailable");
+      return StatusCode::FAILURE;
+    }
+    QNNRuntimeLifecycle::CleanupGuard cleanup_guard;
+    try {
+      cleanup_guard = lifecycle->acquireCleanupGuard();
+    } catch (const std::exception &e) {
+      ml_loge("Exception while acquiring QNN context cleanup lease: %s",
+              e.what());
+    } catch (...) {
+      ml_loge("Unknown exception while acquiring QNN context cleanup lease");
+    }
+    if (!cleanup_guard.owns_lock()) {
+      return StatusCode::FAILURE;
+    }
+    if (!lifecycle->isRunning(cleanup_guard)) {
+      ml_loge("QNN runtime shutdown has started; refusing context free");
+      return StatusCode::FAILURE;
+    }
     const std::lock_guard<std::mutex> lock(context_registry_mutex);
-    return freeContextLocked(bin_path);
+    return freeContextLocked(cleanup_guard, bin_path);
   }
 
-  StatusCode freeAllContexts() {
-    const std::lock_guard<std::mutex> lock(context_registry_mutex);
+  StatusCode
+  freeAllContextsLocked(const QNNRuntimeLifecycle::CleanupGuard &guard) {
+    if (!runtime_lifecycle || !runtime_lifecycle->ownsCleanupGuard(guard)) {
+      ml_loge("QNN context teardown requires a runtime cleanup lease");
+      return StatusCode::FAILURE;
+    }
+
     if (m_hasSystemContextFreeFailure || m_hasContextQuarantine) {
       return StatusCode::FAILURE;
     }
@@ -445,17 +488,107 @@ struct QNNVar {
       keys.push_back(k);
     }
     for (auto &k : keys) {
-      if (freeContextLocked(k) != StatusCode::SUCCESS) {
-        // Once a vendor free fails, the remaining runtime state is ambiguous.
-        // Do not issue more teardown calls against the same backend.
+      if (freeContextLocked(guard, k) != StatusCode::SUCCESS) {
+        // Stop after the first blocked or failed context cleanup. The caller
+        // distinguishes live-registration deferral from ambiguous vendor state.
         return StatusCode::FAILURE;
       }
     }
     return StatusCode::SUCCESS;
   }
 
-  StatusCode makeContext(props::FilePath bin) {
+  StatusCode
+  freeAllContextsWithGuard(const QNNRuntimeLifecycle::CleanupGuard &guard) {
+    if (!runtime_lifecycle || !runtime_lifecycle->ownsCleanupGuard(guard)) {
+      ml_loge("QNN context teardown requires a runtime cleanup lease");
+      return StatusCode::FAILURE;
+    }
     const std::lock_guard<std::mutex> lock(context_registry_mutex);
+    return freeAllContextsLocked(guard);
+  }
+
+  bool contextTeardownDeferredForRegistrations(
+    const QNNRuntimeLifecycle::CleanupGuard &guard) {
+    if (!runtime_lifecycle || !runtime_lifecycle->ownsCleanupGuard(guard) ||
+        !RpcMem) {
+      return false;
+    }
+
+    const std::lock_guard<std::mutex> lock(context_registry_mutex);
+    if (m_hasSystemContextFreeFailure || m_hasContextQuarantine) {
+      return false;
+    }
+
+    bool has_live_registration = false;
+    for (const auto &context : ct_map) {
+      if (context.second.m_state != QnnContextEntryState::ACTIVE ||
+          context.second.m_context == nullptr) {
+        return false;
+      }
+      has_live_registration =
+        has_live_registration ||
+        RpcMem->registrationCount(guard, context.second.m_context) > 0;
+    }
+    return has_live_registration;
+  }
+
+  StatusCode freeAllContexts() {
+    auto lifecycle = runtime_lifecycle;
+    if (!lifecycle) {
+      ml_loge("QNN runtime lifecycle is unavailable");
+      return StatusCode::FAILURE;
+    }
+    QNNRuntimeLifecycle::CleanupGuard cleanup_guard;
+    try {
+      cleanup_guard = lifecycle->acquireCleanupGuard();
+    } catch (const std::exception &e) {
+      ml_loge("Exception while acquiring QNN runtime cleanup lease: %s",
+              e.what());
+    } catch (...) {
+      ml_loge("Unknown exception while acquiring QNN runtime cleanup lease");
+    }
+    if (!cleanup_guard.owns_lock()) {
+      return StatusCode::FAILURE;
+    }
+    if (!lifecycle->isRunning(cleanup_guard)) {
+      ml_loge("QNN runtime shutdown has started; refusing context teardown");
+      return StatusCode::FAILURE;
+    }
+    return freeAllContextsWithGuard(cleanup_guard);
+  }
+
+  StatusCode makeContext(props::FilePath bin) {
+    auto lifecycle = runtime_lifecycle;
+    if (!lifecycle) {
+      ml_loge("QNN runtime lifecycle is unavailable");
+      return StatusCode::FAILURE;
+    }
+    QNNRuntimeLifecycle::CleanupGuard cleanup_guard;
+    try {
+      cleanup_guard = lifecycle->acquireCleanupGuard();
+    } catch (const std::exception &e) {
+      ml_loge("Exception while acquiring QNN context creation lease: %s",
+              e.what());
+    } catch (...) {
+      ml_loge("Unknown exception while acquiring QNN context creation lease");
+    }
+    if (!cleanup_guard.owns_lock()) {
+      return StatusCode::FAILURE;
+    }
+    if (!lifecycle->isRunning(cleanup_guard)) {
+      ml_loge("QNN runtime shutdown has started; refusing a new context");
+      return StatusCode::FAILURE;
+    }
+    const std::lock_guard<std::mutex> lock(context_registry_mutex);
+    return makeContextLocked(cleanup_guard, std::move(bin));
+  }
+
+  StatusCode makeContextLocked(const QNNRuntimeLifecycle::CleanupGuard &guard,
+                               props::FilePath bin) {
+    if (!runtime_lifecycle || !runtime_lifecycle->ownsCleanupGuard(guard)) {
+      ml_loge("QNN context creation requires a runtime cleanup lease");
+      return StatusCode::FAILURE;
+    }
     const std::string bin_path = bin.get();
 
     if (m_hasSystemContextFreeFailure || m_hasContextQuarantine) {
@@ -733,8 +866,13 @@ struct QNNVar {
     return StatusCode::FAILURE;
   }
 
-  qnn_wrapper_api::GraphInfo_t *graphRetrieve(std::string bin_path,
-                                              std::string graphName) {
+  qnn_wrapper_api::GraphInfo_t *
+  graphRetrieve(const QNNRuntimeLifecycle::ExecutionGuard &guard,
+                std::string bin_path, std::string graphName) {
+    if (!runtime_lifecycle || !runtime_lifecycle->ownsExecutionGuard(guard)) {
+      ml_loge("QNN graph lookup requires a runtime execution lease");
+      return nullptr;
+    }
     const std::lock_guard<std::mutex> lock(context_registry_mutex);
 
     std::optional<std::reference_wrapper<Qnn_Context_Graph_t>> op =

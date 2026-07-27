@@ -15,6 +15,7 @@
 #include "QnnInterface.h"
 #include "rpc_mem.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -22,10 +23,70 @@
 #include <mem_allocator.h>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
 namespace nntrainer {
+
+/** @brief Runtime state shared by QNN objects and their late-lived allocator.
+ */
+enum class QnnRuntimeState : uint8_t {
+  RUNNING,
+  SHUTDOWN_REQUESTED,
+  CLEANUP_PENDING,
+  SHUT_DOWN,
+  QUARANTINED,
+};
+
+/**
+ * @brief Coordinates QNN execution, resource cleanup, and runtime shutdown.
+ *
+ * QNNVar and QNNRpcManager share this object because MemoryPool can retain the
+ * allocator after the context owner is gone. Shutdown admission is closed
+ * before waiting for active readers so new executions cannot starve teardown.
+ */
+class QNNRuntimeLifecycle {
+public:
+  using ExecutionGuard = std::shared_lock<std::shared_mutex>;
+  using CleanupGuard = std::unique_lock<std::shared_mutex>;
+
+  /** @brief Acquire a shared lease for one runtime execution or allocation. */
+  ExecutionGuard acquireExecutionGuard();
+
+  /** @brief Acquire an exclusive lease for normal resource cleanup. */
+  CleanupGuard acquireCleanupGuard();
+
+  /**
+   * @brief Permanently close execution admission and drain active readers.
+   */
+  CleanupGuard beginRuntimeShutdown();
+
+  /** @brief Mark the result of teardown while holding its exclusive lease. */
+  void finishRuntimeShutdown(const CleanupGuard &guard,
+                             QnnRuntimeState final_state) noexcept;
+
+  /** @brief Verify that a shared lease belongs to this lifecycle. */
+  bool ownsExecutionGuard(const ExecutionGuard &guard) const noexcept;
+
+  /** @brief Verify that an exclusive lease belongs to this lifecycle. */
+  bool ownsCleanupGuard(const CleanupGuard &guard) const noexcept;
+
+  /** @brief Return whether normal vendor calls remain admitted. */
+  bool isRunning(const CleanupGuard &guard) const noexcept;
+
+  /** @brief Return whether retained contexts permit late memory cleanup. */
+  bool allowsVendorCleanup(const CleanupGuard &guard) const noexcept;
+
+  /** @brief Return the current sticky runtime state. */
+  QnnRuntimeState state() const noexcept {
+    return state_.load(std::memory_order_acquire);
+  }
+
+private:
+  mutable std::shared_mutex lifecycle_mutex_;
+  std::atomic<QnnRuntimeState> state_{QnnRuntimeState::RUNNING};
+};
 
 /** @brief Snapshot of resources retained by the QNN RPC manager. */
 struct QnnRpcResourceReport {
@@ -47,9 +108,12 @@ public:
    *
    * @param qnn_interface copied function table for the selected backend
    * @param backend_library_lifetime shared owner of the selected backend DSO
+   * @param runtime_lifecycle gate shared with the QNN runtime owner
    */
-  explicit QNNRpcManager(const QNN_INTERFACE_VER_TYPE &qnn_interface,
-                         std::shared_ptr<void> backend_library_lifetime);
+  explicit QNNRpcManager(
+    const QNN_INTERFACE_VER_TYPE &qnn_interface,
+    std::shared_ptr<void> backend_library_lifetime,
+    std::shared_ptr<QNNRuntimeLifecycle> runtime_lifecycle);
   ~QNNRpcManager() override;
 
   void alloc(void **ptr, size_t size, size_t alignment) override;
@@ -64,14 +128,16 @@ public:
    * descriptor signatures therefore own distinct registrations instead of
    * reusing an incompatible handle.
    */
-  void registerQnnTensor(void *ptr, Qnn_Tensor_t &qnn_tensor,
+  void registerQnnTensor(const QNNRuntimeLifecycle::ExecutionGuard &guard,
+                         void *ptr, Qnn_Tensor_t &qnn_tensor,
                          Qnn_ContextHandle_t context, size_t required_bytes);
 
   /** @brief Return a thread-safe resource ledger snapshot. */
   QnnRpcResourceReport resourceReport() const;
 
   /** @brief Count registrations owned by one QNN context. */
-  size_t registrationCount(Qnn_ContextHandle_t context) const;
+  size_t registrationCount(const QNNRuntimeLifecycle::CleanupGuard &guard,
+                           Qnn_ContextHandle_t context) const;
 
 private:
   enum class AllocationState : uint8_t {
@@ -124,6 +190,7 @@ private:
 
   QNN_INTERFACE_VER_TYPE qnn_interface_{};
   std::shared_ptr<void> backend_library_lifetime_;
+  std::shared_ptr<QNNRuntimeLifecycle> runtime_lifecycle_;
 
   mutable std::mutex ledger_mutex_;
   std::map<void *, Allocation, std::less<void *>> allocations_;

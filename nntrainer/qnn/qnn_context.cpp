@@ -140,7 +140,7 @@ void QNNContext::initialize() noexcept {
 
     auto rpc_mem = std::make_shared<QNNRpcManager>(
       qnn_data->m_qnnFunctionPointers.qnnInterface,
-      qnn_data->m_backendLibraryLifetime);
+      qnn_data->m_backendLibraryLifetime, qnn_data->runtime_lifecycle);
 
     LOGD("initialize: registering QNN layers");
     registerFactory(nntrainer::createLayer<QNNGraph>, QNNGraph::type, -1);

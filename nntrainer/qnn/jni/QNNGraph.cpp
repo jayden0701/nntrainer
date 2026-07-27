@@ -21,6 +21,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -292,22 +293,35 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
   (void)training;
 
   auto qnn_data = getQNNVar(context);
-  NNTR_THROW_IF(!qnn_data->RpcMem, std::runtime_error)
+  auto rpc_mem = qnn_data->RpcMem;
+  NNTR_THROW_IF(!rpc_mem, std::runtime_error)
     << "QNN RPC memory manager is unavailable";
+  auto runtime_lifecycle = qnn_data->runtime_lifecycle;
+  NNTR_THROW_IF(!runtime_lifecycle, std::runtime_error)
+    << "QNN runtime lifecycle is unavailable";
 
-  auto context_ref = qnn_data->findContext(bin_path);
+  // Take the serialization mutex before entering the runtime gate so queued
+  // forwarding calls do not keep teardown's shared-reader count elevated.
+  std::unique_lock<std::mutex> forwarding_guard(qnn_data->forwarding_mutex);
+  auto execution_guard = runtime_lifecycle->acquireExecutionGuard();
+
+  auto context_ref = qnn_data->findContext(execution_guard, bin_path);
   if (!context_ref) {
     ml_logw("Context is not created. Create Now");
+    context_ref.reset();
+    execution_guard.unlock();
     NNTR_THROW_IF(qnn_data->makeContext(bin_path) != StatusCode::SUCCESS,
                   std::runtime_error)
       << "Failed to create QNN context from " << bin_path;
-    context_ref = qnn_data->findContext(bin_path);
+    execution_guard = runtime_lifecycle->acquireExecutionGuard();
+    context_ref = qnn_data->findContext(execution_guard, bin_path);
   }
 
   NNTR_THROW_IF(!context_ref, std::runtime_error)
     << "QNN context is unavailable after creation for " << bin_path;
 
-  auto *graph_info = qnn_data->graphRetrieve(bin_path, context.getName());
+  auto *graph_info =
+    qnn_data->graphRetrieve(execution_guard, bin_path, context.getName());
   NNTR_THROW_IF(graph_info == nullptr, std::invalid_argument)
     << "Cannot retrieve graph " << context.getName() << " from " << bin_path;
 
@@ -348,16 +362,16 @@ void QNNGraph::forwarding(RunLayerContext &context, bool training) {
     applyQuantParam(inputs[i], input_quant_params, "input", i);
     const auto buffer =
       getQnnTensorBuffer(context.getInput(i), inputs[i], "input", i);
-    qnn_data->RpcMem->registerQnnTensor(
-      buffer.data, inputs[i], context_info.m_context, buffer.required_bytes);
+    rpc_mem->registerQnnTensor(execution_guard, buffer.data, inputs[i],
+                               context_info.m_context, buffer.required_bytes);
   }
 
   for (size_t i = 0; i < context.getNumOutputs(); ++i) {
     applyQuantParam(outputs[i], output_quant_params, "output", i);
     const auto buffer =
       getQnnTensorBuffer(context.getOutput(i), outputs[i], "output", i);
-    qnn_data->RpcMem->registerQnnTensor(
-      buffer.data, outputs[i], context_info.m_context, buffer.required_bytes);
+    rpc_mem->registerQnnTensor(execution_guard, buffer.data, outputs[i],
+                               context_info.m_context, buffer.required_bytes);
   }
 
   auto &qnn_interface = qnn_data->m_qnnFunctionPointers.qnnInterface;

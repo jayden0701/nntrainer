@@ -24,10 +24,94 @@
 
 namespace nntrainer {
 
-QNNRpcManager::QNNRpcManager(const QNN_INTERFACE_VER_TYPE &qnn_interface,
-                             std::shared_ptr<void> backend_library_lifetime) :
+QNNRuntimeLifecycle::ExecutionGuard
+QNNRuntimeLifecycle::acquireExecutionGuard() {
+  if (state_.load(std::memory_order_acquire) != QnnRuntimeState::RUNNING) {
+    throw std::runtime_error("QNN runtime execution admission is closed");
+  }
+
+  ExecutionGuard guard(lifecycle_mutex_);
+  if (state_.load(std::memory_order_acquire) != QnnRuntimeState::RUNNING) {
+    guard.unlock();
+    throw std::runtime_error("QNN runtime shutdown has started");
+  }
+  return guard;
+}
+
+QNNRuntimeLifecycle::CleanupGuard QNNRuntimeLifecycle::acquireCleanupGuard() {
+  return CleanupGuard(lifecycle_mutex_);
+}
+
+QNNRuntimeLifecycle::CleanupGuard QNNRuntimeLifecycle::beginRuntimeShutdown() {
+  auto expected = QnnRuntimeState::RUNNING;
+  if (!state_.compare_exchange_strong(
+        expected, QnnRuntimeState::SHUTDOWN_REQUESTED,
+        std::memory_order_acq_rel, std::memory_order_acquire)) {
+    throw std::runtime_error("QNN runtime shutdown has already started");
+  }
+
+  try {
+    return CleanupGuard(lifecycle_mutex_);
+  } catch (...) {
+    // Admission is already closed, but active readers may not have drained.
+    // Preserve the runtime and prohibit every later vendor cleanup attempt.
+    state_.store(QnnRuntimeState::QUARANTINED, std::memory_order_release);
+    throw;
+  }
+}
+
+void QNNRuntimeLifecycle::finishRuntimeShutdown(
+  const CleanupGuard &guard, QnnRuntimeState final_state) noexcept {
+  if (!ownsCleanupGuard(guard)) {
+    ml_loge("Cannot finish QNN runtime shutdown without its cleanup lease");
+    return;
+  }
+  if (final_state != QnnRuntimeState::CLEANUP_PENDING &&
+      final_state != QnnRuntimeState::SHUT_DOWN &&
+      final_state != QnnRuntimeState::QUARANTINED) {
+    ml_loge("Invalid final QNN runtime state: %u",
+            static_cast<unsigned int>(final_state));
+    final_state = QnnRuntimeState::QUARANTINED;
+  }
+  state_.store(final_state, std::memory_order_release);
+}
+
+bool QNNRuntimeLifecycle::ownsExecutionGuard(
+  const ExecutionGuard &guard) const noexcept {
+  return guard.owns_lock() && guard.mutex() == &lifecycle_mutex_;
+}
+
+bool QNNRuntimeLifecycle::ownsCleanupGuard(
+  const CleanupGuard &guard) const noexcept {
+  return guard.owns_lock() && guard.mutex() == &lifecycle_mutex_;
+}
+
+bool QNNRuntimeLifecycle::isRunning(const CleanupGuard &guard) const noexcept {
+  return ownsCleanupGuard(guard) &&
+         state_.load(std::memory_order_acquire) == QnnRuntimeState::RUNNING;
+}
+
+bool QNNRuntimeLifecycle::allowsVendorCleanup(
+  const CleanupGuard &guard) const noexcept {
+  if (!ownsCleanupGuard(guard)) {
+    return false;
+  }
+  const auto current_state = state_.load(std::memory_order_acquire);
+  return current_state == QnnRuntimeState::RUNNING ||
+         current_state == QnnRuntimeState::SHUTDOWN_REQUESTED ||
+         current_state == QnnRuntimeState::CLEANUP_PENDING;
+}
+
+QNNRpcManager::QNNRpcManager(
+  const QNN_INTERFACE_VER_TYPE &qnn_interface,
+  std::shared_ptr<void> backend_library_lifetime,
+  std::shared_ptr<QNNRuntimeLifecycle> runtime_lifecycle) :
   qnn_interface_(qnn_interface),
-  backend_library_lifetime_(std::move(backend_library_lifetime)) {
+  backend_library_lifetime_(std::move(backend_library_lifetime)),
+  runtime_lifecycle_(std::move(runtime_lifecycle)) {
+  if (!runtime_lifecycle_) {
+    throw std::invalid_argument("QNN runtime lifecycle is unavailable");
+  }
 #ifdef ENABLE_QNN
   if (!backend_library_lifetime_) {
     throw std::invalid_argument("QNN backend library lifetime is unavailable");
@@ -44,8 +128,10 @@ QNNRpcManager::QNNRpcManager(const QNN_INTERFACE_VER_TYPE &qnn_interface,
 }
 
 QNNRpcManager::~QNNRpcManager() {
-#ifdef ENABLE_QNN
   try {
+    auto cleanup_guard = runtime_lifecycle_->acquireCleanupGuard();
+    (void)cleanup_guard;
+#ifdef ENABLE_QNN
     size_t released_allocations = 0;
     {
       std::lock_guard<std::mutex> ledger_guard(ledger_mutex_);
@@ -80,13 +166,13 @@ QNNRpcManager::~QNNRpcManager() {
               report.duplicate_acquisitions,
               report.allocation_admission_closed ? 1 : 0);
     }
+#endif
   } catch (const std::exception &e) {
     ml_loge("Exception while reporting retained QNN RPC resources: %s",
             e.what());
   } catch (...) {
     ml_loge("Unknown exception while reporting retained QNN RPC resources");
   }
-#endif
 }
 
 bool QNNRpcManager::DescriptorSignatureLess::operator()(
@@ -117,6 +203,9 @@ void QNNRpcManager::alloc(void **ptr, size_t size, size_t alignment) {
     throw std::invalid_argument(
       "QNN RPC allocation alignment is not a power of two");
   }
+
+  auto execution_guard = runtime_lifecycle_->acquireExecutionGuard();
+  (void)execution_guard;
 
 #ifdef ENABLE_QNN
   if (size > static_cast<size_t>(std::numeric_limits<int>::max())) {
@@ -168,9 +257,14 @@ void QNNRpcManager::alloc(void **ptr, size_t size, size_t alignment) {
 #endif
 }
 
-void QNNRpcManager::registerQnnTensor(void *ptr, Qnn_Tensor_t &qnn_tensor,
-                                      Qnn_ContextHandle_t context,
-                                      size_t required_bytes) {
+void QNNRpcManager::registerQnnTensor(
+  const QNNRuntimeLifecycle::ExecutionGuard &guard, void *ptr,
+  Qnn_Tensor_t &qnn_tensor, Qnn_ContextHandle_t context,
+  size_t required_bytes) {
+  if (!runtime_lifecycle_->ownsExecutionGuard(guard)) {
+    throw std::invalid_argument(
+      "QNN tensor registration requires a runtime execution lease");
+  }
 #ifdef ENABLE_QNN
   if (ptr == nullptr || context == nullptr) {
     throw std::invalid_argument(
@@ -323,6 +417,7 @@ void QNNRpcManager::registerQnnTensor(void *ptr, Qnn_Tensor_t &qnn_tensor,
   qnn_tensor.v1.memType = QNN_TENSORMEMTYPE_MEMHANDLE;
   qnn_tensor.v1.memHandle = mem_handle;
 #else
+  (void)guard;
   (void)ptr;
   (void)qnn_tensor;
   (void)context;
@@ -392,8 +487,9 @@ void QNNRpcManager::free(void *ptr) noexcept {
     return;
   }
 
-#ifdef ENABLE_QNN
   try {
+    auto cleanup_guard = runtime_lifecycle_->acquireCleanupGuard();
+#ifdef ENABLE_QNN
     std::lock_guard<std::mutex> ledger_guard(ledger_mutex_);
     auto allocation_it = allocations_.find(ptr);
     if (allocation_it == allocations_.end()) {
@@ -407,6 +503,14 @@ void QNNRpcManager::free(void *ptr) noexcept {
               "calls: ptr=%p, size=%zu, state=%u",
               ptr, allocation.size,
               static_cast<unsigned int>(allocation.state));
+      return;
+    }
+
+    if (!runtime_lifecycle_->allowsVendorCleanup(cleanup_guard) &&
+        !allocation.registrations.empty()) {
+      ml_loge("Retaining registered QNN RPC backing after runtime shutdown: "
+              "ptr=%p, size=%zu, contexts=%zu",
+              ptr, allocation.size, allocation.registrations.size());
       return;
     }
 
@@ -449,6 +553,10 @@ void QNNRpcManager::free(void *ptr) noexcept {
 
     RpcMem::global().free(ptr);
     allocations_.erase(allocation_it);
+#else
+    (void)cleanup_guard;
+    std::free(ptr);
+#endif
   } catch (const std::exception &e) {
     ml_loge("Retaining QNN RPC backing after cleanup exception: ptr=%p, "
             "reason=%s",
@@ -457,9 +565,6 @@ void QNNRpcManager::free(void *ptr) noexcept {
     ml_loge("Retaining QNN RPC backing after unknown cleanup exception: ptr=%p",
             ptr);
   }
-#else
-  std::free(ptr);
-#endif
 }
 
 QnnRpcResourceReport QNNRpcManager::resourceReport() const {
@@ -484,7 +589,13 @@ QnnRpcResourceReport QNNRpcManager::resourceReport() const {
   return report;
 }
 
-size_t QNNRpcManager::registrationCount(Qnn_ContextHandle_t context) const {
+size_t
+QNNRpcManager::registrationCount(const QNNRuntimeLifecycle::CleanupGuard &guard,
+                                 Qnn_ContextHandle_t context) const {
+  if (!runtime_lifecycle_->ownsCleanupGuard(guard)) {
+    throw std::invalid_argument(
+      "QNN registration count requires a runtime cleanup lease");
+  }
   std::lock_guard<std::mutex> ledger_guard(ledger_mutex_);
   size_t count = 0;
   for (const auto &allocation : allocations_) {
