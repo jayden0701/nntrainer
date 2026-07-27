@@ -19,6 +19,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -526,75 +527,152 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
   auto input_info = get_input_info();
   auto output_info = get_output_info();
 
-  int num_bytes_per_inference = GraphParser::get_tensor_size(input_info);
-  int num_elements_per_inference = GraphParser::get_tensor_count(input_info);
+  NNTR_THROW_IF(image.first == nullptr, std::invalid_argument)
+    << "Video buffer is null";
 
-  size_t raw_size = image.second;
-  constexpr size_t PREPROCESSED_FLOAT_BYTES =
-    12 * 256 * 256 * 6 * sizeof(float);
-  constexpr size_t RAW_FLOAT_BYTES = 1 * 24 * 3 * 256 * 256 * sizeof(float);
+  auto checked_tensor_count = [](const TensorInfo &tensor_info,
+                                 const char *tensor_name) {
+    NNTR_THROW_IF(tensor_info.dimensions.empty(), std::runtime_error)
+      << tensor_name << " has no dimensions";
 
-  // For the standard V-JEPA2 graph both constants evaluate to the same value.
-  // When they differ (different H/W or tubelet config) auto-sniff works as
-  // intended.  Users can also force a path via vjepa2_input_format.
-  bool use_preprocessed =
-    (input_format_ == "preprocessed") ||
-    (input_format_ == "auto" && raw_size == PREPROCESSED_FLOAT_BYTES);
-  bool use_raw = (input_format_ == "raw") ||
-                 (input_format_ == "auto" && raw_size == RAW_FLOAT_BYTES);
+    size_t count = 1;
+    for (const int dimension : tensor_info.dimensions) {
+      NNTR_THROW_IF(dimension <= 0, std::runtime_error)
+        << tensor_name << " has an invalid dimension: " << dimension;
+      const size_t unsigned_dimension = static_cast<size_t>(dimension);
+      NNTR_THROW_IF(count >
+                      (std::numeric_limits<size_t>::max)() / unsigned_dimension,
+                    std::overflow_error)
+        << tensor_name << " element count overflows size_t";
+      count *= unsigned_dimension;
+    }
+    return count;
+  };
 
-  if (!use_preprocessed && !use_raw) {
+  const size_t input_elements =
+    checked_tensor_count(input_info, "V-JEPA2 QNN input tensor");
+  NNTR_THROW_IF(input_elements >
+                  static_cast<size_t>((std::numeric_limits<int>::max)()),
+                std::overflow_error)
+    << "V-JEPA2 QNN input tensor is too large";
+  NNTR_THROW_IF(input_elements >
+                  (std::numeric_limits<size_t>::max)() / sizeof(float),
+                std::overflow_error)
+    << "V-JEPA2 input buffer size overflows size_t";
+  NNTR_THROW_IF(GraphParser::get_tensor_bit_width(input_info) !=
+                  static_cast<int>(sizeof(uint16_t)),
+                std::runtime_error)
+    << "V-JEPA2 QNN input tensor must use 16-bit elements";
+
+  const size_t preprocessed_float_bytes = input_elements * sizeof(float);
+  NNTR_THROW_IF(image_height <= 0 || image_width <= 0, std::invalid_argument)
+    << "Video dimensions must be positive";
+  constexpr size_t RAW_FRAMES = 24;
+  constexpr size_t RAW_CHANNELS = 3;
+  NNTR_THROW_IF(static_cast<size_t>(image_height) >
+                  (std::numeric_limits<size_t>::max)() / RAW_FRAMES /
+                    RAW_CHANNELS / static_cast<size_t>(image_width) /
+                    sizeof(float),
+                std::overflow_error)
+    << "Raw video buffer size overflows size_t";
+  const size_t raw_float_bytes =
+    RAW_FRAMES * RAW_CHANNELS * static_cast<size_t>(image_height) *
+    static_cast<size_t>(image_width) * sizeof(float);
+
+  bool use_preprocessed = false;
+  bool use_raw = false;
+  if (input_format_ == "preprocessed") {
+    use_preprocessed = image.second == preprocessed_float_bytes;
+  } else if (input_format_ == "raw") {
+    use_raw = image.second == raw_float_bytes;
+  } else if (input_format_ == "auto") {
+    // Preserve the existing preference for preprocessed input when the two
+    // layouts have the same byte count and therefore cannot be distinguished.
+    use_preprocessed = image.second == preprocessed_float_bytes;
+    use_raw = !use_preprocessed && image.second == raw_float_bytes;
+  } else {
     NNTR_THROW_IF(true, std::invalid_argument)
-      << "Unexpected video buffer size " << raw_size << ". Expected "
-      << PREPROCESSED_FLOAT_BYTES << " (preprocessed) or " << RAW_FLOAT_BYTES
-      << " (raw frames).";
+      << "Unsupported vjepa2_input_format: " << input_format_;
   }
 
-  int num_inference = image.second / (num_bytes_per_inference *
-                                      (sizeof(float) / sizeof(uint16_t)));
+  NNTR_THROW_IF(!use_preprocessed && !use_raw, std::invalid_argument)
+    << "Unexpected video buffer size " << image.second << ". Expected "
+    << preprocessed_float_bytes << " (preprocessed) or " << raw_float_bytes
+    << " (raw frames). V-JEPA2 run_image accepts exactly one video clip.";
+  NNTR_THROW_IF(use_raw && raw_float_bytes != preprocessed_float_bytes,
+                std::invalid_argument)
+    << "Raw video dimensions do not match the V-JEPA2 QNN input tensor";
 
-  LOGD("image.second %zu, num_bytes_per_inference : %d, num_inference: %d",
-       image.second, num_bytes_per_inference, num_inference);
+  NNTR_THROW_IF(output_info.dimensions.size() != 3, std::runtime_error)
+    << "V-JEPA2 QNN output tensor must have shape [batch, tokens, embedding]";
+  NNTR_THROW_IF(output_info.dimensions[0] != 1, std::runtime_error)
+    << "V-JEPA2 QNN output tensor must have batch dimension 1";
 
-  int out_embedding_size = output_info.dimensions[2]; // 768
-  int output_bw = GraphParser::get_tensor_bit_width(output_info);
-  int num_tokens = output_info.dimensions[1]; // 3072
-  int total_embedding_size = num_tokens * out_embedding_size * output_bw;
+  const size_t output_elements =
+    checked_tensor_count(output_info, "V-JEPA2 QNN output tensor");
+  const size_t source_element_bytes =
+    static_cast<size_t>(GraphParser::get_tensor_bit_width(output_info));
+  NNTR_THROW_IF(output_elements >
+                  (std::numeric_limits<size_t>::max)() / source_element_bytes,
+                std::overflow_error)
+    << "V-JEPA2 QNN output buffer size overflows size_t";
+  const size_t source_output_bytes = output_elements * source_element_bytes;
 
-  void *my_output = malloc(total_embedding_size * num_inference);
+  if (llm_quant_param_given_) {
+    NNTR_THROW_IF(output_info.data_type != "QNN_DATATYPE_UFIXED_POINT_8" &&
+                    output_info.data_type != "QNN_DATATYPE_UFIXED_POINT_16",
+                  std::runtime_error)
+      << "V-JEPA2 output requantization requires an unsigned fixed-point "
+         "QNN tensor";
+  }
+  const size_t destination_element_bytes =
+    llm_quant_param_given_ ? sizeof(uint16_t) : source_element_bytes;
+  NNTR_THROW_IF(output_elements > (std::numeric_limits<size_t>::max)() /
+                                    destination_element_bytes,
+                std::overflow_error)
+    << "V-JEPA2 embedding buffer size overflows size_t";
+  const size_t total_embedding_size =
+    output_elements * destination_element_bytes;
 
-  for (int i = 0; i < num_inference; i++) {
-    auto src = ((const float *)image.first) + i * num_elements_per_inference;
-    if (use_preprocessed) {
-      quantize_uint16_memcpy(const_cast<float *>(src), pixel_values_input_,
-                             num_elements_per_inference, input_info.scale,
-                             input_info.offset);
+  std::unique_ptr<void, decltype(&std::free)> output_guard(
+    std::malloc(total_embedding_size), &std::free);
+  if (output_guard == nullptr)
+    throw std::bad_alloc();
+
+  LOGD("image.second %zu, input elements: %zu, output bytes: %zu", image.second,
+       input_elements, total_embedding_size);
+
+  const auto *src = static_cast<const float *>(image.first);
+  if (use_preprocessed) {
+    quantize_uint16_memcpy(const_cast<float *>(src), pixel_values_input_,
+                           static_cast<int>(input_elements), input_info.scale,
+                           input_info.offset);
+  } else {
+    if (image_height == 256 && image_width == 256) {
+      preprocessToQnnInput_FixedShape(src, pixel_values_input_,
+                                      input_info.scale, input_info.offset);
     } else {
-      if (image_height == 256 && image_width == 256) {
-        preprocessToQnnInput_FixedShape(src, pixel_values_input_,
-                                        input_info.scale, input_info.offset);
-      } else {
-        preprocessToQnnInput(src,
-                             /*B=*/1, /*T=*/24, /*C=*/3,
-                             /*H=*/image_height, /*W=*/image_width,
-                             pixel_values_input_, input_info.scale,
-                             input_info.offset);
-      }
+      preprocessToQnnInput(src,
+                           /*B=*/1, /*T=*/24, /*C=*/3,
+                           /*H=*/image_height, /*W=*/image_width,
+                           pixel_values_input_, input_info.scale,
+                           input_info.offset);
     }
-    auto qnn_output = model->inference(1, model_input)[0];
-    void *vision_encoder_output = std::visit(
-      [](auto *p) -> void * { return static_cast<void *>(p); }, qnn_output);
+  }
+  auto qnn_outputs = model->inference(1, model_input);
+  NNTR_THROW_IF(qnn_outputs.empty(), std::runtime_error)
+    << "V-JEPA2 QNN graph returned no output tensors";
+  void *vision_encoder_output =
+    std::visit([](auto *p) -> void * { return static_cast<void *>(p); },
+               qnn_outputs.front());
+  NNTR_THROW_IF(vision_encoder_output == nullptr, std::runtime_error)
+    << "V-JEPA2 QNN graph returned a null output tensor";
 
-    int vision_encoder_output_size = GraphParser::get_tensor_size(output_info);
-
-    void *dest =
-      static_cast<uint8_t *>(my_output) + i * vision_encoder_output_size;
-    if (llm_quant_param_given_) {
-      requantEmbedding(vision_encoder_output, dest,
-                       vision_encoder_output_size / output_bw);
-    } else {
-      std::memcpy(dest, vision_encoder_output, vision_encoder_output_size);
-    }
+  if (llm_quant_param_given_) {
+    requantEmbedding(vision_encoder_output, output_guard.get(),
+                     output_elements);
+  } else {
+    std::memcpy(output_guard.get(), vision_encoder_output, source_output_bytes);
   }
 
   auto end_total = std::chrono::high_resolution_clock::now();
@@ -602,7 +680,8 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
                     end_total - start_total)
                     .count();
 
-  performance_metrics.prefill_tokens = static_cast<unsigned int>(num_tokens);
+  performance_metrics.prefill_tokens =
+    static_cast<unsigned int>(output_info.dimensions[1]);
   performance_metrics.prefill_duration_ms = static_cast<double>(total_ms);
   performance_metrics.generation_tokens = 0;
   performance_metrics.generation_duration_ms = 0.0;
@@ -611,5 +690,5 @@ causallm::VJEPA2_QNN::run_image(const WSTR prompt, multimodal_pointer image,
   has_run_ = true;
 
   std::cout << "run_image done!" << std::endl;
-  return std::make_pair(my_output, total_embedding_size * num_inference);
+  return std::make_pair(output_guard.release(), total_embedding_size);
 }
