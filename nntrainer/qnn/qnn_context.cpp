@@ -25,8 +25,10 @@
 #include "qnn_context.h"
 #include <QNNGraph.h>
 #include <cstdlib>
+#include <inttypes.h>
 #include <iostream>
 #include <limits.h>
+#include <limits>
 #include <unistd.h>
 #include <utility>
 
@@ -115,6 +117,385 @@ void QNNContext::setDefaultBackendExtConfigPath(const std::string &path) {
 
 std::mutex qnn_factory_mutex;
 
+static uint32_t publicQnnError(Qnn_ErrorHandle_t status) noexcept {
+  return static_cast<uint32_t>(QNN_GET_ERROR_CODE(status));
+}
+
+static bool qnnCallSucceeded(Qnn_ErrorHandle_t status) noexcept {
+  return publicQnnError(status) == QNN_SUCCESS;
+}
+
+static bool resourceStateMatchesHandle(QnnResourceState state,
+                                       const void *handle) noexcept {
+  if (state == QnnResourceState::OWNED) {
+    return handle != nullptr;
+  }
+  if (state == QnnResourceState::QUARANTINED) {
+    return false;
+  }
+  return handle == nullptr;
+}
+
+static void
+quarantineRuntime(const std::shared_ptr<QNNVar> &qnn_data,
+                  const std::shared_ptr<QNNRuntimeLifecycle> &runtime_lifecycle,
+                  const QNNRuntimeLifecycle::CleanupGuard *shutdown_guard,
+                  const char *reason) noexcept {
+  qnn_data->m_hasRuntimeResourceQuarantine = true;
+  qnn_data->quarantine_self_reference = qnn_data;
+  if (shutdown_guard != nullptr && shutdown_guard->owns_lock()) {
+    runtime_lifecycle->finishRuntimeShutdown(*shutdown_guard,
+                                             QnnRuntimeState::QUARANTINED);
+  }
+  ml_loge("QNN runtime teardown quarantined: %s", reason);
+}
+
+static bool
+releaseProfileResource(const std::shared_ptr<QNNVar> &qnn_data) noexcept {
+  if (qnn_data->m_profileState != QnnResourceState::OWNED) {
+    return true;
+  }
+  if (qnn_data->m_profileBackendHandle == nullptr ||
+      qnn_data->m_qnnFunctionPointers.qnnInterface.profileFree == nullptr) {
+    qnn_data->m_profileState = QnnResourceState::QUARANTINED;
+    ml_loge("Cannot release owned QNN profile resource");
+    return false;
+  }
+
+  Qnn_ErrorHandle_t status = QNN_PROFILE_NO_ERROR;
+  try {
+    status = qnn_data->m_qnnFunctionPointers.qnnInterface.profileFree(
+      qnn_data->m_profileBackendHandle);
+  } catch (const std::exception &e) {
+    qnn_data->m_profileState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN profileFree threw: %s", e.what());
+    return false;
+  } catch (...) {
+    qnn_data->m_profileState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN profileFree threw");
+    return false;
+  }
+  if (!qnnCallSucceeded(status)) {
+    qnn_data->m_profileState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN profileFree failed: error=%" PRIu64 ", public_error=%u",
+            static_cast<uint64_t>(status), publicQnnError(status));
+    return false;
+  }
+
+  qnn_data->m_profileBackendHandle = nullptr;
+  qnn_data->m_profileState = QnnResourceState::RELEASED;
+  return true;
+}
+
+static bool
+releaseDeviceResource(const std::shared_ptr<QNNVar> &qnn_data) noexcept {
+  if (!qnn_data->m_deviceLifecycleInitialized) {
+    return true;
+  }
+  if (qnn_data->m_deviceState != QnnResourceState::OWNED &&
+      qnn_data->m_deviceState != QnnResourceState::UNSUPPORTED) {
+    qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN device lifecycle has an invalid ownership state");
+    return false;
+  }
+
+  auto *extension = qnn_data->m_backendExtensions == nullptr
+                      ? nullptr
+                      : qnn_data->m_backendExtensions->interface();
+  try {
+    if (extension != nullptr && !extension->beforeFreeDevice()) {
+      qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+      ml_loge("QNN extension rejected device teardown");
+      return false;
+    }
+  } catch (const std::exception &e) {
+    qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN extension threw before device teardown: %s", e.what());
+    return false;
+  } catch (...) {
+    qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN extension threw before device teardown");
+    return false;
+  }
+
+  if (qnn_data->m_deviceState == QnnResourceState::OWNED) {
+    if (qnn_data->m_deviceHandle == nullptr ||
+        qnn_data->m_qnnFunctionPointers.qnnInterface.deviceFree == nullptr) {
+      qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+      ml_loge("Cannot release owned QNN device resource");
+      return false;
+    }
+
+    Qnn_ErrorHandle_t status = QNN_SUCCESS;
+    try {
+      status = qnn_data->m_qnnFunctionPointers.qnnInterface.deviceFree(
+        qnn_data->m_deviceHandle);
+    } catch (const std::exception &e) {
+      qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+      ml_loge("QNN deviceFree threw: %s", e.what());
+      return false;
+    } catch (...) {
+      qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+      ml_loge("QNN deviceFree threw");
+      return false;
+    }
+    if (!qnnCallSucceeded(status)) {
+      qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+      ml_loge("QNN deviceFree failed: error=%" PRIu64 ", public_error=%u",
+              static_cast<uint64_t>(status), publicQnnError(status));
+      return false;
+    }
+    qnn_data->m_deviceHandle = nullptr;
+  }
+
+  qnn_data->m_deviceState = QnnResourceState::RELEASED;
+  try {
+    if (extension != nullptr && !extension->afterFreeDevice()) {
+      ml_loge("QNN extension failed after device teardown");
+      return false;
+    }
+  } catch (const std::exception &e) {
+    ml_loge("QNN extension threw after device teardown: %s", e.what());
+    return false;
+  } catch (...) {
+    ml_loge("QNN extension threw after device teardown");
+    return false;
+  }
+  qnn_data->m_deviceLifecycleInitialized = false;
+  return true;
+}
+
+static bool
+releaseBackendResource(const std::shared_ptr<QNNVar> &qnn_data) noexcept {
+  if (qnn_data->m_backendState != QnnResourceState::OWNED) {
+    return true;
+  }
+
+  auto *extension = qnn_data->m_backendExtensions == nullptr
+                      ? nullptr
+                      : qnn_data->m_backendExtensions->interface();
+  try {
+    if (extension != nullptr && !extension->beforeBackendTerminate()) {
+      qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+      ml_loge("QNN extension rejected backend teardown");
+      return false;
+    }
+  } catch (const std::exception &e) {
+    qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN extension threw before backend teardown: %s", e.what());
+    return false;
+  } catch (...) {
+    qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN extension threw before backend teardown");
+    return false;
+  }
+
+  if (qnn_data->m_backendHandle == nullptr ||
+      qnn_data->m_qnnFunctionPointers.qnnInterface.backendFree == nullptr) {
+    qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+    ml_loge("Cannot release owned QNN backend resource");
+    return false;
+  }
+
+  Qnn_ErrorHandle_t status = QNN_BACKEND_NO_ERROR;
+  try {
+    status = qnn_data->m_qnnFunctionPointers.qnnInterface.backendFree(
+      qnn_data->m_backendHandle);
+  } catch (const std::exception &e) {
+    qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN backendFree threw: %s", e.what());
+    return false;
+  } catch (...) {
+    qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN backendFree threw");
+    return false;
+  }
+  if (!qnnCallSucceeded(status)) {
+    qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN backendFree failed: error=%" PRIu64 ", public_error=%u",
+            static_cast<uint64_t>(status), publicQnnError(status));
+    return false;
+  }
+  qnn_data->m_backendHandle = nullptr;
+  qnn_data->m_backendState = QnnResourceState::RELEASED;
+
+  try {
+    if (extension != nullptr && !extension->afterBackendTerminate()) {
+      ml_loge("QNN extension failed after backend teardown");
+      return false;
+    }
+  } catch (const std::exception &e) {
+    ml_loge("QNN extension threw after backend teardown: %s", e.what());
+    return false;
+  } catch (...) {
+    ml_loge("QNN extension threw after backend teardown");
+    return false;
+  }
+  return true;
+}
+
+static bool
+releaseLogResource(const std::shared_ptr<QNNVar> &qnn_data) noexcept {
+  if (qnn_data->m_logState != QnnResourceState::OWNED) {
+    return true;
+  }
+  if (qnn_data->m_logHandle == nullptr ||
+      qnn_data->m_qnnFunctionPointers.qnnInterface.logFree == nullptr) {
+    qnn_data->m_logState = QnnResourceState::QUARANTINED;
+    ml_loge("Cannot release owned QNN log resource");
+    return false;
+  }
+
+  Qnn_ErrorHandle_t status = QNN_SUCCESS;
+  try {
+    status = qnn_data->m_qnnFunctionPointers.qnnInterface.logFree(
+      qnn_data->m_logHandle);
+  } catch (const std::exception &e) {
+    qnn_data->m_logState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN logFree threw: %s", e.what());
+    return false;
+  } catch (...) {
+    qnn_data->m_logState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN logFree threw");
+    return false;
+  }
+  if (!qnnCallSucceeded(status)) {
+    qnn_data->m_logState = QnnResourceState::QUARANTINED;
+    ml_loge("QNN logFree failed: error=%" PRIu64 ", public_error=%u",
+            static_cast<uint64_t>(status), publicQnnError(status));
+    return false;
+  }
+
+  qnn_data->m_logHandle = nullptr;
+  qnn_data->m_logState = QnnResourceState::RELEASED;
+  return true;
+}
+
+QNNContext::~QNNContext() {
+  auto qnn_data = getQnnData();
+  if (!qnn_data) {
+    return;
+  }
+
+  auto runtime_lifecycle = qnn_data->runtime_lifecycle;
+  if (!runtime_lifecycle) {
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    qnn_data->quarantine_self_reference = qnn_data;
+    ml_loge("QNN runtime teardown quarantined without a lifecycle gate");
+    return;
+  }
+
+  QNNRuntimeLifecycle::CleanupGuard shutdown_guard;
+  try {
+    shutdown_guard = runtime_lifecycle->beginRuntimeShutdown();
+  } catch (const std::exception &e) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, nullptr, e.what());
+    return;
+  } catch (...) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, nullptr,
+                      "could not drain active executions");
+    return;
+  }
+
+  const bool resource_state_consistent =
+    resourceStateMatchesHandle(qnn_data->m_logState, qnn_data->m_logHandle) &&
+    resourceStateMatchesHandle(qnn_data->m_backendState,
+                               qnn_data->m_backendHandle) &&
+    resourceStateMatchesHandle(qnn_data->m_deviceState,
+                               qnn_data->m_deviceHandle) &&
+    resourceStateMatchesHandle(qnn_data->m_profileState,
+                               qnn_data->m_profileBackendHandle) &&
+    ((qnn_data->m_backendLibraryHandle == nullptr) ==
+     !qnn_data->m_backendLibraryLifetime) &&
+    (qnn_data->m_backendExtensions == nullptr ||
+     qnn_data->m_resourceManager != nullptr) &&
+    ((qnn_data->m_deviceLifecycleInitialized &&
+      (qnn_data->m_deviceState == QnnResourceState::OWNED ||
+       qnn_data->m_deviceState == QnnResourceState::UNSUPPORTED)) ||
+     (!qnn_data->m_deviceLifecycleInitialized &&
+      qnn_data->m_deviceState != QnnResourceState::OWNED &&
+      qnn_data->m_deviceState != QnnResourceState::UNSUPPORTED));
+  if (!resource_state_consistent || qnn_data->m_hasRuntimeResourceQuarantine ||
+      qnn_data->m_hasSystemContextFreeFailure ||
+      qnn_data->m_hasContextQuarantine) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                      "pre-existing ambiguous resource state");
+    return;
+  }
+
+  if (qnn_data->RpcMem) {
+    const auto drain_report =
+      qnn_data->RpcMem->drainRegistrationsForShutdown(shutdown_guard);
+    if (!drain_report.success()) {
+      ml_loge("QNN registration drain failed: discovered=%zu, attempted=%zu, "
+              "drained=%zu, remaining=%zu, quarantined=%zu, reason=%u",
+              drain_report.discovered, drain_report.attempted,
+              drain_report.drained, drain_report.remaining,
+              drain_report.quarantined,
+              static_cast<unsigned int>(drain_report.failure));
+      quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                        "memory registration drain failed");
+      return;
+    }
+  }
+
+  try {
+    if (qnn_data->freeAllContextsWithGuard(shutdown_guard) !=
+        StatusCode::SUCCESS) {
+      quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                        "context teardown failed");
+      return;
+    }
+  } catch (const std::exception &e) {
+    ml_loge("Exception during QNN context teardown: %s", e.what());
+    quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                      "context teardown threw");
+    return;
+  } catch (...) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                      "context teardown threw");
+    return;
+  }
+
+  if (!releaseProfileResource(qnn_data)) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                      "profile teardown failed");
+    return;
+  }
+  if (!releaseDeviceResource(qnn_data)) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                      "device teardown failed");
+    return;
+  }
+  if (!releaseBackendResource(qnn_data)) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                      "backend teardown failed");
+    return;
+  }
+
+  qnn_data->m_backendExtensions.reset();
+  if (!releaseLogResource(qnn_data)) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                      "backend logging teardown failed");
+    return;
+  }
+
+  qnn_data->m_qnnFunctionPointers.qnnSystemInterface = {};
+  qnn_data->m_resourceManager.reset();
+
+  void *backend_library_handle = qnn_data->m_backendLibraryHandle;
+  qnn_data->m_backendLibraryHandle = nullptr;
+  qnn_data->m_qnnFunctionPointers = {};
+  if (qnn_data->m_backendLibraryLifetime) {
+    qnn_data->m_backendLibraryLifetime.reset();
+  } else if (backend_library_handle != nullptr) {
+    pal::dynamicloading::dlClose(backend_library_handle);
+  }
+
+  runtime_lifecycle->finishRuntimeShutdown(shutdown_guard,
+                                           QnnRuntimeState::SHUT_DOWN);
+}
+
 void QNNContext::initialize() noexcept {
   LOGD("initialize: START");
   try {
@@ -184,9 +565,7 @@ int QNNContext::initBackend() {
   log::setLogLevel(QnnLog_Level_t::QNN_LOG_LEVEL_ERROR);
 
   std::string backEndPath = "libQnnHtp.so";
-  std::string systemLibraryPath = "libQnnSystem.so";
   LOGD("init: backEndPath=%s", backEndPath.c_str());
-  LOGD("init: systemLibraryPath=%s", systemLibraryPath.c_str());
 
   std::string opPackagePaths = "";
 
@@ -197,7 +576,6 @@ int QNNContext::initBackend() {
   qnn_data->m_inputDataType = iotensor::InputDataType::NATIVE;
   qnn_data->m_profilingLevel = ProfilingLevel::OFF;
 
-  qnn_data->m_isBackendInitialized = false;
   m_isContextCreated = false;
 
   qnn::tools::sample_app::split(m_opPackagePaths, opPackagePaths, ',');
@@ -225,12 +603,11 @@ int QNNContext::initBackend() {
       LOGE("init: unknown error initializing QNN Function Pointers");
       ml_loge("Error initializing QNN Function Pointers");
     }
-    // The QNN function-pointer table failed to load (e.g. this device has no
-    // usable QNN/HTP backend). It stays zero-initialized, so any subsequent
-    // qnn_data->m_qnnFunctionPointers.qnnInterface.* call would dereference a
-    // null function pointer and crash (this used to SIGSEGV at the logCreate
-    // call below). Fail init() cleanly here so the caller can keep the CPU
-    // path alive instead of taking the whole process down.
+    if (qnn_data->m_backendLibraryHandle != nullptr) {
+      pal::dynamicloading::dlClose(qnn_data->m_backendLibraryHandle);
+      qnn_data->m_backendLibraryHandle = nullptr;
+    }
+    qnn_data->m_qnnFunctionPointers = {};
     return -1;
   }
 
@@ -258,33 +635,87 @@ int QNNContext::initBackend() {
     throw;
   }
 
-  LOGD("init: calling getQnnSystemFunctionPointers");
-  statusCode = qnn::tools::dynamicloadutil::getQnnSystemFunctionPointers(
-    systemLibraryPath, &qnn_data->m_qnnFunctionPointers);
-  LOGD("init: getQnnSystemFunctionPointers returned status=%d",
-       (int)statusCode);
-  if (qnn::tools::dynamicloadutil::StatusCode::SUCCESS != statusCode) {
-    LOGE("init: Error initializing QNN System Function Pointers");
-    ml_loge("Error initializing QNN System Function Pointers", EXIT_FAILURE);
-    // Same reasoning as the backend function-pointer failure above: bail out
-    // before any qnnInterface.* / qnnSystemInterface.* call is made through a
-    // null pointer.
+  const auto &qnn_interface = qnn_data->m_qnnFunctionPointers.qnnInterface;
+  if (qnn_interface.backendCreate == nullptr ||
+      qnn_interface.backendFree == nullptr ||
+      (qnn_interface.logCreate == nullptr) !=
+        (qnn_interface.logFree == nullptr) ||
+      (qnn_interface.deviceCreate != nullptr &&
+       qnn_interface.deviceFree == nullptr)) {
+    ml_loge("QNN function table has incomplete resource lifecycle pairs");
     return -1;
   }
 
-  if (log::isLogInitialized() &&
-      nullptr != qnn_data->m_qnnFunctionPointers.qnnInterface.logCreate) {
+  try {
+    qnn_data->m_resourceManager = std::make_shared<genie::ResourceManager>();
+    qnn_data->m_qnnFunctionPointers.qnnSystemInterface =
+      qnn_data->m_resourceManager->getQnnSystemInterface();
+  } catch (const std::exception &e) {
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN ResourceManager construction failed: %s", e.what());
+    return -1;
+  } catch (...) {
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN ResourceManager construction failed");
+    return -1;
+  }
+
+  const auto &system_interface =
+    qnn_data->m_qnnFunctionPointers.qnnSystemInterface;
+  if (system_interface.systemContextCreate == nullptr ||
+      system_interface.systemContextGetBinaryInfo == nullptr ||
+      system_interface.systemContextFree == nullptr) {
+    ml_loge("QNN system interface is incomplete");
+    return -1;
+  }
+
+  if (log::isLogInitialized() && qnn_interface.logCreate != nullptr) {
     auto logCallback = log::getLogCallback();
     auto logLevel = log::getLogLevel();
 
-    if (QNN_SUCCESS != qnn_data->m_qnnFunctionPointers.qnnInterface.logCreate(
-                         logCallback, logLevel, &qnn_data->m_logHandle)) {
-      LOGE("init: Unable to initialize logging in the backend");
-      ml_logw("Unable to initialize logging in the backend.");
-    } else {
-      LOGD("init: Logging initialized in the backend");
-      ml_logw("Logging not available in the backend.");
+    Qnn_LogHandle_t log_handle = nullptr;
+    Qnn_ErrorHandle_t log_status = QNN_SUCCESS;
+    try {
+      log_status = qnn_interface.logCreate(logCallback, logLevel, &log_handle);
+    } catch (const std::exception &e) {
+      qnn_data->m_logHandle = log_handle;
+      qnn_data->m_logState = QnnResourceState::QUARANTINED;
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN logCreate threw: %s", e.what());
+      return -1;
+    } catch (...) {
+      qnn_data->m_logHandle = log_handle;
+      qnn_data->m_logState = QnnResourceState::QUARANTINED;
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN logCreate threw");
+      return -1;
     }
+
+    const auto log_error = publicQnnError(log_status);
+    if (log_error == QNN_SUCCESS && log_handle != nullptr) {
+      qnn_data->m_logHandle = log_handle;
+      qnn_data->m_logState = QnnResourceState::OWNED;
+      LOGD("init: Logging initialized in the backend");
+    } else if (log_error == QNN_COMMON_ERROR_NOT_SUPPORTED &&
+               log_handle == nullptr) {
+      qnn_data->m_logState = QnnResourceState::UNSUPPORTED;
+      ml_logw("QNN backend logging is not supported");
+    } else if (log_handle != nullptr || log_error == QNN_SUCCESS) {
+      qnn_data->m_logHandle = log_handle;
+      qnn_data->m_logState = QnnResourceState::QUARANTINED;
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN logCreate returned an ambiguous result: error=%" PRIu64
+              ", public_error=%u, handle=%p",
+              static_cast<uint64_t>(log_status), log_error,
+              static_cast<void *>(log_handle));
+      return -1;
+    } else {
+      ml_loge("QNN logCreate failed: error=%" PRIu64 ", public_error=%u",
+              static_cast<uint64_t>(log_status), log_error);
+      return -1;
+    }
+  } else {
+    qnn_data->m_logState = QnnResourceState::UNSUPPORTED;
   }
 
   LOGD("init: Creating backend extensions");
@@ -303,67 +734,138 @@ int QNNContext::initBackend() {
   backend_extensions_config.configFilePath = config_path;
   backend_extensions_config.sharedLibraryPath = "libQnnHtpNetRunExtensions.so";
 
-  BackendExtensions *backend_extensions = new BackendExtensions(
-    backend_extensions_config, qnn_data->m_backendLibraryHandle, false, nullptr,
-    QNN_LOG_LEVEL_ERROR);
-  qnn_data->m_backendExtensions = backend_extensions;
+  try {
+    qnn_data->m_backendExtensions = std::make_unique<BackendExtensions>(
+      backend_extensions_config, qnn_data->m_backendLibraryHandle, false,
+      nullptr, QNN_LOG_LEVEL_ERROR, qnn_data->m_resourceManager);
+  } catch (const std::exception &e) {
+    // The generated SDK wrapper does not own its extension DSO until
+    // construction completes. A throw can therefore leave hidden extension
+    // state that the caller cannot safely roll back.
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN BackendExtensions construction failed: %s", e.what());
+    return -1;
+  } catch (...) {
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN BackendExtensions construction failed");
+    return -1;
+  }
+  auto *backend_extensions = qnn_data->m_backendExtensions.get();
   LOGD("init: Backend extensions created");
 
   QnnBackend_Config_t **customConfigs{nullptr};
   uint32_t customConfigCount{0};
   if (backend_extensions->interface()) {
-    if (!backend_extensions->interface()->beforeBackendInitialize(
-          &customConfigs, &customConfigCount)) {
+    bool hook_succeeded = false;
+    try {
+      hook_succeeded = backend_extensions->interface()->beforeBackendInitialize(
+        &customConfigs, &customConfigCount);
+    } catch (const std::exception &e) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN extension threw before backend initialization: %s",
+              e.what());
+      return -1;
+    } catch (...) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN extension threw before backend initialization");
+      return -1;
+    }
+    if (!hook_succeeded) {
       LOGE("init: Extensions Failure in beforeBackendInitialize()");
       QNN_ERROR("Extensions Failure in beforeBackendInitialize()");
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
       return -1;
     }
     LOGD("init: beforeBackendInitialize done, customConfigCount=%u",
          customConfigCount);
   }
-  if ((customConfigCount) > 0) {
-    qnn_data->m_backendConfig = (QnnBackend_Config_t **)calloc(
-      (customConfigCount + 1), sizeof(QnnBackend_Config_t *));
-    if (nullptr == qnn_data->m_backendConfig) {
-      LOGE("init: Could not allocate memory for allBackendConfigs");
-      QNN_ERROR("Could not allocate memory for allBackendConfigs");
-      return -1;
+  if (customConfigCount > 0 && customConfigs == nullptr) {
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN extension returned an invalid backend config list");
+    return -1;
+  }
+  const size_t backend_config_count = customConfigCount;
+  if (backend_config_count > std::numeric_limits<size_t>::max() - 1) {
+    ml_loge("QNN extension returned too many backend configs");
+    return -1;
+  }
+
+  std::vector<const QnnBackend_Config_t *> backend_config_pointers;
+  if (backend_config_count > 0) {
+    backend_config_pointers.reserve(backend_config_count + 1);
+    for (size_t index = 0; index < backend_config_count; ++index) {
+      if (customConfigs[index] == nullptr) {
+        qnn_data->m_hasRuntimeResourceQuarantine = true;
+        ml_loge("QNN extension returned a null backend config at index %zu",
+                index);
+        return -1;
+      }
+      backend_config_pointers.push_back(customConfigs[index]);
     }
-    for (size_t cnt = 0; cnt < customConfigCount; cnt++) {
-      qnn_data->m_backendConfig[cnt] = customConfigs[cnt];
-    }
+    backend_config_pointers.push_back(nullptr);
   }
 
   LOGD("init: Calling backendCreate");
-  auto qnnStatus = qnn_data->m_qnnFunctionPointers.qnnInterface.backendCreate(
-    qnn_data->m_logHandle,
-    (const QnnBackend_Config_t **)qnn_data->m_backendConfig,
-    &qnn_data->m_backendHandle);
-  LOGD("init: backendCreate returned status=%lu", qnnStatus);
-  if (QNN_BACKEND_NO_ERROR != qnnStatus) {
-    LOGE("init: Could not initialize backend, error=%d",
-         (unsigned int)qnnStatus);
-    ml_loge("Could not initialize backend due to error = %d",
-            (unsigned int)qnnStatus);
-    if (qnn_data->m_backendConfig) {
-      free(qnn_data->m_backendConfig);
-      qnn_data->m_backendConfig = nullptr;
+  Qnn_BackendHandle_t backend_handle = nullptr;
+  Qnn_ErrorHandle_t qnnStatus = QNN_BACKEND_NO_ERROR;
+  try {
+    qnnStatus = qnn_interface.backendCreate(
+      qnn_data->m_logHandle,
+      backend_config_count == 0 ? nullptr : backend_config_pointers.data(),
+      &backend_handle);
+  } catch (const std::exception &e) {
+    qnn_data->m_backendHandle = backend_handle;
+    qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN backendCreate threw: %s", e.what());
+    return -1;
+  } catch (...) {
+    qnn_data->m_backendHandle = backend_handle;
+    qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN backendCreate threw");
+    return -1;
+  }
+  const auto backend_error = publicQnnError(qnnStatus);
+  LOGD("init: backendCreate returned public status=%u", backend_error);
+  if (backend_error != QNN_BACKEND_NO_ERROR || backend_handle == nullptr) {
+    qnn_data->m_backendHandle = backend_handle;
+    if (backend_handle != nullptr || backend_error == QNN_BACKEND_NO_ERROR) {
+      qnn_data->m_backendState = QnnResourceState::QUARANTINED;
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN backendCreate returned an ambiguous result: error=%" PRIu64
+              ", public_error=%u, handle=%p",
+              static_cast<uint64_t>(qnnStatus), backend_error,
+              static_cast<void *>(backend_handle));
+    } else {
+      ml_loge("QNN backendCreate failed: error=%" PRIu64 ", public_error=%u",
+              static_cast<uint64_t>(qnnStatus), backend_error);
     }
     return -1;
   }
-  ml_logi("Initialize BAckend Returned Status = %lu", qnnStatus);
-  qnn_data->m_isBackendInitialized = true;
+  qnn_data->m_backendHandle = backend_handle;
+  qnn_data->m_backendState = QnnResourceState::OWNED;
+  ml_logi("Initialize Backend Returned Status = %u", backend_error);
   LOGD("init: Backend initialized successfully");
 
-  if (qnn_data->m_backendConfig) {
-    free(qnn_data->m_backendConfig);
-    qnn_data->m_backendConfig = nullptr;
-  }
-
   if (backend_extensions->interface()) {
-    if (!backend_extensions->interface()->afterBackendInitialize()) {
+    bool hook_succeeded = false;
+    try {
+      hook_succeeded =
+        backend_extensions->interface()->afterBackendInitialize();
+    } catch (const std::exception &e) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN extension threw after backend initialization: %s", e.what());
+      return -1;
+    } catch (...) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN extension threw after backend initialization");
+      return -1;
+    }
+    if (!hook_succeeded) {
       LOGE("init: Extensions Failure in afterBackendInitialize()");
       QNN_ERROR("Extensions Failure in afterBackendInitialize()");
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
       return -1;
     }
     LOGD("init: afterBackendInitialize done");
@@ -373,14 +875,15 @@ int QNNContext::initBackend() {
   auto devicePropertySupportStatus = this->isDevicePropertySupported();
   LOGD("init: isDevicePropertySupported returned %d",
        (int)devicePropertySupportStatus);
-  if (StatusCode::FAILURE != devicePropertySupportStatus) {
-    auto createDeviceStatus = this->createDevice();
-    LOGD("init: createDevice returned %d", (int)createDeviceStatus);
-    if (StatusCode::SUCCESS != createDeviceStatus) {
-      LOGE("init: Device Creation failure");
-      ml_loge("Device Creation failure");
-      return -1;
-    }
+  if (StatusCode::FAILURE == devicePropertySupportStatus) {
+    return -1;
+  }
+  auto createDeviceStatus = this->createDevice();
+  LOGD("init: createDevice returned %d", (int)createDeviceStatus);
+  if (StatusCode::SUCCESS != createDeviceStatus) {
+    LOGE("init: Device Creation failure");
+    ml_loge("Device Creation failure");
+    return -1;
   }
 
   LOGD("init: Initializing profiling");
@@ -451,20 +954,40 @@ const int QNNContext::registerFactory(const FactoryType<T> factory,
 
 StatusCode QNNContext::isDevicePropertySupported() {
   auto qnn_data = getQnnData();
-  if (nullptr !=
-      qnn_data->m_qnnFunctionPointers.qnnInterface.propertyHasCapability) {
-    auto qnnStatus =
-      qnn_data->m_qnnFunctionPointers.qnnInterface.propertyHasCapability(
-        QNN_PROPERTY_GROUP_DEVICE);
-    if (QNN_PROPERTY_NOT_SUPPORTED == qnnStatus) {
-      ml_logw("Device property is not supported");
-    }
-    if (QNN_PROPERTY_ERROR_UNKNOWN_KEY == qnnStatus) {
-      ml_loge("Device property is not known to backend");
-      return StatusCode::FAILURE;
-    }
+  auto property_has_capability =
+    qnn_data->m_qnnFunctionPointers.qnnInterface.propertyHasCapability;
+  if (property_has_capability == nullptr) {
+    return StatusCode::SUCCESS;
   }
-  return StatusCode::SUCCESS;
+
+  Qnn_ErrorHandle_t qnn_status = QNN_SUCCESS;
+  try {
+    qnn_status = property_has_capability(QNN_PROPERTY_GROUP_DEVICE);
+  } catch (const std::exception &e) {
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN device property query threw: %s", e.what());
+    return StatusCode::FAILURE;
+  } catch (...) {
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN device property query threw");
+    return StatusCode::FAILURE;
+  }
+
+  const auto qnn_error = publicQnnError(qnn_status);
+  if (qnn_error == QNN_SUCCESS) {
+    return StatusCode::SUCCESS;
+  }
+  if (qnn_error == QNN_PROPERTY_NOT_SUPPORTED) {
+    ml_logw("Device property is not supported");
+    return StatusCode::SUCCESS;
+  }
+  if (qnn_error == QNN_PROPERTY_ERROR_UNKNOWN_KEY) {
+    ml_loge("Device property is not known to backend");
+  } else {
+    ml_loge("Device property query failed: error=%" PRIu64 ", public_error=%u",
+            static_cast<uint64_t>(qnn_status), qnn_error);
+  }
+  return StatusCode::FAILURE;
 }
 
 StatusCode QNNContext::createDevice() {
@@ -472,42 +995,130 @@ StatusCode QNNContext::createDevice() {
   QnnDevice_Config_t **deviceConfigs{nullptr};
   uint32_t configCount{0};
   uint32_t socModel{0};
-  auto backend_extensions = qnn_data->m_backendExtensions;
+  auto *backend_extensions = qnn_data->m_backendExtensions.get();
 
   if (nullptr != backend_extensions && backend_extensions->interface()) {
-    if (!backend_extensions->interface()->beforeCreateDevice(
-          &deviceConfigs, &configCount, socModel)) {
+    bool hook_succeeded = false;
+    try {
+      hook_succeeded = backend_extensions->interface()->beforeCreateDevice(
+        &deviceConfigs, &configCount, socModel);
+    } catch (const std::exception &e) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN extension threw before device creation: %s", e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN extension threw before device creation");
+      return StatusCode::FAILURE;
+    }
+    if (!hook_succeeded) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
       QNN_ERROR("Extensions Failure in beforeCreateDevice()");
       return StatusCode::FAILURE;
     }
   }
-  std::vector<const QnnDevice_Config_t *> deviceConfigPointers(configCount + 1,
-                                                               nullptr);
-  for (size_t idx = 0u; idx < configCount; idx++) {
-    deviceConfigPointers[idx] = deviceConfigs[idx];
+
+  if (configCount > 0 && deviceConfigs == nullptr) {
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN extension returned an invalid device config list");
+    return StatusCode::FAILURE;
   }
-  if (nullptr != qnn_data->m_qnnFunctionPointers.qnnInterface.deviceCreate) {
-    auto qnnStatus = qnn_data->m_qnnFunctionPointers.qnnInterface.deviceCreate(
-      qnn_data->m_logHandle, deviceConfigPointers.data(),
-      &qnn_data->m_deviceHandle);
-    if (QNN_SUCCESS != qnnStatus &&
-        QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE != qnnStatus) {
-      ml_loge("Failed to create device (QNN error=0x%x)", (unsigned)qnnStatus);
-      return verifyFailReturnStatus(qnnStatus);
+  const size_t device_config_count = configCount;
+  if (device_config_count > std::numeric_limits<size_t>::max() - 1) {
+    ml_loge("QNN extension returned too many device configs");
+    return StatusCode::FAILURE;
+  }
+
+  std::vector<const QnnDevice_Config_t *> device_config_pointers;
+  if (device_config_count > 0) {
+    device_config_pointers.reserve(device_config_count + 1);
+    for (size_t index = 0; index < device_config_count; ++index) {
+      if (deviceConfigs[index] == nullptr) {
+        qnn_data->m_hasRuntimeResourceQuarantine = true;
+        ml_loge("QNN extension returned a null device config at index %zu",
+                index);
+        return StatusCode::FAILURE;
+      }
+      device_config_pointers.push_back(deviceConfigs[index]);
+    }
+    device_config_pointers.push_back(nullptr);
+  }
+
+  auto device_create =
+    qnn_data->m_qnnFunctionPointers.qnnInterface.deviceCreate;
+  if (device_create == nullptr) {
+    qnn_data->m_deviceState = QnnResourceState::UNSUPPORTED;
+  } else {
+    Qnn_DeviceHandle_t device_handle = nullptr;
+    Qnn_ErrorHandle_t qnn_status = QNN_SUCCESS;
+    try {
+      qnn_status = device_create(
+        qnn_data->m_logHandle,
+        device_config_count == 0 ? nullptr : device_config_pointers.data(),
+        &device_handle);
+    } catch (const std::exception &e) {
+      qnn_data->m_deviceHandle = device_handle;
+      qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN deviceCreate threw: %s", e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      qnn_data->m_deviceHandle = device_handle;
+      qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN deviceCreate threw");
+      return StatusCode::FAILURE;
+    }
+
+    const auto qnn_error = publicQnnError(qnn_status);
+    if (qnn_error == QNN_SUCCESS && device_handle != nullptr) {
+      qnn_data->m_deviceHandle = device_handle;
+      qnn_data->m_deviceState = QnnResourceState::OWNED;
+    } else if (qnn_error == QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE &&
+               device_handle == nullptr) {
+      qnn_data->m_deviceState = QnnResourceState::UNSUPPORTED;
+    } else if (device_handle != nullptr || qnn_error == QNN_SUCCESS) {
+      qnn_data->m_deviceHandle = device_handle;
+      qnn_data->m_deviceState = QnnResourceState::QUARANTINED;
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN deviceCreate returned an ambiguous result: error=%" PRIu64
+              ", public_error=%u, handle=%p",
+              static_cast<uint64_t>(qnn_status), qnn_error,
+              static_cast<void *>(device_handle));
+      return StatusCode::FAILURE;
+    } else {
+      ml_loge("QNN deviceCreate failed: error=%" PRIu64 ", public_error=%u",
+              static_cast<uint64_t>(qnn_status), qnn_error);
+      return verifyFailReturnStatus(qnn_status);
     }
   }
+
   if (nullptr != backend_extensions && backend_extensions->interface()) {
-    if (!backend_extensions->interface()->afterCreateDevice()) {
+    bool hook_succeeded = false;
+    try {
+      hook_succeeded = backend_extensions->interface()->afterCreateDevice();
+    } catch (const std::exception &e) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN extension threw after device creation: %s", e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
+      ml_loge("QNN extension threw after device creation");
+      return StatusCode::FAILURE;
+    }
+    if (!hook_succeeded) {
+      qnn_data->m_hasRuntimeResourceQuarantine = true;
       QNN_ERROR("Extensions Failure in afterCreateDevice()");
       return StatusCode::FAILURE;
     }
   }
+  qnn_data->m_deviceLifecycleInitialized = true;
   return StatusCode::SUCCESS;
 }
 
 StatusCode QNNContext::verifyFailReturnStatus(Qnn_ErrorHandle_t errCode) {
   auto returnStatus = StatusCode::FAILURE;
-  switch (errCode) {
+  switch (publicQnnError(errCode)) {
   case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
     returnStatus = StatusCode::FAILURE_SYSTEM_COMMUNICATION_ERROR;
     break;
@@ -525,29 +1136,66 @@ StatusCode QNNContext::verifyFailReturnStatus(Qnn_ErrorHandle_t errCode) {
 
 StatusCode QNNContext::initializeProfiling() {
   auto qnn_data = getQnnData();
-  if (ProfilingLevel::OFF != qnn_data->m_profilingLevel) {
-    ml_logi("Profiling turned on; level = %d", (int)qnn_data->m_profilingLevel);
-    if (ProfilingLevel::BASIC == qnn_data->m_profilingLevel) {
-      ml_logi("Basic profiling requested. Creating Qnn Profile object.");
-      if (QNN_PROFILE_NO_ERROR !=
-          qnn_data->m_qnnFunctionPointers.qnnInterface.profileCreate(
-            qnn_data->m_backendHandle, QNN_PROFILE_LEVEL_BASIC,
-            &qnn_data->m_profileBackendHandle)) {
-        ml_logw("Unable to create profile handle in the backend.");
-        return StatusCode::FAILURE;
-      }
-    } else if (ProfilingLevel::DETAILED == qnn_data->m_profilingLevel) {
-      ml_logi("Detailed profiling requested. Creating Qnn Profile object.");
-      if (QNN_PROFILE_NO_ERROR !=
-          qnn_data->m_qnnFunctionPointers.qnnInterface.profileCreate(
-            qnn_data->m_backendHandle, QNN_PROFILE_LEVEL_DETAILED,
-            &qnn_data->m_profileBackendHandle)) {
-        ml_loge("Unable to create profile handle in the backend.");
-        return StatusCode::FAILURE;
-      }
-    }
+  if (ProfilingLevel::OFF == qnn_data->m_profilingLevel) {
+    return StatusCode::SUCCESS;
   }
-  return StatusCode::SUCCESS;
+
+  auto profile_create =
+    qnn_data->m_qnnFunctionPointers.qnnInterface.profileCreate;
+  auto profile_free = qnn_data->m_qnnFunctionPointers.qnnInterface.profileFree;
+  if (profile_create == nullptr || profile_free == nullptr) {
+    ml_loge("QNN profile lifecycle function table is incomplete");
+    return StatusCode::FAILURE;
+  }
+
+  QnnProfile_Level_t profile_level;
+  if (ProfilingLevel::BASIC == qnn_data->m_profilingLevel) {
+    profile_level = QNN_PROFILE_LEVEL_BASIC;
+  } else if (ProfilingLevel::DETAILED == qnn_data->m_profilingLevel) {
+    profile_level = QNN_PROFILE_LEVEL_DETAILED;
+  } else {
+    ml_loge("Unsupported QNN profiling level");
+    return StatusCode::FAILURE;
+  }
+
+  Qnn_ProfileHandle_t profile_handle = nullptr;
+  Qnn_ErrorHandle_t qnn_status = QNN_PROFILE_NO_ERROR;
+  try {
+    qnn_status =
+      profile_create(qnn_data->m_backendHandle, profile_level, &profile_handle);
+  } catch (const std::exception &e) {
+    qnn_data->m_profileBackendHandle = profile_handle;
+    qnn_data->m_profileState = QnnResourceState::QUARANTINED;
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN profileCreate threw: %s", e.what());
+    return StatusCode::FAILURE;
+  } catch (...) {
+    qnn_data->m_profileBackendHandle = profile_handle;
+    qnn_data->m_profileState = QnnResourceState::QUARANTINED;
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN profileCreate threw");
+    return StatusCode::FAILURE;
+  }
+
+  const auto qnn_error = publicQnnError(qnn_status);
+  if (qnn_error == QNN_PROFILE_NO_ERROR && profile_handle != nullptr) {
+    qnn_data->m_profileBackendHandle = profile_handle;
+    qnn_data->m_profileState = QnnResourceState::OWNED;
+    return StatusCode::SUCCESS;
+  }
+  if (profile_handle != nullptr || qnn_error == QNN_PROFILE_NO_ERROR) {
+    qnn_data->m_profileBackendHandle = profile_handle;
+    qnn_data->m_profileState = QnnResourceState::QUARANTINED;
+    qnn_data->m_hasRuntimeResourceQuarantine = true;
+    ml_loge("QNN profileCreate returned an ambiguous result: error=%" PRIu64
+            ", public_error=%u, handle=%p",
+            static_cast<uint64_t>(qnn_status), qnn_error,
+            static_cast<void *>(profile_handle));
+  } else {
+    ml_loge("QNN profileCreate failed: error=%" PRIu64 ", public_error=%u",
+            static_cast<uint64_t>(qnn_status), qnn_error);
+  }
+  return StatusCode::FAILURE;
 }
 
 StatusCode QNNContext::registerOpPackages() {
@@ -574,10 +1222,11 @@ StatusCode QNNContext::registerOpPackages() {
       ml_loge("backendRegisterOpPackageFnHandle is nullptr.");
       return StatusCode::FAILURE;
     }
-    if (QNN_BACKEND_NO_ERROR !=
-        qnn_data->m_qnnFunctionPointers.qnnInterface.backendRegisterOpPackage(
-          qnn_data->m_backendHandle, (char *)opPackage[pathIdx].c_str(),
-          (char *)opPackage[interfaceProviderIdx].c_str(), target)) {
+    const auto qnn_status =
+      qnn_data->m_qnnFunctionPointers.qnnInterface.backendRegisterOpPackage(
+        qnn_data->m_backendHandle, (char *)opPackage[pathIdx].c_str(),
+        (char *)opPackage[interfaceProviderIdx].c_str(), target);
+    if (!qnnCallSucceeded(qnn_status)) {
       ml_loge("Could not register Op Package: %s and interface provider: %s",
               opPackage[pathIdx].c_str(),
               opPackage[interfaceProviderIdx].c_str());
@@ -586,31 +1235,6 @@ StatusCode QNNContext::registerOpPackages() {
     ml_logi("Registered Op Package: %s and interface provider: %s",
             opPackage[pathIdx].c_str(),
             opPackage[interfaceProviderIdx].c_str());
-  }
-  return StatusCode::SUCCESS;
-}
-
-void QNNContext::release() {
-  auto devicePropertySupportStatus = this->isDevicePropertySupported();
-  if (StatusCode::FAILURE != devicePropertySupportStatus) {
-    auto freeDevcieStatus = this->freeDevice();
-    if (StatusCode::SUCCESS != freeDevcieStatus) {
-      ml_loge("Device Free Failure");
-    }
-  }
-}
-
-StatusCode QNNContext::freeDevice() {
-  auto qnn_data = getQnnData();
-
-  if (nullptr != qnn_data->m_qnnFunctionPointers.qnnInterface.deviceFree) {
-    auto qnnStatus = qnn_data->m_qnnFunctionPointers.qnnInterface.deviceFree(
-      qnn_data->m_deviceHandle);
-    if (QNN_SUCCESS != qnnStatus &&
-        QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE != qnnStatus) {
-      ml_loge("Failed to free devcie");
-      return verifyFailReturnStatus(qnnStatus);
-    }
   }
   return StatusCode::SUCCESS;
 }

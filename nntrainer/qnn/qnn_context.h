@@ -105,96 +105,7 @@ public:
   }
 
   /** @brief Release QNN resources. */
-  ~QNNContext() override {
-    auto qnn_data = getQnnData();
-    if (!qnn_data) {
-      return;
-    }
-
-    auto runtime_lifecycle = qnn_data->runtime_lifecycle;
-    if (!runtime_lifecycle) {
-      qnn_data->quarantine_self_reference = qnn_data;
-      ml_loge("QNN runtime teardown quarantined without a lifecycle gate");
-      return;
-    }
-
-    QNNRuntimeLifecycle::CleanupGuard shutdown_guard;
-    try {
-      shutdown_guard = runtime_lifecycle->beginRuntimeShutdown();
-    } catch (const std::exception &e) {
-      // beginRuntimeShutdown closes admission before waiting for active
-      // executions. If draining the gate itself fails, retain every vendor
-      // resource because concurrent use cannot be disproved.
-      qnn_data->quarantine_self_reference = qnn_data;
-      ml_loge("QNN runtime teardown could not drain executions: %s", e.what());
-      return;
-    } catch (...) {
-      qnn_data->quarantine_self_reference = qnn_data;
-      ml_loge("QNN runtime teardown could not drain executions");
-      return;
-    }
-
-    bool quarantine_runtime = false;
-    bool context_teardown_threw = false;
-    try {
-      quarantine_runtime = qnn_data->freeAllContextsWithGuard(shutdown_guard) !=
-                           StatusCode::SUCCESS;
-    } catch (const std::exception &e) {
-      quarantine_runtime = true;
-      context_teardown_threw = true;
-      ml_loge("Exception during QNN context teardown: %s", e.what());
-    } catch (...) {
-      quarantine_runtime = true;
-      context_teardown_threw = true;
-      ml_loge("Unknown exception during QNN context teardown");
-    }
-
-    if (quarantine_runtime) {
-      auto final_state = QnnRuntimeState::QUARANTINED;
-      if (!context_teardown_threw) {
-        try {
-          if (qnn_data->contextTeardownDeferredForRegistrations(
-                shutdown_guard)) {
-            final_state = QnnRuntimeState::CLEANUP_PENDING;
-          }
-        } catch (const std::exception &e) {
-          ml_loge("Could not classify deferred QNN cleanup: %s", e.what());
-        } catch (...) {
-          ml_loge("Could not classify deferred QNN cleanup");
-        }
-      }
-
-      // Preserve the complete runtime while live registrations still need
-      // their contexts, or when a failed vendor release made validity
-      // ambiguous. Never unload code or buffers beneath either case.
-      qnn_data->quarantine_self_reference = qnn_data;
-      runtime_lifecycle->finishRuntimeShutdown(shutdown_guard, final_state);
-      if (final_state == QnnRuntimeState::CLEANUP_PENDING) {
-        ml_logw("QNN runtime retained until live memory registrations drain");
-      } else {
-        ml_loge("QNN runtime teardown quarantined after context free failure");
-      }
-      return;
-    }
-    if ((qnn_data->m_isBackendInitialized &&
-         nullptr != qnn_data->m_qnnFunctionPointers.qnnInterface.backendFree) &&
-        QNN_BACKEND_NO_ERROR !=
-          qnn_data->m_qnnFunctionPointers.qnnInterface.backendFree(
-            qnn_data->m_backendHandle)) {
-      ml_loge("Could not terminate backed");
-    }
-    qnn_data->m_isBackendInitialized = false;
-    this->release();
-    void *backend_library_handle = qnn_data->m_backendLibraryHandle;
-    qnn_data->m_backendLibraryHandle = nullptr;
-    if (qnn_data->m_backendLibraryLifetime) {
-      qnn_data->m_backendLibraryLifetime.reset();
-    } else if (backend_library_handle != nullptr) {
-      pal::dynamicloading::dlClose(backend_library_handle);
-    }
-    runtime_lifecycle->finishRuntimeShutdown(shutdown_guard,
-                                             QnnRuntimeState::SHUT_DOWN);
-  }
+  ~QNNContext() override;
 
   int init() override;
 
@@ -429,10 +340,6 @@ private:
   StatusCode initializeProfiling();
 
   StatusCode registerOpPackages();
-
-  void release();
-
-  StatusCode freeDevice();
 };
 
 /**

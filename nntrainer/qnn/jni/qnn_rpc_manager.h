@@ -34,7 +34,6 @@ namespace nntrainer {
 enum class QnnRuntimeState : uint8_t {
   RUNNING,
   SHUTDOWN_REQUESTED,
-  CLEANUP_PENDING,
   SHUT_DOWN,
   QUARANTINED,
 };
@@ -66,6 +65,9 @@ public:
   void finishRuntimeShutdown(const CleanupGuard &guard,
                              QnnRuntimeState final_state) noexcept;
 
+  /** @brief Permanently close admission after an ambiguous runtime call. */
+  void quarantine(const CleanupGuard &guard) noexcept;
+
   /** @brief Verify that a shared lease belongs to this lifecycle. */
   bool ownsExecutionGuard(const ExecutionGuard &guard) const noexcept;
 
@@ -75,7 +77,10 @@ public:
   /** @brief Return whether normal vendor calls remain admitted. */
   bool isRunning(const CleanupGuard &guard) const noexcept;
 
-  /** @brief Return whether retained contexts permit late memory cleanup. */
+  /** @brief Return whether shutdown-time cleanup owns the runtime gate. */
+  bool isShutdownRequested(const CleanupGuard &guard) const noexcept;
+
+  /** @brief Return whether QNN memory deregistration remains admitted. */
   bool allowsVendorCleanup(const CleanupGuard &guard) const noexcept;
 
   /** @brief Return the current sticky runtime state. */
@@ -98,6 +103,31 @@ struct QnnRpcResourceReport {
   bool allocation_admission_closed{false};
 
   bool clean() const noexcept { return allocations == 0 && registrations == 0; }
+};
+
+/** @brief Reason a shutdown-time memory registration drain stopped. */
+enum class QnnRegistrationDrainFailure : uint8_t {
+  NONE,
+  INVALID_GUARD,
+  INVALID_RUNTIME_STATE,
+  INVALID_REGISTRATION,
+  DUPLICATE_HANDLE,
+  DEREGISTER_FAILED,
+  HOST_EXCEPTION,
+};
+
+/** @brief Exact outcome of a shutdown-time memory registration drain. */
+struct QnnRegistrationDrainReport {
+  size_t discovered{0};
+  size_t attempted{0};
+  size_t drained{0};
+  size_t remaining{0};
+  size_t quarantined{0};
+  QnnRegistrationDrainFailure failure{QnnRegistrationDrainFailure::NONE};
+
+  bool success() const noexcept {
+    return failure == QnnRegistrationDrainFailure::NONE && remaining == 0;
+  }
 };
 
 /** @brief Manages QNN RPC shared memory allocation via libcdsprpc. */
@@ -139,6 +169,15 @@ public:
   size_t registrationCount(const QNNRuntimeLifecycle::CleanupGuard &guard,
                            Qnn_ContextHandle_t context) const;
 
+  /**
+   * @brief Deregister every known memory handle before context teardown.
+   *
+   * Successful registration nodes are erased one at a time. Allocation nodes
+   * and RPC backing remain owned until their MemoryPool releases them.
+   */
+  QnnRegistrationDrainReport drainRegistrationsForShutdown(
+    const QNNRuntimeLifecycle::CleanupGuard &guard) noexcept;
+
 private:
   enum class AllocationState : uint8_t {
     ACQUIRING,
@@ -149,6 +188,7 @@ private:
   enum class RegistrationState : uint8_t {
     REGISTERING,
     ACTIVE,
+    DEREGISTERING,
     QUARANTINED,
   };
 

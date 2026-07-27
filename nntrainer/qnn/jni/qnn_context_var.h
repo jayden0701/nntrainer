@@ -20,6 +20,7 @@
 #include "PAL/DynamicLoading.hpp"
 #include "QNN/HTP/QnnHtpContext.h"
 #include "QNN/QnnTypes.h"
+#include "ResourceManager.hpp"
 #include "iotensor_wrapper.hpp"
 #include "qnn_rpc_manager.h"
 
@@ -68,6 +69,16 @@ enum class StatusCode {
 enum class QnnContextEntryState : uint8_t {
   CREATING,
   ACTIVE,
+  FREEING,
+  QUARANTINED,
+};
+
+/** @brief Explicit ownership state for one QNN vendor resource. */
+enum class QnnResourceState : uint8_t {
+  NOT_ACQUIRED,
+  OWNED,
+  UNSUPPORTED,
+  RELEASED,
   QUARANTINED,
 };
 
@@ -82,6 +93,7 @@ struct Qnn_Context_Graph_t {
   uint32_t m_graphsCount = 0;
   QnnContextEntryState m_state = QnnContextEntryState::CREATING;
   Qnn_ErrorHandle_t m_lastError = QNN_CONTEXT_NO_ERROR;
+  bool m_lastCallThrew = false;
   std::shared_ptr<uint8_t> m_binaryBuffer;
   uint64_t m_binarySize = 0;
 
@@ -192,19 +204,24 @@ struct Qnn_Context_Graph_t {
 };
 
 struct QNNVar {
-  QnnBackend_Config_t **m_backendConfig = nullptr;
   Qnn_BackendHandle_t m_backendHandle = nullptr;
-  BackendExtensions *m_backendExtensions = nullptr;
-  Qnn_DeviceHandle_t m_deviceHandle = nullptr;
+  void *m_backendLibraryHandle = nullptr;
+  std::shared_ptr<void> m_backendLibraryLifetime;
+  std::shared_ptr<genie::ResourceManager> m_resourceManager;
+  std::unique_ptr<BackendExtensions> m_backendExtensions;
   iotensor::OutputDataType m_outputDataType =
     iotensor::OutputDataType::FLOAT_AND_NATIVE;
   iotensor::InputDataType m_inputDataType = iotensor::InputDataType::NATIVE;
   sample_app::ProfilingLevel m_profilingLevel = sample_app::ProfilingLevel::OFF;
-  bool m_isBackendInitialized = false;
-  void *m_backendLibraryHandle = nullptr;
-  std::shared_ptr<void> m_backendLibraryLifetime;
+  Qnn_DeviceHandle_t m_deviceHandle = nullptr;
   Qnn_LogHandle_t m_logHandle = nullptr;
   Qnn_ProfileHandle_t m_profileBackendHandle = nullptr;
+  QnnResourceState m_logState = QnnResourceState::NOT_ACQUIRED;
+  QnnResourceState m_backendState = QnnResourceState::NOT_ACQUIRED;
+  QnnResourceState m_deviceState = QnnResourceState::NOT_ACQUIRED;
+  QnnResourceState m_profileState = QnnResourceState::NOT_ACQUIRED;
+  bool m_deviceLifecycleInitialized = false;
+  bool m_hasRuntimeResourceQuarantine = false;
   sample_app::QnnFunctionPointers m_qnnFunctionPointers{};
   std::shared_ptr<QNNRuntimeLifecycle> runtime_lifecycle{
     std::make_shared<QNNRuntimeLifecycle>()};
@@ -296,7 +313,7 @@ struct QNNVar {
       // branch would violate the registry's single-attempt invariant.
       ml_loge("QNN SystemContext quarantine slot is already occupied");
     }
-    ml_loge("QNN SystemContext free failed: error=%" PRIu64
+    ml_loge("QNN SystemContext quarantined: error=%" PRIu64
             ", public_error=%u, handle=%p, binary_size=%" PRIu64,
             static_cast<uint64_t>(error),
             static_cast<unsigned int>(QNN_GET_ERROR_CODE(error)), handle,
@@ -338,6 +355,30 @@ struct QNNVar {
     context.m_binarySize = 0;
   }
 
+  bool quarantineAliasedContextHandleLocked(
+    std::map<std::string, Qnn_Context_Graph_t>::iterator target) noexcept {
+    if (target == ct_map.end() || target->second.m_context == nullptr) {
+      return false;
+    }
+
+    for (auto other = ct_map.begin(); other != ct_map.end(); ++other) {
+      if (other == target || other->second.m_context == nullptr ||
+          other->second.m_context != target->second.m_context) {
+        continue;
+      }
+
+      target->second.m_state = QnnContextEntryState::QUARANTINED;
+      other->second.m_state = QnnContextEntryState::QUARANTINED;
+      m_hasContextQuarantine = true;
+      ml_loge("QNN context handle is aliased: first=%s, second=%s, "
+              "context=%p",
+              target->first.c_str(), other->first.c_str(),
+              static_cast<void *>(target->second.m_context));
+      return true;
+    }
+    return false;
+  }
+
   StatusCode
   rollbackContextCreationLocked(const std::string &bin_path) noexcept {
     auto it = ct_map.find(bin_path);
@@ -355,10 +396,56 @@ struct QNNVar {
               bin_path.c_str());
       return StatusCode::FAILURE;
     }
+    if (quarantineAliasedContextHandleLocked(it)) {
+      return StatusCode::FAILURE;
+    }
 
-    const auto free_status = m_qnnFunctionPointers.qnnInterface.contextFree(
-      context.m_context, nullptr);
-    if (QNN_CONTEXT_NO_ERROR != free_status) {
+    auto *extension = m_backendExtensions == nullptr
+                        ? nullptr
+                        : m_backendExtensions->interface();
+    try {
+      if (extension != nullptr) {
+        const std::vector<Qnn_ContextHandle_t> handles{context.m_context};
+        if (!extension->beforeContextFree(handles)) {
+          context.m_state = QnnContextEntryState::QUARANTINED;
+          m_hasContextQuarantine = true;
+          ml_loge("QNN extension rejected context creation rollback");
+          return StatusCode::FAILURE;
+        }
+      }
+    } catch (const std::exception &e) {
+      context.m_state = QnnContextEntryState::QUARANTINED;
+      m_hasContextQuarantine = true;
+      ml_loge("QNN extension threw before context creation rollback: %s",
+              e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      context.m_state = QnnContextEntryState::QUARANTINED;
+      m_hasContextQuarantine = true;
+      ml_loge("QNN extension threw before context creation rollback");
+      return StatusCode::FAILURE;
+    }
+
+    Qnn_ErrorHandle_t free_status = QNN_CONTEXT_NO_ERROR;
+    context.m_state = QnnContextEntryState::FREEING;
+    try {
+      free_status = m_qnnFunctionPointers.qnnInterface.contextFree(
+        context.m_context, m_profileBackendHandle);
+    } catch (const std::exception &e) {
+      context.m_state = QnnContextEntryState::QUARANTINED;
+      context.m_lastCallThrew = true;
+      m_hasContextQuarantine = true;
+      ml_loge("QNN context rollback threw for %s: %s", bin_path.c_str(),
+              e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      context.m_state = QnnContextEntryState::QUARANTINED;
+      context.m_lastCallThrew = true;
+      m_hasContextQuarantine = true;
+      ml_loge("QNN context rollback threw for %s", bin_path.c_str());
+      return StatusCode::FAILURE;
+    }
+    if (QNN_CONTEXT_NO_ERROR != QNN_GET_ERROR_CODE(free_status)) {
       context.m_state = QnnContextEntryState::QUARANTINED;
       context.m_lastError = free_status;
       m_hasContextQuarantine = true;
@@ -373,11 +460,28 @@ struct QNNVar {
     context.m_context = nullptr;
     releaseContextHostResources(context);
     ct_map.erase(it);
+
+    try {
+      if (extension != nullptr && !extension->afterContextFree()) {
+        m_hasContextQuarantine = true;
+        ml_loge("QNN extension failed after context creation rollback");
+        return StatusCode::FAILURE;
+      }
+    } catch (const std::exception &e) {
+      m_hasContextQuarantine = true;
+      ml_loge("QNN extension threw after context creation rollback: %s",
+              e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      m_hasContextQuarantine = true;
+      ml_loge("QNN extension threw after context creation rollback");
+      return StatusCode::FAILURE;
+    }
     return StatusCode::SUCCESS;
   }
 
-  StatusCode freeContextLocked(const QNNRuntimeLifecycle::CleanupGuard &guard,
-                               const std::string &bin_path) {
+  StatusCode freeContextsLocked(const QNNRuntimeLifecycle::CleanupGuard &guard,
+                                const std::vector<std::string> &bin_paths) {
     if (!runtime_lifecycle || !runtime_lifecycle->ownsCleanupGuard(guard)) {
       ml_loge("QNN context free requires a runtime cleanup lease");
       return StatusCode::FAILURE;
@@ -387,62 +491,149 @@ struct QNNVar {
       return StatusCode::FAILURE;
     }
 
-    auto it = ct_map.find(bin_path);
-    if (it == ct_map.end()) {
-      ml_logw("Context not found for: %s", bin_path.c_str());
-      return StatusCode::FAILURE;
+    if (bin_paths.empty()) {
+      return StatusCode::SUCCESS;
     }
 
-    auto &context = it->second;
-    if (context.m_state != QnnContextEntryState::ACTIVE) {
-      if (context.m_state == QnnContextEntryState::QUARANTINED) {
-        m_hasContextQuarantine = true;
-      }
-      ml_loge("Refusing normal free of non-active QNN context: state=%u, "
-              "binary=%s",
-              static_cast<unsigned int>(context.m_state), bin_path.c_str());
-      return StatusCode::FAILURE;
-    }
-    if (context.m_context == nullptr ||
-        m_qnnFunctionPointers.qnnInterface.contextFree == nullptr) {
-      context.m_state = QnnContextEntryState::QUARANTINED;
+    if (m_qnnFunctionPointers.qnnInterface.contextFree == nullptr) {
       m_hasContextQuarantine = true;
-      ml_loge("Cannot free QNN context for: %s", bin_path.c_str());
+      ml_loge("QNN contextFree function is unavailable");
       return StatusCode::FAILURE;
     }
 
-    if (RpcMem) {
-      const size_t registration_count =
-        RpcMem->registrationCount(guard, context.m_context);
-      if (registration_count > 0) {
-        ml_loge("Refusing to free QNN context with live RPC registrations: "
-                "binary=%s, context=%p, registrations=%zu",
-                bin_path.c_str(), static_cast<void *>(context.m_context),
-                registration_count);
+    std::vector<Qnn_ContextHandle_t> context_handles;
+    context_handles.reserve(bin_paths.size());
+    for (const auto &bin_path : bin_paths) {
+      auto it = ct_map.find(bin_path);
+      if (it == ct_map.end()) {
+        ml_logw("Context not found for: %s", bin_path.c_str());
         return StatusCode::FAILURE;
       }
+
+      auto &context = it->second;
+      if (context.m_state != QnnContextEntryState::ACTIVE) {
+        if (context.m_state == QnnContextEntryState::QUARANTINED) {
+          m_hasContextQuarantine = true;
+        }
+        ml_loge("Refusing normal free of non-active QNN context: state=%u, "
+                "binary=%s",
+                static_cast<unsigned int>(context.m_state), bin_path.c_str());
+        return StatusCode::FAILURE;
+      }
+      if (context.m_context == nullptr) {
+        context.m_state = QnnContextEntryState::QUARANTINED;
+        m_hasContextQuarantine = true;
+        ml_loge("Cannot free QNN context for: %s", bin_path.c_str());
+        return StatusCode::FAILURE;
+      }
+      if (quarantineAliasedContextHandleLocked(it)) {
+        return StatusCode::FAILURE;
+      }
+
+      if (RpcMem) {
+        const size_t registration_count =
+          RpcMem->registrationCount(guard, context.m_context);
+        if (registration_count > 0) {
+          ml_loge("Refusing to free QNN context with live RPC registrations: "
+                  "binary=%s, context=%p, registrations=%zu",
+                  bin_path.c_str(), static_cast<void *>(context.m_context),
+                  registration_count);
+          return StatusCode::FAILURE;
+        }
+      }
+
+      if (std::find(context_handles.begin(), context_handles.end(),
+                    context.m_context) != context_handles.end()) {
+        context.m_state = QnnContextEntryState::QUARANTINED;
+        m_hasContextQuarantine = true;
+        ml_loge("Refusing to free aliased QNN context handle: binary=%s, "
+                "context=%p",
+                bin_path.c_str(), static_cast<void *>(context.m_context));
+        return StatusCode::FAILURE;
+      }
+      context_handles.push_back(context.m_context);
     }
 
-    const auto free_status = m_qnnFunctionPointers.qnnInterface.contextFree(
-      context.m_context, nullptr);
-    if (QNN_CONTEXT_NO_ERROR != free_status) {
-      context.m_state = QnnContextEntryState::QUARANTINED;
-      context.m_lastError = free_status;
+    auto *extension = m_backendExtensions == nullptr
+                        ? nullptr
+                        : m_backendExtensions->interface();
+    try {
+      if (extension != nullptr &&
+          !extension->beforeContextFree(context_handles)) {
+        m_hasContextQuarantine = true;
+        ml_loge("QNN extension rejected context teardown");
+        return StatusCode::FAILURE;
+      }
+    } catch (const std::exception &e) {
       m_hasContextQuarantine = true;
-      ml_loge("Failed to free QNN context: error=%" PRIu64
-              ", public_error=%u, binary=%s, context=%p",
-              static_cast<uint64_t>(free_status),
-              static_cast<unsigned int>(QNN_GET_ERROR_CODE(free_status)),
-              bin_path.c_str(), static_cast<void *>(context.m_context));
+      ml_loge("QNN extension threw before context teardown: %s", e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      m_hasContextQuarantine = true;
+      ml_loge("QNN extension threw before context teardown");
       return StatusCode::FAILURE;
     }
 
-    context.m_context = nullptr;
-    releaseContextHostResources(context);
-    ct_map.erase(it);
+    for (const auto &bin_path : bin_paths) {
+      auto it = ct_map.find(bin_path);
+      auto &context = it->second;
+      Qnn_ErrorHandle_t free_status = QNN_CONTEXT_NO_ERROR;
+      context.m_state = QnnContextEntryState::FREEING;
+      try {
+        free_status = m_qnnFunctionPointers.qnnInterface.contextFree(
+          context.m_context, m_profileBackendHandle);
+      } catch (const std::exception &e) {
+        context.m_state = QnnContextEntryState::QUARANTINED;
+        context.m_lastCallThrew = true;
+        m_hasContextQuarantine = true;
+        ml_loge("QNN contextFree threw for %s: %s", bin_path.c_str(), e.what());
+        return StatusCode::FAILURE;
+      } catch (...) {
+        context.m_state = QnnContextEntryState::QUARANTINED;
+        context.m_lastCallThrew = true;
+        m_hasContextQuarantine = true;
+        ml_loge("QNN contextFree threw for %s", bin_path.c_str());
+        return StatusCode::FAILURE;
+      }
+      if (QNN_CONTEXT_NO_ERROR != QNN_GET_ERROR_CODE(free_status)) {
+        context.m_state = QnnContextEntryState::QUARANTINED;
+        context.m_lastError = free_status;
+        m_hasContextQuarantine = true;
+        ml_loge("Failed to free QNN context: error=%" PRIu64
+                ", public_error=%u, binary=%s, context=%p",
+                static_cast<uint64_t>(free_status),
+                static_cast<unsigned int>(QNN_GET_ERROR_CODE(free_status)),
+                bin_path.c_str(), static_cast<void *>(context.m_context));
+        return StatusCode::FAILURE;
+      }
 
-    ml_logi("Freed QNN context for: %s", bin_path.c_str());
+      context.m_context = nullptr;
+      releaseContextHostResources(context);
+      ct_map.erase(it);
+      ml_logi("Freed QNN context for: %s", bin_path.c_str());
+    }
+
+    try {
+      if (extension != nullptr && !extension->afterContextFree()) {
+        m_hasContextQuarantine = true;
+        ml_loge("QNN extension failed after context teardown");
+        return StatusCode::FAILURE;
+      }
+    } catch (const std::exception &e) {
+      m_hasContextQuarantine = true;
+      ml_loge("QNN extension threw after context teardown: %s", e.what());
+      return StatusCode::FAILURE;
+    } catch (...) {
+      m_hasContextQuarantine = true;
+      ml_loge("QNN extension threw after context teardown");
+      return StatusCode::FAILURE;
+    }
     return StatusCode::SUCCESS;
+  }
+
+  StatusCode freeContextLocked(const QNNRuntimeLifecycle::CleanupGuard &guard,
+                               const std::string &bin_path) {
+    return freeContextsLocked(guard, {bin_path});
   }
 
   StatusCode freeContext(const std::string &bin_path) {
@@ -468,7 +659,23 @@ struct QNNVar {
       return StatusCode::FAILURE;
     }
     const std::lock_guard<std::mutex> lock(context_registry_mutex);
-    return freeContextLocked(cleanup_guard, bin_path);
+    try {
+      const auto status = freeContextLocked(cleanup_guard, bin_path);
+      if (status != StatusCode::SUCCESS && m_hasContextQuarantine) {
+        lifecycle->quarantine(cleanup_guard);
+      }
+      return status;
+    } catch (const std::exception &e) {
+      ml_loge("Exception while freeing QNN context %s: %s", bin_path.c_str(),
+              e.what());
+    } catch (...) {
+      ml_loge("Unknown exception while freeing QNN context %s",
+              bin_path.c_str());
+    }
+    if (m_hasContextQuarantine) {
+      lifecycle->quarantine(cleanup_guard);
+    }
+    return StatusCode::FAILURE;
   }
 
   StatusCode
@@ -487,14 +694,7 @@ struct QNNVar {
     for (auto &[k, _] : ct_map) {
       keys.push_back(k);
     }
-    for (auto &k : keys) {
-      if (freeContextLocked(guard, k) != StatusCode::SUCCESS) {
-        // Stop after the first blocked or failed context cleanup. The caller
-        // distinguishes live-registration deferral from ambiguous vendor state.
-        return StatusCode::FAILURE;
-      }
-    }
-    return StatusCode::SUCCESS;
+    return freeContextsLocked(guard, keys);
   }
 
   StatusCode
@@ -505,31 +705,6 @@ struct QNNVar {
     }
     const std::lock_guard<std::mutex> lock(context_registry_mutex);
     return freeAllContextsLocked(guard);
-  }
-
-  bool contextTeardownDeferredForRegistrations(
-    const QNNRuntimeLifecycle::CleanupGuard &guard) {
-    if (!runtime_lifecycle || !runtime_lifecycle->ownsCleanupGuard(guard) ||
-        !RpcMem) {
-      return false;
-    }
-
-    const std::lock_guard<std::mutex> lock(context_registry_mutex);
-    if (m_hasSystemContextFreeFailure || m_hasContextQuarantine) {
-      return false;
-    }
-
-    bool has_live_registration = false;
-    for (const auto &context : ct_map) {
-      if (context.second.m_state != QnnContextEntryState::ACTIVE ||
-          context.second.m_context == nullptr) {
-        return false;
-      }
-      has_live_registration =
-        has_live_registration ||
-        RpcMem->registrationCount(guard, context.second.m_context) > 0;
-    }
-    return has_live_registration;
   }
 
   StatusCode freeAllContexts() {
@@ -554,7 +729,21 @@ struct QNNVar {
       ml_loge("QNN runtime shutdown has started; refusing context teardown");
       return StatusCode::FAILURE;
     }
-    return freeAllContextsWithGuard(cleanup_guard);
+    try {
+      const auto status = freeAllContextsWithGuard(cleanup_guard);
+      if (status != StatusCode::SUCCESS && m_hasContextQuarantine) {
+        lifecycle->quarantine(cleanup_guard);
+      }
+      return status;
+    } catch (const std::exception &e) {
+      ml_loge("Exception while freeing all QNN contexts: %s", e.what());
+    } catch (...) {
+      ml_loge("Unknown exception while freeing all QNN contexts");
+    }
+    if (m_hasContextQuarantine) {
+      lifecycle->quarantine(cleanup_guard);
+    }
+    return StatusCode::FAILURE;
   }
 
   StatusCode makeContext(props::FilePath bin) {
@@ -580,7 +769,13 @@ struct QNNVar {
       return StatusCode::FAILURE;
     }
     const std::lock_guard<std::mutex> lock(context_registry_mutex);
-    return makeContextLocked(cleanup_guard, std::move(bin));
+    const auto status = makeContextLocked(cleanup_guard, std::move(bin));
+    if (status != StatusCode::SUCCESS &&
+        (m_hasSystemContextFreeFailure || m_hasContextQuarantine ||
+         m_hasRuntimeResourceQuarantine)) {
+      lifecycle->quarantine(cleanup_guard);
+    }
+    return status;
   }
 
   StatusCode makeContextLocked(const QNNRuntimeLifecycle::CleanupGuard &guard,
@@ -661,10 +856,19 @@ struct QNNVar {
           }
           auto current = handle;
           handle = nullptr;
-          const auto status =
-            owner.m_qnnFunctionPointers.qnnSystemInterface.systemContextFree(
-              current);
-          if (status != QNN_SUCCESS) {
+          Qnn_ErrorHandle_t status = QNN_SUCCESS;
+          try {
+            status =
+              owner.m_qnnFunctionPointers.qnnSystemInterface.systemContextFree(
+                current);
+          } catch (const std::exception &e) {
+            status = QNN_COMMON_ERROR_SYSTEM;
+            ml_loge("QNN SystemContext free threw: %s", e.what());
+          } catch (...) {
+            status = QNN_COMMON_ERROR_SYSTEM;
+            ml_loge("QNN SystemContext free threw");
+          }
+          if (QNN_GET_ERROR_CODE(status) != QNN_SUCCESS) {
             owner.quarantineSystemContext(
               current, status, std::move(binary_buffer), binary_size);
           }
@@ -674,26 +878,76 @@ struct QNNVar {
         ~SystemContextGuard() { close(); }
       } system_context{*this, candidate.m_binaryBuffer, candidate.m_binarySize};
 
-      auto system_status =
-        m_qnnFunctionPointers.qnnSystemInterface.systemContextCreate(
-          &system_context.handle);
-      if (system_status != QNN_SUCCESS) {
+      Qnn_ErrorHandle_t system_status = QNN_SUCCESS;
+      try {
+        system_status =
+          m_qnnFunctionPointers.qnnSystemInterface.systemContextCreate(
+            &system_context.handle);
+      } catch (const std::exception &e) {
+        auto ambiguous_handle = system_context.handle;
+        system_context.handle = nullptr;
+        quarantineSystemContext(ambiguous_handle, QNN_COMMON_ERROR_SYSTEM,
+                                std::move(system_context.binary_buffer),
+                                system_context.binary_size);
+        ml_loge("QNN SystemContext creation threw: %s", e.what());
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      } catch (...) {
+        auto ambiguous_handle = system_context.handle;
+        system_context.handle = nullptr;
+        quarantineSystemContext(ambiguous_handle, QNN_COMMON_ERROR_SYSTEM,
+                                std::move(system_context.binary_buffer),
+                                system_context.binary_size);
+        ml_loge("QNN SystemContext creation threw");
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+      const auto system_error = QNN_GET_ERROR_CODE(system_status);
+      if (system_error != QNN_SUCCESS || system_context.handle == nullptr) {
         ml_loge("Could not create QNN SystemContext: error=%" PRIu64
-                ", public_error=%u",
+                ", public_error=%u, handle=%p",
                 static_cast<uint64_t>(system_status),
-                static_cast<unsigned int>(QNN_GET_ERROR_CODE(system_status)));
-        system_context.close();
+                static_cast<unsigned int>(system_error),
+                static_cast<void *>(system_context.handle));
+        if (system_context.handle != nullptr || system_error == QNN_SUCCESS) {
+          auto ambiguous_handle = system_context.handle;
+          system_context.handle = nullptr;
+          quarantineSystemContext(ambiguous_handle, system_status,
+                                  std::move(system_context.binary_buffer),
+                                  system_context.binary_size);
+        }
         releaseContextHostResources(candidate);
         return StatusCode::FAILURE;
       }
 
       const QnnSystemContext_BinaryInfo_t *binary_info = nullptr;
       Qnn_ContextBinarySize_t binary_info_size = 0;
-      system_status =
-        m_qnnFunctionPointers.qnnSystemInterface.systemContextGetBinaryInfo(
-          system_context.handle, candidate.m_binaryBuffer.get(),
-          candidate.m_binarySize, &binary_info, &binary_info_size);
-      if (system_status != QNN_SUCCESS || binary_info == nullptr) {
+      try {
+        system_status =
+          m_qnnFunctionPointers.qnnSystemInterface.systemContextGetBinaryInfo(
+            system_context.handle, candidate.m_binaryBuffer.get(),
+            candidate.m_binarySize, &binary_info, &binary_info_size);
+      } catch (const std::exception &e) {
+        auto ambiguous_handle = system_context.handle;
+        system_context.handle = nullptr;
+        quarantineSystemContext(ambiguous_handle, QNN_COMMON_ERROR_SYSTEM,
+                                std::move(system_context.binary_buffer),
+                                system_context.binary_size);
+        ml_loge("QNN SystemContext metadata query threw: %s", e.what());
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      } catch (...) {
+        auto ambiguous_handle = system_context.handle;
+        system_context.handle = nullptr;
+        quarantineSystemContext(ambiguous_handle, QNN_COMMON_ERROR_SYSTEM,
+                                std::move(system_context.binary_buffer),
+                                system_context.binary_size);
+        ml_loge("QNN SystemContext metadata query threw");
+        releaseContextHostResources(candidate);
+        return StatusCode::FAILURE;
+      }
+      if (QNN_GET_ERROR_CODE(system_status) != QNN_SUCCESS ||
+          binary_info == nullptr) {
         ml_loge("Failed to read QNN context metadata: error=%" PRIu64
                 ", public_error=%u",
                 static_cast<uint64_t>(system_status),
@@ -733,7 +987,8 @@ struct QNNVar {
       candidate.m_graphsInfo = copied_graphs_info;
       candidate.m_graphsCount = copied_graph_count;
 
-      if (system_context.close() != QNN_SUCCESS) {
+      const auto system_close_status = system_context.close();
+      if (QNN_GET_ERROR_CODE(system_close_status) != QNN_SUCCESS) {
         releaseContextHostResources(candidate);
         return StatusCode::FAILURE;
       }
@@ -747,13 +1002,30 @@ struct QNNVar {
       auto *extension = m_backendExtensions == nullptr
                           ? nullptr
                           : m_backendExtensions->interface();
-      if (extension != nullptr && !extension->beforeCreateFromBinary(
-                                    &custom_configs, &custom_config_count)) {
-        QNN_ERROR("Extensions Failure in beforeCreateFromBinary()");
-        releaseContextHostResources(candidate);
-        return StatusCode::FAILURE;
+      if (extension != nullptr) {
+        bool hook_succeeded = false;
+        try {
+          hook_succeeded = extension->beforeCreateFromBinary(
+            &custom_configs, &custom_config_count);
+        } catch (const std::exception &e) {
+          m_hasRuntimeResourceQuarantine = true;
+          ml_loge("QNN extension threw before context creation: %s", e.what());
+          releaseContextHostResources(candidate);
+          return StatusCode::FAILURE;
+        } catch (...) {
+          m_hasRuntimeResourceQuarantine = true;
+          ml_loge("QNN extension threw before context creation");
+          releaseContextHostResources(candidate);
+          return StatusCode::FAILURE;
+        }
+        if (!hook_succeeded) {
+          QNN_ERROR("Extensions Failure in beforeCreateFromBinary()");
+          releaseContextHostResources(candidate);
+          return StatusCode::FAILURE;
+        }
       }
       if (custom_config_count > 0 && custom_configs == nullptr) {
+        m_hasRuntimeResourceQuarantine = true;
         ml_loge("QNN extension returned an invalid context config list");
         releaseContextHostResources(candidate);
         return StatusCode::FAILURE;
@@ -781,6 +1053,7 @@ struct QNNVar {
       context_configs.push_back(&io_context_config);
       for (uint32_t i = 0; i < custom_config_count; ++i) {
         if (custom_configs[i] == nullptr) {
+          m_hasRuntimeResourceQuarantine = true;
           ml_loge("QNN extension returned a null context config at index %u",
                   i);
           releaseContextHostResources(candidate);
@@ -804,12 +1077,30 @@ struct QNNVar {
       candidate.m_graphsCount = 0;
       candidate.m_binarySize = 0;
 
-      const auto create_status =
-        m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary(
-          m_backendHandle, m_deviceHandle, context_configs.data(),
-          entry.m_binaryBuffer.get(), entry.m_binarySize, &entry.m_context,
-          m_profileBackendHandle);
-      if (create_status != QNN_CONTEXT_NO_ERROR) {
+      Qnn_ErrorHandle_t create_status = QNN_CONTEXT_NO_ERROR;
+      try {
+        create_status =
+          m_qnnFunctionPointers.qnnInterface.contextCreateFromBinary(
+            m_backendHandle, m_deviceHandle, context_configs.data(),
+            entry.m_binaryBuffer.get(), entry.m_binarySize, &entry.m_context,
+            m_profileBackendHandle);
+      } catch (const std::exception &e) {
+        entry.m_state = QnnContextEntryState::QUARANTINED;
+        entry.m_lastError = QNN_COMMON_ERROR_SYSTEM;
+        entry.m_lastCallThrew = true;
+        m_hasContextQuarantine = true;
+        ml_loge("QNN context creation threw for %s: %s", bin_path.c_str(),
+                e.what());
+        return StatusCode::FAILURE;
+      } catch (...) {
+        entry.m_state = QnnContextEntryState::QUARANTINED;
+        entry.m_lastError = QNN_COMMON_ERROR_SYSTEM;
+        entry.m_lastCallThrew = true;
+        m_hasContextQuarantine = true;
+        ml_loge("QNN context creation threw for %s", bin_path.c_str());
+        return StatusCode::FAILURE;
+      }
+      if (QNN_GET_ERROR_CODE(create_status) != QNN_CONTEXT_NO_ERROR) {
         entry.m_lastError = create_status;
         ml_loge("Could not create QNN context: error=%" PRIu64
                 ", public_error=%u, binary=%s, context=%p",
@@ -831,11 +1122,32 @@ struct QNNVar {
         m_hasContextQuarantine = true;
         return StatusCode::FAILURE;
       }
-
-      if (extension != nullptr && !extension->afterCreateFromBinary()) {
-        QNN_ERROR("Extensions Failure in afterCreateFromBinary()");
-        rollbackContextCreationLocked(bin_path);
+      if (quarantineAliasedContextHandleLocked(inserted.first)) {
         return StatusCode::FAILURE;
+      }
+
+      if (extension != nullptr) {
+        bool hook_succeeded = false;
+        try {
+          hook_succeeded = extension->afterCreateFromBinary();
+        } catch (const std::exception &e) {
+          entry.m_state = QnnContextEntryState::QUARANTINED;
+          m_hasContextQuarantine = true;
+          m_hasRuntimeResourceQuarantine = true;
+          ml_loge("QNN extension threw after context creation: %s", e.what());
+          return StatusCode::FAILURE;
+        } catch (...) {
+          entry.m_state = QnnContextEntryState::QUARANTINED;
+          m_hasContextQuarantine = true;
+          m_hasRuntimeResourceQuarantine = true;
+          ml_loge("QNN extension threw after context creation");
+          return StatusCode::FAILURE;
+        }
+        if (!hook_succeeded) {
+          QNN_ERROR("Extensions Failure in afterCreateFromBinary()");
+          rollbackContextCreationLocked(bin_path);
+          return StatusCode::FAILURE;
+        }
       }
 
       if (sample_app::ProfilingLevel::OFF != m_profilingLevel &&
@@ -910,7 +1222,8 @@ struct QNNVar {
     const auto retrieve_status =
       m_qnnFunctionPointers.qnnInterface.graphRetrieve(
         context_i.m_context, graphInfo->graphName, &retrieved_graph);
-    if (retrieve_status != QNN_SUCCESS || retrieved_graph == nullptr) {
+    if (QNN_GET_ERROR_CODE(retrieve_status) != QNN_SUCCESS ||
+        retrieved_graph == nullptr) {
       ml_loge("Unable to retrieve graph handle for graph name : %s",
               graphInfo->graphName);
       return nullptr;
@@ -930,8 +1243,8 @@ struct QNNVar {
     const QnnProfile_EventId_t *profileEvents{nullptr};
     uint32_t numEvents{0};
     if (QNN_PROFILE_NO_ERROR !=
-        m_qnnFunctionPointers.qnnInterface.profileGetEvents(
-          profileHandle, &profileEvents, &numEvents)) {
+        QNN_GET_ERROR_CODE(m_qnnFunctionPointers.qnnInterface.profileGetEvents(
+          profileHandle, &profileEvents, &numEvents))) {
       ml_loge("Failure in profile get events.");
       return StatusCode::FAILURE;
     }
@@ -947,8 +1260,9 @@ struct QNNVar {
     const QnnProfile_EventId_t *profileSubEvents{nullptr};
     uint32_t numSubEvents{0};
     if (QNN_PROFILE_NO_ERROR !=
-        m_qnnFunctionPointers.qnnInterface.profileGetSubEvents(
-          profileEventId, &profileSubEvents, &numSubEvents)) {
+        QNN_GET_ERROR_CODE(
+          m_qnnFunctionPointers.qnnInterface.profileGetSubEvents(
+            profileEventId, &profileSubEvents, &numSubEvents))) {
       ml_loge("Failure in profile get sub events.");
       return StatusCode::FAILURE;
     }
@@ -964,8 +1278,9 @@ struct QNNVar {
   StatusCode extractProfilingEvent(QnnProfile_EventId_t profileEventId) {
     QnnProfile_EventData_t eventData;
     if (QNN_PROFILE_NO_ERROR !=
-        m_qnnFunctionPointers.qnnInterface.profileGetEventData(profileEventId,
-                                                               &eventData)) {
+        QNN_GET_ERROR_CODE(
+          m_qnnFunctionPointers.qnnInterface.profileGetEventData(profileEventId,
+                                                                 &eventData))) {
       ml_loge("Failure in profile get event type.");
       return StatusCode::FAILURE;
     }

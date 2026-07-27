@@ -66,14 +66,21 @@ void QNNRuntimeLifecycle::finishRuntimeShutdown(
     ml_loge("Cannot finish QNN runtime shutdown without its cleanup lease");
     return;
   }
-  if (final_state != QnnRuntimeState::CLEANUP_PENDING &&
-      final_state != QnnRuntimeState::SHUT_DOWN &&
+  if (final_state != QnnRuntimeState::SHUT_DOWN &&
       final_state != QnnRuntimeState::QUARANTINED) {
     ml_loge("Invalid final QNN runtime state: %u",
             static_cast<unsigned int>(final_state));
     final_state = QnnRuntimeState::QUARANTINED;
   }
   state_.store(final_state, std::memory_order_release);
+}
+
+void QNNRuntimeLifecycle::quarantine(const CleanupGuard &guard) noexcept {
+  if (!ownsCleanupGuard(guard)) {
+    ml_loge("Cannot quarantine QNN runtime without its cleanup lease");
+    return;
+  }
+  state_.store(QnnRuntimeState::QUARANTINED, std::memory_order_release);
 }
 
 bool QNNRuntimeLifecycle::ownsExecutionGuard(
@@ -91,6 +98,12 @@ bool QNNRuntimeLifecycle::isRunning(const CleanupGuard &guard) const noexcept {
          state_.load(std::memory_order_acquire) == QnnRuntimeState::RUNNING;
 }
 
+bool QNNRuntimeLifecycle::isShutdownRequested(
+  const CleanupGuard &guard) const noexcept {
+  return ownsCleanupGuard(guard) && state_.load(std::memory_order_acquire) ==
+                                      QnnRuntimeState::SHUTDOWN_REQUESTED;
+}
+
 bool QNNRuntimeLifecycle::allowsVendorCleanup(
   const CleanupGuard &guard) const noexcept {
   if (!ownsCleanupGuard(guard)) {
@@ -98,8 +111,7 @@ bool QNNRuntimeLifecycle::allowsVendorCleanup(
   }
   const auto current_state = state_.load(std::memory_order_acquire);
   return current_state == QnnRuntimeState::RUNNING ||
-         current_state == QnnRuntimeState::SHUTDOWN_REQUESTED ||
-         current_state == QnnRuntimeState::CLEANUP_PENDING;
+         current_state == QnnRuntimeState::SHUTDOWN_REQUESTED;
 }
 
 QNNRpcManager::QNNRpcManager(
@@ -387,7 +399,7 @@ void QNNRpcManager::registerQnnTensor(
 
   registration.last_error = register_status;
   registration.mem_handle = mem_handle;
-  if (register_status != QNN_SUCCESS) {
+  if (QNN_GET_ERROR_CODE(register_status) != QNN_SUCCESS) {
     ml_loge("QNN memRegister failed: error=%" PRIu64
             ", public_error=%u, ptr=%p, fd=%d, context=%p, mem_handle=%p",
             static_cast<uint64_t>(register_status),
@@ -433,16 +445,18 @@ bool QNNRpcManager::deRegisterOneLocked(void *ptr, Qnn_ContextHandle_t context,
   if (registration.state != RegistrationState::ACTIVE ||
       registration.mem_handle == nullptr ||
       qnn_interface_.memDeRegister == nullptr) {
+    const auto old_state = registration.state;
     registration.state = RegistrationState::QUARANTINED;
     allocation.state = AllocationState::QUARANTINED;
     ml_loge("Cannot deregister QNN memory: ptr=%p, context=%p, "
             "mem_handle=%p, state=%u",
             ptr, static_cast<void *>(context),
             static_cast<void *>(registration.mem_handle),
-            static_cast<unsigned int>(registration.state));
+            static_cast<unsigned int>(old_state));
     return false;
   }
 
+  registration.state = RegistrationState::DEREGISTERING;
   auto mem_handle = registration.mem_handle;
   Qnn_ErrorHandle_t deregister_status = QNN_SUCCESS;
   try {
@@ -458,7 +472,7 @@ bool QNNRpcManager::deRegisterOneLocked(void *ptr, Qnn_ContextHandle_t context,
   }
 
   registration.last_error = deregister_status;
-  if (deregister_status != QNN_SUCCESS) {
+  if (QNN_GET_ERROR_CODE(deregister_status) != QNN_SUCCESS) {
     registration.state = RegistrationState::QUARANTINED;
     allocation.state = AllocationState::QUARANTINED;
     ml_loge("QNN memDeRegister failed: error=%" PRIu64
@@ -605,6 +619,126 @@ QNNRpcManager::registrationCount(const QNNRuntimeLifecycle::CleanupGuard &guard,
     }
   }
   return count;
+}
+
+QnnRegistrationDrainReport QNNRpcManager::drainRegistrationsForShutdown(
+  const QNNRuntimeLifecycle::CleanupGuard &guard) noexcept {
+  QnnRegistrationDrainReport report;
+  if (!runtime_lifecycle_ || !runtime_lifecycle_->ownsCleanupGuard(guard)) {
+    report.failure = QnnRegistrationDrainFailure::INVALID_GUARD;
+    return report;
+  }
+  if (!runtime_lifecycle_->isShutdownRequested(guard)) {
+    report.failure = QnnRegistrationDrainFailure::INVALID_RUNTIME_STATE;
+    return report;
+  }
+
+#ifdef ENABLE_QNN
+  try {
+    std::lock_guard<std::mutex> ledger_guard(ledger_mutex_);
+
+    for (auto &allocation : allocations_) {
+      for (auto context = allocation.second.registrations.begin();
+           context != allocation.second.registrations.end();) {
+        if (context->second.empty()) {
+          context = allocation.second.registrations.erase(context);
+          continue;
+        }
+        if (allocation.first == nullptr || allocation.second.fd == -1 ||
+            allocation.second.state == AllocationState::ACQUIRING ||
+            context->second.size() >
+              std::numeric_limits<size_t>::max() - report.discovered) {
+          report.failure = QnnRegistrationDrainFailure::INVALID_REGISTRATION;
+          return report;
+        }
+        report.discovered += context->second.size();
+        for (const auto &registration : context->second) {
+          if (registration.second.state == RegistrationState::QUARANTINED) {
+            ++report.quarantined;
+          }
+        }
+        ++context;
+      }
+    }
+    report.remaining = report.discovered;
+
+    if (report.discovered == 0) {
+      return report;
+    }
+    if (qnn_interface_.memDeRegister == nullptr) {
+      report.failure = QnnRegistrationDrainFailure::INVALID_REGISTRATION;
+      return report;
+    }
+
+    // Complete all fallible host-side preflight before the first vendor call.
+    // The global uniqueness check prevents calling memDeRegister twice for an
+    // aliased handle returned in violation of the registration contract.
+    std::vector<Qnn_MemHandle_t> handles;
+    handles.reserve(report.discovered);
+    for (const auto &allocation : allocations_) {
+      for (const auto &context : allocation.second.registrations) {
+        if (context.first == nullptr) {
+          report.failure = QnnRegistrationDrainFailure::INVALID_REGISTRATION;
+          return report;
+        }
+        for (const auto &registration : context.second) {
+          const auto &resource = registration.second;
+          if (resource.state != RegistrationState::ACTIVE ||
+              resource.mem_handle == nullptr) {
+            report.failure = QnnRegistrationDrainFailure::INVALID_REGISTRATION;
+            return report;
+          }
+          if (std::find(handles.begin(), handles.end(), resource.mem_handle) !=
+              handles.end()) {
+            ml_loge("QNN shutdown found an aliased memory handle: %p",
+                    static_cast<void *>(resource.mem_handle));
+            report.failure = QnnRegistrationDrainFailure::DUPLICATE_HANDLE;
+            return report;
+          }
+          handles.push_back(resource.mem_handle);
+        }
+      }
+    }
+
+    for (auto &allocation_entry : allocations_) {
+      auto &allocation = allocation_entry.second;
+      for (auto context = allocation.registrations.begin();
+           context != allocation.registrations.end();) {
+        for (auto registration = context->second.begin();
+             registration != context->second.end();) {
+          ++report.attempted;
+          if (!deRegisterOneLocked(allocation_entry.first, context->first,
+                                   registration->first, allocation,
+                                   registration->second)) {
+            report.failure = QnnRegistrationDrainFailure::DEREGISTER_FAILED;
+            if (registration->second.state == RegistrationState::QUARANTINED) {
+              ++report.quarantined;
+            }
+            return report;
+          }
+          registration = context->second.erase(registration);
+          ++report.drained;
+          --report.remaining;
+        }
+
+        if (context->second.empty()) {
+          context = allocation.registrations.erase(context);
+        } else {
+          ++context;
+        }
+      }
+    }
+  } catch (const std::exception &e) {
+    report.failure = QnnRegistrationDrainFailure::HOST_EXCEPTION;
+    ml_loge("Exception while draining QNN registrations: %s", e.what());
+  } catch (...) {
+    report.failure = QnnRegistrationDrainFailure::HOST_EXCEPTION;
+    ml_loge("Unknown exception while draining QNN registrations");
+  }
+#else
+  (void)guard;
+#endif
+  return report;
 }
 
 } // namespace nntrainer
