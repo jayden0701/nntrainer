@@ -95,6 +95,14 @@ public:
     std::call_once(initialized_, [this]() { initialize(); });
   }
 
+  /** @brief Initialize on first QNN use and report whether it succeeded. */
+  bool ensureInitialized() {
+    // A failed attempt remains sticky because it can leave partially acquired
+    // vendor resources that are released only by this context's destructor.
+    initializeOnce();
+    return qnn_initialized;
+  }
+
   /** @brief Release QNN resources. */
   ~QNNContext() override {
     auto qnn_data = getQnnData();
@@ -160,12 +168,18 @@ public:
   std::unique_ptr<nntrainer::Layer>
   createLayerObject(const std::string &type,
                     const std::vector<std::string> &properties) override {
+    if (!ensureInitialized()) {
+      throw std::runtime_error("QNN backend initialization failed");
+    }
     return createObject<nntrainer::Layer>(type, properties);
   }
 
   std::unique_ptr<nntrainer::Layer>
   createLayerObject(const int int_key,
                     const std::vector<std::string> &properties = {}) override {
+    if (!ensureInitialized()) {
+      throw std::runtime_error("QNN backend initialization failed");
+    }
     return createObject<nntrainer::Layer>(int_key, properties);
   }
 
@@ -265,6 +279,9 @@ public:
   }
 
   int load(const std::string &file_path) override {
+    if (init() != 0) {
+      return static_cast<int>(StatusCode::FAILURE);
+    }
 
     StatusCode ret = getQnnData()->makeContext(file_path);
     return (int)ret;
@@ -277,7 +294,10 @@ private:
   /** @brief Initialize the QNN backend. */
   virtual void initialize() noexcept;
 
-  // flag to check predefined qnn context is resistered
+  /** @brief Perform the backend initialization guarded by initialize(). */
+  int initBackend();
+
+  // True only after the backend, allocator, and QNN layer factory are ready.
   bool qnn_initialized = false;
 
   FactoryMap<nntrainer::Layer> factory_map;
@@ -303,7 +323,7 @@ private:
 
   std::string m_backendExtConfigPath;
 
-  bool m_isContextCreated;
+  bool m_isContextCreated = false;
 
   static StatusCode
   QnnModel_freeGraphsInfo(qnn_wrapper_api::GraphInfoPtr_t **graphsInfo,

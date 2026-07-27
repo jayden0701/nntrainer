@@ -28,6 +28,7 @@
 #include <iostream>
 #include <limits.h>
 #include <unistd.h>
+#include <utility>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -117,33 +118,33 @@ std::mutex qnn_factory_mutex;
 void QNNContext::initialize() noexcept {
   LOGD("initialize: START");
   try {
-    LOGD("initialize: calling init()");
-    if (init() != 0) {
-      // init() failed (e.g. no usable QNN/HTP backend on this device). Do NOT
-      // register the QNN layer factory or rpcmem allocator: the QNN backend is
-      // non-functional, but the process must survive so CPU models still run.
-      // A QNN model load will then fail cleanly (no QNNGraph factory) instead
-      // of crashing the whole process here at engine construction time.
-      LOGE("initialize: init() failed; QNN backend unavailable on this device, "
-           "skipping QNN registration (CPU path stays alive)");
+    LOGD("initialize: calling initBackend()");
+    if (initBackend() != 0) {
+      // Backend initialization failed (e.g. no usable QNN/HTP backend on this
+      // device). Do not register the QNN layer factory or rpcmem allocator:
+      // the process must survive so CPU models can still run.
+      LOGE("initialize: initBackend() failed; QNN backend unavailable on this "
+           "device, skipping QNN registration (CPU path stays alive)");
       ml_logw("qnn init failed; continuing without QNN backend");
       LOGD("initialize: END (init failed)");
       return;
     }
-    LOGD("initialize: init() completed");
+    LOGD("initialize: initBackend() completed");
     ml_logi("qnn init done");
     LOGD("initialize: creating QNNRpcManager");
-    setMemAllocator(std::make_shared<QNNRpcManager>());
-
-    std::static_pointer_cast<QNNBackendVar>(getContextData())
-      ->getVar()
-      ->RpcMem = std::static_pointer_cast<QNNRpcManager>(getMemAllocator());
-    LOGD("initialize: QNNRpcManager set");
+    auto rpc_mem = std::make_shared<QNNRpcManager>();
 
     LOGD("initialize: registering QNN layers");
     registerFactory(nntrainer::createLayer<QNNGraph>, QNNGraph::type, -1);
     ml_logi("qnn registerFactory done");
     LOGD("initialize: registerFactory done");
+
+    std::static_pointer_cast<QNNBackendVar>(getContextData())
+      ->getVar()
+      ->RpcMem = rpc_mem;
+    setMemAllocator(std::move(rpc_mem));
+    LOGD("initialize: QNNRpcManager set");
+    qnn_initialized = true;
   } catch (std::exception &e) {
     LOGE("initialize: registering qnn layers failed!!, reason: %s", e.what());
     ml_loge("registering qnn layers failed!!, reason: %s", e.what());
@@ -155,6 +156,17 @@ void QNNContext::initialize() noexcept {
 }
 
 int QNNContext::init() {
+  try {
+    return ensureInitialized() ? 0 : -1;
+  } catch (const std::exception &e) {
+    ml_loge("QNN backend initialization raised an exception: %s", e.what());
+  } catch (...) {
+    ml_loge("QNN backend initialization raised an unknown exception");
+  }
+  return -1;
+}
+
+int QNNContext::initBackend() {
   LOGD("init: START");
   std::cout << "qnncontext::init called" << std::endl;
   if (!log::initializeLogging()) {
@@ -274,7 +286,7 @@ int QNNContext::init() {
           &customConfigs, &customConfigCount)) {
       LOGE("init: Extensions Failure in beforeBackendInitialize()");
       QNN_ERROR("Extensions Failure in beforeBackendInitialize()");
-      return false;
+      return -1;
     }
     LOGD("init: beforeBackendInitialize done, customConfigCount=%u",
          customConfigCount);
@@ -285,7 +297,7 @@ int QNNContext::init() {
     if (nullptr == qnn_data->m_backendConfig) {
       LOGE("init: Could not allocate memory for allBackendConfigs");
       QNN_ERROR("Could not allocate memory for allBackendConfigs");
-      return false;
+      return -1;
     }
     for (size_t cnt = 0; cnt < customConfigCount; cnt++) {
       qnn_data->m_backendConfig[cnt] = customConfigs[cnt];
@@ -305,6 +317,7 @@ int QNNContext::init() {
             (unsigned int)qnnStatus);
     if (qnn_data->m_backendConfig) {
       free(qnn_data->m_backendConfig);
+      qnn_data->m_backendConfig = nullptr;
     }
     return -1;
   }
@@ -314,13 +327,14 @@ int QNNContext::init() {
 
   if (qnn_data->m_backendConfig) {
     free(qnn_data->m_backendConfig);
+    qnn_data->m_backendConfig = nullptr;
   }
 
   if (backend_extensions->interface()) {
     if (!backend_extensions->interface()->afterBackendInitialize()) {
       LOGE("init: Extensions Failure in afterBackendInitialize()");
       QNN_ERROR("Extensions Failure in afterBackendInitialize()");
-      return false;
+      return -1;
     }
     LOGD("init: afterBackendInitialize done");
   }
@@ -584,7 +598,8 @@ nntrainer::Context *create_qnn_context() {
   if (!g_default_backend_ext_config_path.empty()) {
     qnn_context->setBackendExtConfigPath(g_default_backend_ext_config_path);
   }
-  qnn_context->initializeOnce();
+  // Register a lightweight context. Vendor libraries, backend extensions, and
+  // the RPC allocator are initialized only when a QNN layer or binary is used.
   return qnn_context;
 }
 

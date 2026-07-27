@@ -56,14 +56,14 @@ enum class StatusCode {
 };
 
 struct Qnn_Context_Graph_t {
-  Qnn_ContextHandle_t m_context;
-  qnn_wrapper_api::GraphInfo_t **m_graphsInfo;
+  Qnn_ContextHandle_t m_context = nullptr;
+  qnn_wrapper_api::GraphInfo_t **m_graphsInfo = nullptr;
   std::map<std::string, qnn_wrapper_api::GraphInfo_t *>
     graph_map; /** graph name in Context - graph map **/
   std::map<std::string, uint32_t>
     graph_idx; /** graph name in Context - graph map **/
 
-  uint32_t m_graphsCount;
+  uint32_t m_graphsCount = 0;
 
   QnnContext_Config_t **m_contextConfig = nullptr;
 
@@ -118,14 +118,15 @@ struct QNNVar {
   Qnn_BackendHandle_t m_backendHandle = nullptr;
   BackendExtensions *m_backendExtensions = nullptr;
   Qnn_DeviceHandle_t m_deviceHandle = nullptr;
-  iotensor::OutputDataType m_outputDataType;
-  iotensor::InputDataType m_inputDataType;
-  sample_app::ProfilingLevel m_profilingLevel;
-  bool m_isBackendInitialized;
+  iotensor::OutputDataType m_outputDataType =
+    iotensor::OutputDataType::FLOAT_AND_NATIVE;
+  iotensor::InputDataType m_inputDataType = iotensor::InputDataType::NATIVE;
+  sample_app::ProfilingLevel m_profilingLevel = sample_app::ProfilingLevel::OFF;
+  bool m_isBackendInitialized = false;
   void *m_backendLibraryHandle = nullptr;
   Qnn_LogHandle_t m_logHandle = nullptr;
   Qnn_ProfileHandle_t m_profileBackendHandle = nullptr;
-  sample_app::QnnFunctionPointers m_qnnFunctionPointers;
+  sample_app::QnnFunctionPointers m_qnnFunctionPointers{};
   std::shared_ptr<QNNRpcManager> RpcMem;
   IOTensorWrapper m_ioTensor;
   std::string name = "qnn_backend_param";
