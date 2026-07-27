@@ -160,15 +160,19 @@ data class OpenAIRequest(
      * is valid here because LiteRT-LM can consume supported URL forms directly.
      */
     fun validate(): BackendResult<Unit> =
-        validate(requireTensorSidecarForImages = false)
+        validationToUnit(validateAndCollectImageSources(requireTensorSidecarForImages = false))
 
     /** Native inference requires one tensor for every `image_url` occurrence. */
     internal fun validateForNative(): BackendResult<Unit> =
-        validate(requireTensorSidecarForImages = true)
+        validationToUnit(validateAndCollectImageSources(requireTensorSidecarForImages = true))
 
-    private fun validate(
-        requireTensorSidecarForImages: Boolean
-    ): BackendResult<Unit> {
+    /**
+     * Validate only the JSON request shape and collect image URL occurrences.
+     *
+     * Tensor sidecars are intentionally not inspected here, so adapters can
+     * reject unsupported image capabilities without scanning tensor payloads.
+     */
+    internal fun structuralImageUrlSources(): BackendResult<List<String>> {
         val root = try {
             Json.parseToJsonElement(json)
         } catch (exception: Exception) {
@@ -187,8 +191,13 @@ data class OpenAIRequest(
         if (messages.isEmpty()) {
             return invalidRequest("OpenAI request messages must not be empty")
         }
+        return collectImageUrlSources(messages)
+    }
 
-        val referencedSources = when (val result = collectImageUrlSources(messages)) {
+    private fun validateAndCollectImageSources(
+        requireTensorSidecarForImages: Boolean
+    ): BackendResult<List<String>> {
+        val referencedSources = when (val result = structuralImageUrlSources()) {
             is BackendResult.Ok -> result.value
             is BackendResult.Err -> return result
         }
@@ -199,7 +208,7 @@ data class OpenAIRequest(
                     "Native OpenAI image_url content requires a matching image tensor sidecar"
                 )
             } else {
-                BackendResult.Ok(Unit)
+                BackendResult.Ok(referencedSources)
             }
         }
         if (sidecar.version != OpenAIImageTensorSidecar.CURRENT_VERSION) {
@@ -260,7 +269,14 @@ data class OpenAIRequest(
                 }
             }
         }
-        return BackendResult.Ok(Unit)
+        return BackendResult.Ok(referencedSources)
+    }
+
+    private fun validationToUnit(
+        result: BackendResult<List<String>>
+    ): BackendResult<Unit> = when (result) {
+        is BackendResult.Ok -> BackendResult.Ok(Unit)
+        is BackendResult.Err -> result
     }
 
     private fun collectImageUrlSources(

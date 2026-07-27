@@ -66,6 +66,16 @@ internal class LiteRTLm(
             is BackendResult.Ok -> Unit
             is BackendResult.Err -> return validation
         }
+        when (val validation = validateLoadCapabilities(req)) {
+            is BackendResult.Ok -> Unit
+            is BackendResult.Err -> return validation
+        }
+        if (req.useSpeculativeDecoding) {
+            return BackendResult.Err(
+                QuickAiError.UNSUPPORTED,
+                "Speculative decoding is not supported by the LiteRT-LM adapter"
+            )
+        }
         val existingEngine = engine
         if (existingEngine != null) {
             return if (loadedRequest == req) {
@@ -100,12 +110,6 @@ internal class LiteRTLm(
             return BackendResult.Err(
                 QuickAiError.UNSUPPORTED,
                 "The bundled LiteRT-LM adapter supports CPU and GPU backends only"
-            )
-        }
-        if (req.useSpeculativeDecoding) {
-            return BackendResult.Err(
-                QuickAiError.UNSUPPORTED,
-                "Speculative decoding is not supported by the LiteRT-LM adapter"
             )
         }
         if (req.maxNumTokens != null && req.maxNumTokens <= 0) {
@@ -147,6 +151,32 @@ internal class LiteRTLm(
         }
     }
 
+    internal fun validateLoadCapabilities(
+        request: LoadModelRequest
+    ): BackendResult<Unit> {
+        if (Capability.OPENAI_API !in descriptor.capabilities) {
+            return BackendResult.Err(
+                QuickAiError.UNSUPPORTED,
+                "Model '${descriptor.id}' does not support the OpenAI request API"
+            )
+        }
+        if (Capability.VISION_ENCODER in descriptor.capabilities) {
+            return BackendResult.Err(
+                QuickAiError.UNSUPPORTED,
+                "Standalone vision encoder '${descriptor.id}' cannot run generation"
+            )
+        }
+        if (request.visionBackend != null &&
+            Capability.MULTIMODAL !in descriptor.capabilities
+        ) {
+            return BackendResult.Err(
+                QuickAiError.UNSUPPORTED,
+                "Model '${descriptor.id}' does not support a vision backend"
+            )
+        }
+        return BackendResult.Ok(Unit)
+    }
+
     override fun runText(text: String, sink: StreamSink): BackendResult<Unit> {
         val message =
             "LiteRT-LM Conversation cannot guarantee exact raw-text input without a chat template"
@@ -159,21 +189,9 @@ internal class LiteRTLm(
         sink: StreamSink
     ): BackendResult<Unit> {
         val runCancellationEpoch = cancellationEpoch.get()
-        when (val validation = request.validate()) {
-            is BackendResult.Ok -> Unit
-            is BackendResult.Err -> {
-                emitError(sink, validation.error, validation.message)
-                return validation
-            }
-        }
-        if (!request.imageTensors?.tensors.isNullOrEmpty()) {
-            val message =
-                "LiteRT-LM does not accept preprocessed OpenAI image tensor sidecars"
-            emitError(sink, QuickAiError.UNSUPPORTED, message)
-            return BackendResult.Err(QuickAiError.UNSUPPORTED, message)
-        }
-
-        val parsed = when (val result = parseOpenAIRequest(request.json)) {
+        val parsed = when (
+            val result = prepareOpenAIRequest(request, loadedRequest)
+        ) {
             is BackendResult.Ok -> result.value
             is BackendResult.Err -> {
                 emitError(sink, result.error, result.message)
@@ -242,6 +260,94 @@ internal class LiteRTLm(
                 Log.w(TAG, "LiteRT-LM conversation.close() threw", t)
             }
         }
+    }
+
+    internal fun prepareOpenAIRequest(
+        request: OpenAIRequest,
+        activeLoadRequest: LoadModelRequest?
+    ): BackendResult<List<ParsedMessage>> {
+        if (Capability.OPENAI_API !in descriptor.capabilities) {
+            return BackendResult.Err(
+                QuickAiError.UNSUPPORTED,
+                "Model '${descriptor.id}' does not support the OpenAI request API"
+            )
+        }
+        if (Capability.VISION_ENCODER in descriptor.capabilities) {
+            return BackendResult.Err(
+                QuickAiError.UNSUPPORTED,
+                "Standalone vision encoder '${descriptor.id}' cannot run generation"
+            )
+        }
+        val validatedSources = when (val validation = request.structuralImageUrlSources()) {
+            is BackendResult.Ok -> validation.value
+            is BackendResult.Err -> return validation
+        }
+        if (validatedSources.isNotEmpty()) {
+            if (Capability.MULTIMODAL !in descriptor.capabilities) {
+                return BackendResult.Err(
+                    QuickAiError.UNSUPPORTED,
+                    "Model '${descriptor.id}' does not support image content"
+                )
+            }
+            if (validatedSources.size > 1 &&
+                Capability.MULTI_IMAGE !in descriptor.capabilities
+            ) {
+                return BackendResult.Err(
+                    QuickAiError.UNSUPPORTED,
+                    "Model '${descriptor.id}' does not support multiple images"
+                )
+            }
+        }
+        if (!request.imageTensors?.tensors.isNullOrEmpty()) {
+            return BackendResult.Err(
+                QuickAiError.UNSUPPORTED,
+                "LiteRT-LM does not accept preprocessed OpenAI image tensor sidecars"
+            )
+        }
+        if (validatedSources.isNotEmpty()) {
+            if (activeLoadRequest == null) {
+                return BackendResult.Err(
+                    QuickAiError.NOT_INITIALIZED,
+                    "LiteRTLm has not been loaded yet"
+                )
+            }
+            if (activeLoadRequest.visionBackend == null) {
+                return BackendResult.Err(
+                    QuickAiError.UNSUPPORTED,
+                    "LiteRT-LM image requests require a configured visionBackend"
+                )
+            }
+        }
+        when (val validation = request.validate()) {
+            is BackendResult.Ok -> Unit
+            is BackendResult.Err -> return validation
+        }
+
+        val parsed = when (val result = parseOpenAIRequest(request.json)) {
+            is BackendResult.Ok -> result.value
+            is BackendResult.Err -> return result
+        }
+        if (imageSources(parsed) != validatedSources) {
+            return BackendResult.Err(
+                QuickAiError.INVALID_PARAMETER,
+                "OpenAI image sources changed during LiteRT-LM request parsing"
+            )
+        }
+        return BackendResult.Ok(parsed)
+    }
+
+    internal fun imageSources(messages: List<ParsedMessage>): List<String> {
+        val sources = mutableListOf<String>()
+        for (message in messages) {
+            for (content in message.contents) {
+                when (content) {
+                    is ParsedContent.ImageBytes -> sources.add(content.source)
+                    is ParsedContent.ImageFile -> sources.add(content.source)
+                    is ParsedContent.Text -> Unit
+                }
+            }
+        }
+        return sources
     }
 
     private fun streamFinalUserMessage(

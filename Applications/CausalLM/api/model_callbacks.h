@@ -1,105 +1,64 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file   model_callbacks.h
- * @brief  Per-architecture callback registry bridging proprietary model TUs
- *         to the public C API.
+ * @brief  Thread-safe callback registries owned by the Quick.AI API DSO
  * @author jayden0701 <jrock.oh@samsung.com>
  * @bug    No known bugs except for NYI items
  */
-#pragma once
+#ifndef QUICK_DOT_AI_MODEL_CALLBACKS_H_
+#define QUICK_DOT_AI_MODEL_CALLBACKS_H_
+
 #include <functional>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
-#include "quick_dot_ai_api.h" // ErrorCode, CausalLmTokenCallback, CausalLmHandle
+#include "quick_dot_ai_api.h"
+#include "quick_dot_ai_extension_api.h"
 
 namespace causallm {
 class Transformer;
 }
 
 /**
- * @brief Per-architecture callbacks registered by proprietary model TU files.
- * When a proprietary TU is absent (public build), no callbacks are
- * registered for that architecture; callers should fall back to
- * CAUSAL_LM_ERROR_UNSUPPORTED.
+ * @brief Legacy in-process callbacks.
+ *
+ * This C++ registry remains only for source compatibility with existing
+ * same-build model translation units. New plugins must use
+ * quickAiRegisterModelExtensionV1().
  */
 struct ModelCallbacks {
-  /**
-   * Apply architecture-specific chat template to a raw single-turn input.
-   * Returns empty string if not registered (caller uses raw input).
-   */
   std::function<std::string(const std::string &raw_input)> format_prompt;
-
-  /** True when this architecture requires an HTP/QNN backend. */
   bool requires_htp = false;
-
-  /**
-   * Read the current KV-cache length from a loaded transformer.
-   * Used for incremental-session tracking.
-   * Returns 0 if not registered.
-   */
   std::function<int(causallm::Transformer *model)> read_kv_len;
-
-  /**
-   * Given the full prompt history (already-formatted), extract the latest user
-   * content and rebuild it as the minimal incremental prompt for next turn.
-   * Returns empty string if not registered.
-   */
   std::function<std::string(const std::string &full_prompt)> incremental_prompt;
-
-  /**
-   * Streaming multimodal execution.
-   * `handle` is CausalLmHandle (= CausalLmModel*).
-   * The registering TU casts it to CausalLmModel* and accesses h.models[0]/[1].
-   */
   std::function<ErrorCode(CausalLmHandle handle, const float *pixel_values,
                           int num_patches, int orig_h, int orig_w,
                           const std::string &prompt, CausalLmTokenCallback cb,
                           void *user_data)>
     multimodal_streaming;
-
-  /**
-   * Blocking multimodal execution; appends generated text to *output.
-   * `handle` is CausalLmHandle (= CausalLmModel*).
-   */
   std::function<ErrorCode(CausalLmHandle handle, const float *pixel_values,
                           int num_patches, int orig_h, int orig_w,
                           const std::string &prompt, std::string *output)>
     multimodal_blocking;
-
-  /**
-   * Enable speculative decoding on an already-loaded model instance.
-   * `model` is the handle's primary sub-model (handle->models[0]). The
-   * registering TU casts it to its own concrete type to confirm draft-model
-   * support before enabling. Returns CAUSAL_LM_ERROR_MODEL_LOAD_FAILED if the
-   * model does not support speculative decoding; if no callback is
-   * registered for the architecture, the caller treats it the same way
-   * (current no-op behavior for unsupported architectures).
-   */
   std::function<ErrorCode(causallm::Transformer *model, bool use_sd)>
     configure_speculative_decoding;
 };
 
 /**
- * @brief Registry keyed by architecture name string (e.g. "VendorArch_QNN").
- * Proprietary model TUs call register_for() at static-init time.
- * quick_dot_ai_api.cpp calls lookup() at runtime.
+ * @brief Registry for legacy same-build callbacks.
+ *
+ * Duplicate architectures are rejected. lookup() returns a value snapshot, so
+ * callers never retain an unordered_map element after the mutex is released.
  */
 class ModelCallbackRegistry {
 public:
   static ModelCallbackRegistry &instance();
 
-  /** Register callbacks for one architecture name. */
-  void register_for(const std::string &architecture, ModelCallbacks cb);
-
-  /**
-   * Look up callbacks for the given architecture.
-   * Returns nullptr if not registered (public architecture, or the
-   * proprietary TU that would register it is absent from this build).
-   */
-  const ModelCallbacks *lookup(const std::string &architecture) const;
-
-  /** True if ANY registered architecture has requires_htp = true. */
+  bool register_for(const std::string &architecture, ModelCallbacks callbacks);
+  std::optional<ModelCallbacks> lookup(const std::string &architecture) const;
   bool any_requires_htp() const;
 
 private:
@@ -107,5 +66,69 @@ private:
   ModelCallbackRegistry(const ModelCallbackRegistry &) = delete;
   ModelCallbackRegistry &operator=(const ModelCallbackRegistry &) = delete;
 
-  std::unordered_map<std::string, ModelCallbacks> by_arch_;
+  mutable std::mutex mutex_;
+  std::unordered_map<std::string, ModelCallbacks> by_architecture_;
 };
+
+/** Host-owned descriptor copied from QuickAiModelExtensionV1. */
+struct RegisteredExtensionDescriptor {
+  std::string id;
+  std::string family;
+  std::string display_name;
+  uint32_t runtime = 0;
+  uint32_t backend_mask = 0;
+  uint32_t capabilities = 0;
+  std::string config_name;
+  std::string sd_variant_id;
+};
+
+/**
+ * Host-owned snapshot of one process-lifetime extension registration.
+ * Function pointers and user_data remain owned by the loaded plugin.
+ */
+struct RegisteredModelExtension {
+  std::string architecture;
+  uint32_t feature_mask = 0;
+  RegisteredExtensionDescriptor descriptor;
+  QuickAiExtensionRunOpenAIV1 run_openai = nullptr;
+  QuickAiExtensionConfigureSpeculativeV1 configure_speculative = nullptr;
+  void *user_data = nullptr;
+};
+
+enum class ModelExtensionRegistrationResult {
+  SUCCESS,
+  DUPLICATE_ARCHITECTURE,
+  DUPLICATE_MODEL_ID,
+};
+
+/**
+ * @brief Atomic descriptor-plus-callback extension registry.
+ *
+ * The registry owns one complete record per architecture. A single insertion
+ * publishes the descriptor and callbacks together, preventing a catalog entry
+ * without its implementation. All lookups return value snapshots and no
+ * plugin callback is invoked while this registry's mutex is held.
+ */
+class ModelExtensionRegistry {
+public:
+  static ModelExtensionRegistry &instance();
+
+  ModelExtensionRegistrationResult
+  register_extension(RegisteredModelExtension extension);
+  std::optional<RegisteredModelExtension>
+  lookup(const std::string &architecture) const;
+  std::optional<RegisteredModelExtension>
+  find_by_model_id(const std::string &model_id) const;
+  bool has_model_id(const std::string &model_id) const;
+  std::vector<RegisteredModelExtension> snapshot() const;
+
+private:
+  ModelExtensionRegistry() = default;
+  ModelExtensionRegistry(const ModelExtensionRegistry &) = delete;
+  ModelExtensionRegistry &operator=(const ModelExtensionRegistry &) = delete;
+
+  mutable std::mutex mutex_;
+  std::unordered_map<std::string, RegisteredModelExtension> by_architecture_;
+};
+
+#endif // QUICK_DOT_AI_MODEL_CALLBACKS_H_

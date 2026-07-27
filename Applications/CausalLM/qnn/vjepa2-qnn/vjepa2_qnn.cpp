@@ -4,7 +4,7 @@
  * @brief  QNN model implementation for V-JEPA2 video encoder.
  * @author dlwlzzero <dlwlzzero@gmail.com>
  * @bug    No known bugs except for NYI items
- * @note   This class is not to be executed alone.
+ * @note   This class is a standalone encoder, not a text generator.
  *
  */
 
@@ -12,7 +12,6 @@
 #include "factory.h"
 #include "generate_qnn_utils.h"
 #include "nntrainer_error.h"
-#include <model_descriptor.h>
 
 #include <algorithm>
 #include <cmath>
@@ -40,17 +39,6 @@ __attribute__((constructor)) static void register_vjepa2_qnn() {
       return std::make_unique<causallm::VJEPA2_QNN>(cfg, generation_cfg,
                                                     nntr_cfg);
     });
-
-  static const ModelDescriptor d = {"vjepa2-qnn",
-                                    "vjepa",
-                                    "V-JEPA 2 (QNN)",
-                                    QDA_RUNTIME_NATIVE,
-                                    (1u << 2),
-                                    QDA_CAP_MULTIMODAL | QDA_CAP_MESSAGES_API |
-                                      QDA_CAP_MULTI_IMAGE,
-                                    "VJEPA2-QNN",
-                                    "VJEPA2_QNN"};
-  quick_dot_ai::register_model_descriptor(&d);
 }
 
 // ---------------------------------------------------------------------------

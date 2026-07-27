@@ -2,7 +2,7 @@
 /**
  * @file   vjepa2_qnn.h
  * @brief  QNN model implementation for V-JEPA2 video encoder.
- * @note   This class is not to be executed alone.
+ * @note   This class is a standalone encoder, not a text generator.
  *
  * @author dlwlzzero <dlwlzzero@gmail.com>
  * @bug    No known bugs except for NYI items

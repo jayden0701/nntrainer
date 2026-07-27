@@ -47,8 +47,7 @@ object ModelIds {
     const val GEMMA4            = "gemma4"       // LiteRT only
     const val GEMMA4_CPU        = "gemma4-cpu"
     const val GEMMA4_E2B_QNN    = "gemma4-e2b-qnn"
-    const val VJEPA_QNN         = "vjepa2-qnn"   // V-JEPA 2 multi-image (QNN)
-    const val VJEPA_LFM2        = "vjepa-lfm2"        // V-JEPA 2 + LFM2 video (CPU)
+    const val VJEPA_QNN         = "vjepa2-qnn"   // Standalone V-JEPA 2 encoder (QNN)
 }
 
 object ModelCatalog {
@@ -130,28 +129,26 @@ object ModelCatalog {
     }
 
     fun byId(id: String): ModelDescriptor? = all().firstOrNull { it.id == id }
-    fun families(): List<String> = all().map { it.family }.distinct()
+    fun families(): List<String> = selectable().map { it.family }.distinct()
     fun runtimesFor(family: String): Set<RuntimeKind> =
-        all().filter { it.family == family }.map { it.runtime }.toSet()
+        selectable().filter { it.family == family }.map { it.runtime }.toSet()
     fun backendsFor(family: String, rt: RuntimeKind): Set<BackendType> =
-        all().filter { it.family == family && it.runtime == rt }
+        selectable().filter { it.family == family && it.runtime == rt }
             .flatMap { it.backends }.toSet()
     fun resolve(family: String, rt: RuntimeKind, backend: BackendType): ModelDescriptor? =
-        all().firstOrNull { it.family == family && it.runtime == rt && backend in it.backends }
+        selectable().firstOrNull {
+            it.family == family && it.runtime == rt && backend in it.backends
+        }
 
-    /** 사용자 선택(생성/실행) 가능 capability. 하나라도 있으면 피커에 노출. */
-    private val SELECTABLE_CAPS = setOf(
-        Capability.STREAMING, Capability.OPENAI_API,
-        Capability.MULTIMODAL, Capability.TOOL_USE
-    )
-
-    /** 생성/실행 가능한 모델인지(EMBEDDING 전용 모델은 false). */
+    /** 생성 API가 있고 standalone encoder가 아닌 모델인지. */
     fun isSelectable(d: ModelDescriptor): Boolean =
-        d.capabilities.any { it in SELECTABLE_CAPS }
+        (Capability.STREAMING in d.capabilities ||
+            Capability.OPENAI_API in d.capabilities) &&
+            Capability.VISION_ENCODER !in d.capabilities
 
     /** 피커에 노출할 모델만. all()은 전체를 그대로 유지. */
     fun selectable(): List<ModelDescriptor> = all().filter { isSelectable(it) }
 
     /** selectable()에서 파생한 family 목록(families()와 동일 distinct 규칙). */
-    fun selectableFamilies(): List<String> = selectable().map { it.family }.distinct()
+    fun selectableFamilies(): List<String> = families()
 }

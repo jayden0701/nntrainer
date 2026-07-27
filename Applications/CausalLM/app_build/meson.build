@@ -246,7 +246,7 @@ causallm_src = [
 ]
 
 causallm_core_cpp_args = []
-quick_dot_ai_api_cpp_args = []
+quick_dot_ai_api_cpp_args = ['-DQUICK_AI_EXTENSION_API_BUILD=1']
 quick_dot_ai_test_cpp_args = []
 
 # Single QNN switch. Keep the QNN ABI-affecting definitions on the targets
@@ -258,7 +258,6 @@ if enable_qnn
   ]
   quick_dot_ai_api_cpp_args += [
     '-DENABLE_QNN_MODELS=1',
-    '-DQUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API=1',
   ]
   quick_dot_ai_test_cpp_args += [
     '-DENABLE_QNN=1',
@@ -392,6 +391,11 @@ if get_option('enable-api')
       link_with: quick_dot_ai_api_lib,
       compile_args: ['-I' + causallm_root / 'api'],
       dependencies: [causallm_dep],
+  )
+
+  install_headers(
+      causallm_root / 'api' / 'quick_dot_ai_extension_api.h',
+      install_dir: get_option('includedir') / 'nntrainer' / 'causallm',
   )
 endif
 

@@ -128,14 +128,24 @@ fun createEngine(
 internal fun ModelDescriptor.validateLoadRequest(
     request: LoadModelRequest
 ): BackendResult<Unit> {
-    if (request.useSpeculativeDecoding && sdVariantId == null) {
+    val hasSpeculativeCapability = Capability.SPECULATIVE in capabilities
+    val hasSpeculativeVariant = !sdVariantId.isNullOrBlank()
+    if (hasSpeculativeCapability != hasSpeculativeVariant ||
+        (hasSpeculativeVariant && sdVariantId == id)
+    ) {
         return BackendResult.Err(
             QuickAiError.UNSUPPORTED,
-            "Model '$id' does not declare a speculative-decoding variant"
+            "Model '$id' has an inconsistent speculative-decoding declaration"
+        )
+    }
+    if (request.useSpeculativeDecoding && !hasSpeculativeCapability) {
+        return BackendResult.Err(
+            QuickAiError.UNSUPPORTED,
+            "Model '$id' does not support speculative decoding"
         )
     }
     val expectedModelId =
-        if (request.useSpeculativeDecoding) requireNotNull(sdVariantId) else id
+        if (request.useSpeculativeDecoding) sdVariantId.orEmpty() else id
     if (request.modelId != expectedModelId) {
         return BackendResult.Err(
             QuickAiError.INVALID_PARAMETER,

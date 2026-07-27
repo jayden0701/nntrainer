@@ -83,10 +83,14 @@ internal class NativeQuickDotAI(
                 )
             }
 
-            val speculativeError = NativeCausalLm.configureSpeculativeDecodingNative(
-                loadResult.handle,
-                req.useSpeculativeDecoding
-            )
+            val speculativeError = if (req.useSpeculativeDecoding) {
+                NativeCausalLm.configureSpeculativeDecodingNative(
+                    loadResult.handle,
+                    true
+                )
+            } else {
+                0
+            }
             if (speculativeError != 0) {
                 NativeCausalLm.destroyModelHandleNative(loadResult.handle)
                 val error = QuickAiError.fromNativeCode(speculativeError)
@@ -112,6 +116,13 @@ internal class NativeQuickDotAI(
     override fun runText(text: String, sink: StreamSink): BackendResult<Unit> {
         val runEpoch = beginRequest("runText", sink) ?: return requestInFlightError()
         try {
+            if (Capability.VISION_ENCODER in descriptor.capabilities) {
+                return failRun(
+                    sink,
+                    QuickAiError.UNSUPPORTED,
+                    "Standalone vision encoder '${descriptor.id}' cannot generate text"
+                )
+            }
             if (Capability.STREAMING !in descriptor.capabilities) {
                 return failRun(
                     sink,
@@ -148,6 +159,38 @@ internal class NativeQuickDotAI(
                     "Model '${descriptor.id}' does not support the OpenAI request API"
                 )
             }
+            if (Capability.VISION_ENCODER in descriptor.capabilities) {
+                return failRun(
+                    sink,
+                    QuickAiError.UNSUPPORTED,
+                    "Standalone vision encoder '${descriptor.id}' cannot run generation"
+                )
+            }
+            val imageSources = when (val result = request.structuralImageUrlSources()) {
+                is BackendResult.Ok -> result.value
+                is BackendResult.Err -> {
+                    emitError(sink, result.error, result.message)
+                    return result
+                }
+            }
+            if (imageSources.isNotEmpty() &&
+                Capability.MULTIMODAL !in descriptor.capabilities
+            ) {
+                return failRun(
+                    sink,
+                    QuickAiError.UNSUPPORTED,
+                    "Model '${descriptor.id}' does not support image sidecars"
+                )
+            }
+            if (imageSources.size > 1 &&
+                Capability.MULTI_IMAGE !in descriptor.capabilities
+            ) {
+                return failRun(
+                    sink,
+                    QuickAiError.UNSUPPORTED,
+                    "Model '${descriptor.id}' does not support multiple images"
+                )
+            }
             when (val validation = request.validateForNative()) {
                 is BackendResult.Ok -> Unit
                 is BackendResult.Err -> {
@@ -157,20 +200,6 @@ internal class NativeQuickDotAI(
             }
 
             val tensors = request.imageTensors?.tensors.orEmpty()
-            if (tensors.isNotEmpty() && Capability.MULTIMODAL !in descriptor.capabilities) {
-                return failRun(
-                    sink,
-                    QuickAiError.UNSUPPORTED,
-                    "Model '${descriptor.id}' does not support image sidecars"
-                )
-            }
-            if (tensors.size > 1) {
-                return failRun(
-                    sink,
-                    QuickAiError.UNSUPPORTED,
-                    "The native OpenAI runner currently supports one image"
-                )
-            }
             completeCancelledBeforeNative(runEpoch, sink)?.let { return it }
             return runNativeGeneration("runOpenAI", sink, runEpoch) { callback ->
                 NativeCausalLm.runOpenAIStreamingNative(

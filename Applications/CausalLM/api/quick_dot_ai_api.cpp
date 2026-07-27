@@ -12,6 +12,7 @@
 
 #include "quick_dot_ai_api.h"
 #include "quick_dot_ai_api_internal.h"
+#include "quick_dot_ai_extension_api.h"
 #ifdef ENABLE_QNN_MODELS
 #include "quick_dot_ai_qnn.h"
 #endif
@@ -132,6 +133,9 @@ struct CausalLmModel {
   std::vector<std::optional<causallm::ChatTemplate>> chat_templates;
   std::unique_ptr<causallm::XGrammarManager> grammar_manager;
   std::unordered_map<std::string, std::string> dynamic_grammar_schemas;
+  std::string descriptor_id;
+  unsigned int descriptor_capabilities = 0;
+  std::string extension_architecture;
   std::string last_output;
   std::string native_lib_dir;
   std::vector<double> initialization_duration_ms;
@@ -331,10 +335,14 @@ static bool set_model_streamer(causallm::Transformer *model,
 }
 
 static bool request_model_stop(causallm::Transformer *model) {
-  if (!model_supports_text_output(model))
+  if (model == nullptr)
     return false;
-  model->requestStop();
-  return true;
+  try {
+    model->requestStop();
+    return true;
+  } catch (...) {
+    return false;
+  }
 }
 
 static std::map<std::string, std::string> g_model_path_map = {
@@ -385,29 +393,135 @@ void register_model(const char *model_name, const char *arch_name,
 // T4: string-id descriptor registry + catalog JSON
 // ---------------------------------------------------------------------------
 
-// Lazily-constructed (Meyers singleton) so cross-library self-registration
-// from model plugins (libquick_dot_ai.so) — whose static constructors run
-// BEFORE this lib's globals would be constructed — lands in a live registry
-// instead of an uninitialized one (static-init-order fiasco).
 static std::mutex &descriptor_mutex() {
   static std::mutex m;
   return m;
 }
+
 static std::vector<ModelDescriptor> &descriptor_registry() {
   static std::vector<ModelDescriptor> v;
   return v;
 }
 
+struct DescriptorSnapshot {
+  std::string id;
+  std::string family;
+  std::string display_name;
+  RuntimeKind runtime = QDA_RUNTIME_NATIVE;
+  unsigned int backend_mask = 0;
+  unsigned int capabilities = 0;
+  std::string config_name;
+  std::string arch_string;
+  std::string sd_variant_id;
+  std::string extension_architecture;
+};
+
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_RUNTIME_NATIVE) ==
+              static_cast<uint32_t>(QDA_RUNTIME_NATIVE));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_BACKEND_CPU) ==
+              (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_CPU)));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_BACKEND_GPU) ==
+              (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_GPU)));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_BACKEND_NPU) ==
+              (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_NPU)));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_CAP_STREAMING) ==
+              static_cast<uint32_t>(QDA_CAP_STREAMING));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_CAP_OPENAI_API) ==
+              static_cast<uint32_t>(QDA_CAP_OPENAI_API));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_CAP_MULTIMODAL) ==
+              static_cast<uint32_t>(QDA_CAP_MULTIMODAL));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_CAP_TOOL_USE) ==
+              static_cast<uint32_t>(QDA_CAP_TOOL_USE));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_CAP_EMBEDDING) ==
+              static_cast<uint32_t>(QDA_CAP_EMBEDDING));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_CAP_MULTI_IMAGE) ==
+              static_cast<uint32_t>(QDA_CAP_MULTI_IMAGE));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_CAP_VISION_ENCODER) ==
+              static_cast<uint32_t>(QDA_CAP_VISION_ENCODER));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_CAP_SPECULATIVE) ==
+              static_cast<uint32_t>(QDA_CAP_SPECULATIVE));
+static_assert(
+  static_cast<uint32_t>(QUICK_AI_EXTENSION_IMAGE_LAYOUT_MODEL_NATIVE) ==
+  static_cast<uint32_t>(QUICK_AI_IMAGE_LAYOUT_MODEL_NATIVE));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_IMAGE_LAYOUT_HWC) ==
+              static_cast<uint32_t>(QUICK_AI_IMAGE_LAYOUT_HWC));
+static_assert(static_cast<uint32_t>(QUICK_AI_EXTENSION_IMAGE_LAYOUT_CHW) ==
+              static_cast<uint32_t>(QUICK_AI_IMAGE_LAYOUT_CHW));
+
+static DescriptorSnapshot
+snapshot_descriptor(const ModelDescriptor &descriptor) {
+  DescriptorSnapshot snapshot;
+  snapshot.id = descriptor.id ? descriptor.id : "";
+  snapshot.family = descriptor.family ? descriptor.family : "";
+  snapshot.display_name =
+    descriptor.display_name ? descriptor.display_name : snapshot.id;
+  snapshot.runtime = descriptor.runtime;
+  snapshot.backend_mask = descriptor.backend_mask;
+  snapshot.capabilities = descriptor.capabilities;
+  snapshot.config_name = descriptor.config_name ? descriptor.config_name : "";
+  snapshot.arch_string = descriptor.arch_string ? descriptor.arch_string : "";
+  snapshot.sd_variant_id =
+    descriptor.sd_variant_id ? descriptor.sd_variant_id : "";
+  return snapshot;
+}
+
+static DescriptorSnapshot
+snapshot_descriptor(const RegisteredModelExtension &extension) {
+  DescriptorSnapshot snapshot;
+  snapshot.id = extension.descriptor.id;
+  snapshot.family = extension.descriptor.family;
+  snapshot.display_name = extension.descriptor.display_name;
+  snapshot.runtime = static_cast<RuntimeKind>(extension.descriptor.runtime);
+  snapshot.backend_mask = extension.descriptor.backend_mask;
+  snapshot.capabilities = extension.descriptor.capabilities;
+  snapshot.config_name = extension.descriptor.config_name;
+  snapshot.arch_string = extension.architecture;
+  snapshot.sd_variant_id = extension.descriptor.sd_variant_id;
+  snapshot.extension_architecture = extension.architecture;
+  return snapshot;
+}
+
 namespace quick_dot_ai {
 void register_model_descriptor(const ModelDescriptor *desc) {
-  if (!desc || !desc->id)
+  if (!desc || !desc->id || desc->id[0] == '\0')
     return;
+
+  const bool has_speculative_variant =
+    desc->sd_variant_id != nullptr && desc->sd_variant_id[0] != '\0';
+  const bool advertises_speculative =
+    (desc->capabilities & QDA_CAP_SPECULATIVE) != 0;
+  if (has_speculative_variant != advertises_speculative ||
+      (has_speculative_variant &&
+       std::strcmp(desc->id, desc->sd_variant_id) == 0)) {
+    LOGE("register_model_descriptor: invalid speculative alias for '%s'",
+         desc->id);
+    return;
+  }
+
   std::lock_guard<std::mutex> lock(descriptor_mutex());
-  for (auto &d : descriptor_registry()) {
-    if (std::strcmp(d.id, desc->id) == 0) {
-      LOGE("register_model_descriptor: duplicate id '%s', overwriting",
-           desc->id);
-      d = *desc;
+  if (ModelExtensionRegistry::instance().has_model_id(desc->id) ||
+      (desc->sd_variant_id != nullptr && desc->sd_variant_id[0] != '\0' &&
+       ModelExtensionRegistry::instance().has_model_id(desc->sd_variant_id))) {
+    LOGE("register_model_descriptor: id or alias for '%s' belongs to an "
+         "extension",
+         desc->id);
+    return;
+  }
+  for (const auto &registered : descriptor_registry()) {
+    const bool candidate_has_alias =
+      desc->sd_variant_id != nullptr && desc->sd_variant_id[0] != '\0';
+    const bool registered_has_alias = registered.sd_variant_id != nullptr &&
+                                      registered.sd_variant_id[0] != '\0';
+    const bool duplicate_id =
+      std::strcmp(registered.id, desc->id) == 0 ||
+      (candidate_has_alias &&
+       std::strcmp(registered.id, desc->sd_variant_id) == 0) ||
+      (registered_has_alias &&
+       std::strcmp(registered.sd_variant_id, desc->id) == 0) ||
+      (registered_has_alias && candidate_has_alias &&
+       std::strcmp(registered.sd_variant_id, desc->sd_variant_id) == 0);
+    if (duplicate_id) {
+      LOGE("register_model_descriptor: duplicate id or alias '%s'", desc->id);
       return;
     }
   }
@@ -415,64 +529,422 @@ void register_model_descriptor(const ModelDescriptor *desc) {
 }
 } // namespace quick_dot_ai
 
-/** Find a descriptor by string id. Returns a copy while locked, or nullopt. */
-static std::optional<ModelDescriptor> find_descriptor_by_id(const char *id) {
+static std::optional<DescriptorSnapshot> find_descriptor_by_id(const char *id) {
   if (!id)
     return std::nullopt;
-  std::lock_guard<std::mutex> lk(descriptor_mutex());
-  for (const auto &d : descriptor_registry())
-    if (std::strcmp(d.id, id) == 0)
-      return d; // copy while locked
+
+  {
+    std::lock_guard<std::mutex> lock(descriptor_mutex());
+    for (const auto &descriptor : descriptor_registry()) {
+      if (std::strcmp(descriptor.id, id) == 0 ||
+          (descriptor.sd_variant_id != nullptr &&
+           descriptor.sd_variant_id[0] != '\0' &&
+           std::strcmp(descriptor.sd_variant_id, id) == 0)) {
+        return snapshot_descriptor(descriptor);
+      }
+    }
+  }
+
+  const auto extension =
+    ModelExtensionRegistry::instance().find_by_model_id(id);
+  if (extension)
+    return snapshot_descriptor(*extension);
   return std::nullopt;
 }
 
-// Library-owned buffer: rebuilt on every call and returned via c_str().
-// The pointer is valid only until the next call to getModelCatalogJson().
 static std::string g_catalog_json_cache;
+static std::mutex g_catalog_json_mutex;
+
+static std::vector<DescriptorSnapshot> descriptor_snapshot() {
+  std::vector<DescriptorSnapshot> descriptors;
+  {
+    std::lock_guard<std::mutex> lock(descriptor_mutex());
+    descriptors.reserve(descriptor_registry().size());
+    for (const auto &descriptor : descriptor_registry())
+      descriptors.push_back(snapshot_descriptor(descriptor));
+  }
+
+  const auto extensions = ModelExtensionRegistry::instance().snapshot();
+  descriptors.reserve(descriptors.size() + extensions.size());
+  for (const auto &extension : extensions)
+    descriptors.push_back(snapshot_descriptor(extension));
+  return descriptors;
+}
 
 /**
  * Returns a pointer to a library-owned buffer containing a JSON array of
- * registered model descriptors. The buffer is valid only until the next
- * call to getModelCatalogJson(). Callers must copy the contents immediately
- * (e.g. via JNI NewStringUTF) and must not hold the pointer across calls.
- * Not safe for concurrent access to the returned pointer.
+ *
+ * registered model descriptors. The buffer is valid only until the next call to
+ * getModelCatalogJson(). Callers must copy the contents immediately (e.g. via
+ * JNI NewStringUTF) and must not hold the pointer across calls. Not safe for
+ * concurrent access to the returned pointer.
  */
 extern "C" const char *getModelCatalogJson(void) {
-  auto json_escape = [](const char *s) -> std::string {
-    if (!s)
-      return "";
-    std::string out;
-    for (; *s; ++s) {
-      if (*s == '"')
-        out += "\\\"";
-      else if (*s == '\\')
-        out += "\\\\";
-      else
-        out += *s;
-    }
-    return out;
-  };
+  try {
+    auto json_escape = [](const std::string &value) -> std::string {
+      constexpr char HEX[] = "0123456789abcdef";
+      std::string out;
+      for (const unsigned char character : value) {
+        switch (character) {
+        case '"':
+          out += "\\\"";
+          break;
+        case '\\':
+          out += "\\\\";
+          break;
+        case '\b':
+          out += "\\b";
+          break;
+        case '\f':
+          out += "\\f";
+          break;
+        case '\n':
+          out += "\\n";
+          break;
+        case '\r':
+          out += "\\r";
+          break;
+        case '\t':
+          out += "\\t";
+          break;
+        default:
+          if (character < 0x20) {
+            out += "\\u00";
+            out += HEX[(character >> 4) & 0x0f];
+            out += HEX[character & 0x0f];
+          } else {
+            out += static_cast<char>(character);
+          }
+          break;
+        }
+      }
+      return out;
+    };
 
-  std::lock_guard<std::mutex> lock(descriptor_mutex());
-  std::ostringstream os;
-  os << "[";
-  for (size_t i = 0; i < descriptor_registry().size(); ++i) {
-    const auto &d = descriptor_registry()[i];
-    if (i)
-      os << ",";
-    os << "{\"id\":\"" << json_escape(d.id) << "\",\"family\":\""
-       << json_escape(d.family) << "\",\"display_name\":\""
-       << json_escape(d.display_name ? d.display_name : d.id)
-       << "\",\"runtime\":" << static_cast<int>(d.runtime)
-       << ",\"backend_mask\":" << d.backend_mask
-       << ",\"capabilities\":" << d.capabilities;
-    if (d.sd_variant_id)
-      os << ",\"sd_variant_id\":\"" << json_escape(d.sd_variant_id) << "\"";
-    os << "}";
+    const auto descriptors = descriptor_snapshot();
+    std::lock_guard<std::mutex> lock(g_catalog_json_mutex);
+    std::ostringstream os;
+    os << "[";
+    for (size_t i = 0; i < descriptors.size(); ++i) {
+      const auto &descriptor = descriptors[i];
+      if (i)
+        os << ",";
+      os << "{\"id\":\"" << json_escape(descriptor.id) << "\",\"family\":\""
+         << json_escape(descriptor.family) << "\",\"display_name\":\""
+         << json_escape(descriptor.display_name)
+         << "\",\"runtime\":" << static_cast<int>(descriptor.runtime)
+         << ",\"backend_mask\":" << descriptor.backend_mask
+         << ",\"capabilities\":" << descriptor.capabilities;
+      if (!descriptor.sd_variant_id.empty()) {
+        os << ",\"sd_variant_id\":\"" << json_escape(descriptor.sd_variant_id)
+           << "\"";
+      }
+      os << "}";
+    }
+    os << "]";
+    g_catalog_json_cache = os.str();
+    return g_catalog_json_cache.c_str();
+  } catch (const std::exception &exception) {
+    LOGE("getModelCatalogJson: %s", exception.what());
+  } catch (...) {
+    LOGE("getModelCatalogJson: unknown failure");
   }
-  os << "]";
-  g_catalog_json_cache = os.str();
-  return g_catalog_json_cache.c_str();
+  return "[]";
+}
+
+static bool reserved_fields_are_zero(const uint64_t *fields, size_t count) {
+  if (fields == nullptr)
+    return false;
+  for (size_t i = 0; i < count; ++i) {
+    if (fields[i] != 0)
+      return false;
+  }
+  return true;
+}
+
+static bool valid_utf8(const char *data, size_t size) {
+  size_t index = 0;
+  while (index < size) {
+    const auto first = static_cast<unsigned char>(data[index]);
+    if (first <= 0x7f) {
+      if (first < 0x20)
+        return false;
+      ++index;
+      continue;
+    }
+
+    size_t continuation_count = 0;
+    uint32_t codepoint = 0;
+    if (first >= 0xc2 && first <= 0xdf) {
+      continuation_count = 1;
+      codepoint = first & 0x1f;
+    } else if (first >= 0xe0 && first <= 0xef) {
+      continuation_count = 2;
+      codepoint = first & 0x0f;
+    } else if (first >= 0xf0 && first <= 0xf4) {
+      continuation_count = 3;
+      codepoint = first & 0x07;
+    } else {
+      return false;
+    }
+    if (continuation_count > size - index - 1)
+      return false;
+
+    for (size_t continuation = 0; continuation < continuation_count;
+         ++continuation) {
+      const auto byte =
+        static_cast<unsigned char>(data[index + continuation + 1]);
+      if ((byte & 0xc0) != 0x80)
+        return false;
+      codepoint = (codepoint << 6) | (byte & 0x3f);
+    }
+
+    if ((continuation_count == 2 && codepoint < 0x800) ||
+        (continuation_count == 3 && codepoint < 0x10000) ||
+        (codepoint >= 0xd800 && codepoint <= 0xdfff) || codepoint > 0x10ffff) {
+      return false;
+    }
+    index += continuation_count + 1;
+  }
+  return true;
+}
+
+static bool valid_extension_string(QuickAiExtensionStringViewV1 view,
+                                   bool required) {
+  constexpr uint64_t MAX_EXTENSION_STRING_BYTES = 4096;
+  if (view.size == 0)
+    return !required && view.data == nullptr;
+  if (view.data == nullptr || view.size > MAX_EXTENSION_STRING_BYTES ||
+      view.size > static_cast<uint64_t>((std::numeric_limits<size_t>::max)())) {
+    return false;
+  }
+  const size_t size = static_cast<size_t>(view.size);
+  return std::memchr(view.data, '\0', size) == nullptr &&
+         valid_utf8(view.data, size);
+}
+
+static bool valid_extension_identifier(QuickAiExtensionStringViewV1 view,
+                                       bool required) {
+  if (!valid_extension_string(view, required))
+    return false;
+  if (view.size == 0)
+    return true;
+
+  const auto is_ascii_alphanumeric = [](unsigned char character) {
+    return (character >= 'a' && character <= 'z') ||
+           (character >= 'A' && character <= 'Z') ||
+           (character >= '0' && character <= '9');
+  };
+  const auto first = static_cast<unsigned char>(view.data[0]);
+  if (!is_ascii_alphanumeric(first))
+    return false;
+  for (uint64_t index = 0; index < view.size; ++index) {
+    const auto character =
+      static_cast<unsigned char>(view.data[static_cast<size_t>(index)]);
+    if (!is_ascii_alphanumeric(character) && character != '-' &&
+        character != '_' && character != '.' && character != '+') {
+      return false;
+    }
+    if (character == '.' && index + 1 < view.size &&
+        view.data[static_cast<size_t>(index + 1)] == '.') {
+      return false;
+    }
+  }
+  return true;
+}
+
+static std::string copy_extension_string(QuickAiExtensionStringViewV1 view) {
+  if (view.size == 0)
+    return {};
+  return std::string(view.data, static_cast<size_t>(view.size));
+}
+
+static bool extension_build_tag_matches(QuickAiExtensionStringViewV1 tag) {
+  static constexpr char HOST_BUILD_TAG[] = QUICK_AI_EXTENSION_BUILD_TAG;
+  constexpr uint64_t HOST_BUILD_TAG_SIZE = sizeof(HOST_BUILD_TAG) - 1;
+  return tag.data != nullptr && tag.size == HOST_BUILD_TAG_SIZE &&
+         std::memcmp(tag.data, HOST_BUILD_TAG,
+                     static_cast<size_t>(HOST_BUILD_TAG_SIZE)) == 0;
+}
+
+static bool extension_strings_equal(QuickAiExtensionStringViewV1 left,
+                                    QuickAiExtensionStringViewV1 right) {
+  return left.size == right.size &&
+         (left.size == 0 || std::memcmp(left.data, right.data,
+                                        static_cast<size_t>(left.size)) == 0);
+}
+
+extern "C" QuickAiExtensionStatus
+quickAiGetExtensionHostInfoV1(QuickAiExtensionHostInfoV1 *out_info) {
+  if (out_info == nullptr ||
+      out_info->struct_size != sizeof(QuickAiExtensionHostInfoV1)) {
+    return QUICK_AI_EXTENSION_STATUS_INVALID_PARAMETER;
+  }
+
+  static constexpr char HOST_BUILD_TAG[] = QUICK_AI_EXTENSION_BUILD_TAG;
+  QuickAiExtensionHostInfoV1 info{};
+  info.struct_size = sizeof(QuickAiExtensionHostInfoV1);
+  info.abi_major = QUICK_AI_EXTENSION_ABI_MAJOR;
+  info.abi_minor = QUICK_AI_EXTENSION_ABI_MINOR;
+  info.transformer_abi_version = QUICK_AI_EXTENSION_TRANSFORMER_ABI_VERSION;
+  info.supported_feature_mask = QUICK_AI_EXTENSION_FEATURE_OPENAI_MULTIMODAL |
+                                QUICK_AI_EXTENSION_FEATURE_GRAMMAR |
+                                QUICK_AI_EXTENSION_FEATURE_MULTI_IMAGE |
+                                QUICK_AI_EXTENSION_FEATURE_SPECULATIVE;
+  info.build_tag = {HOST_BUILD_TAG, sizeof(HOST_BUILD_TAG) - 1};
+  *out_info = info;
+  return QUICK_AI_EXTENSION_STATUS_NONE;
+}
+
+static bool
+validate_extension_registration(const QuickAiModelExtensionV1 &extension) {
+  constexpr uint32_t KNOWN_EXTENSION_FEATURES =
+    QUICK_AI_EXTENSION_FEATURE_OPENAI_MULTIMODAL |
+    QUICK_AI_EXTENSION_FEATURE_GRAMMAR |
+    QUICK_AI_EXTENSION_FEATURE_MULTI_IMAGE |
+    QUICK_AI_EXTENSION_FEATURE_SPECULATIVE;
+  constexpr uint32_t KNOWN_BACKENDS =
+    (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_CPU)) |
+    (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_GPU)) |
+    (1u << static_cast<unsigned int>(CAUSAL_LM_BACKEND_NPU));
+  constexpr uint32_t KNOWN_CAPABILITIES =
+    QDA_CAP_STREAMING | QDA_CAP_OPENAI_API | QDA_CAP_MULTIMODAL |
+    QDA_CAP_TOOL_USE | QDA_CAP_EMBEDDING | QDA_CAP_MULTI_IMAGE |
+    QDA_CAP_VISION_ENCODER | QDA_CAP_SPECULATIVE;
+
+  if (extension.struct_size != sizeof(QuickAiModelExtensionV1) ||
+      extension.descriptor.struct_size !=
+        sizeof(QuickAiExtensionModelDescriptorV1) ||
+      extension.abi_major != QUICK_AI_EXTENSION_ABI_MAJOR ||
+      extension.abi_minor != QUICK_AI_EXTENSION_ABI_MINOR ||
+      extension.transformer_abi_version !=
+        QUICK_AI_EXTENSION_TRANSFORMER_ABI_VERSION ||
+      extension.reserved0 != 0 ||
+      extension.descriptor.runtime != QDA_RUNTIME_NATIVE ||
+      !reserved_fields_are_zero(extension.reserved, 4) ||
+      !reserved_fields_are_zero(extension.descriptor.reserved, 4) ||
+      !extension_build_tag_matches(extension.build_tag) ||
+      !valid_extension_identifier(extension.architecture, true) ||
+      !valid_extension_identifier(extension.descriptor.id, true) ||
+      !valid_extension_identifier(extension.descriptor.family, true) ||
+      !valid_extension_string(extension.descriptor.display_name, true) ||
+      !valid_extension_identifier(extension.descriptor.config_name, true) ||
+      !valid_extension_identifier(extension.descriptor.sd_variant_id, false) ||
+      (extension.descriptor.sd_variant_id.size != 0 &&
+       extension_strings_equal(extension.descriptor.id,
+                               extension.descriptor.sd_variant_id))) {
+    return false;
+  }
+
+  if ((extension.feature_mask & ~KNOWN_EXTENSION_FEATURES) != 0 ||
+      (extension.feature_mask & QUICK_AI_EXTENSION_FEATURE_OPENAI_MULTIMODAL) ==
+        0 ||
+      extension.run_openai == nullptr ||
+      extension.descriptor.backend_mask == 0 ||
+      (extension.descriptor.backend_mask & ~KNOWN_BACKENDS) != 0 ||
+      (extension.descriptor.capabilities & ~KNOWN_CAPABILITIES) != 0) {
+    return false;
+  }
+
+  constexpr uint32_t REQUIRED_MULTIMODAL_CAPABILITIES =
+    QDA_CAP_STREAMING | QDA_CAP_OPENAI_API | QDA_CAP_MULTIMODAL;
+  if ((extension.descriptor.capabilities & REQUIRED_MULTIMODAL_CAPABILITIES) !=
+        REQUIRED_MULTIMODAL_CAPABILITIES ||
+      (extension.descriptor.capabilities & QDA_CAP_VISION_ENCODER) != 0) {
+    return false;
+  }
+
+  const bool supports_multi_image =
+    (extension.feature_mask & QUICK_AI_EXTENSION_FEATURE_MULTI_IMAGE) != 0;
+  const bool advertises_multi_image =
+    (extension.descriptor.capabilities & QDA_CAP_MULTI_IMAGE) != 0;
+  if (supports_multi_image != advertises_multi_image)
+    return false;
+
+  const bool supports_speculative =
+    (extension.feature_mask & QUICK_AI_EXTENSION_FEATURE_SPECULATIVE) != 0;
+  const bool advertises_speculative =
+    (extension.descriptor.capabilities & QDA_CAP_SPECULATIVE) != 0;
+  if (supports_speculative != advertises_speculative ||
+      supports_speculative != (extension.configure_speculative != nullptr) ||
+      supports_speculative != (extension.descriptor.sd_variant_id.size != 0)) {
+    return false;
+  }
+
+  if ((extension.descriptor.capabilities & QDA_CAP_TOOL_USE) != 0 &&
+      (extension.feature_mask & QUICK_AI_EXTENSION_FEATURE_GRAMMAR) == 0) {
+    return false;
+  }
+  return true;
+}
+
+extern "C" QuickAiExtensionStatus
+quickAiRegisterModelExtensionV1(const QuickAiModelExtensionV1 *extension) {
+  if (extension == nullptr)
+    return QUICK_AI_EXTENSION_STATUS_INVALID_PARAMETER;
+
+  try {
+    if (!validate_extension_registration(*extension)) {
+      LOGE("quickAiRegisterModelExtensionV1: ABI or descriptor mismatch");
+      return QUICK_AI_EXTENSION_STATUS_INVALID_PARAMETER;
+    }
+
+    RegisteredModelExtension registration;
+    registration.architecture = copy_extension_string(extension->architecture);
+    registration.feature_mask = extension->feature_mask;
+    registration.descriptor.id =
+      copy_extension_string(extension->descriptor.id);
+    registration.descriptor.family =
+      copy_extension_string(extension->descriptor.family);
+    registration.descriptor.display_name =
+      copy_extension_string(extension->descriptor.display_name);
+    registration.descriptor.runtime = extension->descriptor.runtime;
+    registration.descriptor.backend_mask = extension->descriptor.backend_mask;
+    registration.descriptor.capabilities = extension->descriptor.capabilities;
+    registration.descriptor.config_name =
+      copy_extension_string(extension->descriptor.config_name);
+    registration.descriptor.sd_variant_id =
+      copy_extension_string(extension->descriptor.sd_variant_id);
+    registration.run_openai = extension->run_openai;
+    registration.configure_speculative = extension->configure_speculative;
+    registration.user_data = extension->user_data;
+
+    std::lock_guard<std::mutex> lock(descriptor_mutex());
+    for (const auto &descriptor : descriptor_registry()) {
+      const bool registered_has_alias = descriptor.sd_variant_id != nullptr &&
+                                        descriptor.sd_variant_id[0] != '\0';
+      const bool candidate_has_alias =
+        !registration.descriptor.sd_variant_id.empty();
+      const bool duplicate_id =
+        registration.descriptor.id == descriptor.id ||
+        (candidate_has_alias &&
+         registration.descriptor.sd_variant_id == descriptor.id) ||
+        (registered_has_alias &&
+         registration.descriptor.id == descriptor.sd_variant_id) ||
+        (registered_has_alias && candidate_has_alias &&
+         registration.descriptor.sd_variant_id == descriptor.sd_variant_id);
+      if (duplicate_id) {
+        LOGE(
+          "quickAiRegisterModelExtensionV1: duplicate model id or alias '%s'",
+          registration.descriptor.id.c_str());
+        return QUICK_AI_EXTENSION_STATUS_INVALID_PARAMETER;
+      }
+    }
+
+    const auto result = ModelExtensionRegistry::instance().register_extension(
+      std::move(registration));
+    if (result != ModelExtensionRegistrationResult::SUCCESS) {
+      LOGE("quickAiRegisterModelExtensionV1: duplicate architecture or id");
+      return QUICK_AI_EXTENSION_STATUS_INVALID_PARAMETER;
+    }
+    return QUICK_AI_EXTENSION_STATUS_NONE;
+  } catch (const std::exception &exception) {
+    LOGE("quickAiRegisterModelExtensionV1: %s", exception.what());
+    return QUICK_AI_EXTENSION_STATUS_UNKNOWN;
+  } catch (...) {
+    LOGE("quickAiRegisterModelExtensionV1: unknown failure");
+    return QUICK_AI_EXTENSION_STATUS_UNKNOWN;
+  }
 }
 
 // Helper to register models (similar to main.cpp) ensuring factory is
@@ -641,11 +1113,10 @@ static std::string apply_chat_template(const std::string &architecture,
     // "<bos>" is a special added token (id 2) and encodes to that single id.
     return "<bos><|turn>user\n" + input + "<turn|>\n<|turn>model\n";
   } else {
-    if (const auto *cb =
-          ModelCallbackRegistry::instance().lookup(architecture)) {
-      if (cb->format_prompt) {
-        return cb->format_prompt(input);
-      }
+    const auto callbacks =
+      ModelCallbackRegistry::instance().lookup(architecture);
+    if (callbacks && callbacks->format_prompt) {
+      return callbacks->format_prompt(input);
     }
   }
   return input;
@@ -657,17 +1128,91 @@ static size_t text_generation_model_index(const CausalLmModel &h) {
   return (h.models.size() > 1) ? 1 : 0;
 }
 
+static bool size_to_extension_count(size_t value, uint64_t &result) {
+  if constexpr (sizeof(size_t) > sizeof(uint64_t)) {
+    if (value > static_cast<size_t>((std::numeric_limits<uint64_t>::max)()))
+      return false;
+  }
+  result = static_cast<uint64_t>(value);
+  return true;
+}
+
+static bool build_extension_model_view(CausalLmModel &h,
+                                       const std::string &callback_architecture,
+                                       std::vector<void *> &model_storage,
+                                       QuickAiExtensionModelViewV1 &view) {
+  const auto architecture = std::find(
+    h.architectures.begin(), h.architectures.end(), callback_architecture);
+  if (architecture == h.architectures.end())
+    return false;
+
+  const size_t callback_model_index =
+    static_cast<size_t>(architecture - h.architectures.begin());
+  const size_t text_model_index = text_generation_model_index(h);
+  if (callback_model_index >= h.models.size() ||
+      text_model_index >= h.models.size() || !h.models[callback_model_index] ||
+      !h.models[text_model_index]) {
+    return false;
+  }
+
+  model_storage.clear();
+  model_storage.reserve(h.models.size());
+  for (const auto &model : h.models) {
+    if (!model)
+      return false;
+    model_storage.push_back(static_cast<void *>(model.get()));
+  }
+
+  uint64_t model_count = 0;
+  uint64_t callback_index = 0;
+  uint64_t text_index = 0;
+  if (!size_to_extension_count(model_storage.size(), model_count) ||
+      !size_to_extension_count(callback_model_index, callback_index) ||
+      !size_to_extension_count(text_model_index, text_index)) {
+    return false;
+  }
+
+  view = {};
+  view.struct_size = sizeof(QuickAiExtensionModelViewV1);
+  view.models = model_storage.data();
+  view.model_count = model_count;
+  view.callback_model_index = callback_index;
+  view.text_model_index = text_index;
+  return true;
+}
+
+static ErrorCode normalize_extension_status(QuickAiExtensionStatus status,
+                                            const char *callback_name) {
+  switch (status) {
+  case QUICK_AI_EXTENSION_STATUS_NONE:
+  case QUICK_AI_EXTENSION_STATUS_INVALID_PARAMETER:
+  case QUICK_AI_EXTENSION_STATUS_MODEL_LOAD_FAILED:
+  case QUICK_AI_EXTENSION_STATUS_INFERENCE_FAILED:
+  case QUICK_AI_EXTENSION_STATUS_NOT_INITIALIZED:
+  case QUICK_AI_EXTENSION_STATUS_INFERENCE_NOT_RUN:
+  case QUICK_AI_EXTENSION_STATUS_UNSUPPORTED:
+  case QUICK_AI_EXTENSION_STATUS_UNKNOWN:
+    return static_cast<ErrorCode>(status);
+  default:
+    LOGE("%s returned an unknown status: %d", callback_name,
+         static_cast<int>(status));
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
+}
+
 static void reset_handle_session_state(CausalLmModel &h) { h.kv_len = 0; }
 
 static void update_handle_session_after_run(CausalLmModel &h,
                                             size_t model_index) {
   if (model_index >= h.models.size() || model_index >= h.architectures.size())
     return;
-  const auto *cb =
+  const auto callbacks =
     ModelCallbackRegistry::instance().lookup(h.architectures[model_index]);
-  if (!cb || !cb->read_kv_len)
-    return;
-  h.kv_len = cb->read_kv_len(h.models[model_index].get());
+  if (callbacks && callbacks->read_kv_len) {
+    h.kv_len = callbacks->read_kv_len(h.models[model_index].get());
+  } else if (h.models[model_index]) {
+    h.kv_len = h.models[model_index]->getKvLen();
+  }
 }
 
 static constexpr size_t kAutoTextGenerationModelIndex =
@@ -786,9 +1331,10 @@ static std::string prepare_input_for_model(CausalLmModel &h, size_t model_index,
 
   const std::string &architecture = h.architectures[model_index];
   if (h.kv_len > 0) {
-    const auto *cb = ModelCallbackRegistry::instance().lookup(architecture);
-    if (cb && cb->incremental_prompt) {
-      return cb->incremental_prompt(input);
+    const auto callbacks =
+      ModelCallbackRegistry::instance().lookup(architecture);
+    if (callbacks && callbacks->incremental_prompt) {
+      return callbacks->incremental_prompt(input);
     }
   }
 
@@ -1160,6 +1706,9 @@ static ErrorCode load_into_handle(CausalLmModel &h, BackendType compute,
     h.chat_templates.clear();
     h.grammar_manager = std::make_unique<causallm::XGrammarManager>();
     h.dynamic_grammar_schemas.clear();
+    h.descriptor_id.clear();
+    h.descriptor_capabilities = 0;
+    h.extension_architecture.clear();
     h.last_output.clear();
     h.initialization_duration_ms.clear();
     h.initialized = false;
@@ -1977,15 +2526,16 @@ static std::string apply_chat_template_messages(
       result += "<|turn>model\n";
     }
   } else {
-    const auto *reg_cb = ModelCallbackRegistry::instance().lookup(architecture);
-    if (reg_cb && reg_cb->format_prompt) {
+    const auto callbacks =
+      ModelCallbackRegistry::instance().lookup(architecture);
+    if (callbacks && callbacks->format_prompt) {
       // Build a full multi-message prompt via the registered format_prompt.
       // Concatenate all message contents and delegate to the callback.
       std::string combined;
       for (const auto &msg : messages) {
         combined += msg.content + "\n";
       }
-      result = reg_cb->format_prompt(combined);
+      result = callbacks->format_prompt(combined);
       return result;
     }
     // Unknown architecture fallback
@@ -2218,52 +2768,105 @@ ErrorCode loadModelHandleByName(BackendType compute, const char *model_id,
   if (!is_valid_backend(compute) || !is_valid_quantization(quant_type))
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
 
-  register_models(); // ensure factory + public descriptors registered
+  try {
+    register_models();
+    const auto descriptor_result = find_descriptor_by_id(model_id);
+    if (!descriptor_result) {
+      LOGE("loadModelHandleByName: unknown id '%s'", model_id);
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
+    const DescriptorSnapshot &descriptor = *descriptor_result;
+    if (descriptor.config_name.empty()) {
+      LOGE("loadModelHandleByName: descriptor '%s' has null config_name",
+           model_id);
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
+    if (((descriptor.backend_mask >> (unsigned)compute) & 1u) == 0u) {
+      LOGE("loadModelHandleByName: backend %d not in mask 0x%x for '%s'",
+           compute, descriptor.backend_mask, model_id);
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
 
-  auto d_opt = find_descriptor_by_id(model_id);
-  if (!d_opt) {
-    LOGE("loadModelHandleByName: unknown id '%s'", model_id);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-  const ModelDescriptor &d = *d_opt;
-  if (!d.config_name) {
-    LOGE("loadModelHandleByName: descriptor '%s' has null config_name",
-         model_id);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
-  if (((d.backend_mask >> (unsigned)compute) & 1u) == 0u) {
-    LOGE("loadModelHandleByName: backend %d not in mask 0x%x for '%s'", compute,
-         d.backend_mask, model_id);
-    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
-  }
+    std::unique_ptr<CausalLmModel> handle(new (std::nothrow) CausalLmModel());
+    if (!handle)
+      return CAUSAL_LM_ERROR_UNKNOWN;
+    const ErrorCode load_result =
+      load_into_handle(*handle, compute, descriptor.config_name.c_str(),
+                       quant_type, native_lib_dir, model_base_path);
+    if (load_result != CAUSAL_LM_ERROR_NONE)
+      return load_result;
 
-  auto *h = new (std::nothrow) CausalLmModel();
-  if (!h)
+    if (!descriptor.extension_architecture.empty() &&
+        std::find(handle->architectures.begin(), handle->architectures.end(),
+                  descriptor.extension_architecture) ==
+          handle->architectures.end()) {
+      LOGE("loadModelHandleByName: extension architecture '%s' is not loaded",
+           descriptor.extension_architecture.c_str());
+      return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
+    }
+    handle->descriptor_id = descriptor.id;
+    handle->descriptor_capabilities = descriptor.capabilities;
+    handle->extension_architecture = descriptor.extension_architecture;
+    *out_handle = handle.release();
+    return CAUSAL_LM_ERROR_NONE;
+  } catch (const std::exception &exception) {
+    LOGE("loadModelHandleByName: %s", exception.what());
     return CAUSAL_LM_ERROR_UNKNOWN;
-
-  ErrorCode ec = load_into_handle(*h, compute, d.config_name, quant_type,
-                                  native_lib_dir, model_base_path);
-  if (ec != CAUSAL_LM_ERROR_NONE) {
-    delete h;
-    *out_handle = nullptr;
-    return ec;
+  } catch (...) {
+    LOGE("loadModelHandleByName: unknown failure");
+    return CAUSAL_LM_ERROR_UNKNOWN;
   }
-  *out_handle = h;
-  return CAUSAL_LM_ERROR_NONE;
 }
 
 ErrorCode configureSpeculativeDecoding(CausalLmHandle h, bool use_sd) {
   if (!h)
-    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
-  if (!use_sd)
-    return CAUSAL_LM_ERROR_NONE;
-  if (h->models.empty() || h->architectures.empty())
-    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
-  const auto *cb =
-    ModelCallbackRegistry::instance().lookup(h->architectures[0]);
-  if (!cb || !cb->configure_speculative_decoding)
-    return CAUSAL_LM_ERROR_MODEL_LOAD_FAILED;
-  return cb->configure_speculative_decoding(h->models[0].get(), use_sd);
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+  try {
+    std::lock_guard<std::mutex> lock(h->mtx);
+    if (!h->initialized || h->models.empty() || h->architectures.empty())
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+    if (!h->descriptor_id.empty() &&
+        (h->descriptor_capabilities & QDA_CAP_SPECULATIVE) == 0) {
+      return use_sd ? CAUSAL_LM_ERROR_UNSUPPORTED : CAUSAL_LM_ERROR_NONE;
+    }
+
+    if (!h->extension_architecture.empty()) {
+      const auto extension =
+        ModelExtensionRegistry::instance().lookup(h->extension_architecture);
+      if (!extension ||
+          (extension->feature_mask & QUICK_AI_EXTENSION_FEATURE_SPECULATIVE) ==
+            0 ||
+          extension->configure_speculative == nullptr) {
+        return CAUSAL_LM_ERROR_UNSUPPORTED;
+      }
+
+      std::vector<void *> models;
+      QuickAiExtensionModelViewV1 model_view{};
+      if (!build_extension_model_view(*h, h->extension_architecture, models,
+                                      model_view)) {
+        return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+      }
+      return normalize_extension_status(
+        extension->configure_speculative(&model_view, use_sd ? 1u : 0u,
+                                         extension->user_data),
+        "extension configure_speculative");
+    }
+
+    const auto callbacks =
+      ModelCallbackRegistry::instance().lookup(h->architectures[0]);
+    if (!callbacks || !callbacks->configure_speculative_decoding) {
+      return use_sd ? CAUSAL_LM_ERROR_MODEL_LOAD_FAILED : CAUSAL_LM_ERROR_NONE;
+    }
+    return callbacks->configure_speculative_decoding(h->models[0].get(),
+                                                     use_sd);
+  } catch (const std::exception &exception) {
+    LOGE("configureSpeculativeDecoding: callback failed: %s", exception.what());
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  } catch (...) {
+    LOGE("configureSpeculativeDecoding: callback failed");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
 }
 
 ErrorCode loadMultimodalHandleByName(
@@ -2288,7 +2891,7 @@ ErrorCode loadMultimodalHandleByName(
 
   auto ev = find_descriptor_by_id(embedding_model_id);
   auto lv = find_descriptor_by_id(llm_model_id);
-  if (!ev || !lv || !ev->config_name || !lv->config_name) {
+  if (!ev || !lv || ev->config_name.empty() || lv->config_name.empty()) {
     LOGE("loadMultimodalHandleByName: unknown id(s) emb='%s' llm='%s'",
          embedding_model_id, llm_model_id);
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
@@ -2299,14 +2902,14 @@ ErrorCode loadMultimodalHandleByName(
   // This reuses the proven single-model load path without modifying it.
   CausalLmModel tmp_vision;
   CausalLmModel tmp_llm;
-  ErrorCode ec = load_into_handle(tmp_vision, compute, ev->config_name,
+  ErrorCode ec = load_into_handle(tmp_vision, compute, ev->config_name.c_str(),
                                   quant_type, native_lib_dir, model_base_path);
   if (ec != CAUSAL_LM_ERROR_NONE) {
     LOGE("loadMultimodalHandleByName: vision '%s' load failed (%d)",
          embedding_model_id, ec);
     return ec;
   }
-  ec = load_into_handle(tmp_llm, compute, lv->config_name, quant_type,
+  ec = load_into_handle(tmp_llm, compute, lv->config_name.c_str(), quant_type,
                         native_lib_dir, model_base_path);
   if (ec != CAUSAL_LM_ERROR_NONE) {
     LOGE("loadMultimodalHandleByName: llm '%s' load failed (%d)", llm_model_id,
@@ -2535,12 +3138,16 @@ ErrorCode quickAiRunText(CausalLmHandle handle, const char *input,
   }
 
   auto &h = *handle;
-  std::lock_guard<std::mutex> lock(h.mtx);
-  if (!h.initialized || h.models.empty())
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  ScopedRunRequest request(h);
-
   try {
+    std::lock_guard<std::mutex> lock(h.mtx);
+    if (!h.initialized || h.models.empty())
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+    if (!h.descriptor_id.empty() &&
+        (h.descriptor_capabilities & QDA_CAP_STREAMING) == 0) {
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+    ScopedRunRequest request(h);
+
     const size_t model_index = text_generation_model_index(h);
     if (model_index >= h.models.size() || !h.models[model_index])
       return CAUSAL_LM_ERROR_NOT_INITIALIZED;
@@ -2665,6 +3272,9 @@ ErrorCode unloadModelHandle(CausalLmHandle handle) {
   handle->chat_templates.clear();
   handle->grammar_manager.reset();
   handle->dynamic_grammar_schemas.clear();
+  handle->descriptor_id.clear();
+  handle->descriptor_capabilities = 0;
+  handle->extension_architecture.clear();
   handle->last_output.clear();
   handle->initialization_duration_ms.clear();
   handle->initialized = false;
@@ -2689,6 +3299,9 @@ ErrorCode destroyModelHandle(CausalLmHandle handle) {
     handle->chat_templates.clear();
     handle->grammar_manager.reset();
     handle->dynamic_grammar_schemas.clear();
+    handle->descriptor_id.clear();
+    handle->descriptor_capabilities = 0;
+    handle->extension_architecture.clear();
     handle->last_output.clear();
     handle->initialization_duration_ms.clear();
     handle->initialized = false;
@@ -2902,53 +3515,68 @@ run_vision_encoder(CausalLmModel &h, const char *prompt,
 #endif // ENABLE_QNN_MODELS &&
        // QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API
 
-#ifdef ENABLE_QNN_MODELS
 /**
  * Standalone vision/video encoder run (no LLM). Wraps models[0]->run_image
- * and transfers the malloc'd output buffer to the caller. See header for the
- * ownership contract (free with freeImageEmbedding, not freeEmbedding).
+
+ * * and transfers the malloc'd output buffer to the caller. See header for the
+
+ * * ownership contract (free with freeImageEmbedding, not freeEmbedding).
  *
- * Always defined under ENABLE_QNN_MODELS (part of the public ABI). The
- * run_image- dependent body is gated on the experimental multimodal macro;
- * without it the function returns CAUSAL_LM_ERROR_UNSUPPORTED.
+ *
+ * This standalone producer path does not enable the experimental generic
+ *
+ * vision-to-LLM composer.
  */
 ErrorCode encodeImageModelHandle(CausalLmHandle handle,
                                  const float *pixelValues, size_t numFloats,
                                  int height, int width, void **out_embedding,
                                  int *out_bytes) {
-  if (handle == nullptr || pixelValues == nullptr || out_embedding == nullptr ||
-      out_bytes == nullptr)
+  if (handle == nullptr || pixelValues == nullptr || numFloats == 0 ||
+      height <= 0 || width <= 0 || out_embedding == nullptr ||
+      out_bytes == nullptr) {
     return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  }
 
   *out_embedding = nullptr;
   *out_bytes = 0;
 
-  auto &h = *handle;
-  std::lock_guard<std::mutex> lock(h.mtx);
-  if (!h.initialized || h.models.empty()) {
-    LOGE("encodeImageModelHandle: handle not initialized or empty");
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  }
-
-#if defined(QUICKAI_ENABLE_EXPERIMENTAL_MULTIMODAL_NNTRAINER_API)
-  causallm::Transformer *vision = h.models[0].get();
-  // Intentionally do NOT call set_quant_param: standalone encode keeps
-  // llm_quant_param_given_ == false so run_image returns the raw quantized
-  // embedding via plain memcpy (no LLM consumer required).
-
-  const size_t pixel_bytes = numFloats * sizeof(float);
-  causallm::multimodal_pointer image_in{const_cast<float *>(pixelValues),
-                                        pixel_bytes};
   try {
-    causallm::multimodal_pointer embeds =
+    auto &h = *handle;
+    std::lock_guard<std::mutex> lock(h.mtx);
+    if (!h.initialized || h.models.empty() || !h.models[0]) {
+      LOGE("encodeImageModelHandle: handle not initialized or empty");
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+    }
+    if (!h.descriptor_id.empty() &&
+        (h.descriptor_capabilities & QDA_CAP_VISION_ENCODER) == 0) {
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+    if (numFloats > (std::numeric_limits<size_t>::max)() / sizeof(float))
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+    causallm::Transformer *vision = h.models[0].get();
+    const size_t pixel_bytes = numFloats * sizeof(float);
+    causallm::multimodal_pointer image_in{const_cast<float *>(pixelValues),
+                                          pixel_bytes};
+    causallm::multimodal_pointer embedding =
       vision->run_image(std::string(""), image_in, height, width,
-                        /*do_sample=*/false, "", "", g_verbose);
-    if (embeds.first == nullptr || embeds.second == 0) {
+                        /*do_sample=*/false, "", "", h.verbose);
+    std::unique_ptr<void, decltype(&std::free)> embedding_guard(embedding.first,
+                                                                &std::free);
+    if (embedding.first == nullptr || embedding.second == 0) {
       LOGE("encodeImageModelHandle: run_image returned empty output");
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+    if (embedding.second >
+        static_cast<size_t>((std::numeric_limits<int>::max)())) {
+      LOGE("encodeImageModelHandle: embedding exceeds the V1 size limit");
       return CAUSAL_LM_ERROR_INFERENCE_FAILED;
     }
-    *out_embedding = embeds.first; // ownership transferred to caller
-    *out_bytes = static_cast<int>(embeds.second);
+    *out_embedding = embedding_guard.release();
+    *out_bytes = static_cast<int>(embedding.second);
+  } catch (const std::invalid_argument &exception) {
+    LOGE("encodeImageModelHandle: invalid input: %s", exception.what());
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
   } catch (const std::exception &e) {
     LOGE("encodeImageModelHandle: exception: %s", e.what());
     return CAUSAL_LM_ERROR_INFERENCE_FAILED;
@@ -2957,41 +3585,9 @@ ErrorCode encodeImageModelHandle(CausalLmHandle handle,
     return CAUSAL_LM_ERROR_INFERENCE_FAILED;
   }
   return CAUSAL_LM_ERROR_NONE;
-#else
-  // Multimodal vision encoding relies on Transformer::run_image, which the
-  // main nntrainer API does not provide. The proprietary vision QNN models
-  // that implemented it (e.g. vjepa2-qnn) are excluded from the build. See
-  // docs/qnn-model-main-adaptation-todo.ko.md.
-  (void)height;
-  (void)width;
-  (void)numFloats;
-  LOGE("encodeImageModelHandle: multimodal vision encoder API is not enabled");
-  return CAUSAL_LM_ERROR_UNSUPPORTED;
-#endif
 }
 
 void freeImageEmbedding(void *embedding) { std::free(embedding); }
-#endif // ENABLE_QNN_MODELS
-
-#ifndef ENABLE_QNN_MODELS
-ErrorCode encodeImageModelHandle(CausalLmHandle handle,
-                                 const float *pixelValues, size_t numFloats,
-                                 int height, int width, void **out_embedding,
-                                 int *out_bytes) {
-  (void)handle;
-  (void)pixelValues;
-  (void)numFloats;
-  (void)height;
-  (void)width;
-  if (out_embedding)
-    *out_embedding = nullptr;
-  if (out_bytes)
-    *out_bytes = 0;
-  return CAUSAL_LM_ERROR_UNSUPPORTED;
-}
-
-void freeImageEmbedding(void *embedding) { (void)embedding; }
-#endif // !ENABLE_QNN_MODELS
 
 ErrorCode runMultimodalHandleStreaming(CausalLmHandle handle,
                                        const char *prompt,
@@ -3643,7 +4239,9 @@ validate_openai_images(const causallm::openai::Request &request,
         image.original_width >
           static_cast<uint32_t>((std::numeric_limits<int>::max)()) ||
         request.image_sources[i] != image.source ||
-        image.layout > QUICK_AI_IMAGE_LAYOUT_CHW) {
+        (image.layout != QUICK_AI_IMAGE_LAYOUT_MODEL_NATIVE &&
+         image.layout != QUICK_AI_IMAGE_LAYOUT_HWC &&
+         image.layout != QUICK_AI_IMAGE_LAYOUT_CHW)) {
       return CAUSAL_LM_ERROR_INVALID_PARAMETER;
     }
 
@@ -3665,6 +4263,286 @@ validate_openai_images(const causallm::openai::Request &request,
     }
   }
   return CAUSAL_LM_ERROR_NONE;
+}
+
+static void request_all_models_stop(CausalLmModel &h) noexcept {
+  for (const auto &model : h.models) {
+    if (!model)
+      continue;
+    try {
+      model->requestStop();
+    } catch (...) {
+      // Cancellation is best-effort and must not escape a C callback boundary.
+    }
+  }
+}
+
+struct ExtensionTokenBridge {
+  CausalLmModel *handle = nullptr;
+  CausalLmTokenCallback callback = nullptr;
+  void *user_data = nullptr;
+  std::recursive_mutex callback_mutex;
+  std::string output;
+  bool delivering = false;
+  bool stop_requested = false;
+  bool failed = false;
+};
+
+static int32_t extension_token_callback(const char *data, uint64_t size,
+                                        void *user_data) noexcept {
+  auto *bridge = static_cast<ExtensionTokenBridge *>(user_data);
+  if (bridge == nullptr || bridge->handle == nullptr ||
+      bridge->callback == nullptr) {
+    return 1;
+  }
+  std::lock_guard<std::recursive_mutex> callback_lock(bridge->callback_mutex);
+  if (bridge->stop_requested || bridge->failed)
+    return 1;
+  if (bridge->delivering) {
+    bridge->failed = true;
+    bridge->stop_requested = true;
+    request_all_models_stop(*bridge->handle);
+    return 1;
+  }
+
+  if ((data == nullptr && size != 0) ||
+      size > static_cast<uint64_t>((std::numeric_limits<size_t>::max)()) ||
+      (size != 0 &&
+       std::memchr(data, '\0', static_cast<size_t>(size)) != nullptr)) {
+    bridge->failed = true;
+    bridge->stop_requested = true;
+    request_all_models_stop(*bridge->handle);
+    return 1;
+  }
+
+  try {
+    struct DeliveryScope {
+      bool &delivering;
+      explicit DeliveryScope(bool &value) : delivering(value) {
+        delivering = true;
+      }
+      ~DeliveryScope() { delivering = false; }
+    } delivery(bridge->delivering);
+    const std::string delta =
+      size == 0 ? std::string() : std::string(data, static_cast<size_t>(size));
+    bridge->output.append(delta);
+    if (bridge->callback(delta.c_str(), bridge->user_data) != 0) {
+      bridge->stop_requested = true;
+      request_all_models_stop(*bridge->handle);
+      return 1;
+    }
+    return 0;
+  } catch (...) {
+    bridge->failed = true;
+    bridge->stop_requested = true;
+    request_all_models_stop(*bridge->handle);
+    return 1;
+  }
+}
+
+static ErrorCode
+make_extension_string_view(const std::string &value, bool available,
+                           QuickAiExtensionStringViewV1 &view) {
+  if (!available) {
+    view = {nullptr, 0};
+    return CAUSAL_LM_ERROR_NONE;
+  }
+
+  uint64_t size = 0;
+  if (!size_to_extension_count(value.size(), size))
+    return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+  view = {value.c_str(), size};
+  return CAUSAL_LM_ERROR_NONE;
+}
+
+static ErrorCode
+make_extension_grammar_view(const causallm::openai::GrammarSelection &selection,
+                            std::string &payload,
+                            QuickAiExtensionGrammarViewV1 &view) {
+  view = {};
+  view.struct_size = sizeof(QuickAiExtensionGrammarViewV1);
+  switch (selection.kind) {
+  case causallm::openai::GrammarKind::NONE:
+    view.kind = QUICK_AI_EXTENSION_GRAMMAR_NONE;
+    return CAUSAL_LM_ERROR_NONE;
+  case causallm::openai::GrammarKind::JSON_OBJECT:
+    view.kind = QUICK_AI_EXTENSION_GRAMMAR_JSON_OBJECT;
+    payload = json{{"type", "object"}}.dump();
+    break;
+  case causallm::openai::GrammarKind::JSON_SCHEMA:
+    view.kind = QUICK_AI_EXTENSION_GRAMMAR_JSON_SCHEMA;
+    payload = selection.schema.dump();
+    break;
+  case causallm::openai::GrammarKind::TOOL_CALL:
+    view.kind = QUICK_AI_EXTENSION_GRAMMAR_TOOL_CALL;
+    payload = selection.schema.dump();
+    break;
+  }
+  return make_extension_string_view(payload, true, view.payload);
+}
+
+static ErrorCode
+make_extension_image_views(const QuickAiImageTensorV1 *images,
+                           size_t image_count,
+                           std::vector<std::string> &source_storage,
+                           std::vector<QuickAiExtensionImageViewV1> &views) {
+  source_storage.clear();
+  source_storage.reserve(image_count);
+  views.clear();
+  views.reserve(image_count);
+  for (size_t i = 0; i < image_count; ++i) {
+    const auto &image = images[i];
+    QuickAiExtensionImageViewV1 view{};
+    view.struct_size = sizeof(QuickAiExtensionImageViewV1);
+    view.layout = image.layout;
+    source_storage.emplace_back(image.source);
+    const ErrorCode source_result =
+      make_extension_string_view(source_storage.back(), true, view.source);
+    if (source_result != CAUSAL_LM_ERROR_NONE)
+      return source_result;
+    if (!size_to_extension_count(image.value_count, view.value_count))
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    view.values = image.values;
+    view.patch_count = image.patch_count;
+    view.channels = image.channels;
+    view.patch_height = image.patch_height;
+    view.patch_width = image.patch_width;
+    view.original_height = image.original_height;
+    view.original_width = image.original_width;
+    views.push_back(view);
+  }
+  return CAUSAL_LM_ERROR_NONE;
+}
+
+static ErrorCode run_extension_openai_multimodal(
+  CausalLmModel &h, const RegisteredModelExtension &extension,
+  const std::string &raw_json, const std::string *formatted_prompt,
+  const QuickAiImageTensorV1 *images, size_t image_count,
+  const causallm::openai::GrammarSelection &grammar,
+  CausalLmTokenCallback callback, void *user_data) {
+  if (extension.run_openai == nullptr ||
+      (extension.feature_mask & QUICK_AI_EXTENSION_FEATURE_OPENAI_MULTIMODAL) ==
+        0) {
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
+  if (grammar.kind != causallm::openai::GrammarKind::NONE &&
+      (extension.feature_mask & QUICK_AI_EXTENSION_FEATURE_GRAMMAR) == 0) {
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
+  if (image_count > 1 &&
+      (extension.feature_mask & QUICK_AI_EXTENSION_FEATURE_MULTI_IMAGE) == 0) {
+    return CAUSAL_LM_ERROR_UNSUPPORTED;
+  }
+
+  h.last_output.clear();
+  try {
+    std::vector<void *> model_storage;
+    QuickAiExtensionModelViewV1 model_view{};
+    if (!build_extension_model_view(h, extension.architecture, model_storage,
+                                    model_view)) {
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+    }
+
+    std::vector<std::string> image_source_storage;
+    std::vector<QuickAiExtensionImageViewV1> image_views;
+    const ErrorCode image_result = make_extension_image_views(
+      images, image_count, image_source_storage, image_views);
+    if (image_result != CAUSAL_LM_ERROR_NONE)
+      return image_result;
+
+    uint64_t extension_image_count = 0;
+    if (!size_to_extension_count(image_views.size(), extension_image_count))
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+
+    std::string grammar_payload;
+    QuickAiExtensionGrammarViewV1 grammar_view{};
+    const ErrorCode grammar_result =
+      make_extension_grammar_view(grammar, grammar_payload, grammar_view);
+    if (grammar_result != CAUSAL_LM_ERROR_NONE)
+      return grammar_result;
+
+    QuickAiExtensionOpenAIRequestV1 request_view{};
+    request_view.struct_size = sizeof(QuickAiExtensionOpenAIRequestV1);
+    ErrorCode view_result =
+      make_extension_string_view(raw_json, true, request_view.raw_json);
+    if (view_result != CAUSAL_LM_ERROR_NONE)
+      return view_result;
+    if (formatted_prompt != nullptr) {
+      view_result = make_extension_string_view(*formatted_prompt, true,
+                                               request_view.formatted_prompt);
+    } else {
+      request_view.formatted_prompt = {nullptr, 0};
+    }
+    if (view_result != CAUSAL_LM_ERROR_NONE)
+      return view_result;
+    request_view.images = image_views.data();
+    request_view.image_count = extension_image_count;
+    request_view.grammar = grammar_view;
+    request_view.models = model_view;
+
+    ExtensionTokenBridge bridge;
+    bridge.handle = &h;
+    bridge.callback = callback;
+    bridge.user_data = user_data;
+    request_view.token_callback = extension_token_callback;
+    request_view.token_user_data = &bridge;
+
+    ScopedGeneration generation(h);
+    for (auto &model : h.models)
+      model->resetConversationState();
+    reset_handle_session_state(h);
+
+    ErrorCode result = CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    try {
+      result = normalize_extension_status(
+        extension.run_openai(&request_view, extension.user_data),
+        "extension run_openai");
+    } catch (const std::exception &exception) {
+      LOGE("extension run_openai threw: %s", exception.what());
+      result = CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    } catch (...) {
+      LOGE("extension run_openai threw an unknown exception");
+      result = CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    }
+
+    if (bridge.failed)
+      result = CAUSAL_LM_ERROR_INFERENCE_FAILED;
+    if (result == CAUSAL_LM_ERROR_NONE) {
+      update_handle_session_after_run(
+        h, static_cast<size_t>(model_view.text_model_index));
+      h.last_output = std::move(bridge.output);
+    } else {
+      h.last_output.clear();
+    }
+    return result;
+  } catch (const std::exception &exception) {
+    h.last_output.clear();
+    LOGE("run_extension_openai_multimodal: %s", exception.what());
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  } catch (...) {
+    h.last_output.clear();
+    LOGE("run_extension_openai_multimodal: unknown failure");
+    return CAUSAL_LM_ERROR_INFERENCE_FAILED;
+  }
+}
+
+static bool
+openai_request_uses_tool_protocol(const causallm::openai::Request &request) {
+  if (!request.tools.empty())
+    return true;
+  const auto messages = request.original.find("messages");
+  if (messages == request.original.end() || !messages->is_array())
+    return false;
+  for (const auto &message : *messages) {
+    if (!message.is_object())
+      continue;
+    if ((message.contains("role") && message["role"].is_string() &&
+         message["role"].get<std::string>() == "tool") ||
+        message.contains("tool_calls") || message.contains("function_call")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static ErrorCode render_openai_prompt(CausalLmModel &h, size_t model_index,
@@ -3726,14 +4604,18 @@ ErrorCode quickAiRunOpenAI(CausalLmHandle handle, const char *json_request,
   }
 
   auto &h = *handle;
-  std::lock_guard<std::mutex> lock(h.mtx);
-  if (!h.initialized || h.models.empty())
-    return CAUSAL_LM_ERROR_NOT_INITIALIZED;
-  ScopedRunRequest request_scope(h);
-
   try {
-    const auto request =
-      causallm::openai::parseRequest(std::string(json_request));
+    std::lock_guard<std::mutex> lock(h.mtx);
+    if (!h.initialized || h.models.empty())
+      return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+    if (!h.descriptor_id.empty() &&
+        (h.descriptor_capabilities & QDA_CAP_OPENAI_API) == 0) {
+      return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+    ScopedRunRequest request_scope(h);
+
+    const std::string raw_request(json_request);
+    const auto request = causallm::openai::parseRequest(raw_request);
     if (request.original.contains("stream") &&
         !request.original["stream"].get<bool>()) {
       LOGE("quickAiRunOpenAI: stream=false is incompatible with callback API");
@@ -3765,18 +4647,58 @@ ErrorCode quickAiRunOpenAI(CausalLmHandle handle, const char *json_request,
            request.unsupported_fields.front().c_str());
       return CAUSAL_LM_ERROR_UNSUPPORTED;
     }
-    const ErrorCode image_result =
-      validate_openai_images(request, images, image_count);
-    if (image_result != CAUSAL_LM_ERROR_NONE)
-      return image_result;
-
-    // Extension multimodal dispatch is introduced in the later dedicated PR.
-    if (image_count != 0)
+    if (openai_request_uses_tool_protocol(request) &&
+        !h.descriptor_id.empty() &&
+        (h.descriptor_capabilities & QDA_CAP_TOOL_USE) == 0) {
       return CAUSAL_LM_ERROR_UNSUPPORTED;
+    }
+    if (request.image_sources.size() != image_count ||
+        (image_count != 0 && images == nullptr)) {
+      return CAUSAL_LM_ERROR_INVALID_PARAMETER;
+    }
 
     const size_t model_index = text_generation_model_index(h);
     if (model_index >= h.models.size() || !h.models[model_index])
       return CAUSAL_LM_ERROR_NOT_INITIALIZED;
+
+    if (image_count != 0) {
+      if (h.descriptor_id.empty() ||
+          (h.descriptor_capabilities & QDA_CAP_MULTIMODAL) == 0 ||
+          (image_count > 1 &&
+           (h.descriptor_capabilities & QDA_CAP_MULTI_IMAGE) == 0) ||
+          h.extension_architecture.empty()) {
+        return CAUSAL_LM_ERROR_UNSUPPORTED;
+      }
+
+      const auto extension =
+        ModelExtensionRegistry::instance().lookup(h.extension_architecture);
+      if (!extension || extension->run_openai == nullptr ||
+          (extension->feature_mask &
+           QUICK_AI_EXTENSION_FEATURE_OPENAI_MULTIMODAL) == 0 ||
+          (request.grammar.kind != causallm::openai::GrammarKind::NONE &&
+           (extension->feature_mask & QUICK_AI_EXTENSION_FEATURE_GRAMMAR) ==
+             0)) {
+        return CAUSAL_LM_ERROR_UNSUPPORTED;
+      }
+
+      const ErrorCode image_result =
+        validate_openai_images(request, images, image_count);
+      if (image_result != CAUSAL_LM_ERROR_NONE)
+        return image_result;
+
+      std::string formatted_input;
+      const ErrorCode render_result =
+        render_openai_prompt(h, model_index, request, formatted_input);
+      if (render_result != CAUSAL_LM_ERROR_NONE &&
+          render_result != CAUSAL_LM_ERROR_UNSUPPORTED) {
+        return render_result;
+      }
+      const std::string *formatted_prompt =
+        render_result == CAUSAL_LM_ERROR_NONE ? &formatted_input : nullptr;
+      return run_extension_openai_multimodal(
+        h, *extension, raw_request, formatted_prompt, images, image_count,
+        request.grammar, callback, user_data);
+    }
 
     std::string formatted_input;
     const ErrorCode render_result =

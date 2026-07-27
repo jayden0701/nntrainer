@@ -24,9 +24,9 @@ typedef enum {
   QDA_CAP_MULTIMODAL = 1u << 2,
   QDA_CAP_TOOL_USE = 1u << 3,
   QDA_CAP_EMBEDDING = 1u << 4,
-  QDA_CAP_MULTI_IMAGE = 1u << 5, /**< supports multiple images (e.g. V-JEPA) */
+  QDA_CAP_MULTI_IMAGE = 1u << 5, /**< generation accepts multiple images */
   QDA_CAP_VISION_ENCODER =
-    1u << 6, /**< standalone vision embedding producer; pair with an LLM */
+    1u << 6, /**< standalone vision embedding producer, not a generator */
   QDA_CAP_SPECULATIVE =
     1u
     << 7, /**< supports speculative decoding; load sd_variant_id when enabled */
@@ -60,7 +60,10 @@ typedef struct {
 namespace quick_dot_ai {
 /**
  * @brief Register a descriptor into g_descriptor_registry.
- *        Duplicate id overwrites the existing entry (logs a warning).
+ * Duplicate ids
+ * and speculative-variant aliases are rejected. The
+ *        speculative
+ * capability and non-empty variant id must appear together.
  */
 void register_model_descriptor(const ModelDescriptor *desc);
 } // namespace quick_dot_ai

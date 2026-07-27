@@ -43,11 +43,6 @@ struct RegisterPublicDescriptors {
        QDA_CAP_STREAMING | QDA_CAP_OPENAI_API,
        "GEMMA4_CPU", /* get_model_name_from_type(CAUSAL_LM_MODEL_GEMMA4_CPU) */
        "Gemma4ForCausalLM" /* Factory registration pending */},
-      {"vjepa-lfm2", "vjepa", "V-JEPA 2 + LFM2 (CPU)", QDA_RUNTIME_NATIVE, B(0),
-       QDA_CAP_STREAMING | QDA_CAP_MULTIMODAL | QDA_CAP_OPENAI_API |
-         QDA_CAP_MULTI_IMAGE,
-       "vjepa-lfm2", /* config_name = on-device model directory name */
-       "Lfm2VLVJepa21BModel"},
 #ifdef ENABLE_QNN_MODELS
       {"gemma4-e2b-qnn", "gemma4", "Gemma4 E2B (QNN)", QDA_RUNTIME_NATIVE, B(2),
        QDA_CAP_STREAMING | QDA_CAP_OPENAI_API,
@@ -55,8 +50,7 @@ struct RegisterPublicDescriptors {
                           */
        "Gemma4_E2B_QNN"},
       {"vjepa2-qnn", "vjepa", "V-JEPA 2 (QNN)", QDA_RUNTIME_NATIVE, B(2),
-       QDA_CAP_MULTIMODAL | QDA_CAP_OPENAI_API | QDA_CAP_MULTI_IMAGE,
-       "VJEPA2-QNN", "VJEPA2_QNN"},
+       QDA_CAP_VISION_ENCODER, "VJEPA2-QNN", "VJEPA2_QNN"},
 #endif
     };
     for (const auto &d : kPublic)

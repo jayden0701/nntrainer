@@ -216,6 +216,23 @@ class OpenAIRequestTest {
     }
 
     @Test
+    fun validatedImageSourcesPreserveOccurrenceOrderAndDuplicates() {
+        val first = "data:image/png;base64,AQID"
+        val repeated = "file:///tmp/repeated.png"
+        val request = OpenAIRequest(
+            json = requestJson(first, repeated, repeated)
+        )
+
+        val result = request.structuralImageUrlSources()
+
+        assertTrue(result is BackendResult.Ok)
+        assertEquals(
+            listOf(first, repeated, repeated),
+            (result as BackendResult.Ok).value
+        )
+    }
+
+    @Test
     fun sidecarVersionMustBeCurrent() {
         val request = OpenAIRequest(
             json = requestJson("quickdotai://image/0"),

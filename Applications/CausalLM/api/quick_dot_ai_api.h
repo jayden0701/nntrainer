@@ -260,11 +260,14 @@ WIN_EXPORT ErrorCode quickAiRunText(CausalLmHandle handle, const char *input,
  * and
  * @p image_count. The loaded handle, not the optional JSON model field,
 
- * * selects the model. The V1 image sidecar is reserved for the extension
+ * *
+ * selects the model. Image requests are dispatched only to the versioned
+
+ * * extension registered with the loaded descriptor. Once invoked, the
  *
- * multimodal dispatcher; this native PR returns CAUSAL_LM_ERROR_UNSUPPORTED
- *
- * for non-zero @p image_count. Because this entry point is callback-streaming,
+ * extension result is authoritative and the core does not fall back.
+ * Because
+ * this entry point is callback-streaming,
 
  * * stream=false is unsupported. Function strict flags and non-strict response
 
@@ -275,8 +278,13 @@ WIN_EXPORT ErrorCode quickAiRunText(CausalLmHandle handle, const char *input,
  * @param json_request
  * OpenAI-compatible request JSON
  * @param images Image tensor sidecars in
- * image occurrence order
- * @param image_count Number of entries in @p images
+ * image occurrence order. Non-zero image_count requires a successfully
+ *
+ * registered, ABI-compatible model extension and matching descriptor
+ *
+ * capabilities; an invoked extension result is authoritative.
+ * @param
+ * image_count Number of entries in @p images
 
  * * @param callback Token delta callback
  * @param user_data Opaque pointer
@@ -558,8 +566,9 @@ WIN_EXPORT void freeEmbedding(float *embedding);
  * @param width          Original frame width  (V-JEPA2: 256)
  * @param out_embedding  [out] receives a newly malloc'd byte buffer
  * @param out_bytes      [out] receives the buffer length in bytes
- * @return CAUSAL_LM_ERROR_NONE on success; CAUSAL_LM_ERROR_UNSUPPORTED if
- *         built without QNN support.
+ * @return CAUSAL_LM_ERROR_NONE on success; CAUSAL_LM_ERROR_UNSUPPORTED when
+ *
+ * the loaded descriptor/model is not a standalone vision encoder.
  */
 WIN_EXPORT ErrorCode encodeImageModelHandle(CausalLmHandle handle,
                                             const float *pixelValues,

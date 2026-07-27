@@ -13,6 +13,63 @@ import org.junit.Test
 
 class LiteRTLmApiTest {
     @Test
+    fun loadRequiresOpenAIApiCapabilityBeforeFileAccess() {
+        val descriptor = LITE_RT_DESCRIPTOR.copy(
+            capabilities = setOf(Capability.STREAMING)
+        )
+
+        val result = newLiteRt(descriptor).load(
+            LoadModelRequest(
+                backend = BackendType.GPU,
+                modelId = descriptor.id,
+                modelPath = "missing.litertlm"
+            )
+        )
+
+        assertUnsupported(result)
+    }
+
+    @Test
+    fun visionBackendRequiresAMultimodalModelBeforeFileAccess() {
+        val descriptor = LITE_RT_DESCRIPTOR.copy(
+            capabilities = setOf(
+                Capability.STREAMING,
+                Capability.OPENAI_API
+            )
+        )
+
+        val result = newLiteRt(descriptor).load(
+            LoadModelRequest(
+                backend = BackendType.GPU,
+                modelId = descriptor.id,
+                modelPath = "missing.litertlm",
+                visionBackend = BackendType.GPU
+            )
+        )
+
+        assertUnsupported(result)
+    }
+
+    @Test
+    fun speculativeLiteRtLoadRemainsUnsupportedWhenCatalogAdvertisesIt() {
+        val descriptor = LITE_RT_DESCRIPTOR.copy(
+            capabilities = LITE_RT_DESCRIPTOR.capabilities + Capability.SPECULATIVE,
+            sdVariantId = "gemma4-sd"
+        )
+
+        val result = newLiteRt(descriptor).load(
+            LoadModelRequest(
+                backend = BackendType.GPU,
+                modelId = "gemma4-sd",
+                modelPath = "missing.litertlm",
+                useSpeculativeDecoding = true
+            )
+        )
+
+        assertUnsupported(result)
+    }
+
+    @Test
     fun blankModelIdIsRejectedBeforeEngineCreation() {
         val result = newLiteRt().load(
             LoadModelRequest(modelId = "", modelPath = "missing.litertlm")
@@ -31,6 +88,80 @@ class LiteRTLmApiTest {
         assertTrue(result is BackendResult.Err)
         assertEquals(QuickAiError.UNSUPPORTED, (result as BackendResult.Err).error)
         assertEquals(listOf(QuickAiError.UNSUPPORTED), sink.errors)
+    }
+
+    @Test
+    fun runOpenAIRequiresOpenAIApiCapability() {
+        val descriptor = LITE_RT_DESCRIPTOR.copy(
+            capabilities = setOf(Capability.STREAMING)
+        )
+        val sink = RecordingSink()
+
+        val result = newLiteRt(descriptor).runOpenAI(textRequest(), sink)
+
+        assertUnsupported(result)
+        assertEquals(listOf(QuickAiError.UNSUPPORTED), sink.errors)
+    }
+
+    @Test
+    fun imageRequestRequiresMultimodalCapabilityBeforeDecoding() {
+        val descriptor = LITE_RT_DESCRIPTOR.copy(
+            capabilities = setOf(
+                Capability.STREAMING,
+                Capability.OPENAI_API
+            )
+        )
+        val request = imageRequest("data:image/png;base64,not-valid-base64!")
+
+        val result = newLiteRt(descriptor).prepareOpenAIRequest(
+            request,
+            activeLoadRequest(descriptor, visionBackend = BackendType.GPU)
+        )
+
+        assertUnsupported(result)
+    }
+
+    @Test
+    fun imageRequestRequiresAConfiguredVisionBackend() {
+        val request = imageRequest("data:image/png;base64,AQID")
+
+        val result = newLiteRt().prepareOpenAIRequest(
+            request,
+            activeLoadRequest(LITE_RT_DESCRIPTOR, visionBackend = null)
+        )
+
+        assertUnsupported(result)
+    }
+
+    @Test
+    fun repeatedImageOccurrencesRequireMultiImageCapability() {
+        val source = "data:image/png;base64,AQID"
+        val request = imageRequest(source, source)
+
+        val result = newLiteRt().prepareOpenAIRequest(
+            request,
+            activeLoadRequest(LITE_RT_DESCRIPTOR, visionBackend = BackendType.GPU)
+        )
+
+        assertUnsupported(result)
+    }
+
+    @Test
+    fun multiImageCapabilityAllowsEveryImageOccurrence() {
+        val descriptor = LITE_RT_DESCRIPTOR.copy(
+            capabilities = LITE_RT_DESCRIPTOR.capabilities + Capability.MULTI_IMAGE
+        )
+        val first = "data:image/png;base64,AQID"
+        val second = "data:image/jpeg;base64,BAUG"
+
+        val result = newLiteRt(descriptor).prepareOpenAIRequest(
+            imageRequest(first, second),
+            activeLoadRequest(descriptor, visionBackend = BackendType.GPU)
+        )
+
+        assertTrue(result is BackendResult.Ok)
+        val parsed = (result as BackendResult.Ok).value
+        assertEquals(listOf(first, second), newLiteRt(descriptor).imageSources(parsed))
     }
 
     @Test
@@ -326,7 +457,45 @@ class LiteRTLmApiTest {
             sink.onError(error, message)
         }
 
-    private fun newLiteRt(): LiteRTLm = LiteRTLm(LITE_RT_DESCRIPTOR)
+    private fun assertUnsupported(result: BackendResult<*>) {
+        assertTrue(result is BackendResult.Err)
+        assertEquals(QuickAiError.UNSUPPORTED, (result as BackendResult.Err).error)
+    }
+
+    private fun textRequest(): OpenAIRequest =
+        OpenAIRequest("""{"messages":[{"role":"user","content":"hello"}]}""")
+
+    private fun imageRequest(vararg sources: String): OpenAIRequest =
+        OpenAIRequest(
+            """
+                {
+                  "messages": [{
+                    "role": "user",
+                    "content": [
+                      ${sources.joinToString(",\n") { source ->
+                          """{"type":"image_url","image_url":{"url":"$source"}}"""
+                      }},
+                      {"type": "text", "text": "describe"}
+                    ]
+                  }]
+                }
+            """.trimIndent()
+        )
+
+    private fun activeLoadRequest(
+        descriptor: ModelDescriptor,
+        visionBackend: BackendType?
+    ): LoadModelRequest =
+        LoadModelRequest(
+            backend = BackendType.GPU,
+            modelId = descriptor.id,
+            modelPath = "model.litertlm",
+            visionBackend = visionBackend
+        )
+
+    private fun newLiteRt(
+        descriptor: ModelDescriptor = LITE_RT_DESCRIPTOR
+    ): LiteRTLm = LiteRTLm(descriptor)
 
     private companion object {
         val LITE_RT_DESCRIPTOR = ModelDescriptor(
