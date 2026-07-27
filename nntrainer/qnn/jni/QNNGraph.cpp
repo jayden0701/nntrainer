@@ -13,86 +13,217 @@
 
 #include "QNNGraph.h"
 #include "QnnTypes.h"
+
+#include <cmath>
 #include <cstdint>
-#include <engine.h>
-#include <fcntl.h>
+#include <exception>
 #include <inttypes.h>
+#include <limits>
+#include <map>
 #include <memory>
-#include <qnn_context.h>
 #include <stdexcept>
-#include <sys/mman.h>
-#include <unistd.h>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include <sys/resource.h>
-#include <thread>
-
-#include "QnnSampleAppUtils.hpp"
-#include "Utils/DataUtil.hpp"
 #include <common_properties.h>
 #include <layer_context.h>
 #include <nntrainer_error.h>
 #include <nntrainer_log.h>
-#include <node_exporter.h>
-#include <util_func.h>
-
-std::chrono::duration<double> exec_seconds;
 
 namespace nntrainer {
 
+namespace {
+
 std::shared_ptr<QNNVar> getQNNVar(RunLayerContext &context) {
-  std::shared_ptr<QNNVar> qc_var =
-    (std::static_pointer_cast<QNNBackendVar>(context.getContextData()))
-      ->getVar();
-  return qc_var;
+  auto backend =
+    std::static_pointer_cast<QNNBackendVar>(context.getContextData());
+  NNTR_THROW_IF(!backend, std::runtime_error)
+    << "QNN layer context has no backend data";
+
+  auto qnn_data = backend->getVar();
+  NNTR_THROW_IF(!qnn_data, std::runtime_error)
+    << "QNN backend data is unavailable";
+  return qnn_data;
 }
+
+bool isCompatibleQnnDataType(Tdatatype tensor_type,
+                             Qnn_DataType_t qnn_type) noexcept {
+  switch (tensor_type) {
+  case Tdatatype::UINT8:
+    return qnn_type == QNN_DATATYPE_UINT_8 ||
+           qnn_type == QNN_DATATYPE_UFIXED_POINT_8;
+  case Tdatatype::UINT16:
+    return qnn_type == QNN_DATATYPE_UINT_16 ||
+           qnn_type == QNN_DATATYPE_UFIXED_POINT_16;
+  case Tdatatype::FP16:
+    return qnn_type == QNN_DATATYPE_FLOAT_16;
+  case Tdatatype::FP32:
+    return qnn_type == QNN_DATATYPE_FLOAT_32;
+  default:
+    return false;
+  }
+}
+
+size_t getQnnTensorElementCount(const Qnn_Tensor_t &qnn_tensor,
+                                const char *kind, size_t index) {
+  size_t element_count = 1;
+  for (uint32_t axis = 0; axis < qnn_tensor.v1.rank; ++axis) {
+    const auto dimension = qnn_tensor.v1.dimensions[axis];
+    NNTR_THROW_IF(dimension == 0, std::invalid_argument)
+      << "QNN " << kind << " tensor " << index
+      << " has a zero-sized dimension at axis " << axis;
+    NNTR_THROW_IF(element_count >
+                    std::numeric_limits<size_t>::max() / dimension,
+                  std::length_error)
+      << "QNN " << kind << " tensor " << index << " element count overflows";
+    element_count *= dimension;
+  }
+  return element_count;
+}
+
+size_t getQnnTensorElementSize(Qnn_DataType_t qnn_type) {
+  switch (qnn_type) {
+  case QNN_DATATYPE_UINT_8:
+  case QNN_DATATYPE_UFIXED_POINT_8:
+    return 1;
+  case QNN_DATATYPE_UINT_16:
+  case QNN_DATATYPE_UFIXED_POINT_16:
+  case QNN_DATATYPE_FLOAT_16:
+    return 2;
+  case QNN_DATATYPE_FLOAT_32:
+    return 4;
+  default:
+    NNTR_THROW_IF(true, std::invalid_argument)
+      << "Unsupported QNN tensor data type: "
+      << static_cast<unsigned int>(qnn_type);
+    return 0;
+  }
+}
+
+void *getQnnTensorBuffer(Tensor &tensor, const Qnn_Tensor_t &qnn_tensor,
+                         const char *kind, size_t index) {
+  NNTR_THROW_IF(qnn_tensor.version != QNN_TENSOR_VERSION_1,
+                std::invalid_argument)
+    << "Unsupported QNN " << kind << " tensor descriptor version at index "
+    << index;
+
+  const auto tensor_type = tensor.getDataType();
+  NNTR_THROW_IF(!isCompatibleQnnDataType(tensor_type, qnn_tensor.v1.dataType),
+                std::invalid_argument)
+    << "NNTrainer and QNN " << kind
+    << " tensor data types do not match at index " << index
+    << ": nntrainer=" << static_cast<int>(tensor_type)
+    << ", qnn=" << static_cast<unsigned int>(qnn_tensor.v1.dataType);
+
+  const size_t element_count =
+    getQnnTensorElementCount(qnn_tensor, kind, index);
+  NNTR_THROW_IF(tensor.size() != element_count, std::invalid_argument)
+    << "NNTrainer and QNN " << kind
+    << " tensor element counts do not match at index " << index
+    << ": nntrainer=" << tensor.size() << ", qnn=" << element_count;
+
+  const size_t element_size = getQnnTensorElementSize(qnn_tensor.v1.dataType);
+  NNTR_THROW_IF(element_count >
+                  std::numeric_limits<size_t>::max() / element_size,
+                std::length_error)
+    << "QNN " << kind << " tensor " << index << " byte count overflows";
+  const size_t required_bytes = element_count * element_size;
+  NNTR_THROW_IF(tensor.bytes() < required_bytes, std::invalid_argument)
+    << "NNTrainer " << kind << " tensor " << index
+    << " backing is too small: available=" << tensor.bytes()
+    << ", required=" << required_bytes;
+
+  void *buffer = tensor.getData<void>();
+  NNTR_THROW_IF(buffer == nullptr, std::runtime_error)
+    << "NNTrainer " << kind << " tensor " << index << " has no backing buffer";
+  return buffer;
+}
+
+using QuantParamMap = std::map<std::string, std::pair<float, int>>;
+
+template <typename QuantProperty>
+QuantParamMap
+makeQuantParamMap(const std::vector<QuantProperty> &quant_properties,
+                  const char *kind) {
+  QuantParamMap quant_params;
+  for (const auto &property : quant_properties) {
+    const auto parameter = property.get();
+    const auto inserted =
+      quant_params.emplace(parameter.first, parameter.second);
+    NNTR_THROW_IF(!inserted.second, std::invalid_argument)
+      << "Duplicate QNN " << kind
+      << " tensor quantization parameter: " << parameter.first;
+  }
+  return quant_params;
+}
+
+void applyQuantParam(Qnn_Tensor_t &tensor, const QuantParamMap &quant_params,
+                     const char *kind, size_t index) {
+  NNTR_THROW_IF(tensor.version != QNN_TENSOR_VERSION_1, std::invalid_argument)
+    << "Unsupported QNN " << kind << " tensor descriptor version at index "
+    << index;
+
+  const char *name = tensor.v1.name;
+  NNTR_THROW_IF(name == nullptr || name[0] == '\0', std::runtime_error)
+    << "QNN " << kind << " tensor " << index << " has no name";
+
+  switch (tensor.v1.quantizeParams.quantizationEncoding) {
+  case QNN_QUANTIZATION_ENCODING_UNDEFINED:
+  case QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET:
+    return;
+  case QNN_QUANTIZATION_ENCODING_SCALE_OFFSET:
+    break;
+  default:
+    NNTR_THROW_IF(true, std::invalid_argument)
+      << "Unsupported QNN " << kind << " tensor quantization encoding at index "
+      << index << ": "
+      << static_cast<unsigned int>(
+           tensor.v1.quantizeParams.quantizationEncoding);
+  }
+
+  const auto parameter = quant_params.find(name);
+  NNTR_THROW_IF(parameter == quant_params.end(), std::invalid_argument)
+    << "Missing scalar quantization parameters for QNN " << kind << " tensor "
+    << name;
+  NNTR_THROW_IF(!std::isfinite(parameter->second.first) ||
+                  parameter->second.first <= 0.0f,
+                std::invalid_argument)
+    << "Invalid scalar quantization scale for QNN " << kind << " tensor "
+    << name << ": " << parameter->second.first;
+  tensor.v1.quantizeParams.scaleOffsetEncoding.scale = parameter->second.first;
+  tensor.v1.quantizeParams.scaleOffsetEncoding.offset =
+    parameter->second.second;
+}
+
+void logSecondaryAfterExecuteFailure(
+  const char *graph_name, bool returned_failure,
+  const std::exception_ptr &after_execute_exception) noexcept {
+  if (after_execute_exception != nullptr) {
+    try {
+      std::rethrow_exception(after_execute_exception);
+    } catch (const std::exception &error) {
+      ml_loge("QNN afterExecute threw after graph execution failure: "
+              "graph=%s, reason=%s",
+              graph_name, error.what());
+    } catch (...) {
+      ml_loge("QNN afterExecute threw an unknown exception after graph "
+              "execution failure: graph=%s",
+              graph_name);
+    }
+    return;
+  }
+  if (returned_failure) {
+    ml_loge("QNN afterExecute returned false after graph execution failure: "
+            "graph=%s",
+            graph_name);
+  }
+}
+
+} // namespace
 
 QNNGraph::QNNGraph() :
-  LayerImpl(), graph_props({}, {}, {}, props::FilePath(), {}, {}) {
-  m_isContextCreated = false;
-  m_inputDataType = iotensor::InputDataType::NATIVE;
-}
-
-QNNGraph::~QNNGraph() {
-  if (m_context) {
-    if (QNN_CONTEXT_NO_ERROR !=
-        m_qnnFunctionPointers.qnnInterface.contextFree(m_context, nullptr)) {
-      ml_loge("Failed to free Context");
-    }
-  }
-
-  // Deregister QNN tensor memHandles while the QNN context is still alive,
-  // so memDeRegister succeeds. The context itself is NOT freed — it persists
-  // in ct_map for reuse on the next load, following the same pattern as CPU
-  // (AppContext) and GPU (ClContext) which never free their backend resources
-  // on model unload. Destroying and recreating a QNN context handle on top
-  // of an already-initialised HTP backend leaves dangling memHandles and
-  // corrupts the backend's internal state, causing graphExecute to fail on
-  // every subsequent load (load → unload → load cycle).
-  if (!bin_path.empty()) {
-    LOGD("[QNNGraph] ~QNNGraph: deregistering tensors for bin_path=%s",
-         bin_path.c_str());
-    auto *ctx = Engine::Global().getRegisteredContext("qnn");
-    if (ctx) {
-      auto *qnn_ctx = static_cast<QNNContext *>(ctx);
-      auto qnn_data = qnn_ctx->getQnnData();
-      if (qnn_data) {
-        // Deregister all QNN memHandles while context is still valid.
-        // Multiple QNNGraph instances share the same QNNVar (and thus the
-        // same QNNRpcManager); the first destructor clears the map and
-        // subsequent ones are no-ops.
-        qnn_data->RpcMem->deRegisterQnnTensor();
-        LOGD(
-          "[QNNGraph] ~QNNGraph: deRegisterQnnTensor completed (context kept "
-          "for reuse) bin_path=%s",
-          bin_path.c_str());
-      }
-    } else {
-      LOGD("[QNNGraph] ~QNNGraph: qnn context not registered in Engine");
-    }
-  } else {
-    LOGD("[QNNGraph] ~QNNGraph: bin_path is empty, skipping deRegister");
-  }
-}
+  LayerImpl(), graph_props({}, {}, {}, props::FilePath(), {}, {}) {}
 
 void QNNGraph::finalize(InitLayerContext &context) {
   bin_path = std::get<props::FilePath>(graph_props).get();
@@ -146,229 +277,205 @@ void QNNGraph::setProperty(const std::vector<std::string> &values) {
   LayerImpl::setProperty(remain_props);
 }
 
-StatusCode QNNGraph::freeContext(RunLayerContext &context) {
-  std::shared_ptr<QNNVar> qc_var = getQNNVar(context);
-
-  if (m_context) {
-    if (QNN_CONTEXT_NO_ERROR !=
-        m_qnnFunctionPointers.qnnInterface.contextFree(m_context, nullptr)) {
-      ml_loge("Faile to free Context");
-      return StatusCode::FAILURE;
-    }
-    m_isContextCreated = false;
-  }
-  m_context = nullptr;
-  return StatusCode::SUCCESS;
-}
-
-StatusCode QNNGraph::makeContext(RunLayerContext &context) {
-
-  std::shared_ptr<QNNVar> qc_var = getQNNVar(context);
-
-  return qc_var->makeContext(bin_path);
-}
-
 void QNNGraph::read(std::ifstream &file, RunLayerContext &run_context,
                     bool opt_var, ml::train::ExecutionMode mode, bool trainable,
                     TensorDim::DataType defineWeightDataType, bool fsu,
                     size_t start_offset, bool read_from_offset, int file_fd) {}
 
 void QNNGraph::forwarding(RunLayerContext &context, bool training) {
-  auto returnStatus = StatusCode::SUCCESS;
+  (void)training;
 
-  auto qc_var = getQNNVar(context);
-  unsigned int graphIdx = 0;
+  auto qnn_data = getQNNVar(context);
+  NNTR_THROW_IF(!qnn_data->RpcMem, std::runtime_error)
+    << "QNN RPC memory manager is unavailable";
 
-  auto context_ref = qc_var->findContext(bin_path);
+  auto context_ref = qnn_data->findContext(bin_path);
   if (!context_ref) {
     ml_logw("Context is not created. Create Now");
-    NNTR_THROW_IF(qc_var->makeContext(bin_path) != StatusCode::SUCCESS,
+    NNTR_THROW_IF(qnn_data->makeContext(bin_path) != StatusCode::SUCCESS,
                   std::runtime_error)
       << "Failed to create QNN context from " << bin_path;
-    context_ref = qc_var->findContext(bin_path);
+    context_ref = qnn_data->findContext(bin_path);
   }
 
   NNTR_THROW_IF(!context_ref, std::runtime_error)
     << "QNN context is unavailable after creation for " << bin_path;
 
-  auto graphInfo = qc_var->graphRetrieve(bin_path, context.getName());
-  NNTR_THROW_IF(!graphInfo, std::invalid_argument)
-    << "cannot retrieve graph " << context.getName() << " from " << bin_path;
+  auto *graph_info = qnn_data->graphRetrieve(bin_path, context.getName());
+  NNTR_THROW_IF(graph_info == nullptr, std::invalid_argument)
+    << "Cannot retrieve graph " << context.getName() << " from " << bin_path;
 
-  Qnn_Context_Graph_t &context_i = context_ref->get();
+  const char *graph_name =
+    graph_info->graphName == nullptr ? "<unknown>" : graph_info->graphName;
+  auto &context_info = context_ref->get();
+  NNTR_THROW_IF(context_info.m_context == nullptr, std::runtime_error)
+    << "QNN context handle is unavailable for " << bin_path;
+  NNTR_THROW_IF(graph_info->graph == nullptr, std::runtime_error)
+    << "QNN graph handle is unavailable for " << graph_name;
 
-  NNTR_THROW_IF(context.getNumInputs() != graphInfo->numInputTensors,
+  NNTR_THROW_IF(context.getNumInputs() != graph_info->numInputTensors,
                 std::invalid_argument)
     << "Number of NNtrainer's inputs " << context.getNumInputs()
     << " does not match with number of QNN's input tensors "
-    << graphInfo->numInputTensors << "!";
+    << graph_info->numInputTensors << "!";
 
-  NNTR_THROW_IF(context.getNumOutputs() != graphInfo->numOutputTensors,
+  NNTR_THROW_IF(context.getNumOutputs() != graph_info->numOutputTensors,
                 std::invalid_argument)
     << "Number of NNtrainer's outputs " << context.getNumOutputs()
     << " does not match with number of QNN's output tensors "
-    << graphInfo->numOutputTensors << "!";
+    << graph_info->numOutputTensors << "!";
+
+  auto inputs = IOTensorWrapper::makeTensorOwner(graph_info->numInputTensors);
+  auto outputs = IOTensorWrapper::makeTensorOwner(graph_info->numOutputTensors);
+  NNTR_THROW_IF(qnn_data->m_ioTensor.setupInputAndOutputTensors(inputs, outputs,
+                                                                *graph_info) !=
+                  qnn::tools::iotensor::StatusCode::SUCCESS,
+                std::runtime_error)
+    << "Failed to set up QNN I/O tensor descriptors for graph " << graph_name;
+
+  const auto input_quant_params = makeQuantParamMap(
+    std::get<std::vector<props::InputQuantParam>>(graph_props), "input");
+  const auto output_quant_params = makeQuantParamMap(
+    std::get<std::vector<props::OutputQuantParam>>(graph_props), "output");
 
   for (size_t i = 0; i < context.getNumInputs(); ++i) {
-    updateBufferType(currentInputBuffers, context.getInput(i));
-  }
-
-  for (size_t i = 0; i < graphInfo->numOutputTensors; ++i) {
-    updateBufferType(currentOutputBuffers, context.getOutput(i));
-  }
-
-  Qnn_Tensor_t *inputs = nullptr;
-  Qnn_Tensor_t *outputs = nullptr;
-
-  qc_var->m_ioTensor.setupInputAndOutputTensors(&inputs, &outputs, *graphInfo);
-
-  auto input_quant_params =
-    std::get<std::vector<props::InputQuantParam>>(graph_props);
-  std::map<std::string, std::pair<float, int>> input_quant_param_map;
-  for (auto &param : input_quant_params) {
-    auto p = param.get();
-    input_quant_param_map[p.first] = p.second;
-  }
-  auto output_quant_params =
-    std::get<std::vector<props::OutputQuantParam>>(graph_props);
-  std::map<std::string, std::pair<float, int>> output_quant_param_map;
-  for (auto &param : output_quant_params) {
-    auto p = param.get();
-    output_quant_param_map[p.first] = p.second;
-  }
-
-  for (size_t i = 0; i < context.getNumInputs(); ++i) {
-    auto key = inputs[i].v1.name;
-    NNTR_THROW_IF(input_quant_param_map.find(key) ==
-                    input_quant_param_map.end(),
-                  std::invalid_argument)
-      << key;
-    auto value = input_quant_param_map[key];
-    inputs[i].v1.quantizeParams.scaleOffsetEncoding.scale = value.first;
-    inputs[i].v1.quantizeParams.scaleOffsetEncoding.offset = value.second;
-    populateTensor(qc_var, context_i, currentInputBuffers[i], &(inputs[i]));
+    applyQuantParam(inputs[i], input_quant_params, "input", i);
+    void *buffer =
+      getQnnTensorBuffer(context.getInput(i), inputs[i], "input", i);
+    qnn_data->RpcMem->registerQnnTensor(buffer, inputs[i],
+                                        context_info.m_context);
   }
 
   for (size_t i = 0; i < context.getNumOutputs(); ++i) {
-    auto key = outputs[i].v1.name;
-    NNTR_THROW_IF(output_quant_param_map.find(key) ==
-                    output_quant_param_map.end(),
-                  std::invalid_argument)
-      << key;
-    auto value = output_quant_param_map[key];
-    outputs[i].v1.quantizeParams.scaleOffsetEncoding.scale = value.first;
-    outputs[i].v1.quantizeParams.scaleOffsetEncoding.offset = value.second;
-    populateTensor(qc_var, context_i, currentOutputBuffers[i], &(outputs[i]));
+    applyQuantParam(outputs[i], output_quant_params, "output", i);
+    void *buffer =
+      getQnnTensorBuffer(context.getOutput(i), outputs[i], "output", i);
+    qnn_data->RpcMem->registerQnnTensor(buffer, outputs[i],
+                                        context_info.m_context);
   }
 
-  auto start = std::chrono::system_clock::now();
-  std::time_t start_time = std::chrono::system_clock::to_time_t(start);
+  auto &qnn_interface = qnn_data->m_qnnFunctionPointers.qnnInterface;
+  NNTR_THROW_IF(qnn_interface.graphExecute == nullptr, std::runtime_error)
+    << "QNN graphExecute function is unavailable";
 
-  Qnn_ErrorHandle_t executeStatus = QNN_GRAPH_NO_ERROR;
-  QnnGraph_Config_t **customGraphConfigs{nullptr};
-  uint32_t configCount{0};
-  auto backend_extensions = qc_var->m_backendExtensions;
-  if (nullptr != backend_extensions && backend_extensions->interface()) {
-    if (!backend_extensions->interface()->beforeExecute(
-          graphInfo->graphName, &customGraphConfigs, &configCount)) {
-      QNN_ERROR("Extensions Failure in beforeExecute()");
-    }
-    if (customGraphConfigs) {
-      std::vector<const QnnGraph_Config_t *> graphConfigsPointers(
-        configCount + 1, nullptr);
-      for (size_t idx = 0u; idx < configCount; idx++) {
-        graphConfigsPointers[idx] = customGraphConfigs[idx];
+  QnnGraph_Config_t **custom_graph_configs = nullptr;
+  uint32_t config_count = 0;
+  auto *extension = qnn_data->m_backendExtensions == nullptr
+                      ? nullptr
+                      : qnn_data->m_backendExtensions->interface();
+  if (extension != nullptr) {
+    NNTR_THROW_IF(!extension->beforeExecute(graph_name, &custom_graph_configs,
+                                            &config_count),
+                  std::runtime_error)
+      << "QNN extension beforeExecute failed for graph " << graph_name;
+
+    NNTR_THROW_IF(config_count > 0 && custom_graph_configs == nullptr,
+                  std::runtime_error)
+      << "QNN extension returned an invalid graph config list for "
+      << graph_name << ": count=" << config_count;
+    NNTR_THROW_IF(static_cast<uint64_t>(config_count) + 1 >
+                    static_cast<uint64_t>(std::numeric_limits<size_t>::max()),
+                  std::length_error)
+      << "QNN extension returned too many graph configs for " << graph_name;
+
+    if (config_count > 0) {
+      std::vector<const QnnGraph_Config_t *> graph_configs(
+        static_cast<size_t>(config_count) + 1, nullptr);
+      for (uint32_t i = 0; i < config_count; ++i) {
+        NNTR_THROW_IF(custom_graph_configs[i] == nullptr, std::runtime_error)
+          << "QNN extension returned a null graph config at index " << i
+          << " for " << graph_name;
+        graph_configs[i] = custom_graph_configs[i];
       }
-      if (QNN_SUCCESS !=
-          qc_var->m_qnnFunctionPointers.qnnInterface.graphSetConfig(
-            graphInfo->graph, graphConfigsPointers.data())) {
-        QNN_ERROR("Failure in setGraphConfigsBeforeExecute()");
+
+      NNTR_THROW_IF(qnn_interface.graphSetConfig == nullptr, std::runtime_error)
+        << "QNN graphSetConfig function is unavailable";
+      const auto config_status =
+        qnn_interface.graphSetConfig(graph_info->graph, graph_configs.data());
+      if (config_status != QNN_SUCCESS) {
+        const auto error_code = static_cast<uint64_t>(config_status);
+        const auto public_error_code =
+          static_cast<unsigned int>(QNN_GET_ERROR_CODE(config_status));
+        ml_loge("QNN graphSetConfig failed: error=%" PRIu64
+                ", public_error=%u, binary=%s, graph=%s",
+                error_code, public_error_code, bin_path.c_str(), graph_name);
+        NNTR_THROW_IF(true, std::runtime_error)
+          << "QNN graphSetConfig failed: error=" << error_code
+          << ", public_error=" << public_error_code << ", binary=" << bin_path
+          << ", graph=" << graph_name;
       }
     }
   }
-  executeStatus = qc_var->m_qnnFunctionPointers.qnnInterface.graphExecute(
-    graphInfo->graph, inputs, graphInfo->numInputTensors, outputs,
-    graphInfo->numOutputTensors, qc_var->m_profileBackendHandle, nullptr);
 
-  if (nullptr != backend_extensions && backend_extensions->interface()) {
-    if (!backend_extensions->interface()->afterExecute()) {
-      QNN_ERROR("Extensions Failure in afterExecute()");
+  Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
+  std::exception_ptr execute_exception;
+  try {
+    execute_status = qnn_interface.graphExecute(
+      graph_info->graph, inputs.get(), graph_info->numInputTensors,
+      outputs.get(), graph_info->numOutputTensors,
+      qnn_data->m_profileBackendHandle, nullptr);
+  } catch (...) {
+    execute_exception = std::current_exception();
+  }
+
+  bool after_execute_succeeded = true;
+  std::exception_ptr after_execute_exception;
+  if (extension != nullptr) {
+    try {
+      after_execute_succeeded = extension->afterExecute();
+    } catch (...) {
+      after_execute_exception = std::current_exception();
     }
   }
 
-  // std::cout << "executed QNNGraph, name: " << graphInfo->graphName <<
-  // std::endl;
-  if (QNN_GRAPH_NO_ERROR != executeStatus) {
-    returnStatus = StatusCode::FAILURE;
+  const bool after_execute_failed =
+    !after_execute_succeeded || after_execute_exception != nullptr;
+  if (execute_exception != nullptr) {
+    if (after_execute_failed) {
+      logSecondaryAfterExecuteFailure(graph_name, !after_execute_succeeded,
+                                      after_execute_exception);
+    }
+    std::rethrow_exception(execute_exception);
   }
 
-  // std::cout << context.getOutput(0) << std::endl;
+  if (execute_status != QNN_GRAPH_NO_ERROR) {
+    if (after_execute_failed) {
+      logSecondaryAfterExecuteFailure(graph_name, !after_execute_succeeded,
+                                      after_execute_exception);
+    }
 
-  auto end = std::chrono::system_clock::now();
-  std::chrono::duration<double> elapsed_seconds = end - start;
-  std::time_t end_time = std::chrono::system_clock::to_time_t(end);
+    const auto error_code = static_cast<uint64_t>(execute_status);
+    const auto public_error_code =
+      static_cast<unsigned int>(QNN_GET_ERROR_CODE(execute_status));
+    ml_loge("[QNNGraph] graphExecute failed: error=%" PRIu64
+            ", public_error=%u, binary=%s, graph=%s, context=%p, "
+            "graph_handle=%p",
+            error_code, public_error_code, bin_path.c_str(), graph_name,
+            static_cast<void *>(context_info.m_context),
+            static_cast<void *>(graph_info->graph));
 
-  exec_seconds += elapsed_seconds;
-
-  // qc_var->RpcMem->deRegisterQnnTensor();
-  counter++;
-
-  // std::cout << "graph exec_time : " << exec_seconds.count() << " " << counter
-  //           << std::endl;
-
-  if (StatusCode::SUCCESS != returnStatus) {
-    ml_loge("Execution of Graph: %d failed!", graphIdx);
-    std::cout << "Execution of Graph : " << graphIdx << " failed!" << std::endl;
+    NNTR_THROW_IF(true, std::runtime_error)
+      << "QNN graphExecute failed: error=" << error_code
+      << ", public_error=" << public_error_code << ", binary=" << bin_path
+      << ", graph=" << graph_name
+      << ", context=" << static_cast<void *>(context_info.m_context)
+      << ", graph_handle=" << static_cast<void *>(graph_info->graph);
   }
-}
 
-void QNNGraph::updateBufferType(std::vector<BufferTypePtr> &buffers,
-                                Tensor &T) {
-  Tdatatype type = T.getDataType();
-  switch (type) {
-  case Tdatatype::UINT4:
-  case Tdatatype::UINT8:
-    buffers.push_back(T.getData<uint8_t>());
-    break;
-  case Tdatatype::UINT16:
-    buffers.push_back(T.getData<uint16_t>());
-    break;
-  case Tdatatype::FP32:
-    buffers.push_back(T.getData<float>());
-    break;
-  default:
-    break;
+  if (after_execute_exception != nullptr) {
+    try {
+      std::rethrow_exception(after_execute_exception);
+    } catch (const std::exception &error) {
+      NNTR_THROW_IF(true, std::runtime_error)
+        << "QNN extension afterExecute threw for graph " << graph_name << ": "
+        << error.what();
+    } catch (...) {
+      NNTR_THROW_IF(true, std::runtime_error)
+        << "QNN extension afterExecute threw for graph " << graph_name;
+    }
   }
-}
-
-void QNNGraph::populateTensor(std::shared_ptr<QNNVar> qc_var,
-                              Qnn_Context_Graph_t &context_i,
-                              BufferTypePtr buffers, Qnn_Tensor_t *T) {
-  switch (buffers.index()) {
-  case 1: // uint8_t *
-  {
-    qc_var->m_ioTensor.populateInputTensor(std::get<uint8_t *>(buffers), T,
-                                           m_inputDataType);
-    qc_var->RpcMem->registerQnnTensor(std::get<uint8_t *>(buffers), *T,
-                                      context_i.m_context);
-  } break;
-  case 2: // uint16_t*
-  {
-    qc_var->m_ioTensor.populateInputTensor(std::get<uint16_t *>(buffers), T,
-                                           m_inputDataType);
-    qc_var->RpcMem->registerQnnTensor(std::get<uint16_t *>(buffers), *T,
-                                      context_i.m_context);
-  } break;
-  case 3: {
-    qc_var->m_ioTensor.populateInputTensor(std::get<float *>(buffers), T,
-                                           m_inputDataType);
-    qc_var->RpcMem->registerQnnTensor(std::get<float *>(buffers), *T,
-                                      context_i.m_context);
-  } break;
-  default:
-    std::cout << "Unknown type: " << buffers.index() << std::endl;
-    break;
-  }
+  NNTR_THROW_IF(!after_execute_succeeded, std::runtime_error)
+    << "QNN extension afterExecute failed for graph " << graph_name;
 }
 
 } // namespace nntrainer

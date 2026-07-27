@@ -14,11 +14,14 @@
 #ifndef __NNTR_QNNGRAPH_H__
 #define __NNTR_QNNGRAPH_H__
 
-#include <iostream>
+#include <fstream>
 #include <layer_impl.h>
 #include <qnn_context_var.h>
 #include <qnn_properties.h>
-#include <qnn_rpc_manager.h>
+
+#include <string>
+#include <tuple>
+#include <vector>
 
 namespace nntrainer {
 
@@ -26,11 +29,8 @@ namespace nntrainer {
  */
 class QNNGraph : public LayerImpl {
 public:
-  using BufferTypePtr =
-    std::variant<std::monostate, uint8_t *, uint16_t *, float *>;
-
   QNNGraph();
-  ~QNNGraph();
+  ~QNNGraph() override = default;
 
   inline static const std::string type = "qnn_graph";
 
@@ -65,21 +65,11 @@ public:
    */
   void setProperty(const std::vector<std::string> &values) override;
 
-  StatusCode makeContext(RunLayerContext &context);
-
-  StatusCode freeContext(RunLayerContext &context);
-
   void read(std::ifstream &file, RunLayerContext &run_context, bool opt_var,
             ml::train::ExecutionMode mode, bool trainable,
             TensorDim::DataType defineWeightDataType, bool fsu = false,
             size_t start_offset = 0, bool read_from_offset = false,
             int file_fd = -1) override;
-
-  void updateBufferType(std::vector<BufferTypePtr> &buffers, Tensor &T);
-
-  void populateTensor(std::shared_ptr<QNNVar> qc_var,
-                      Qnn_Context_Graph_t &context_i, BufferTypePtr buffer,
-                      Qnn_Tensor_t *T);
 
 private:
   std::tuple<std::vector<props::TensorDimension>,
@@ -91,22 +81,11 @@ private:
   std::vector<unsigned int> weight_idx;
   std::vector<unsigned int> tensor_idx;
 
-  Qnn_ContextHandle_t m_context = nullptr;
   std::string bin_path;
-  bool m_isContextCreated;
-
-  iotensor::InputDataType m_inputDataType;
 
   std::vector<props::TensorDataType> t_dtype;
   std::vector<TensorDim> t_dims;
   std::vector<props::TensorType> t_type;
-
-  std::vector<BufferTypePtr> currentInputBuffers;
-  std::vector<BufferTypePtr> currentOutputBuffers;
-
-  sample_app::QnnFunctionPointers m_qnnFunctionPointers;
-
-  int counter;
 };
 
 } // namespace nntrainer

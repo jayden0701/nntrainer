@@ -9,355 +9,218 @@
  */
 #ifndef __QNN_IOTENSOR_WRAPPER_H__
 #define __QNN_IOTENSOR_WRAPPER_H__
-#include "DataUtil.hpp"
+
 #include "IOTensor.hpp"
-#include "PAL/StringOp.hpp"
+#include "QnnSampleAppUtils.hpp"
+#include "QnnWrapperUtils.hpp"
 
 #include <QnnTypeMacros.hpp>
 #include <nntrainer_log.h>
 
-namespace nntrainer {
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <limits>
+#include <memory>
 
-using namespace qnn::tools;
-using namespace qnn::tools::iotensor;
+namespace nntrainer {
 
 /** @brief Wraps QNN IO tensor allocation and teardown without copying data. */
 class IOTensorWrapper {
 public:
-  StatusCode
-  setupInputAndOutputTensors(Qnn_Tensor_t **inputs, Qnn_Tensor_t **outputs,
-                             qnn_wrapper_api::GraphInfo_t graphInfo) {
-    auto returnStatus = StatusCode::SUCCESS;
-    if (StatusCode::SUCCESS != setupTensorsNoCopy(inputs,
-                                                  graphInfo.numInputTensors,
-                                                  (graphInfo.inputTensors))) {
+  /** Owns copied host descriptor metadata, not RPC backing or memHandles. */
+  struct TensorDeleter {
+    uint32_t tensor_count{0};
+
+    void operator()(Qnn_Tensor_t *tensors) const noexcept {
+      if (tensors != nullptr) {
+        qnn_wrapper_api::freeQnnTensors(tensors, tensor_count);
+      }
+    }
+  };
+
+  using TensorOwner = std::unique_ptr<Qnn_Tensor_t[], TensorDeleter>;
+
+  static TensorOwner makeTensorOwner(uint32_t tensor_count) {
+    return TensorOwner(nullptr, TensorDeleter{tensor_count});
+  }
+
+  qnn::tools::iotensor::StatusCode
+  setupInputAndOutputTensors(TensorOwner &inputs, TensorOwner &outputs,
+                             const qnn_wrapper_api::GraphInfo_t &graph_info) {
+    inputs = makeTensorOwner(graph_info.numInputTensors);
+    outputs = makeTensorOwner(graph_info.numOutputTensors);
+
+    auto status = setupTensorsNoCopy(inputs, graph_info.numInputTensors,
+                                     graph_info.inputTensors);
+    if (status != qnn::tools::iotensor::StatusCode::SUCCESS) {
       ml_loge("Failure in setting up input tensors");
-      returnStatus = StatusCode::FAILURE;
+      return status;
     }
-    if (StatusCode::SUCCESS != setupTensorsNoCopy(outputs,
-                                                  graphInfo.numOutputTensors,
-                                                  (graphInfo.outputTensors))) {
+
+    status = setupTensorsNoCopy(outputs, graph_info.numOutputTensors,
+                                graph_info.outputTensors);
+    if (status != qnn::tools::iotensor::StatusCode::SUCCESS) {
       ml_loge("Failure in setting up output tensors");
-      returnStatus = StatusCode::FAILURE;
     }
-    if (StatusCode::SUCCESS != returnStatus) {
-      ml_loge("Failure in setupInputAndOutputTensors, cleaning up resources");
-      if (nullptr != *inputs) {
-        QNN_DEBUG("cleaning up input tensors");
-        tearDownTensors(*inputs, graphInfo.numInputTensors);
-        *inputs = nullptr;
-      }
-      if (nullptr != *outputs) {
-        QNN_DEBUG("cleaning up output tensors");
-        tearDownTensors(*outputs, graphInfo.numOutputTensors);
-        *outputs = nullptr;
-      }
-      ml_loge(
-        "Failure in setupInputAndOutputTensors, done cleaning up resources");
-    }
-    return returnStatus;
-  }
-
-  StatusCode populateInputTensor(uint8_t *buffer, Qnn_Tensor_t *input,
-                                 InputDataType inputDataType) {
-    if (nullptr == input) {
-      ml_loge("input is nullptr");
-      return StatusCode::FAILURE;
-    }
-    std::vector<size_t> dims;
-    fillDims(dims, QNN_TENSOR_GET_DIMENSIONS(input),
-             QNN_TENSOR_GET_RANK(input));
-    if (inputDataType == InputDataType::FLOAT &&
-        QNN_TENSOR_GET_DATA_TYPE(input) != QNN_DATATYPE_FLOAT_32) {
-      QNN_DEBUG("Received FLOAT input, but model needs non-float input");
-      if (StatusCode::SUCCESS !=
-          copyFromFloatToNative(reinterpret_cast<float *>(buffer), input)) {
-        QNN_DEBUG("copyFromFloatToNative failure");
-        return StatusCode::FAILURE;
-      }
-    } else {
-      size_t length;
-      datautil::StatusCode returnStatus;
-      std::tie(returnStatus, length) =
-        datautil::calculateLength(dims, QNN_TENSOR_GET_DATA_TYPE(input));
-      if (datautil::StatusCode::SUCCESS != returnStatus) {
-        return StatusCode::FAILURE;
-      }
-      pal::StringOp::memscpy(
-        reinterpret_cast<uint8_t *>(QNN_TENSOR_GET_CLIENT_BUF(input).data),
-        length, buffer, length);
-    }
-    return StatusCode::SUCCESS;
-  }
-
-  StatusCode populateInputTensor(uint16_t *buffer, Qnn_Tensor_t *input,
-                                 InputDataType inputDataType) {
-    if (nullptr == input) {
-      ml_loge("input is nullptr");
-      return StatusCode::FAILURE;
-    }
-
-    std::vector<size_t> dims;
-    fillDims(dims, QNN_TENSOR_GET_DIMENSIONS(input),
-             QNN_TENSOR_GET_RANK(input));
-
-    if (inputDataType == InputDataType::FLOAT &&
-        QNN_TENSOR_GET_DATA_TYPE(input) != QNN_DATATYPE_FLOAT_32) {
-      QNN_DEBUG("Received FLOAT input, but model needs non-float input");
-      if (StatusCode::SUCCESS !=
-          copyFromFloatToNative(reinterpret_cast<float *>(buffer), input)) {
-        QNN_DEBUG("copyFromFloatToNative failure");
-        return StatusCode::FAILURE;
-      }
-    } else {
-      size_t length;
-      datautil::StatusCode returnStatus;
-      std::tie(returnStatus, length) =
-        datautil::calculateLength(dims, QNN_TENSOR_GET_DATA_TYPE(input));
-
-      if (datautil::StatusCode::SUCCESS != returnStatus) {
-        return StatusCode::FAILURE;
-      }
-      pal::StringOp::memscpy(
-        reinterpret_cast<uint16_t *>(QNN_TENSOR_GET_CLIENT_BUF(input).data),
-        length, buffer, length);
-    }
-    return StatusCode::SUCCESS;
-  }
-
-  StatusCode populateInputTensor(float *buffer, Qnn_Tensor_t *input,
-                                 InputDataType inputDataType) {
-    if (nullptr == input) {
-      ml_loge("input is nullptr");
-      return StatusCode::FAILURE;
-    }
-    std::vector<size_t> dims;
-    fillDims(dims, QNN_TENSOR_GET_DIMENSIONS(input),
-             QNN_TENSOR_GET_RANK(input));
-    if (inputDataType == InputDataType::FLOAT &&
-        QNN_TENSOR_GET_DATA_TYPE(input) != QNN_DATATYPE_FLOAT_32) {
-      QNN_DEBUG("Received FLOAT input, but model needs non-float input");
-      if (StatusCode::SUCCESS !=
-          copyFromFloatToNative(reinterpret_cast<float *>(buffer), input)) {
-        QNN_DEBUG("copyFromFloatToNative failure");
-        return StatusCode::FAILURE;
-      }
-    } else {
-      size_t length;
-      datautil::StatusCode returnStatus;
-      std::tie(returnStatus, length) =
-        datautil::calculateLength(dims, QNN_TENSOR_GET_DATA_TYPE(input));
-      if (datautil::StatusCode::SUCCESS != returnStatus) {
-        return StatusCode::FAILURE;
-      }
-      pal::StringOp::memscpy(
-        reinterpret_cast<float *>(QNN_TENSOR_GET_CLIENT_BUF(input).data),
-        length, buffer, length);
-    }
-    return StatusCode::SUCCESS;
+    return status;
   }
 
 private:
-  StatusCode setupTensorsNoCopy(Qnn_Tensor_t **tensors, uint32_t tensorCount,
-                                Qnn_Tensor_t *tensorWrappers) {
-    if (nullptr == tensorWrappers) {
-      ml_loge("tensorWrappers is nullptr");
-      return StatusCode::FAILURE;
-    }
-    if (0 == tensorCount) {
-      QNN_INFO("tensor count is 0. Nothing to setup.");
-      return StatusCode::SUCCESS;
-    }
-    auto returnStatus = StatusCode::SUCCESS;
-    *tensors = (Qnn_Tensor_t *)calloc(1, tensorCount * sizeof(Qnn_Tensor_t));
-    // std::cout << "tensorCount: "<<tensorCount << std::endl;
-    if (nullptr == *tensors) {
-      ml_loge("mem alloc failed for *tensors");
-      returnStatus = StatusCode::FAILURE;
-      return returnStatus;
-    }
-    for (size_t tensorIdx = 0; tensorIdx < tensorCount; tensorIdx++) {
-      Qnn_Tensor_t wrapperTensor = tensorWrappers[tensorIdx];
-      // std::cout << tensorIdx << " tensorIdx " << std::endl;
-      std::vector<size_t> dims;
-      fillDims(dims, QNN_TENSOR_GET_DIMENSIONS(wrapperTensor),
-               QNN_TENSOR_GET_RANK(wrapperTensor));
-      if (StatusCode::SUCCESS == returnStatus) {
-        QNN_DEBUG("allocateBuffer successful");
-        (*tensors)[tensorIdx] = QNN_TENSOR_INIT;
-        returnStatus = (qnn::tools::sample_app::deepCopyQnnTensorInfo(
-                          ((*tensors) + tensorIdx), &wrapperTensor) == true
-                          ? StatusCode::SUCCESS
-                          : StatusCode::FAILURE);
-      }
-      if (StatusCode::SUCCESS == returnStatus) {
-        QNN_DEBUG("deepCopyQnnTensorInfo successful");
-        QNN_TENSOR_SET_MEM_TYPE(((*tensors) + tensorIdx),
-                                QNN_TENSORMEMTYPE_MEMHANDLE);
-      }
-    }
-    return returnStatus;
-  }
-
-  // Clean up all tensors related data after execution.
-  StatusCode tearDownTensors(Qnn_Tensor_t *tensors, uint32_t tensorCount) {
-    for (size_t tensorIdx = 0; tensorIdx < tensorCount; tensorIdx++) {
-      QNN_DEBUG("freeing resources for tensor: %d", tensorIdx);
-      if (nullptr != QNN_TENSOR_GET_DIMENSIONS(tensors[tensorIdx])) {
-        QNN_DEBUG("freeing dimensions");
-        free(QNN_TENSOR_GET_DIMENSIONS(tensors[tensorIdx]));
-      }
-      if (nullptr != QNN_TENSOR_GET_CLIENT_BUF(tensors[tensorIdx]).data) {
-        QNN_DEBUG("freeing clientBuf.data");
-        free(QNN_TENSOR_GET_CLIENT_BUF(tensors[tensorIdx]).data);
-      }
-    }
-    free(tensors);
-    return StatusCode::SUCCESS;
-  }
-
-  StatusCode fillDims(std::vector<size_t> &dims, uint32_t *inDimensions,
-                      uint32_t rank) {
-    if (nullptr == inDimensions) {
-      QNN_ERROR("input dimensions is nullptr");
-      return StatusCode::FAILURE;
-    }
-    for (size_t r = 0; r < rank; r++) {
-      dims.push_back(inDimensions[r]);
-    }
-    return StatusCode::SUCCESS;
-  }
-
-  // Helper method to copy a float buffer, quantize it, and copy
-  // it to a tensor (Qnn_Tensor_t) buffer.
-  StatusCode copyFromFloatToNative(float *floatBuffer, Qnn_Tensor_t *tensor) {
-    if (nullptr == floatBuffer || nullptr == tensor) {
-      QNN_ERROR("copyFromFloatToNative(): received a nullptr");
-      return StatusCode::FAILURE;
+  static bool hasCompleteV1Metadata(const Qnn_Tensor_t &tensor) noexcept {
+    if (tensor.version != QNN_TENSOR_VERSION_1 || tensor.v1.name == nullptr ||
+        tensor.v1.name[0] == '\0' ||
+        (tensor.v1.rank > 0 && tensor.v1.dimensions == nullptr) ||
+        tensor.v1.rank >
+          std::numeric_limits<size_t>::max() / sizeof(uint32_t)) {
+      return false;
     }
 
-    StatusCode returnStatus = StatusCode::SUCCESS;
-    std::vector<size_t> dims;
-    fillDims(dims, QNN_TENSOR_GET_DIMENSIONS(tensor),
-             QNN_TENSOR_GET_RANK(tensor));
-
-    switch (QNN_TENSOR_GET_DATA_TYPE(tensor)) {
-    case QNN_DATATYPE_UFIXED_POINT_8:
-      datautil::floatToTfN<uint8_t>(
-        static_cast<uint8_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-        floatBuffer,
-        QNN_TENSOR_GET_QUANT_PARAMS(tensor).scaleOffsetEncoding.offset,
-        QNN_TENSOR_GET_QUANT_PARAMS(tensor).scaleOffsetEncoding.scale,
-        datautil::calculateElementCount(dims));
-      break;
-
-    case QNN_DATATYPE_UFIXED_POINT_16:
-      datautil::floatToTfN<uint16_t>(
-        static_cast<uint16_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-        floatBuffer,
-        QNN_TENSOR_GET_QUANT_PARAMS(tensor).scaleOffsetEncoding.offset,
-        QNN_TENSOR_GET_QUANT_PARAMS(tensor).scaleOffsetEncoding.scale,
-        datautil::calculateElementCount(dims));
-      break;
-
-    case QNN_DATATYPE_UINT_8:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<uint8_t>(
-            static_cast<uint8_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<uint8_t>");
-        returnStatus = StatusCode::FAILURE;
+    size_t element_count = 1;
+    for (uint32_t axis = 0; axis < tensor.v1.rank; ++axis) {
+      const auto dimension = tensor.v1.dimensions[axis];
+      if (dimension == 0 ||
+          element_count > std::numeric_limits<size_t>::max() / dimension) {
+        return false;
       }
-      break;
+      element_count *= dimension;
+    }
 
-    case QNN_DATATYPE_UINT_16:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<uint16_t>(
-            static_cast<uint16_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<uint16_t>");
-        returnStatus = StatusCode::FAILURE;
+    const auto &quant_params = tensor.v1.quantizeParams;
+    switch (quant_params.quantizationEncoding) {
+    case QNN_QUANTIZATION_ENCODING_UNDEFINED:
+      return true;
+    case QNN_QUANTIZATION_ENCODING_SCALE_OFFSET:
+      return std::isfinite(quant_params.scaleOffsetEncoding.scale) &&
+             quant_params.scaleOffsetEncoding.scale > 0.0f;
+    case QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET: {
+      const auto &axis_params = quant_params.axisScaleOffsetEncoding;
+      if (axis_params.axis >= tensor.v1.rank ||
+          axis_params.numScaleOffsets == 0 ||
+          axis_params.numScaleOffsets !=
+            tensor.v1.dimensions[axis_params.axis] ||
+          axis_params.numScaleOffsets >
+            std::numeric_limits<size_t>::max() / sizeof(Qnn_ScaleOffset_t) ||
+          axis_params.scaleOffset == nullptr) {
+        return false;
       }
-      break;
-
-    case QNN_DATATYPE_UINT_32:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<uint32_t>(
-            static_cast<uint32_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<uint32_t>");
-        returnStatus = StatusCode::FAILURE;
+      for (uint32_t index = 0; index < axis_params.numScaleOffsets; ++index) {
+        const auto scale = axis_params.scaleOffset[index].scale;
+        if (!std::isfinite(scale) || scale <= 0.0f) {
+          return false;
+        }
       }
-      break;
-
-    case QNN_DATATYPE_UINT_64:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<uint64_t>(
-            static_cast<uint64_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<uint64_t>");
-        returnStatus = StatusCode::FAILURE;
-      }
-      break;
-
-    case QNN_DATATYPE_INT_8:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<int8_t>(
-            static_cast<int8_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<int8_t>");
-        returnStatus = StatusCode::FAILURE;
-      }
-      break;
-
-    case QNN_DATATYPE_INT_16:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<int16_t>(
-            static_cast<int16_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<int16_t>");
-        returnStatus = StatusCode::FAILURE;
-      }
-      break;
-
-    case QNN_DATATYPE_INT_32:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<int32_t>(
-            static_cast<int32_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<int32_t>");
-        returnStatus = StatusCode::FAILURE;
-      }
-      break;
-
-    case QNN_DATATYPE_INT_64:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<int64_t>(
-            static_cast<int64_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<int64_t>");
-        returnStatus = StatusCode::FAILURE;
-      }
-      break;
-
-    case QNN_DATATYPE_BOOL_8:
-      if (datautil::StatusCode::SUCCESS !=
-          datautil::castFromFloat<uint8_t>(
-            static_cast<uint8_t *>(QNN_TENSOR_GET_CLIENT_BUF(tensor).data),
-            floatBuffer, datautil::calculateElementCount(dims))) {
-        QNN_ERROR("failure in castFromFloat<bool>");
-        returnStatus = StatusCode::FAILURE;
-      }
-      break;
-
+      return true;
+    }
     default:
-      QNN_ERROR("Datatype not supported yet!");
-      returnStatus = StatusCode::FAILURE;
-      break;
+      return false;
     }
-    return returnStatus;
+  }
+
+  static bool hasMatchingCopiedMetadata(const Qnn_Tensor_t &source,
+                                        const Qnn_Tensor_t &copy) noexcept {
+    if (!hasCompleteV1Metadata(copy) || copy.v1.id != source.v1.id ||
+        std::strcmp(copy.v1.name, source.v1.name) != 0 ||
+        copy.v1.type != source.v1.type ||
+        copy.v1.dataFormat != source.v1.dataFormat ||
+        copy.v1.dataType != source.v1.dataType ||
+        copy.v1.rank != source.v1.rank ||
+        copy.v1.quantizeParams.encodingDefinition !=
+          source.v1.quantizeParams.encodingDefinition ||
+        copy.v1.quantizeParams.quantizationEncoding !=
+          source.v1.quantizeParams.quantizationEncoding) {
+      return false;
+    }
+
+    for (uint32_t axis = 0; axis < source.v1.rank; ++axis) {
+      if (copy.v1.dimensions[axis] != source.v1.dimensions[axis]) {
+        return false;
+      }
+    }
+
+    if (source.v1.quantizeParams.quantizationEncoding ==
+        QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
+      return copy.v1.quantizeParams.scaleOffsetEncoding.scale ==
+               source.v1.quantizeParams.scaleOffsetEncoding.scale &&
+             copy.v1.quantizeParams.scaleOffsetEncoding.offset ==
+               source.v1.quantizeParams.scaleOffsetEncoding.offset;
+    }
+    if (source.v1.quantizeParams.quantizationEncoding ==
+        QNN_QUANTIZATION_ENCODING_UNDEFINED) {
+      return true;
+    }
+
+    const auto &source_axis = source.v1.quantizeParams.axisScaleOffsetEncoding;
+    const auto &copy_axis = copy.v1.quantizeParams.axisScaleOffsetEncoding;
+    if (copy_axis.axis != source_axis.axis ||
+        copy_axis.numScaleOffsets != source_axis.numScaleOffsets) {
+      return false;
+    }
+    for (uint32_t index = 0; index < source_axis.numScaleOffsets; ++index) {
+      if (copy_axis.scaleOffset[index].scale !=
+            source_axis.scaleOffset[index].scale ||
+          copy_axis.scaleOffset[index].offset !=
+            source_axis.scaleOffset[index].offset) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  qnn::tools::iotensor::StatusCode
+  setupTensorsNoCopy(TensorOwner &tensors, uint32_t tensor_count,
+                     const Qnn_Tensor_t *tensor_wrappers) {
+    tensors.reset();
+    if (tensor_count == 0) {
+      QNN_INFO("tensor count is 0. Nothing to setup.");
+      return qnn::tools::iotensor::StatusCode::SUCCESS;
+    }
+    if (tensor_wrappers == nullptr) {
+      ml_loge("tensorWrappers is nullptr");
+      return qnn::tools::iotensor::StatusCode::FAILURE;
+    }
+    if (tensor_count >
+        std::numeric_limits<size_t>::max() / sizeof(Qnn_Tensor_t)) {
+      ml_loge("QNN tensor descriptor count is too large");
+      return qnn::tools::iotensor::StatusCode::FAILURE;
+    }
+
+    auto *raw_tensors = static_cast<Qnn_Tensor_t *>(
+      std::calloc(tensor_count, sizeof(Qnn_Tensor_t)));
+    if (raw_tensors == nullptr) {
+      ml_loge("Memory allocation failed for QNN tensor descriptors");
+      return qnn::tools::iotensor::StatusCode::FAILURE;
+    }
+    tensors.reset(raw_tensors);
+
+    for (uint32_t tensor_index = 0; tensor_index < tensor_count;
+         ++tensor_index) {
+      tensors[tensor_index] = QNN_TENSOR_INIT;
+    }
+
+    for (uint32_t tensor_index = 0; tensor_index < tensor_count;
+         ++tensor_index) {
+      const auto &source = tensor_wrappers[tensor_index];
+      if (!hasCompleteV1Metadata(source)) {
+        ml_loge("Invalid or unsupported QNN tensor metadata at index %u",
+                tensor_index);
+        return qnn::tools::iotensor::StatusCode::FAILURE;
+      }
+      if (!qnn::tools::sample_app::deepCopyQnnTensorInfo(
+            tensors.get() + tensor_index, &source) ||
+          !hasMatchingCopiedMetadata(source, tensors[tensor_index])) {
+        ml_loge("Failed to copy complete QNN tensor metadata at index %u",
+                tensor_index);
+        return qnn::tools::iotensor::StatusCode::FAILURE;
+      }
+      QNN_TENSOR_SET_MEM_TYPE(tensors.get() + tensor_index,
+                              QNN_TENSORMEMTYPE_MEMHANDLE);
+    }
+    return qnn::tools::iotensor::StatusCode::SUCCESS;
   }
 };
+
 } // namespace nntrainer
 
 #endif
