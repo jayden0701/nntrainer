@@ -1,16 +1,18 @@
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright (C) 2026 Samsung Electronics Co., Ltd. All Rights Reserved.
+ *
+ * @file    LlavaNextImageProcessor.kt
+ * @brief   Internal LLaVA-NeXT image preprocessing implementation.
+ */
 package com.example.quickdotai
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.ImageDecoder
-import android.net.Uri
 import android.graphics.Color
-import java.io.IOException
+import androidx.core.graphics.createBitmap
 import kotlin.math.ceil
 import kotlin.math.min
-import androidx.core.graphics.createBitmap
-import com.example.quickdotai.PillowBilinearResizer
 
 
 /**
@@ -24,8 +26,7 @@ import com.example.quickdotai.PillowBilinearResizer
  * @param imageMean The mean values for normalization (R, G, B).
  * @param imageStd The standard deviation values for normalization (R, G, B).
  */
-class LlavaNextImageProcessor(
-    private val context: Context,
+internal class LlavaNextImageProcessor(
     private val cropSize: Int = 512,
     private val imageGridPinpoints: List<Pair<Int, Int>> = listOf(
         Pair(512,1024),Pair(512,1536),Pair(512,2048),Pair(512,2560),Pair(512,3072),Pair(512,3584),Pair(512,4096),Pair(512,4608),Pair(512,5120),Pair(512,5632),Pair(512,6144),Pair(1024,512),Pair(1024,1024),Pair(1024,1536),Pair(1024,2048),Pair(1024,2560),Pair(1024,3072),Pair(1536,512),Pair(1536,1024),Pair(1536,1536),Pair(1536,2048),Pair(2048,512),Pair(2048,1024),Pair(2048,1536),Pair(2560,512),Pair(2560,1024),Pair(3072,512),Pair(3072,1024),Pair(3584,512),Pair(4096,512),Pair(4608,512),Pair(5120,512),Pair(5632,512),Pair(6144,512)
@@ -36,7 +37,7 @@ class LlavaNextImageProcessor(
     private val patchMergeType: String = "nopad"
 ) {
 
-    fun resizeImage(inputBitmap: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap {
+    private fun resizeImage(inputBitmap: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap {
         val width = inputBitmap.width
         val height = inputBitmap.height
         val pixels = IntArray(width * height)
@@ -46,55 +47,6 @@ class LlavaNextImageProcessor(
         return Bitmap.createBitmap(resizedPixels, targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
 
 //        return inputBitmap.scale(targetWidth, targetHeight, filter = true)
-    }
-
-    /**
-     * Loads a Bitmap from a given content URI.
-     *
-     * @param imageUri The URI of the image to load.
-     * @return A Bitmap object, or null if loading fails.
-     */
-    fun loadBitmapFromUri(imageUri: Uri, resize: Boolean = false): Bitmap? {
-        val bitmap = try {
-            val source = ImageDecoder.createSource(context.contentResolver, imageUri)
-
-            // Decode the bitmap, ensuring it's mutable and in ARGB_8888 config
-            ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                decoder.isMutableRequired = true
-                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-            }.copy(Bitmap.Config.ARGB_8888, true)
-        } catch (e: IOException) {
-            e.printStackTrace()
-            null
-        }
-        if (resize) {
-            return resizeBitmapIfTooLarge(bitmap)
-        }
-        return bitmap
-    }
-
-    fun resizeBitmapIfTooLarge(
-        originalBitmap: Bitmap?,
-        maxPixels: Int = 300000
-    ): Bitmap? {
-        if (originalBitmap == null) return null
-        val currentPixels = originalBitmap.width * originalBitmap.height
-
-        if (currentPixels <= maxPixels) {
-            // Bitmap is already smaller or equal to the max pixels, no resize needed
-            return originalBitmap
-        }
-
-        val aspectRatio = originalBitmap.width.toFloat() / originalBitmap.height.toFloat()
-
-        // Calculate new dimensions
-        // newHeight = sqrt(maxPixels / aspectRatio)
-        val newHeight = Math.sqrt(maxPixels / aspectRatio.toDouble()).toInt()
-        // newWidth = newHeight * aspectRatio
-        val newWidth = (newHeight * aspectRatio).toInt()
-
-        // Create a new scaled bitmap
-        return resizeImage(originalBitmap, newWidth, newHeight)
     }
 
     // Represents the final model input for a single image
@@ -114,17 +66,21 @@ class LlavaNextImageProcessor(
     fun preprocess(image: Bitmap): ModelInput {
         val originalSize = Pair(image.height, image.width)
         val imagePatches = getImagePatches(image)
-        val perImagePatchSize = cropSize * cropSize * 3
-        val floatValues = FloatArray(imagePatches.size * perImagePatchSize)
+        return try {
+            val perImagePatchSize = cropSize * cropSize * 3
+            val floatValues = FloatArray(imagePatches.size * perImagePatchSize)
 
-        imagePatches.mapIndexed { index, patch ->
-            // All patches, including the base one, are already at the target cropSize.
-            // We just need to normalize them.
-            normalize(patch, floatValues, index * perImagePatchSize)
+            imagePatches.forEachIndexed { index, patch ->
+                // All patches, including the base one, have the target crop size.
+                normalize(patch, floatValues, index * perImagePatchSize)
+            }
+
+            ModelInput(pixelValues = floatValues, originalSize = originalSize)
+        } finally {
+            imagePatches.forEach { patch ->
+                if (!patch.isRecycled) patch.recycle()
+            }
         }
-
-        // TODO: Compare pixelValues to PyTorch's pixelValues for various images
-        return ModelInput(pixelValues = floatValues, originalSize = originalSize)
     }
 
     /**
@@ -133,14 +89,47 @@ class LlavaNextImageProcessor(
     private fun getImagePatches(image: Bitmap): List<Bitmap> {
         // 1. Create the base, low-res image (resized to cropSize x cropSize)
         val baseImage = resizeImage(image, cropSize, cropSize)
+        try {
+            // 2. Handle high-resolution patching
+            val bestResolution = selectBestResolution(Pair(image.height, image.width))
+                ?: throw IllegalStateException("imageGridPinpoints must not be empty")
+            val resizedForPatching = resizeForPatching(image, bestResolution)
+            val paddedImage = try {
+                padToResolution(resizedForPatching, bestResolution)
+            } catch (throwable: Throwable) {
+                if (!resizedForPatching.isRecycled) {
+                    resizedForPatching.recycle()
+                }
+                throw throwable
+            }
+            val highResPatches = try {
+                divideToPatches(paddedImage, cropSize)
+            } catch (throwable: Throwable) {
+                if (!paddedImage.isRecycled) {
+                    paddedImage.recycle()
+                }
+                if (resizedForPatching !== paddedImage && !resizedForPatching.isRecycled) {
+                    resizedForPatching.recycle()
+                }
+                throw throwable
+            }
 
-        // 2. Handle high-resolution patching
-        val bestResolution = selectBestResolution(Pair(image.height, image.width))!!
-        val resizedForPatching = resizeForPatching(image, bestResolution)
-        val paddedImage = padToResolution(resizedForPatching, bestResolution)
-        val highResPatches = divideToPatches(paddedImage, cropSize)
-
-        return listOf(baseImage) + highResPatches
+            // Bitmap.createBitmap may return its source when a single patch
+            // covers the whole image. Leave that object for preprocess() to
+            // recycle with the returned patches.
+            if (highResPatches.none { it === paddedImage } && !paddedImage.isRecycled) {
+                paddedImage.recycle()
+            }
+            if (resizedForPatching !== paddedImage && !resizedForPatching.isRecycled) {
+                resizedForPatching.recycle()
+            }
+            return listOf(baseImage) + highResPatches
+        } catch (throwable: Throwable) {
+            if (!baseImage.isRecycled) {
+                baseImage.recycle()
+            }
+            throw throwable
+        }
     }
 
     /**
@@ -255,18 +244,27 @@ class LlavaNextImageProcessor(
         val patches = mutableListOf<Bitmap>()
         val (height, width) = image.height to image.width
 
-        for (i in 0 until height step patchSize) {
-            for (j in 0 until width step patchSize) {
-                val patch = Bitmap.createBitmap(image, j, i, patchSize, patchSize)
-                patches.add(patch)
+        try {
+            for (i in 0 until height step patchSize) {
+                for (j in 0 until width step patchSize) {
+                    val patch = Bitmap.createBitmap(image, j, i, patchSize, patchSize)
+                    patches.add(patch)
+                }
             }
+        } catch (throwable: Throwable) {
+            patches.forEach { patch ->
+                if (!patch.isRecycled) {
+                    patch.recycle()
+                }
+            }
+            throw throwable
         }
         return patches
     }
 
     /**
      * Rescales pixel values from [0, 255] to [0, 1] and then normalizes them.
-     * The output is a flattened FloatArray in CHW (Channels, Height, Width) format.
+     * The output is a flattened FloatArray in HWC (Height, Width, Channels) format.
      */
     private fun normalize(image: Bitmap, floatValues: FloatArray, offset: Int) {
         val width = image.width
@@ -279,9 +277,12 @@ class LlavaNextImageProcessor(
         for (i in 0 until (width * height)) {
             val pixel = pixels[i]
             // Rescale to [0, 1] then normalize
-            floatValues[offset + i * 3] = ((Color.red(pixel) / 255.0f) - imageMean[0]) / imageStd[0]
-            floatValues[offset + i * 3 + 1] = ((Color.green(pixel) / 255.0f) - imageMean[1]) / imageStd[1]
-            floatValues[offset + i * 3 + 2] = ((Color.blue(pixel) / 255.0f) - imageMean[2]) / imageStd[2]
+            floatValues[offset + i * 3] =
+                ((Color.red(pixel) * rescaleFactor).toFloat() - imageMean[0]) / imageStd[0]
+            floatValues[offset + i * 3 + 1] =
+                ((Color.green(pixel) * rescaleFactor).toFloat() - imageMean[1]) / imageStd[1]
+            floatValues[offset + i * 3 + 2] =
+                ((Color.blue(pixel) * rescaleFactor).toFloat() - imageMean[2]) / imageStd[2]
         }
     }
 

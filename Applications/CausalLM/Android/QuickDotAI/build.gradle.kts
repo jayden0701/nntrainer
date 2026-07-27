@@ -155,13 +155,14 @@ tasks.matching { it.name.startsWith("externalNativeBuild") }.configureEach {
 
 dependencies {
     // kotlinx.serialization is exposed as an `api` dependency because the
-    // public types (ModelId, BackendType, LoadModelRequest, …) carry
-    // @Serializable annotations so consumers that want to JSON-ify them
-    // can do so without pulling the runtime in themselves.
+    // stable wire-facing configuration and metric types carry @Serializable,
+    // so consumers can JSON-encode them without pulling the runtime in
+    // themselves.
     api(libs.kotlinx.serialization.json)
 
-    // LiteRT-LM is the engine used by LiteRTLm.kt for Gemma-family models.
-    // Exposed as `api` so consumers don't have to redeclare it.
+    // LiteRT-LM is an implementation detail of LiteRTLm.kt. No LiteRT type is
+    // exposed by the QuickDotAI public API, so keep it off consumer compile
+    // classpaths while retaining it as a transitive runtime dependency.
     //
     // Pinned to an explicit version via the version catalog instead of
     // `latest.release`: dynamic versions are non-deterministic (they
@@ -171,8 +172,10 @@ dependencies {
     // compiler was pinned to a version that could not read 0.10.0's
     // metadata stamp. See gradle/libs.versions.toml for the rationale
     // behind the exact pin.
-    api(libs.litertlm.android)
-    
+    implementation(libs.litertlm.android)
+
     // AndroidX Core for createBitmap and other utility functions
     implementation("androidx.core:core-ktx:1.12.0")
+
+    testImplementation(libs.junit)
 }

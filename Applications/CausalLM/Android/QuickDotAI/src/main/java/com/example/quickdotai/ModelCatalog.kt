@@ -17,7 +17,16 @@ import android.util.Log
 import org.json.JSONArray
 
 enum class RuntimeKind { NATIVE, LITERT }
-enum class Capability { STREAMING, MESSAGES_API, MULTIMODAL, TOOL_USE, EMBEDDING, MULTI_IMAGE, SPECULATIVE }
+enum class Capability {
+    STREAMING,
+    OPENAI_API,
+    MULTIMODAL,
+    TOOL_USE,
+    EMBEDDING,
+    MULTI_IMAGE,
+    VISION_ENCODER,
+    SPECULATIVE
+}
 
 data class ModelDescriptor(
     val id: String,
@@ -53,7 +62,11 @@ object ModelCatalog {
             displayName = "Gemma4 (LiteRT)",
             runtime = RuntimeKind.LITERT,
             backends = setOf(BackendType.GPU),
-            capabilities = setOf(Capability.MULTIMODAL, Capability.MESSAGES_API, Capability.STREAMING),
+            capabilities = setOf(
+                Capability.MULTIMODAL,
+                Capability.OPENAI_API,
+                Capability.STREAMING
+            ),
         )
     )
 
@@ -61,9 +74,10 @@ object ModelCatalog {
     private val nativeFallback = listOf(
         ModelDescriptor(ModelIds.QWEN3_0_6B, "qwen3-0.6b", "Qwen3 0.6B",
             RuntimeKind.NATIVE, setOf(BackendType.CPU, BackendType.GPU),
-            setOf(Capability.STREAMING, Capability.TOOL_USE)),
+            setOf(Capability.STREAMING, Capability.OPENAI_API, Capability.TOOL_USE)),
         ModelDescriptor(ModelIds.GEMMA4_CPU, "gemma4", "Gemma4 (CPU)",
-            RuntimeKind.NATIVE, setOf(BackendType.CPU), setOf(Capability.STREAMING)),
+            RuntimeKind.NATIVE, setOf(BackendType.CPU),
+            setOf(Capability.STREAMING, Capability.OPENAI_API)),
     )
 
     private val catalog: List<ModelDescriptor> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { build() }
@@ -106,11 +120,12 @@ object ModelCatalog {
 
     private fun decodeCaps(bits: Int): Set<Capability> = buildSet {
         if (bits and 0b000001 != 0) add(Capability.STREAMING)
-        if (bits and 0b000010 != 0) add(Capability.MESSAGES_API)
+        if (bits and 0b000010 != 0) add(Capability.OPENAI_API)
         if (bits and 0b000100 != 0) add(Capability.MULTIMODAL)
         if (bits and 0b001000 != 0) add(Capability.TOOL_USE)
         if (bits and 0b010000 != 0) add(Capability.EMBEDDING)
         if (bits and 0b100000 != 0) add(Capability.MULTI_IMAGE)
+        if (bits and 0b1000000 != 0) add(Capability.VISION_ENCODER)
         if (bits and 0b10000000 != 0) add(Capability.SPECULATIVE)
     }
 
@@ -126,7 +141,7 @@ object ModelCatalog {
 
     /** 사용자 선택(생성/실행) 가능 capability. 하나라도 있으면 피커에 노출. */
     private val SELECTABLE_CAPS = setOf(
-        Capability.STREAMING, Capability.MESSAGES_API,
+        Capability.STREAMING, Capability.OPENAI_API,
         Capability.MULTIMODAL, Capability.TOOL_USE
     )
 

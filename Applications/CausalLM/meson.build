@@ -371,7 +371,6 @@ if get_option('enable-api')
     meson.current_source_dir() / 'api' / 'model_callbacks.cpp',
     meson.current_source_dir() / 'api' / 'model_config.cpp',
     meson.current_source_dir() / 'api' / 'model_descriptors_public.cpp',
-    meson.current_source_dir() / 'api' / 'streamer.cpp',
     meson.current_source_dir() / 'api' / 'callback_streamer.cpp',
   ]
 

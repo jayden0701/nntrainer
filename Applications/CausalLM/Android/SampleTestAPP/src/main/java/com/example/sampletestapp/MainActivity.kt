@@ -6,19 +6,18 @@
  * @brief   Standalone sample that drives the :QuickDotAI AAR directly —
  *          no QuickAIService, no REST, no remote process.
  *
- * Engine wiring (unchanged from the original sample):
+ * Engine wiring:
  *
- *  1. Instantiates [LiteRTLm] for GEMMA4 and [NativeQuickDotAI] for every
- *     other model, both against a single-thread Executor so all calls
- *     touching a given engine are serialised on the same worker thread
- *     (the [QuickDotAI] interface is not internally thread-safe).
+ *  1. Creates the catalog-selected [QuickDotAI] implementation and keeps all
+ *     calls touching it on a single worker thread (the interface is not
+ *     internally thread-safe).
  *  2. Calls [QuickDotAI.load] once per chosen (model, quant) pair. For
  *     GEMMA4 it auto-populates [LoadModelRequest.visionBackend] so the
  *     multimodal path is armed from load time.
- *  3. Drives [QuickDotAI.runStreaming] (text-only) or
- *     [QuickDotAI.runMultimodalStreaming] (when an image is selected)
- *     with an in-memory StreamSink that appends each delta to the output
- *     view on the main thread.
+ *  3. Uses [QuickDotAI.runText] for exact raw prompts and
+ *     [QuickDotAI.runOpenAI] for OpenAI-compatible chat/tool/multimodal
+ *     requests. Native models receive preprocessed tensor sidecars; LiteRT-LM
+ *     receives OpenAI data-image URLs that it maps to image bytes.
  *
  * UI (M3 Expressive redesign — see Applications/QuickAI/QuickDotAI/QuickDotAI.html
  * design bundle): the screen is rebuilt as a tabbed Material 3 interface
@@ -71,30 +70,27 @@ import com.example.quickdotai.LoadModelRequest
 import com.example.quickdotai.ModelCatalog
 import com.example.quickdotai.ModelDescriptor
 import com.example.quickdotai.ModelIds
-import com.example.quickdotai.NativeQuickDotAI
+import com.example.quickdotai.LlavaNextImagePreprocessor
+import com.example.quickdotai.OpenAIImageTensor
+import com.example.quickdotai.OpenAIImageTensorSidecar
+import com.example.quickdotai.OpenAIRequest
 import com.example.quickdotai.RuntimeKind
 import com.example.quickdotai.createEngine
 import com.example.quickdotai.PerformanceMetrics
-import com.example.quickdotai.PromptPart
-import com.example.quickdotai.QuickAiChatMessage
-import com.example.quickdotai.QuickAiChatRole
-import com.example.quickdotai.QuickAiChatSamplingConfig
-import com.example.quickdotai.QuickAiChatSessionConfig
-import com.example.quickdotai.QuickAiChatTemplateKwargs
 import com.example.quickdotai.QuantizationType
 import com.example.quickdotai.QuickAiError
 import com.example.quickdotai.QuickDotAI
 import com.example.quickdotai.StreamSink
 import java.io.File
+import java.util.Base64
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /* ────────────────────────────────────────────────────────────────────────
  * M3 Expressive token set — mirrors the LIGHT / DARK objects defined in
@@ -168,9 +164,35 @@ private val DARK = M3Tokens(
     codeFg = 0xFFCFBCFF.toInt(),
 )
 
+private data class OpenAIPreviewMessage(val role: String, val text: String)
+
+private data class LocalChatMessage(
+    val role: String,
+    val text: String,
+    val imageSources: List<String> = emptyList(),
+    val imageTensors: List<OpenAIImageTensor> = emptyList(),
+)
+
+private data class PreparedOpenAIImages(
+    val sources: List<String>,
+    val tensors: List<OpenAIImageTensor>,
+)
+
+private data class ActiveChatSnapshot(
+    val generation: Long,
+    val key: String,
+    val history: List<LocalChatMessage>,
+    val nextImageIndex: Int,
+)
+
+private data class ChatUiState(
+    val active: Boolean,
+    val assistantTurns: Int,
+)
+
 class MainActivity : AppCompatActivity() {
 
-    /* ───── Engine plumbing (unchanged from the original sample) ───── */
+    /* ───── Engine plumbing ───── */
 
     private val engineExecutor: Executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "SampleTestAPP-Engine").apply { isDaemon = true }
@@ -180,7 +202,12 @@ class MainActivity : AppCompatActivity() {
 
     @Volatile private var engine: QuickDotAI? = null
     @Volatile private var loadedKey: String? = null
-    @Volatile private var selectedImageBytesList: MutableList<ByteArray> = mutableListOf()
+    @Volatile private var selectedImageBytesList: List<ByteArray> = emptyList()
+    private val imagePreprocessor by lazy { LlavaNextImagePreprocessor() }
+    private val chatStateLock = Any()
+    private val chatHistory = mutableListOf<LocalChatMessage>()
+    private var chatGeneration = 0L
+    private var nextChatImageIndex = 0
 
     /** Convenience: first selected image (or null) — for single-image code paths. */
     private val selectedImageBytes: ByteArray?
@@ -214,27 +241,24 @@ class MainActivity : AppCompatActivity() {
     private var promptText: String = "What is rainbow?"
 
     private var systemPromptText: String = ""
-    private var temperatureText: String = ""
-    private var topKText: String = ""
-    private var topPText: String = ""
-    private var seedText: String = ""
-    private var thinkingChoice: String = "default"      // default | true | false
     private var chatPromptText: String = "I bought a red car"
-    private var openAiJsonText: String = """[
-  {"role": "system", "content": "You are a helpful assistant."},
-  {"role": "user", "content": "Hello!"},
-  {"role": "assistant", "content": "Hi! How can I help?"},
-  {"role": "system", "content": "Answer in one short sentence."},
-  {"role": "user", "content": "Write a short joke about saving RAM."}
-]"""
+    private var openAiJsonText: String = """{
+  "messages": [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Hello!"},
+    {"role": "assistant", "content": "Hi! How can I help?"},
+    {"role": "system", "content": "Answer in one short sentence."},
+    {"role": "user", "content": "Write a short joke about saving RAM."}
+  ]
+}"""
 
     private var statusText: String = "Idle."
     private var outputText: String = ""
-    private var streaming: Boolean = false
+    @Volatile private var streaming: Boolean = false
     private var loadStatus: String = "idle"             // idle | loading | loaded
     private var loadedLabel: String = ""
-    private var sessionIdText: String? = null
-    private var activeSessionKey: String? = null
+    private var chatActive: Boolean = false
+    private var activeChatKey: String? = null
     private var lastMetrics: PerformanceMetrics? = null
 
     private var mainScrollY = 0
@@ -252,14 +276,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var promptField: EditText
     private lateinit var imageStatusView: TextView
     private lateinit var chatSystemPromptField: EditText
-    private lateinit var chatTemperatureField: EditText
-    private lateinit var chatTopKField: EditText
-    private lateinit var chatTopPField: EditText
-    private lateinit var chatSeedField: EditText
     private lateinit var chatPromptField: EditText
     private lateinit var openAIMessagesField: EditText
     private lateinit var chatModelBasePathField: EditText
-    private lateinit var chatSessionStatusView: TextView
+    private lateinit var chatStatusView: TextView
 
     /**
      * @brief ActivityResult launcher for the Android system photo picker
@@ -273,7 +293,7 @@ class MainActivity : AppCompatActivity() {
             setStatus("Image pick cancelled.")
             return@registerForActivityResult
         }
-        selectedImageBytesList.clear()
+        selectedImageBytesList = emptyList()
         readImageBytesAsync(listOf(uri))
     }
 
@@ -289,7 +309,7 @@ class MainActivity : AppCompatActivity() {
             setStatus("Image pick cancelled.")
             return@registerForActivityResult
         }
-        selectedImageBytesList.clear()
+        selectedImageBytesList = emptyList()
         readImageBytesAsync(uris)
     }
 
@@ -297,7 +317,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         checkAllFilesAccess()
         // Seed the path field so a single Load tap works without typing.
-        modelPathText = defaultModelPathFor(selDescriptor, selectedQuant) ?: ""
+        modelPathText = defaultModelPathFor(selDescriptor) ?: ""
         rebuildUi()
     }
 
@@ -315,10 +335,6 @@ class MainActivity : AppCompatActivity() {
         if (::modelBasePathField.isInitialized) modelBasePathText = modelBasePathField.text.toString()
         if (::chatModelBasePathField.isInitialized) modelBasePathText = chatModelBasePathField.text.toString()
         if (::chatSystemPromptField.isInitialized) systemPromptText = chatSystemPromptField.text.toString()
-        if (::chatTemperatureField.isInitialized) temperatureText = chatTemperatureField.text.toString()
-        if (::chatTopKField.isInitialized) topKText = chatTopKField.text.toString()
-        if (::chatTopPField.isInitialized) topPText = chatTopPField.text.toString()
-        if (::chatSeedField.isInitialized) seedText = chatSeedField.text.toString()
         if (::chatPromptField.isInitialized) chatPromptText = chatPromptField.text.toString()
         if (::openAIMessagesField.isInitialized) openAiJsonText = openAIMessagesField.text.toString()
 
@@ -575,7 +591,8 @@ class MainActivity : AppCompatActivity() {
                 selRuntime = ModelCatalog.runtimesFor(selFamily).firstOrNull() ?: selRuntime
                 selBackend = ModelCatalog.backendsFor(selFamily, selRuntime).firstOrNull() ?: selBackend
                 selSdEnabled = false
-                modelPathText = defaultModelPathFor(selDescriptor, selectedQuant) ?: ""
+                modelPathText = defaultModelPathFor(selDescriptor) ?: ""
+                selDescriptor?.id?.let { openAiJsonText = defaultOpenAIExampleForId(it) }
                 rebuildUi(resetModelPath = true)
             })
             spacer(body, 12)
@@ -585,7 +602,8 @@ class MainActivity : AppCompatActivity() {
                 selRuntime = RuntimeKind.valueOf(picked)
                 selBackend = ModelCatalog.backendsFor(selFamily, selRuntime).firstOrNull() ?: selBackend
                 selSdEnabled = false
-                modelPathText = defaultModelPathFor(selDescriptor, selectedQuant) ?: ""
+                modelPathText = defaultModelPathFor(selDescriptor) ?: ""
+                selDescriptor?.id?.let { openAiJsonText = defaultOpenAIExampleForId(it) }
                 rebuildUi(resetModelPath = true)
             })
             spacer(body, 12)
@@ -594,7 +612,8 @@ class MainActivity : AppCompatActivity() {
             body.addView(chipRow(t, ModelCatalog.backendsFor(selFamily, selRuntime).map { it.name }, selBackend.name) { picked ->
                 selBackend = BackendType.valueOf(picked)
                 selSdEnabled = false
-                modelPathText = defaultModelPathFor(selDescriptor, selectedQuant) ?: ""
+                modelPathText = defaultModelPathFor(selDescriptor) ?: ""
+                selDescriptor?.id?.let { openAiJsonText = defaultOpenAIExampleForId(it) }
                 rebuildUi(resetModelPath = true)
             })
             spacer(body, 12)
@@ -768,7 +787,8 @@ class MainActivity : AppCompatActivity() {
             background = strokedSolid(t.surface, 24, t.outlineVariant, 1)
             setPadding(dp(14), dp(14), dp(14), dp(14))
         }
-        val active = sessionIdText != null && activeSessionKey == loadedKey
+        val chatUiState = snapshotChatUiState(loadedKey)
+        val active = chatUiState.active
 
         // Top row: status icon + session controls.
         val modelHeaderRow = LinearLayout(this).apply {
@@ -794,14 +814,15 @@ class MainActivity : AppCompatActivity() {
         })
 
         if (active) {
-            chatSessionStatusView = TextView(this).apply {
-                text = "${sessionIdText!!.take(8)}…"
+            chatStatusView = TextView(this).apply {
+                val turnCount = chatUiState.assistantTurns
+                text = "$turnCount turn${if (turnCount == 1) "" else "s"}"
                 setTextColor(t.success)
                 textSize = 12f
                 typeface = Typeface.MONOSPACE
             }
             spacerH(modelHeaderRow, 8)
-            modelHeaderRow.addView(chatSessionStatusView)
+            modelHeaderRow.addView(chatStatusView)
             spacerH(modelHeaderRow, 6)
             modelHeaderRow.addView(tonalButton(t, "✕ Close", danger = true) { onChatCloseClicked() })
         } else {
@@ -967,14 +988,14 @@ class MainActivity : AppCompatActivity() {
         container.addView(chatImageCard)
         spacer(container, 10)
 
-        // ── Collapsible session config ──
+        // ── Collapsible request config ──
         val configCard = collapsibleCard(
             t = t,
             iconGlyph = "⚙",
             iconBg = t.tertiaryContainer,
             iconFg = t.tertiary,
-            title = "Session config",
-            subtitle = "System prompt · sampling · thinking mode",
+            title = "Chat request config",
+            subtitle = "System prompt",
             rightAdornment = null,
             expanded = samplingExpanded,
             onToggle = {
@@ -988,37 +1009,6 @@ class MainActivity : AppCompatActivity() {
                 placeholder = "You are a helpful assistant.",
                 onTextChange = { systemPromptText = it })
             body.addView(chatSystemPromptField)
-            spacer(body, 10)
-
-            // 2x2 grid of numeric fields.
-            val grid1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            chatTemperatureField = roundedEditText(t, temperatureText, mono = true, numeric = true,
-                placeholder = "0.7", onTextChange = { temperatureText = it })
-            chatTopKField = roundedEditText(t, topKText, mono = true, numeric = true,
-                placeholder = "40", onTextChange = { topKText = it })
-            grid1.addView(labeledColumn(t, "TEMPERATURE", chatTemperatureField, weight = 1f))
-            spacerH(grid1, 10)
-            grid1.addView(labeledColumn(t, "TOP_K", chatTopKField, weight = 1f))
-            body.addView(grid1)
-            spacer(body, 10)
-
-            val grid2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            chatTopPField = roundedEditText(t, topPText, mono = true, numeric = true,
-                placeholder = "0.95", onTextChange = { topPText = it })
-            chatSeedField = roundedEditText(t, seedText, mono = true, numeric = true,
-                placeholder = "random", onTextChange = { seedText = it })
-            grid2.addView(labeledColumn(t, "TOP_P", chatTopPField, weight = 1f))
-            spacerH(grid2, 10)
-            grid2.addView(labeledColumn(t, "SEED", chatSeedField, weight = 1f))
-            body.addView(grid2)
-            spacer(body, 12)
-
-            body.addView(labelView(t, "ENABLE_THINKING"))
-            body.addView(chipRow(t, listOf("default", "true", "false"),
-                thinkingChoice) { picked ->
-                thinkingChoice = picked
-                rebuildUi()
-            })
         }
         container.addView(configCard)
         spacer(container, 10)
@@ -1053,7 +1043,7 @@ class MainActivity : AppCompatActivity() {
         }
         composerRow.addView(chatPromptField)
 
-        val canSend = sessionIdText != null && activeSessionKey == loadedKey && !streaming
+        val canSend = snapshotChatUiState(loadedKey).active && !streaming
         val sendFab = TextView(this).apply {
             text = "▶"
             gravity = Gravity.CENTER
@@ -1075,14 +1065,14 @@ class MainActivity : AppCompatActivity() {
     private fun buildOpenAiTab(t: M3Tokens): View {
         val card = roundedCard(t, t.surfaceContainer)
         card.addView(sectionHeader(t, "{ }", t.secondaryContainer, t.onSurface,
-            "OpenAI messages",
-            "Role-interleaved array · forwarded to chat template"))
+            "OpenAI request",
+            "Full request object · forwarded without dropping fields"))
         spacer(card, 12)
 
         // Parsed preview.
         var parseErr: String? = null
-        val parsed: List<QuickAiChatMessage>? = try {
-            parseOpenAIMessages(openAiJsonText)
+        val parsed: List<OpenAIPreviewMessage>? = try {
+            parseOpenAIPreview(openAiJsonText)
         } catch (e: Throwable) { parseErr = e.message; null }
 
         if (parsed != null) {
@@ -1097,10 +1087,12 @@ class MainActivity : AppCompatActivity() {
                     gravity = Gravity.TOP
                     setPadding(0, dp(3), 0, dp(3))
                 }
-                val (badgeBg, badgeFg, badgeLabel) = when (msg.role) {
-                    QuickAiChatRole.SYSTEM    -> Triple(t.tertiaryContainer, t.tertiary, "SYSTEM")
-                    QuickAiChatRole.USER      -> Triple(t.primaryContainer,  t.onPrimaryContainer, "USER")
-                    QuickAiChatRole.ASSISTANT -> Triple(t.secondaryContainer, t.onSurface, "ASSISTANT")
+                val (badgeBg, badgeFg, badgeLabel) = when (msg.role.lowercase()) {
+                    "system", "developer" ->
+                        Triple(t.tertiaryContainer, t.tertiary, msg.role.uppercase())
+                    "user" -> Triple(t.primaryContainer, t.onPrimaryContainer, "USER")
+                    "assistant" -> Triple(t.secondaryContainer, t.onSurface, "ASSISTANT")
+                    else -> Triple(t.surfaceContainer, t.onSurfaceVar, msg.role.uppercase())
                 }
                 val badge = TextView(this).apply {
                     text = badgeLabel
@@ -1115,8 +1107,7 @@ class MainActivity : AppCompatActivity() {
                 row.addView(badge)
                 spacerH(row, 8)
                 val content = TextView(this).apply {
-                    val txtPart = msg.parts.firstOrNull() as? PromptPart.Text
-                    text = txtPart?.text ?: ""
+                    text = msg.text
                     setTextColor(t.onSurface)
                     textSize = 13f
                     layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
@@ -1232,7 +1223,7 @@ class MainActivity : AppCompatActivity() {
         card.addView(openAiImageCard)
         spacer(card, 12)
 
-        card.addView(labelView(t, "MESSAGES JSON"))
+        card.addView(labelView(t, "OPENAI REQUEST JSON"))
         openAIMessagesField = roundedEditText(t, openAiJsonText, multiline = true, mono = true, rows = 8,
             onTextChange = {
                 val same = it == openAiJsonText
@@ -1243,17 +1234,10 @@ class MainActivity : AppCompatActivity() {
         card.addView(openAIMessagesField)
         spacer(card, 12)
 
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val runBtn = filledButton(t, "▶  Run (streaming)", fill = "horizontal") {
+        val runBtn = filledButton(t, "▶  Run OpenAI request", fill = "vertical") {
             onOpenAIMessagesRunClicked()
         }.apply { isEnabled = !streaming && parseErr == null }
-        actions.addView(runBtn)
-        spacerH(actions, 8)
-        val blockingBtn = tonalButton(t, "Blocking") {
-            onOpenAIMessagesRunBlockingClicked()
-        }.apply { isEnabled = !streaming && parseErr == null }
-        actions.addView(blockingBtn)
-        card.addView(actions)
+        card.addView(runBtn)
         return card
     }
 
@@ -2007,7 +1991,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isMultimodal(d: ModelDescriptor) = Capability.MULTIMODAL in d.capabilities
-    private fun usesMessagesApi(d: ModelDescriptor) = Capability.MESSAGES_API in d.capabilities
+    private fun usesOpenAiApi(d: ModelDescriptor) = Capability.OPENAI_API in d.capabilities
 
     private fun visionBackendFor(d: ModelDescriptor, backend: BackendType): BackendType? =
         if (isMultimodal(d)) backend else null
@@ -2033,24 +2017,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun onLoadClicked() {
         val req = buildLoadRequest()
+        val requestKey = modelRequestKey(req)
         loadStatus = "loading"
-        setStatus("Loading ${req.modelKey}…  (vision=${req.visionBackend?.name ?: "off"})")
+        setStatus("Loading $requestKey…  (vision=${req.visionBackend?.name ?: "off"})")
         outputText = ""
         mainHandler.post { rebuildUi() }
         engineExecutor.execute { loadModelInternal(req) }
     }
 
     private fun onCancelClicked() {
-        val e = engine
-        if (e != null && e.chatSessionId != null) {
-            e.chatCancel()
-            setStatus("Cancel requested.")
-        } else {
-            e?.cancel()
-            streaming = false
-            setStatus("Cancelled.")
-            mainHandler.post { rebuildUi() }
-        }
+        engine?.cancel()
+        streaming = false
+        setStatus("Cancel requested.")
+        mainHandler.post { rebuildUi() }
     }
 
     private fun isSdCapableModel(): Boolean =
@@ -2089,7 +2068,7 @@ class MainActivity : AppCompatActivity() {
         val d = chatSelDescriptor
         val backend = chatSelBackend
         val quant = chatSelectedQuant
-        val modelPath = defaultModelPathFor(d, quant)
+        val modelPath = defaultModelPathFor(d)
         val nativeLibDir = applicationContext.applicationInfo.nativeLibraryDir
         val basePath = (if (::chatModelBasePathField.isInitialized) chatModelBasePathField.text.toString()
                         else modelBasePathText).trim().ifEmpty { modelBasePathText }
@@ -2107,45 +2086,58 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun modelRequestKey(req: LoadModelRequest): String = buildString {
+        append(req.modelId)
+        append(':')
+        append(req.backend.name)
+        append(':')
+        append(req.quantization.name)
+        append(":vision=")
+        append(req.visionBackend?.name ?: "off")
+        append(":sd=")
+        append(req.useSpeculativeDecoding)
+        append(":config=")
+        append(Integer.toHexString(req.hashCode()))
+    }
+
     /**
      * @brief Core model loading logic. Must be called from [engineExecutor].
      * Returns the loaded [QuickDotAI] engine, or null on failure.
      */
     private fun loadModelInternal(req: LoadModelRequest): QuickDotAI? {
-        if (loadedKey != null && loadedKey != req.modelKey) {
+        val requestKey = modelRequestKey(req)
+        if (loadedKey != null && loadedKey != requestKey) {
             try { engine?.close() } catch (_: Throwable) { /* best effort */ }
             engine = null
             loadedKey = null
             clearChatSessionState()
         }
-        if (engine != null && loadedKey == req.modelKey) {
-            if (activeSessionKey != null && activeSessionKey != req.modelKey) {
-                clearChatSessionState()
-            }
-            loadDefaultOpenAIExampleFor(req.modelId)
+        if (engine != null && loadedKey == requestKey) {
+            clearChatIfBoundToDifferentKey(requestKey)
             loadStatus = "loaded"
-            loadedLabel = req.modelKey
-            setStatus("Already loaded: ${req.modelKey}")
+            loadedLabel = requestKey
+            setStatus("Already loaded: $requestKey")
             mainHandler.post { rebuildUi() }
             return engine
         }
 
         val descriptor = ModelCatalog.byId(req.modelId)
-        val basePath = req.modelBasePath ?: modelBasePathText
-        val newEngine: QuickDotAI = if (descriptor != null) {
-            createEngine(applicationContext, descriptor, modelBasePath = basePath)
-        } else {
-            NativeQuickDotAI(applicationContext)  // fallback
+            ?: ModelCatalog.all().firstOrNull { it.sdVariantId == req.modelId }
+        if (descriptor == null) {
+            loadStatus = "idle"
+            setStatus("Load failed: unknown model id '${req.modelId}'.")
+            mainHandler.post { rebuildUi() }
+            return null
         }
+        val newEngine = createEngine(descriptor)
         return when (val r = newEngine.load(req)) {
             is BackendResult.Ok -> {
                 engine = newEngine
-                loadedKey = req.modelKey
+                loadedKey = requestKey
                 clearChatSessionState()
-                loadDefaultOpenAIExampleFor(req.modelId)
                 loadStatus = "loaded"
-                loadedLabel = req.modelKey
-                setStatus("Loaded ${req.modelKey} (${newEngine.kind}, arch=${newEngine.architecture ?: "?"})")
+                loadedLabel = requestKey
+                setStatus("Loaded $requestKey (${newEngine.kind}, model=${newEngine.modelId ?: "?"})")
                 mainHandler.post { rebuildUi() }
                 newEngine
             }
@@ -2166,7 +2158,13 @@ class MainActivity : AppCompatActivity() {
             setStatus("Prompt is empty.")
             return
         }
-        val imgBytesList = selectedImageBytesList.toList()
+        val imgBytesList = selectedImageBytesList
+        if (imgBytesList.isNotEmpty() &&
+            (selDescriptor?.let { isMultimodal(it) && usesOpenAiApi(it) } != true)
+        ) {
+            setStatus("Selected model does not support OpenAI image input.")
+            return
+        }
         outputText = ""
         mainHandler.post { outputView.text = "" }
         streaming = true
@@ -2201,16 +2199,27 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             try {
-                if (imgBytesList.isNotEmpty()) {
-                    val parts = imgBytesList.map { PromptPart.ImageBytes(it) } +
-                        listOf(PromptPart.Text(prompt))
-                    e.runMultimodalHandleStreaming(parts, sink)
+                val result = if (imgBytesList.isEmpty()) {
+                    e.runText(prompt, sink)
                 } else {
-                    // Run tab removed - use Chat or OpenAI tab instead
-                    streaming = false
-                    setStatus("Run tab removed. Use Chat or OpenAI tab.")
-                    mainHandler.post { rebuildUi() }
+                    e.runOpenAI(
+                        createSingleTurnOpenAIRequest(prompt, imgBytesList, e.kind),
+                        sink
+                    )
                 }
+                when (result) {
+                    is BackendResult.Ok -> {
+                        when (val metrics = e.metrics()) {
+                            is BackendResult.Ok -> lastMetrics = metrics.value
+                            is BackendResult.Err -> Unit
+                        }
+                    }
+                    is BackendResult.Err -> {
+                        streaming = false
+                        setStatus("Run failed: [${result.error.name}] ${result.message ?: ""}")
+                    }
+                }
+                mainHandler.post { rebuildUi() }
             } catch (t: Throwable) {
                 streaming = false
                 setStatus("Run threw: ${t.message}")
@@ -2249,12 +2258,10 @@ class MainActivity : AppCompatActivity() {
                 setStatus("Nothing to unload.")
                 return@execute
             }
-            if (e.chatSessionId != null) {
-                try { e.closeChatSession() } catch (_: Throwable) {}
-                clearChatSessionState()
-            }
             when (val r = e.unload()) {
                 is BackendResult.Ok -> {
+                    try { e.close() } catch (_: Throwable) { /* best effort */ }
+                    if (engine === e) engine = null
                     loadedKey = null
                     loadStatus = "idle"
                     loadedLabel = ""
@@ -2268,66 +2275,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /* ───── Chat session handlers ───── */
+    /* ───── Local OpenAI chat handlers ───── */
 
     private fun onChatOpenClicked() {
+        if (chatSelDescriptor?.let { usesOpenAiApi(it) } == false) {
+            setStatus("Selected chat model does not support the OpenAI request API.")
+            return
+        }
         val req = buildChatLoadRequest()
         val systemPrompt = systemPromptText.trim().ifEmpty { null }
-        val temperature = temperatureText.trim().ifEmpty { null }?.toDoubleOrNull()
-        val topK = topKText.trim().ifEmpty { null }?.toIntOrNull()
-        val topP = topPText.trim().ifEmpty { null }?.toDoubleOrNull()
-        val seed = seedText.trim().ifEmpty { null }?.toIntOrNull()
 
-        setStatus("Opening chat session…")
+        setStatus("Starting local OpenAI chat…")
         engineExecutor.execute {
             val e = loadModelInternal(req)
             if (e == null) {
-                setStatus("Cannot open chat session — model load failed.")
+                setStatus("Cannot start chat — model load failed.")
                 return@execute
             }
-            if (e.chatSessionId != null) {
-                try { e.closeChatSession() } catch (_: Throwable) {}
-                clearChatSessionState()
+            val chatKey = loadedKey
+            if (chatKey == null) {
+                setStatus("Cannot start chat — loaded model identity is unavailable.")
+                return@execute
             }
-
-            val sampling = if (temperature != null || topK != null || topP != null || seed != null) {
-                QuickAiChatSamplingConfig(
-                    temperature = temperature, topK = topK, topP = topP, seed = seed
-                )
-            } else null
-
-            val templateKwargs = when (thinkingChoice) {
-                "true"  -> QuickAiChatTemplateKwargs(enableThinking = true)
-                "false" -> QuickAiChatTemplateKwargs(enableThinking = false)
-                else    -> null
-            }
-
-            val config = if (systemPrompt != null || sampling != null || templateKwargs != null) {
-                QuickAiChatSessionConfig(
-                    systemInstruction = systemPrompt,
-                    sampling = sampling,
-                    chatTemplateKwargs = templateKwargs
-                )
-            } else null
-
-            when (val r = e.openChatSession(config)) {
-                is BackendResult.Ok -> {
-                    markChatSessionOpened(r.value)
-                    setStatus("Chat session opened: ${r.value.take(8)}…")
-                    mainHandler.post { rebuildUi() }
-                }
-                is BackendResult.Err -> {
-                    clearChatSessionState()
-                    setStatus("Chat open failed: [${r.error.name}] ${r.message ?: ""}")
-                }
-            }
+            startChatSession(chatKey, systemPrompt)
+            setStatus("Chat ready. History will be sent through runOpenAI().")
+            mainHandler.post { rebuildUi() }
         }
     }
 
     private fun onChatRunStreamingClicked() {
-        val prompt = normalizeVisionPromptText(chatPromptField.text.toString())
+        val prompt = chatPromptField.text.toString()
         if (prompt.isBlank()) { setStatus("Chat message is empty."); return }
-        val imgBytesList = selectedImageBytesList.toList()
+        if (!isChatActiveFor(loadedKey)) {
+            setStatus("No active chat — tap Open first.")
+            return
+        }
+        val imgBytesList = selectedImageBytesList
         if (imgBytesList.isNotEmpty() && chatSelDescriptor?.let { isMultimodal(it) } != true) {
             setStatus("Selected chat model does not support image input.")
             return
@@ -2349,67 +2332,81 @@ class MainActivity : AppCompatActivity() {
                 mainHandler.post { rebuildUi() }
                 return@execute
             }
-            if (imgBytesList.isEmpty() && (e.chatSessionId == null || activeSessionKey != loadedKey)) {
-                clearChatSessionState()
+            val chatSnapshot = snapshotActiveChat(loadedKey)
+            if (chatSnapshot == null) {
                 streaming = false
-                setStatus("No chat session - tap Open first.")
+                setStatus("No active chat - tap Open first.")
                 mainHandler.post { rebuildUi() }
                 return@execute
             }
+            val currentImages = try {
+                prepareOpenAIImages(
+                    bytesList = imgBytesList,
+                    firstSourceIndex = chatSnapshot.nextImageIndex,
+                    engineKind = e.kind,
+                )
+            } catch (t: Throwable) {
+                streaming = false
+                setStatus("Image preprocessing failed: ${t.message}")
+                mainHandler.post { rebuildUi() }
+                return@execute
+            }
+            val userMessage = LocalChatMessage(
+                role = "user",
+                text = prompt,
+                imageSources = currentImages.sources,
+                imageTensors = currentImages.tensors,
+            )
+            val generated = StringBuilder()
             val sink = object : StreamSink {
                 override fun onDelta(text: String) {
+                    generated.append(text)
                     outputText += text
                     mainHandler.post { outputView.append(text) }
                 }
-                override fun onDone() {
-                    streaming = false
-                    setStatus("Chat done.")
-                    mainHandler.post { rebuildUi() }
-                }
+                override fun onDone() = Unit
                 override fun onError(error: QuickAiError, message: String?) {
                     streaming = false
                     setStatus("Chat error: [${error.name}] ${message ?: ""}")
                     mainHandler.post { rebuildUi() }
                 }
             }
-            val parts = buildChatParts(prompt, imgBytesList)
-            if (imgBytesList.isNotEmpty()) {
-                try {
-                    when (val r = e.runMultimodalHandleStreaming(parts, sink)) {
-                        is BackendResult.Ok -> {
-                            streaming = false
-                            when (val metrics = e.metrics()) {
-                                is BackendResult.Ok -> {
-                                    lastMetrics = metrics.value
-                                    setStatus("Chat multimodal done. (${metrics.value.totalDurationMs.toLong()} ms)")
-                                }
-                                is BackendResult.Err ->
-                                    setStatus("Chat multimodal done.")
-                            }
-                            mainHandler.post { rebuildUi() }
-                        }
-                        is BackendResult.Err -> {
-                            streaming = false
-                            mainHandler.post { rebuildUi() }
-                        }
-                    }
-                } catch (t: Throwable) {
-                    streaming = false
-                    setStatus("Chat threw: ${t.message}")
-                    mainHandler.post { rebuildUi() }
-                }
-                return@execute
-            }
             try {
-                when (val r = e.runChatModelHandleStreaming(prompt, sink)) {
+                val request = buildChatOpenAIRequest(
+                    history = chatSnapshot.history,
+                    currentUser = userMessage,
+                )
+                when (val r = e.runOpenAI(request, sink)) {
                     is BackendResult.Ok -> {
+                        val committed = commitChatTurn(
+                            snapshot = chatSnapshot,
+                            userMessage = userMessage,
+                            assistantText = generated.toString(),
+                            imageCount = currentImages.sources.size,
+                        )
+                        if (!committed) {
+                            streaming = false
+                            setStatus("Chat result discarded because the chat was closed.")
+                            mainHandler.post { rebuildUi() }
+                            return@execute
+                        }
+                        if (selectedImageBytesList === imgBytesList) {
+                            selectedImageBytesList = emptyList()
+                        }
                         streaming = false
-                        lastMetrics = r.value.metrics ?: lastMetrics
-                        setStatus("Chat done. (${r.value.metrics?.totalDurationMs?.toLong() ?: "?"} ms)")
+                        val duration = when (val metrics = e.metrics()) {
+                            is BackendResult.Ok -> {
+                                lastMetrics = metrics.value
+                                metrics.value.totalDurationMs.toLong().toString()
+                            }
+                            is BackendResult.Err -> "?"
+                        }
+                        setStatus("Chat done. ($duration ms)")
                         mainHandler.post { rebuildUi() }
                     }
                     is BackendResult.Err -> {
                         streaming = false
+                        setStatus("Chat failed: [${r.error.name}] ${r.message ?: ""}")
                         mainHandler.post { rebuildUi() }
                     }
                 }
@@ -2421,159 +2418,299 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun onChatRunBlockingClicked() {
-        val prompt = normalizeVisionPromptText(chatPromptField.text.toString())
-        if (prompt.isBlank()) { setStatus("Chat message is empty."); return }
-        val imgBytes = selectedImageBytes
-        if (imgBytes != null && chatSelDescriptor?.let { isMultimodal(it) } != true) {
-            setStatus("Selected chat model does not support image input.")
-            return
-        }
-        outputText = ""
-        outputView.text = ""
-        setStatus("Blocking chat API removed. Use streaming API.")
-
-        engineExecutor.execute {
-            val e = engine
-            if (e == null || e.chatSessionId == null || activeSessionKey != loadedKey) {
-                clearChatSessionState()
-                setStatus("No chat session - tap Open first.")
-                return@execute
-            }
-            setStatus("Blocking chat API removed. Use streaming API.")
-        }
-    }
-
-    private fun onChatRebuildClicked() {
-        setStatus("Rebuilding chat (clear history)…")
-        engineExecutor.execute {
-            val e = engine
-            if (e == null || e.chatSessionId == null || activeSessionKey != loadedKey) {
-                clearChatSessionState()
-                setStatus("No active chat session.")
-                return@execute
-            }
-            when (val r = e.chatRebuild(emptyList())) {
-                is BackendResult.Ok ->
-                    setStatus("Chat history cleared. Session still active.")
-                is BackendResult.Err ->
-                    setStatus("Chat rebuild failed: [${r.error.name}] ${r.message ?: ""}")
-            }
-        }
-    }
-
     private fun onChatCloseClicked() {
-        setStatus("Closing chat session…")
-        engineExecutor.execute {
-            val e = engine
-            if (e == null || e.chatSessionId == null || activeSessionKey != loadedKey) {
-                clearChatSessionState()
-                setStatus("No active chat session.")
-                return@execute
-            }
-            when (val r = e.closeChatSession()) {
-                is BackendResult.Ok -> {
-                    clearChatSessionState()
-                    setStatus("Chat session closed.")
-                    mainHandler.post { rebuildUi() }
-                }
-                is BackendResult.Err ->
-                    setStatus("Chat close failed: [${r.error.name}] ${r.message ?: ""}")
-            }
-        }
+        if (streaming) engine?.cancel()
+        clearChatSessionState()
+        streaming = false
+        setStatus("Chat closed and local history cleared.")
+        mainHandler.post { rebuildUi() }
     }
 
-    private fun buildChatParts(prompt: String, imgBytesList: List<ByteArray>): List<PromptPart> {
-        return if (imgBytesList.isNotEmpty()) {
-            imgBytesList.map { PromptPart.ImageBytes(it) } + listOf(PromptPart.Text(prompt))
+    private fun buildChatOpenAIRequest(
+        history: List<LocalChatMessage>,
+        currentUser: LocalChatMessage,
+    ): OpenAIRequest {
+        val messages = history + currentUser
+        val requestFields = linkedMapOf<String, JsonElement>(
+            "messages" to JsonArray(messages.map(::localChatMessageToJson)),
+        )
+        val tensors = messages.flatMap { it.imageTensors }
+        return OpenAIRequest(
+            json = JsonObject(requestFields).toString(),
+            imageTensors = tensors.takeIf { it.isNotEmpty() }?.let {
+                OpenAIImageTensorSidecar(tensors = it)
+            },
+        )
+    }
+
+    private fun localChatMessageToJson(message: LocalChatMessage): JsonObject {
+        val content: JsonElement = if (message.imageSources.isEmpty()) {
+            JsonPrimitive(message.text)
         } else {
-            listOf(PromptPart.Text(prompt))
+            JsonArray(
+                message.imageSources.map(::imageUrlPart) +
+                    textPart(message.text)
+            )
         }
+        return JsonObject(
+            linkedMapOf(
+                "role" to JsonPrimitive(message.role),
+                "content" to content,
+            )
+        )
     }
 
     /* ───── OpenAI-style messages handlers ───── */
 
-    private fun parseOpenAIContentParts(contentElement: JsonElement?): List<PromptPart> {
-        if (contentElement == null) return listOf(PromptPart.Text(""))
-        if (contentElement is JsonArray) {
-            val parts = mutableListOf<PromptPart>()
-            for (partElement in contentElement) {
-                val partObj = partElement as? JsonObject ?: continue
-                val type = partObj["type"]?.jsonPrimitive?.content?.lowercase() ?: continue
-                when (type) {
-                    "text", "input_text" -> {
-                        val text = normalizeVisionPromptText(
-                            partObj["text"]?.jsonPrimitive?.content.orEmpty()
-                        )
-                        if (text.isNotEmpty()) parts.add(PromptPart.Text(text))
-                    }
-                    "image_url", "input_image" -> {
-                        // SampleTestAPP keeps picked images in selectedImageBytes;
-                        // the actual bytes are attached after parsing.
-                    }
-                }
-            }
-            return parts.ifEmpty { listOf(PromptPart.Text("")) }
+    private fun parseOpenAIRequestObject(jsonString: String): JsonObject {
+        val root = Json.parseToJsonElement(jsonString) as? JsonObject
+            ?: throw IllegalArgumentException("OpenAI request must be a JSON object.")
+        if (root["messages"] !is JsonArray) {
+            throw IllegalArgumentException("OpenAI request must contain a messages array.")
         }
-        return listOf(PromptPart.Text(
-            normalizeVisionPromptText(contentElement.jsonPrimitive.content)
-        ))
+        return root
     }
 
-    private fun parseOpenAIMessages(
-        jsonString: String,
-        attachedImageBytesList: List<ByteArray> = emptyList()
-    ): List<QuickAiChatMessage>? {
-        return try {
-            val json = Json { ignoreUnknownKeys = true; isLenient = true }
-            val element = json.parseToJsonElement(jsonString)
+    private fun parseOpenAIPreview(jsonString: String): List<OpenAIPreviewMessage> {
+        val messages = parseOpenAIRequestObject(jsonString)["messages"] as JsonArray
+        return messages.mapIndexed { index, element ->
+            val message = element as? JsonObject
+                ?: throw IllegalArgumentException("messages[$index] must be an object.")
+            val role = (message["role"] as? JsonPrimitive)?.contentOrNull
+                ?: throw IllegalArgumentException("messages[$index].role must be a string.")
+            OpenAIPreviewMessage(role, previewOpenAIContent(message["content"]))
+        }
+    }
 
-            // Support both top-level array and {"messages": [...]} object
-            val jsonArray = when {
-                element is JsonArray -> element
-                element is JsonObject && element.containsKey("messages") ->
-                    element["messages"]!!.jsonArray
-                else -> return null
+    private fun previewOpenAIContent(content: JsonElement?): String = when (content) {
+        null -> ""
+        is JsonPrimitive -> content.contentOrNull ?: content.toString()
+        is JsonArray -> content.joinToString(" ") { element ->
+            val part = element as? JsonObject ?: return@joinToString element.toString()
+            when ((part["type"] as? JsonPrimitive)?.contentOrNull?.lowercase()) {
+                "text", "input_text" ->
+                    (part["text"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                "image_url", "input_image" -> "[image]"
+                else -> "[content part]"
             }
+        }
+        else -> content.toString()
+    }
 
-            val messages = mutableListOf<QuickAiChatMessage>()
-            for (element in jsonArray) {
-                val obj = element.jsonObject
-                val role = obj["role"]?.jsonPrimitive?.content?.lowercase() ?: continue
-                val quickRole = when (role) {
-                    "system"    -> QuickAiChatRole.SYSTEM
-                    "user"      -> QuickAiChatRole.USER
-                    "assistant" -> QuickAiChatRole.ASSISTANT
-                    else        -> continue
-                }
-                messages.add(QuickAiChatMessage(
-                    role = quickRole,
-                    parts = parseOpenAIContentParts(obj["content"])
-                ))
+    private fun createSingleTurnOpenAIRequest(
+        prompt: String,
+        imageBytes: List<ByteArray>,
+        engineKind: String,
+    ): OpenAIRequest {
+        val images = prepareOpenAIImages(imageBytes, engineKind = engineKind)
+        val message = localChatMessageToJson(
+            LocalChatMessage(
+                role = "user",
+                text = prompt,
+                imageSources = images.sources,
+                imageTensors = images.tensors,
+            )
+        )
+        return OpenAIRequest(
+            json = JsonObject(
+                mapOf("messages" to JsonArray(listOf(message)))
+            ).toString(),
+            imageTensors = images.tensors.takeIf { it.isNotEmpty() }?.let {
+                OpenAIImageTensorSidecar(tensors = it)
+            },
+        )
+    }
+
+    private fun createOpenAIRequest(
+        originalJson: String,
+        requestObject: JsonObject,
+        imageBytes: List<ByteArray>,
+        engineKind: String,
+    ): OpenAIRequest {
+        if (imageBytes.isEmpty()) return OpenAIRequest(json = originalJson)
+
+        val images = prepareOpenAIImages(imageBytes, engineKind = engineKind)
+        val withImages = bindImagesToOpenAIRequest(
+            requestObject = requestObject,
+            sources = images.sources,
+        )
+        return OpenAIRequest(
+            json = withImages.toString(),
+            imageTensors = images.tensors.takeIf { it.isNotEmpty() }?.let {
+                OpenAIImageTensorSidecar(tensors = it)
+            },
+        )
+    }
+
+    private fun prepareOpenAIImages(
+        bytesList: List<ByteArray>,
+        firstSourceIndex: Int = 0,
+        engineKind: String,
+    ): PreparedOpenAIImages {
+        if (engineKind == "litert-lm") {
+            val sources = bytesList.mapIndexed { index, bytes ->
+                require(bytes.isNotEmpty()) { "image[$index] is empty." }
+                dataImageSource(bytes)
             }
-            if (attachedImageBytesList.isNotEmpty()) {
-                val lastUserIndex = messages.indexOfLast { it.role == QuickAiChatRole.USER }
-                if (lastUserIndex < 0) return null
-                val lastUser = messages[lastUserIndex]
-                val hasImage = lastUser.parts.any {
-                    it is PromptPart.ImageBytes || it is PromptPart.ImageFile
-                }
-                if (!hasImage) {
-                    // Attach all images as PromptPart.ImageBytes before existing parts
-                    val imageParts = attachedImageBytesList.map { PromptPart.ImageBytes(it) }
-                    messages[lastUserIndex] = lastUser.copy(
-                        parts = imageParts + lastUser.parts
-                    )
-                }
+            return PreparedOpenAIImages(sources = sources, tensors = emptyList())
+        }
+
+        val tensors = preprocessImages(bytesList, firstSourceIndex)
+        return PreparedOpenAIImages(
+            sources = tensors.map { it.source },
+            tensors = tensors,
+        )
+    }
+
+    private fun preprocessImages(
+        bytesList: List<ByteArray>,
+        firstSourceIndex: Int = 0,
+    ): List<OpenAIImageTensor> {
+        if (bytesList.isEmpty()) return emptyList()
+        return bytesList.mapIndexed { index, bytes ->
+            require(bytes.isNotEmpty()) { "image[$index] is empty." }
+            val source = mediaSource(firstSourceIndex + index)
+            when (val result = imagePreprocessor.preprocess(source, bytes)) {
+                is BackendResult.Ok -> result.value
+                is BackendResult.Err -> throw IllegalArgumentException(
+                    "image[$index] preprocessing failed: " +
+                        "[${result.error.name}] ${result.message.orEmpty()}"
+                )
             }
-            messages
-        } catch (t: Throwable) { null }
+        }
+    }
+
+    private fun bindImagesToOpenAIRequest(
+        requestObject: JsonObject,
+        sources: List<String>,
+    ): JsonObject {
+        val messages = requestObject["messages"] as JsonArray
+        val existingCount = countImageUrlParts(messages)
+        val updatedMessages = when {
+            existingCount == 0 -> attachImagesToLastUser(messages, sources)
+            existingCount == sources.size -> replaceImageUrlSources(messages, sources)
+            else -> throw IllegalArgumentException(
+                "Request contains $existingCount image_url parts, but ${sources.size} images are selected."
+            )
+        }
+        return JsonObject(requestObject.toMutableMap().apply {
+            this["messages"] = updatedMessages
+        })
+    }
+
+    private fun countImageUrlParts(messages: JsonArray): Int = messages.sumOf { messageElement ->
+        val content = (messageElement as? JsonObject)?.get("content") as? JsonArray
+            ?: return@sumOf 0
+        content.count { partElement ->
+            val part = partElement as? JsonObject
+            (part?.get("type") as? JsonPrimitive)?.contentOrNull == "image_url"
+        }
+    }
+
+    private fun attachImagesToLastUser(
+        messages: JsonArray,
+        sources: List<String>,
+    ): JsonArray {
+        val lastUserIndex = messages.indexOfLast { element ->
+            val message = element as? JsonObject
+            (message?.get("role") as? JsonPrimitive)?.contentOrNull == "user"
+        }
+        require(lastUserIndex >= 0) {
+            "Select-image attachment requires at least one user message."
+        }
+        val result = messages.toMutableList()
+        val user = result[lastUserIndex] as JsonObject
+        val existingContent = when (val content = user["content"]) {
+            null -> emptyList()
+            is JsonArray -> content.toList()
+            is JsonPrimitive -> content.contentOrNull?.let { listOf(textPart(it)) }.orEmpty()
+            else -> throw IllegalArgumentException(
+                "The last user message content must be a string or content array."
+            )
+        }
+        val content = JsonArray(sources.map(::imageUrlPart) + existingContent)
+        result[lastUserIndex] = JsonObject(user.toMutableMap().apply {
+            this["content"] = content
+        })
+        return JsonArray(result)
+    }
+
+    private fun replaceImageUrlSources(
+        messages: JsonArray,
+        sources: List<String>,
+    ): JsonArray {
+        var sourceIndex = 0
+        return JsonArray(messages.map messageLoop@ { messageElement ->
+            val message = messageElement as? JsonObject ?: return@messageLoop messageElement
+            val content = message["content"] as? JsonArray ?: return@messageLoop messageElement
+            val updatedContent = JsonArray(content.map partLoop@ { partElement ->
+                val part = partElement as? JsonObject ?: return@partLoop partElement
+                val type = (part["type"] as? JsonPrimitive)?.contentOrNull
+                if (type != "image_url") return@partLoop partElement
+                val source = sources[sourceIndex++]
+                val oldImageUrl = part["image_url"] as? JsonObject
+                val imageUrlFields = oldImageUrl?.toMutableMap() ?: mutableMapOf()
+                imageUrlFields["url"] = JsonPrimitive(source)
+                val newImageUrl = JsonObject(imageUrlFields)
+                JsonObject(part.toMutableMap().apply {
+                    this["image_url"] = newImageUrl
+                })
+            })
+            JsonObject(message.toMutableMap().apply {
+                this["content"] = updatedContent
+            })
+        })
+    }
+
+    private fun imageUrlPart(source: String): JsonObject = JsonObject(
+        linkedMapOf(
+            "type" to JsonPrimitive("image_url"),
+            "image_url" to JsonObject(mapOf("url" to JsonPrimitive(source))),
+        )
+    )
+
+    private fun textPart(text: String): JsonObject = JsonObject(
+        linkedMapOf(
+            "type" to JsonPrimitive("text"),
+            "text" to JsonPrimitive(text),
+        )
+    )
+
+    private fun mediaSource(index: Int): String = "quickai-media://image-$index"
+
+    private fun dataImageSource(bytes: ByteArray): String {
+        val mediaType = when {
+            bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(
+                byteArrayOf(
+                    0x89.toByte(), 0x50, 0x4E, 0x47,
+                    0x0D, 0x0A, 0x1A, 0x0A
+                )
+            ) -> "image/png"
+            bytes.size >= 3 && bytes[0] == 0xFF.toByte() &&
+                bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte() -> "image/jpeg"
+            bytes.size >= 12 && bytes.copyOfRange(0, 4).decodeToString() == "RIFF" &&
+                bytes.copyOfRange(8, 12).decodeToString() == "WEBP" -> "image/webp"
+            bytes.size >= 6 && bytes.copyOfRange(0, 6).decodeToString()
+                .let { it == "GIF87a" || it == "GIF89a" } -> "image/gif"
+            else -> "image/unknown"
+        }
+        return "data:$mediaType;base64,${Base64.getEncoder().encodeToString(bytes)}"
     }
 
     private fun onOpenAIMessagesRunClicked() {
-        val jsonText = openAIMessagesField.text.toString().trim()
-        if (jsonText.isBlank()) { setStatus("Messages JSON is empty."); return }
-        val imgBytesList = selectedImageBytesList.toList()
+        val jsonText = openAIMessagesField.text.toString()
+        if (jsonText.isBlank()) { setStatus("OpenAI request JSON is empty."); return }
+        val requestObject = try {
+            parseOpenAIRequestObject(jsonText)
+        } catch (t: IllegalArgumentException) {
+            setStatus(t.message ?: "Invalid OpenAI request JSON.")
+            return
+        }
+        if (selDescriptor?.let { usesOpenAiApi(it) } == false) {
+            setStatus("Selected model does not support the OpenAI request API.")
+            return
+        }
+        val imgBytesList = selectedImageBytesList
         if (imgBytesList.isNotEmpty() && selDescriptor?.let { isMultimodal(it) } != true) {
             setStatus("Selected model does not support OpenAI image input.")
             return
@@ -2594,91 +2731,41 @@ class MainActivity : AppCompatActivity() {
                 streaming = false; setStatus("Model load failed.")
                 mainHandler.post { rebuildUi() }; return@execute
             }
-            if (e.chatSessionId != null) {
-                when (val closeResult = e.closeChatSession()) {
-                    is BackendResult.Ok -> clearChatSessionState()
-                    is BackendResult.Err -> {
-                        streaming = false
-                        setStatus("Failed to close chat session: ${closeResult.message ?: closeResult.error.name}")
-                        mainHandler.post { rebuildUi() }
-                        return@execute
-                    }
-                }
-            } else if (sessionIdText != null) {
-                clearChatSessionState()
-            }
             val sink = object : StreamSink {
                 override fun onDelta(text: String) {
                     outputText += text
                     mainHandler.post { outputView.append(text) }
                 }
-                override fun onDone() {
-                    streaming = false; setStatus("OpenAI JSON done.")
-                    mainHandler.post { rebuildUi() }
-                }
+                override fun onDone() = Unit
                 override fun onError(error: QuickAiError, message: String?) {
                     streaming = false; setStatus("OpenAI error: [${error.name}] ${message ?: ""}")
                     mainHandler.post { rebuildUi() }
                 }
             }
             try {
-                // Route based on model type:
-                // - LiteRT-LM (GEMMA4) only supports messages-based API.
-                // - All others use JSON streaming for full OpenAI format support.
-                if (imgBytesList.isNotEmpty()) {
-                    // Attach all selected images to the last user message
-                    val messages = parseOpenAIMessages(jsonText, attachedImageBytesList = imgBytesList)
-                    if (messages == null) {
+                val request = createOpenAIRequest(
+                    originalJson = jsonText,
+                    requestObject = requestObject,
+                    imageBytes = imgBytesList,
+                    engineKind = e.kind,
+                )
+                when (val r = e.runOpenAI(request, sink)) {
+                    is BackendResult.Ok -> {
                         streaming = false
-                        setStatus("Failed to parse messages JSON for multimodal API.")
+                        if (imgBytesList.isNotEmpty() && selectedImageBytesList === imgBytesList) {
+                            selectedImageBytesList = emptyList()
+                        }
+                        when (val metrics = e.metrics()) {
+                            is BackendResult.Ok -> lastMetrics = metrics.value
+                            is BackendResult.Err -> Unit
+                        }
+                        setStatus("OpenAI request done.")
                         mainHandler.post { rebuildUi() }
-                        return@execute
                     }
-                    when (val r = e.runMultimodalHandleWithMessagesStreaming(messages, sink)) {
-                        is BackendResult.Ok -> {
-                            streaming = false
-                            setStatus("Done.")
-                            mainHandler.post { rebuildUi() }
-                        }
-                        is BackendResult.Err -> {
-                            streaming = false
-                            setStatus("Failed: [${r.error.name}] ${r.message ?: ""}")
-                            mainHandler.post { rebuildUi() }
-                        }
-                    }
-                } else if (selDescriptor?.let { usesMessagesApi(it) } == true) {
-                    val messages = parseOpenAIMessages(jsonText)
-                    if (messages == null) {
+                    is BackendResult.Err -> {
                         streaming = false
-                        setStatus("Failed to parse messages JSON for Messages API.")
+                        setStatus("OpenAI request failed: [${r.error.name}] ${r.message ?: ""}")
                         mainHandler.post { rebuildUi() }
-                        return@execute
-                    }
-                    when (val r = e.runModelHandleWithMessagesStreaming(messages, sink)) {
-                        is BackendResult.Ok -> {
-                            streaming = false
-                            setStatus("Done.")
-                            mainHandler.post { rebuildUi() }
-                        }
-                        is BackendResult.Err -> {
-                            streaming = false
-                            setStatus("Failed: [${r.error.name}] ${r.message ?: ""}")
-                            mainHandler.post { rebuildUi() }
-                        }
-                    }
-                } else {
-                    // Use runWithJsonStreaming for full OpenAI format support
-                    when (val r = e.runModelHandleWithJsonStreaming(jsonText, sink)) {
-                        is BackendResult.Ok -> {
-                            streaming = false
-                            setStatus("Done.")
-                            mainHandler.post { rebuildUi() }
-                        }
-                        is BackendResult.Err -> {
-                            streaming = false
-                            setStatus("Failed: [${r.error.name}] ${r.message ?: ""}")
-                            mainHandler.post { rebuildUi() }
-                        }
                     }
                 }
             } catch (t: Throwable) {
@@ -2686,39 +2773,6 @@ class MainActivity : AppCompatActivity() {
                 mainHandler.post { rebuildUi() }
             }
         }
-    }
-
-    private fun onOpenAIMessagesRunBlockingClicked() {
-        val jsonText = openAIMessagesField.text.toString().trim()
-        if (jsonText.isBlank()) { setStatus("Messages JSON is empty."); return }
-        val messages = parseOpenAIMessages(jsonText)
-        if (messages == null) { setStatus("Failed to parse messages JSON. Check format."); return }
-        if (messages.isEmpty()) { setStatus("No messages found in JSON."); return }
-        if (messages.last().role != QuickAiChatRole.USER) {
-            setStatus("Last message must be role=\"user\" to trigger inference.")
-            return
-        }
-        outputText = ""; outputView.text = ""
-        setStatus("Running OpenAI messages (blocking)…")
-
-        // Blocking API removed - use streaming API instead
-        setStatus("Blocking API removed. Use streaming API.")
-        // val req = buildLoadRequest()
-        // engineExecutor.execute {
-        //     val e = loadModelInternal(req)
-        //     if (e == null) { setStatus("Model load failed."); return@execute }
-        //     try {
-        //         when (val r = e.runModelHandleWithMessages(messages)) {
-        //             is BackendResult.Ok -> {
-        //                 outputText = r.value
-        //                 mainHandler.post { outputView.text = r.value }
-        //                 setStatus("Done.")
-        //             }
-        //             is BackendResult.Err ->
-        //                 setStatus("Failed: [${r.error.name}] ${r.message ?: ""}")
-        //         }
-        //     } catch (t: Throwable) { setStatus("Threw: ${t.message}") }
-        // }
     }
 
     /** Whether the currently selected model supports multi-image (V-JEPA). */
@@ -2742,7 +2796,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onClearImageClicked() {
-        selectedImageBytesList.clear()
+        selectedImageBytesList = emptyList()
         if (::imageStatusView.isInitialized) {
             mainHandler.post { imageStatusView.text = "Image: none" }
         }
@@ -2762,8 +2816,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     bytesRead.add(bytes)
                 }
-                selectedImageBytesList.clear()
-                selectedImageBytesList.addAll(bytesRead)
+                selectedImageBytesList = bytesRead.toList()
                 val totalBytes = bytesRead.sumOf { it.size }
                 val statusMsg = if (bytesRead.size == 1) {
                     "Image loaded ($totalBytes bytes). Ready for Run or Send."
@@ -2780,17 +2833,13 @@ class MainActivity : AppCompatActivity() {
 
     /* ───── Misc helpers ───── */
 
-    private fun defaultVisionPrompt(): String =
-        "이미지 설명해줘<|image_start|><|image|><|image_end|>"
-
-    private fun normalizeVisionPromptText(text: String): String =
-        text.replace("<|image_strart|>", "<|image_start|>")
-
     private val exampleByModelId: Map<String, String> = mapOf(
-        ModelIds.GEMMA4 to """[
-  {"role": "system", "content": "You are a concise vision assistant."},
-  {"role": "user", "content": [{"type": "text", "text": "Describe this image."}, {"type": "image_url", "image_url": {"url": "sampletestapp://selected-image"}}]}
-]""",
+        ModelIds.GEMMA4 to """{
+  "messages": [
+    {"role": "system", "content": "You are a concise vision assistant."},
+    {"role": "user", "content": "Describe the selected image."}
+  ]
+}""",
         ModelIds.FUNCTION_GEMMA to """{
   "messages": [
     {"role": "system", "content": "You can call tools when they are useful."},
@@ -2802,11 +2851,13 @@ class MainActivity : AppCompatActivity() {
   "messages": [{"role": "user", "content": "Explain what text embeddings are in one sentence."}]
 }""",
     )
-    // Shared template for MESSAGES_API models
-    private val messagesApiExample = """[
-  {"role": "system", "content": "You are a helpful assistant. Answer briefly."},
-  {"role": "user", "content": "Summarize why on-device language models are useful."}
-]"""
+    // Shared template for models exposing the OpenAI request API.
+    private val openAiApiExample = """{
+  "messages": [
+    {"role": "system", "content": "You are a helpful assistant. Answer briefly."},
+    {"role": "user", "content": "Summarize why on-device language models are useful."}
+  ]
+}"""
     private val defaultToolExample = """{
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
@@ -2818,26 +2869,85 @@ class MainActivity : AppCompatActivity() {
         exampleByModelId[modelId]?.let { return it }
         val d = ModelCatalog.byId(modelId)
         return when {
-            d != null && Capability.MESSAGES_API in d.capabilities -> messagesApiExample
+            d != null && Capability.OPENAI_API in d.capabilities -> openAiApiExample
             else -> defaultToolExample
         }
     }
 
-    private fun loadDefaultOpenAIExampleFor(modelId: String) {
-        openAiJsonText = defaultOpenAIExampleForId(modelId)
-        if (::openAIMessagesField.isInitialized) {
-            mainHandler.post { openAIMessagesField.setText(openAiJsonText) }
+    private fun snapshotChatUiState(expectedKey: String?): ChatUiState =
+        synchronized(chatStateLock) {
+            ChatUiState(
+                active = chatActive && activeChatKey == expectedKey,
+                assistantTurns = chatHistory.count { it.role == "assistant" },
+            )
         }
+
+    private fun isChatActiveFor(expectedKey: String?): Boolean =
+        synchronized(chatStateLock) {
+            chatActive && activeChatKey == expectedKey
+        }
+
+    private fun snapshotActiveChat(expectedKey: String?): ActiveChatSnapshot? =
+        synchronized(chatStateLock) {
+            if (!chatActive || expectedKey == null || activeChatKey != expectedKey) {
+                return@synchronized null
+            }
+            ActiveChatSnapshot(
+                generation = chatGeneration,
+                key = expectedKey,
+                history = chatHistory.toList(),
+                nextImageIndex = nextChatImageIndex,
+            )
+        }
+
+    private fun startChatSession(key: String, systemPrompt: String?) =
+        synchronized(chatStateLock) {
+            clearChatSessionStateLocked()
+            if (systemPrompt != null) {
+                chatHistory += LocalChatMessage(role = "system", text = systemPrompt)
+            }
+            chatActive = true
+            activeChatKey = key
+        }
+
+    private fun commitChatTurn(
+        snapshot: ActiveChatSnapshot,
+        userMessage: LocalChatMessage,
+        assistantText: String,
+        imageCount: Int,
+    ): Boolean = synchronized(chatStateLock) {
+        if (!chatActive ||
+            activeChatKey != snapshot.key ||
+            chatGeneration != snapshot.generation
+        ) {
+            return@synchronized false
+        }
+        chatHistory += userMessage
+        chatHistory += LocalChatMessage(
+            role = "assistant",
+            text = assistantText,
+        )
+        nextChatImageIndex += imageCount
+        true
     }
 
-    private fun clearChatSessionState() {
-        sessionIdText = null
-        activeSessionKey = null
+    private fun clearChatIfBoundToDifferentKey(expectedKey: String) =
+        synchronized(chatStateLock) {
+            if (activeChatKey != null && activeChatKey != expectedKey) {
+                clearChatSessionStateLocked()
+            }
+        }
+
+    private fun clearChatSessionState() = synchronized(chatStateLock) {
+        clearChatSessionStateLocked()
     }
 
-    private fun markChatSessionOpened(sessionId: String) {
-        sessionIdText = sessionId
-        activeSessionKey = loadedKey
+    private fun clearChatSessionStateLocked() {
+        chatGeneration += 1
+        chatActive = false
+        activeChatKey = null
+        chatHistory.clear()
+        nextChatImageIndex = 0
     }
 
     private fun setStatus(text: String) {
@@ -2848,13 +2958,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * @brief Builds the default on-device model path for the given
-     * (model, quantization) pair rooted in this app's external files
-     * dir, so the path lines up with the native C API's hardcoded
-     * `./models/<name>-<quant>` prefix (resolve_model_path() in
-     * quick_dot_ai_api.cpp).
+     * @brief Builds the configured on-device path for a catalog model,
+     * rooted in the model base directory selected by the sample.
      */
-    private fun defaultModelPathFor(d: ModelDescriptor?, quant: QuantizationType): String? {
+    private fun defaultModelPathFor(d: ModelDescriptor?): String? {
         if (d == null) return null
         val base = modelBasePathText.trimEnd('/')
         return modelPathById[d.id]?.let { "$base/$it" }

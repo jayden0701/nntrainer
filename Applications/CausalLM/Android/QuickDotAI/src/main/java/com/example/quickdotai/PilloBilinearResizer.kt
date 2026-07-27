@@ -1,9 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright (C) 2026 Samsung Electronics Co., Ltd. All Rights Reserved.
+ *
+ * @file    PilloBilinearResizer.kt
+ * @brief   Pillow-compatible bilinear image resizer.
+ */
 package com.example.quickdotai
 
 import kotlin.math.abs
 import kotlin.math.ceil
 
-class PillowBilinearResizer {
+internal class PillowBilinearResizer {
     companion object {
 
         // Bilinear kernel
