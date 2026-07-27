@@ -20,6 +20,7 @@
 #include "qnn_rpc_manager.h"
 
 #include <algorithm>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -106,9 +107,28 @@ public:
   /** @brief Release QNN resources. */
   ~QNNContext() override {
     auto qnn_data = getQnnData();
-    // Free all remaining QNN contexts in ct_map before releasing backend
-    if (qnn_data) {
-      qnn_data->freeAllContexts();
+    if (!qnn_data) {
+      return;
+    }
+
+    bool quarantine_runtime = false;
+    try {
+      quarantine_runtime = qnn_data->freeAllContexts() != StatusCode::SUCCESS;
+    } catch (const std::exception &e) {
+      quarantine_runtime = true;
+      ml_loge("Exception during QNN context teardown: %s", e.what());
+    } catch (...) {
+      quarantine_runtime = true;
+      ml_loge("Unknown exception during QNN context teardown");
+    }
+
+    if (quarantine_runtime) {
+      // QNN free APIs do not promise which resources remain valid after a
+      // failed release. Preserve the complete runtime instead of unloading
+      // code or buffers that an ambiguous vendor handle might still use.
+      qnn_data->quarantine_self_reference = qnn_data;
+      ml_loge("QNN runtime teardown quarantined after context free failure");
+      return;
     }
     if ((qnn_data->m_isBackendInitialized &&
          nullptr != qnn_data->m_qnnFunctionPointers.qnnInterface.backendFree) &&
