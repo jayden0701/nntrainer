@@ -65,8 +65,25 @@ public:
   void finishRuntimeShutdown(const CleanupGuard &guard,
                              QnnRuntimeState final_state) noexcept;
 
-  /** @brief Permanently close admission after an ambiguous runtime call. */
+  /**
+   * @brief Close new admission after an ambiguous call by the current reader.
+   *
+   * Existing readers retain their leases and unwind normally. No reader tries
+   * to upgrade to the exclusive gate. Quarantine is sticky and prohibits
+   * runtime teardown even if shutdown was already waiting for this reader.
+   */
+  void quarantine(const ExecutionGuard &guard) noexcept;
+
+  /** @brief Permanently close admission after an ambiguous cleanup call. */
   void quarantine(const CleanupGuard &guard) noexcept;
+
+  /**
+   * @brief Check whether a previously admitted reader may start another call.
+   *
+   * Readers admitted before shutdown may finish, but a runtime fault revokes
+   * readers that were queued behind another RPC ledger operation.
+   */
+  bool allowsExecutionContinuation(const ExecutionGuard &guard) const noexcept;
 
   /** @brief Verify that a shared lease belongs to this lifecycle. */
   bool ownsExecutionGuard(const ExecutionGuard &guard) const noexcept;
@@ -89,6 +106,8 @@ public:
   }
 
 private:
+  void quarantineState() noexcept;
+
   mutable std::shared_mutex lifecycle_mutex_;
   std::atomic<QnnRuntimeState> state_{QnnRuntimeState::RUNNING};
 };
@@ -227,6 +246,18 @@ private:
                            const DescriptorSignature &signature,
                            Allocation &allocation,
                            Registration &registration) noexcept;
+
+  bool quarantineRegistrationAliasLocked(
+    Allocation &allocation, Registration &candidate_registration) noexcept;
+
+  bool quarantineAnyRegistrationAliasLocked() noexcept;
+
+  void quarantineAllocationLocked(Allocation &allocation) noexcept;
+
+  bool quarantineInvalidRegistrationsLocked(void *ptr,
+                                            Allocation &allocation) noexcept;
+
+  size_t countQuarantinedRegistrationsLocked() const noexcept;
 
   QNN_INTERFACE_VER_TYPE qnn_interface_{};
   std::shared_ptr<void> backend_library_lifetime_;
