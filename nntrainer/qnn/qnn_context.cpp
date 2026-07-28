@@ -473,6 +473,12 @@ QNNContext::~QNNContext() {
     return;
   }
 
+  if (qnn_data->m_backendExtensions != nullptr &&
+      !qnn_data->m_backendExtensions->shutdown()) {
+    quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
+                      "backend extension cleanup failed");
+    return;
+  }
   qnn_data->m_backendExtensions.reset();
   if (!releaseLogResource(qnn_data)) {
     quarantineRuntime(qnn_data, runtime_lifecycle, &shutdown_guard,
@@ -739,9 +745,9 @@ int QNNContext::initBackend() {
       backend_extensions_config, qnn_data->m_backendLibraryHandle, false,
       nullptr, QNN_LOG_LEVEL_ERROR, qnn_data->m_resourceManager);
   } catch (const std::exception &e) {
-    // The generated SDK wrapper does not own its extension DSO until
-    // construction completes. A throw can therefore leave hidden extension
-    // state that the caller cannot safely roll back.
+    // An exception crossing the extension DSO boundary can leave hidden
+    // factory state and DSO-defined exception metadata. The generated wrapper
+    // deliberately retains that ambiguous state instead of unloading it.
     qnn_data->m_hasRuntimeResourceQuarantine = true;
     ml_loge("QNN BackendExtensions construction failed: %s", e.what());
     return -1;

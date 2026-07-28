@@ -32,25 +32,28 @@ Search for **Qualcomm AI Engine Direct SDK** (a.k.a. QNN SDK). Download
 requires a (free) Qualcomm developer account and acceptance of
 Qualcomm's license terms.
 
-### Tested versions
+### Supported source layout
 
-nntrainer's QNN backend has been verified against:
+The generated-source compatibility patches currently target:
 
 | QNN SDK package | QNN API version | Status |
 | --------------- | --------------- | ------ |
-| 2.47.0          | 2.36.0          | OK     |
+| 2.47.0.260601   | 2.36.0          | Compatibility target |
 
 > **API-version pin:** the build is gated on **QNN API version 2.36**
 > (i.e. `QNN_API_VERSION_MINOR == 36`). The `update_qnn_version.py`
 > script asserts this at configure time and fails with a clear message
-> if the installed SDK ships a different API version. The SDK *package*
-> version string (2.47.x) may vary across patch releases while the API
-> version remains 2.36; what matters for compatibility is the API
-> version, not the package string.
+> if the installed SDK ships a different API version. The generator also
+> checks the source shape of every safety-critical compatibility patch
+> against the reference package above and fails closed if those sources have
+> drifted.
 
 Older 1.x SDKs and SDKs shipping a QNN API version other than 2.36 are
-not supported. Newer SDK packages that retain QNN API 2.36 should work;
-please report regressions if you encounter them.
+not supported. Another SDK package retaining QNN API 2.36 is accepted
+only when its copied sources pass the generator's compatibility checks;
+API version equality alone is not a compatibility guarantee.
+Build and runtime validation for a release should therefore use the exact
+package above and follow the checks in section 6.
 
 ## 2. Extract the SDK
 
@@ -98,9 +101,12 @@ ninja -C build
 When `-Denable-npu=true`, `meson setup` automatically runs
 `nntrainer/qnn/jni/tools/update_qnn_version.py` to copy the required
 SDK headers and apply compatibility patches into
-`nntrainer/qnn/jni/vendor/`. This happens once at configure time; you
-do not need to run the script by hand unless you later update the SDK
-and want to refresh `vendor/` without reconfiguring from scratch.
+`nntrainer/qnn/jni/vendor/`. Meson regenerates the directory when either
+the SDK header sentinel or nntrainer's versioned compatibility stamp is
+missing. This also invalidates an older generated tree when a compatibility
+patch changes its C++ API. You do not need to run the script by hand unless
+you later update the SDK and want to refresh `vendor/` without reconfiguring
+from scratch.
 
 The configure step validates the SDK root early and produces a clear
 error if neither `-Dqnn-sdk-root` nor `QNN_SDK_ROOT` is set, or if the

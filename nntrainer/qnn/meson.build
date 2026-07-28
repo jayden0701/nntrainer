@@ -6,11 +6,13 @@
 
 qnn_src_dir = meson.current_source_dir()
 
-# ── Auto-generate the vendor tree if it is missing ───────────────────────────
-# The sentinel file is a stable header that must exist after a successful run.
+# ── Auto-generate stale or missing vendor trees ──────────────────────────────
+# The versioned stamp is written only after every compatibility transform
+# succeeds. Bump its name whenever generated C++ contracts change.
 fs = import('fs')
 _vendor_sentinel = qnn_src_dir / 'jni/vendor/QNN/QnnCommon.h'
-if not fs.exists(_vendor_sentinel)
+_vendor_compat_stamp = qnn_src_dir / 'jni/vendor/.nntrainer-qnn-api36-compat-v2'
+if not fs.exists(_vendor_sentinel) or not fs.exists(_vendor_compat_stamp)
   _gen_script = qnn_src_dir / 'jni/tools/update_qnn_version.py'
   _gen_cmd = ['python3', _gen_script]
   _sdk_root_opt = get_option('qnn-sdk-root')
@@ -27,6 +29,12 @@ if not fs.exists(_vendor_sentinel)
       'stderr: ' + _gen_result.stderr() + '\n' +
       'Set -Dqnn-sdk-root=<path> or export QNN_SDK_ROOT=<path> to your ' +
       'Qualcomm QNN SDK root (e.g. ~/qairt/2.47.0.260601).'
+    )
+  endif
+  if not fs.exists(_vendor_sentinel) or not fs.exists(_vendor_compat_stamp)
+    error(
+      'QNN vendor tree generation returned success without its required ' +
+      'header and compatibility stamp.'
     )
   endif
   message('QNN vendor tree generated from SDK.')
