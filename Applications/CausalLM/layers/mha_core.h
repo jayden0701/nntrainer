@@ -256,7 +256,7 @@ public:
     nntrainer::Tensor &cache_value, ml::train::TensorDim &cache_key_dim,
     ml::train::TensorDim &cache_key_step_dim,
     ml::train::TensorDim &cache_value_dim,
-    ml::train::TensorDim &cache_value_step_dim);
+    ml::train::TensorDim &cache_value_step_dim, bool is_prefill);
 
   void one_batch_incremental_forwarding(
     const unsigned int batch, const unsigned int _from, const unsigned int from,
@@ -266,7 +266,8 @@ public:
     nntrainer::Tensor &cache_value, ml::train::TensorDim &cache_key_dim,
     ml::train::TensorDim &cache_key_step_dim,
     ml::train::TensorDim &cache_value_dim,
-    ml::train::TensorDim &cache_value_step_dim, nntrainer::Tensor &sink_step);
+    ml::train::TensorDim &cache_value_step_dim, bool is_prefill,
+    nntrainer::Tensor &sink_step);
   /**
    * @copydoc Layer::calcDerivative(RunLayerContext &context)
    */
@@ -367,7 +368,6 @@ private:
   size_t num_heads_Q;
   size_t num_heads_KV;
   size_t head_dim;
-  bool cache_shift;
   float theta;
   size_t local_window_size;
   bool use_sink = false;
@@ -504,6 +504,25 @@ private:
                                      nntrainer::Tensor &output, int from,
                                      int num_cache_head, int gqa_size,
                                      int head_dim, int to);
+
+  /**
+   * @brief Check whether the cache tensor is a compact sliding-window cache.
+   */
+  bool usesCompactCache(const ml::train::TensorDim &cache_dim) const;
+
+  /**
+   * @brief Run a causal compact-cache call token by token.
+   *
+   * RoPE uses absolute sequence positions while attention kernels use the
+   * compact cache's physical positions.
+   */
+  void compactCacheForwarding(nntrainer::Tensor &query, nntrainer::Tensor &key,
+                              nntrainer::Tensor &value,
+                              nntrainer::Tensor &output,
+                              nntrainer::Tensor &cache_key,
+                              nntrainer::Tensor &cache_value,
+                              unsigned int absolute_from,
+                              unsigned int step_size, nntrainer::Tensor *sink);
 
   /************** END OF  ROTARY EMBEDDING *************/
 

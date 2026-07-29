@@ -86,9 +86,16 @@ Tensor Lfm2Transformer::createAttention(const int layer_id, int seq_len,
      withKey("disable_bias", "true"), withKey("weight_initializer", "ones")}));
   Tensor v = wv(value);
 
+  const unsigned int attention_window =
+    layer_id >= 0 && static_cast<size_t>(layer_id) < layer_types_.size() &&
+        layer_types_[layer_id] == "full_attention"
+      ? UINT_MAX
+      : SLIDING_WINDOW;
+
   // External KV cache placeholders (per-layer). Storage is owned by the host
   // (KVCacheManager) and bound at runtime via setExternalTensors.
-  auto [cache_k, cache_v] = createKVCachePlaceholders(layer_id, n_heads);
+  auto [cache_k, cache_v] =
+    createKVCachePlaceholders(layer_id, n_heads, attention_window);
 
   // Attention core layer
   LayerHandle mha(createLayer(
@@ -96,7 +103,7 @@ Tensor Lfm2Transformer::createAttention(const int layer_id, int seq_len,
     {withKey("name", "layer" + std::to_string(layer_id) + "_attention"),
      withKey("num_heads", n_heads), withKey("num_heads_kv", n_heads / GQA_SIZE),
      withKey("max_timestep", std::to_string(MAX_SEQ_LEN)),
-     withKey("sliding_window", SLIDING_WINDOW),
+     withKey("sliding_window", attention_window),
      withKey("rope_theta", ROPE_THETA),
      withKey("max_position_embeddings", MAX_POSITION_EMBEDDINGS),
      withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
@@ -627,6 +634,7 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
       model->incremental_inference(BATCH_SIZE, input, label, input_len,
                                    token_generation_idx - 1 + global_token_len,
                                    token_generation_idx + global_token_len);
+    advanceKVCachePosition(1);
 
     id_list = generate(output_interval[0], do_sample);
     generated_ids_.push_back(id_list[0]);

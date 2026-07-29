@@ -328,13 +328,29 @@ protected:
    *        by the host (e.g. KVCacheManager) and is bound at runtime via
    *        Model::setExternalTensors using the names
    *          "cache_k_l<layer_id>" and "cache_v_l<layer_id>".
-   * @param layer_id  attention layer index
-   * @param n_heads   total query heads (used together with GQA_SIZE to derive
-   *                  the KV head count)
+   * @param layer_id attention layer index
+   * @param n_heads total query heads (used together with GQA_SIZE to derive
+   *                the KV head count)
+   * @param attention_window logical attention window for this layer
    * @return {cache_k, cache_v} symbolic placeholder tensors
    */
-  std::pair<Tensor, Tensor> createKVCachePlaceholders(const int layer_id,
-                                                      int n_heads);
+  std::pair<Tensor, Tensor>
+  createKVCachePlaceholders(const int layer_id, int n_heads,
+                            unsigned int attention_window = UINT_MAX);
+
+  /**
+   * @brief Resolve the physical KV-cache capacity for an attention window
+   * @param attention_window logical attention window for one layer
+   * @return physical cache height
+   */
+  unsigned int resolveKVCacheCapacity(unsigned int attention_window) const;
+
+  /**
+   * @brief Record the physical KV-cache capacity selected for a layer
+   * @param layer_id attention layer index
+   * @param capacity physical cache height
+   */
+  void recordKVCacheCapacity(int layer_id, unsigned int capacity);
 
   /**
    * @brief register CustomLayers
@@ -377,6 +393,7 @@ protected:
 
   unsigned int SLIDING_WINDOW = UINT_MAX;
   unsigned int SLIDING_WINDOW_PATTERN = 5;
+  std::vector<unsigned int> KV_CACHE_CAPACITIES;
   unsigned int ROPE_THETA = 10000; /**< RoPE theta value */
   float NORM_EPS = 1e-5;           /**< RMSNorm epsilon value */
   float EMBEDDING_SCALE = 1.0f;

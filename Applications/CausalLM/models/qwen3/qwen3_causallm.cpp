@@ -77,7 +77,8 @@ Tensor Qwen3Transformer::createAttention(const int layer_id, int seq_len,
 
   // External KV cache placeholders (per-layer). Storage is owned by the host
   // (KVCacheManager) and bound at runtime via setExternalTensors.
-  auto [cache_k, cache_v] = createKVCachePlaceholders(layer_id, n_heads);
+  auto [cache_k, cache_v] =
+    createKVCachePlaceholders(layer_id, n_heads, SLIDING_WINDOW);
 
   // Attention core layer
   LayerHandle mha(createLayer(

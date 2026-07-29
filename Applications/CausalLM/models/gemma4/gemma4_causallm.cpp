@@ -214,10 +214,10 @@ void Gemma4Transformer::setupParameters(json &cfg, json &generation_cfg,
     std::sqrt(static_cast<float>(HIDDEN_SIZE_PER_LAYER_INPUT));
 }
 
-std::pair<Tensor, Tensor>
-Gemma4Transformer::createGemma4KVCachePlaceholders(const int layer_id,
-                                                   unsigned int kv_width) {
-  const unsigned int max_timestep = static_cast<unsigned int>(MAX_SEQ_LEN);
+std::pair<Tensor, Tensor> Gemma4Transformer::createGemma4KVCachePlaceholders(
+  const int layer_id, unsigned int kv_width, unsigned int attention_window) {
+  const unsigned int max_timestep = resolveKVCacheCapacity(attention_window);
+  recordKVCacheCapacity(layer_id, max_timestep);
 #ifdef ENABLE_FP16
   ml::train::TensorDim cache_dim(
     {BATCH_SIZE, 1, max_timestep, kv_width},
@@ -558,8 +558,8 @@ Tensor Gemma4Transformer::createSharedAttention(const int layer_id,
     is_sliding ? SLIDING_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR
                : FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR;
 
-  auto [cache_k, cache_v] =
-    createGemma4KVCachePlaceholders(layer_id, getKVCacheWidth(layer_id));
+  auto [cache_k, cache_v] = createGemma4KVCachePlaceholders(
+    layer_id, getKVCacheWidth(layer_id), window_size);
 
   Tensor shared_k_norm = layer_k_norms[shared_kv_layer_id];
   Tensor shared_v_norm = layer_v_norms[shared_kv_layer_id];
@@ -700,8 +700,8 @@ Tensor Gemma4Transformer::createAttention(const int layer_id, int seq_len,
     is_sliding ? SLIDING_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR
                : FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR;
 
-  auto [cache_k, cache_v] =
-    createGemma4KVCachePlaceholders(layer_id, getKVCacheWidth(layer_id));
+  auto [cache_k, cache_v] = createGemma4KVCachePlaceholders(
+    layer_id, getKVCacheWidth(layer_id), window_size);
 
   // Attention core receives [Q_norm, K_norm, V_norm].
   std::vector<std::string> a_params = {
@@ -858,7 +858,7 @@ void Gemma4CausalLM::allocateAndBindKVCache() {
 
     kv_cache.allocate(static_cast<unsigned int>(NUM_LAYERS), BATCH_SIZE,
                       static_cast<unsigned int>(MAX_SEQ_LEN), kv_widths,
-                      cache_dtype);
+                      KV_CACHE_CAPACITIES, cache_dtype);
     kv_cache_bound = false;
   }
 

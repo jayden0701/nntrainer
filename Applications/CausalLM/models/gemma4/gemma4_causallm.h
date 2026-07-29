@@ -73,7 +73,8 @@ protected:
   void appendSkipPrefillIfNeeded(std::vector<std::string> &props,
                                  bool enable_skip) const;
   std::pair<Tensor, Tensor>
-  createGemma4KVCachePlaceholders(const int layer_id, unsigned int kv_width);
+  createGemma4KVCachePlaceholders(const int layer_id, unsigned int kv_width,
+                                  unsigned int attention_window);
 
 public:
   Tensor createAttention(const int layer_id, int seq_len, int n_heads,

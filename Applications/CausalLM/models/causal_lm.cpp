@@ -145,10 +145,10 @@ void CausalLM::allocateAndBindKVCache() {
 
     const unsigned int max_timestep = static_cast<unsigned int>(MAX_SEQ_LEN);
 
-    kv_cache.allocate(static_cast<unsigned int>(NUM_LAYERS), BATCH_SIZE,
-                      max_timestep,
-                      static_cast<unsigned int>(NUM_KEY_VALUE_HEADS),
-                      static_cast<unsigned int>(HEAD_DIM), cache_dtype);
+    kv_cache.allocate(
+      static_cast<unsigned int>(NUM_LAYERS), BATCH_SIZE, max_timestep,
+      static_cast<unsigned int>(NUM_KEY_VALUE_HEADS),
+      static_cast<unsigned int>(HEAD_DIM), KV_CACHE_CAPACITIES, cache_dtype);
     kv_cache_bound = false;
   }
 
@@ -195,6 +195,10 @@ void CausalLM::allocateAndBindKVCache() {
                     vp->getDataType() != vc.getDataType(),
                   std::runtime_error)
       << "allocateAndBindKVCache: cache placeholder dtype mismatch for layer "
+      << i;
+    NNTR_THROW_IF(kp->getDim() != kc.getDim() || vp->getDim() != vc.getDim(),
+                  std::runtime_error)
+      << "allocateAndBindKVCache: cache placeholder shape mismatch for layer "
       << i;
 
     kp->setData(kc.getMemoryData(), kc.getOffset(), false);
@@ -539,6 +543,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     setKVCachePosition(0);
     output = model->incremental_inference(BATCH_SIZE, input, label, input_len,
                                           0, input_len, false);
+    advanceKVCachePosition(input_len);
 
     SYS_PROMP_LEN = input_len;
     save_kvcache(PRE_COMPUTED_CACHE_PATH, SYS_PROMP_LEN);
@@ -575,6 +580,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     setKVCachePosition(prefill_from);
     output = model->incremental_inference(
       BATCH_SIZE, input, label, init_len - 1, prefill_from, prefill_to, false);
+    advanceKVCachePosition(prefill_to - prefill_from);
 
     for (unsigned int b = 0; b < BATCH_SIZE; ++b)
       id_list.push_back(skipped_token);
@@ -588,6 +594,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     setKVCachePosition(prefill_from);
     output = model->incremental_inference(BATCH_SIZE, input, label, init_len,
                                           prefill_from, prefill_to, false);
+    advanceKVCachePosition(prefill_to - prefill_from);
 
     // post process of model output
     id_list = generate(output[0], do_sample, 1, ids_history, init_len);
@@ -627,6 +634,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
       model->incremental_inference(BATCH_SIZE, input, label, input_len,
                                    token_generation_idx - 1 + global_token_len,
                                    token_generation_idx + global_token_len);
+    advanceKVCachePosition(1);
     std::vector<unsigned int> ids_list(generate(output_interval[0], do_sample));
 
     // Feed the newly generated token back as the next input token.

@@ -37,6 +37,7 @@ namespace causallm {
  * - Provide write-pointer tensor views for new K/V insertion
  * - Provide full-range tensor views for attention computation
  * - Save/load cache to/from files
+ * - Allocate compact per-layer storage for causal sliding attention
  *
  * Future extensions:
  * - Cache eviction policies
@@ -71,6 +72,25 @@ public:
     ml::train::TensorDim::Format format = ml::train::TensorDim::Format::NCHW);
 
   /**
+   * @brief Allocate KV cache with a per-layer physical capacity.
+   *
+   * @param[in] num_layers number of attention layers
+   * @param[in] batch_size batch size
+   * @param[in] max_seq_len maximum logical sequence length
+   * @param[in] num_heads_kv number of KV heads (for GQA)
+   * @param[in] head_dim dimension per head
+   * @param[in] cache_capacities per-layer physical cache heights
+   * @param[in] dtype data type for cache tensors
+   * @param[in] format tensor format
+   */
+  void allocate(
+    unsigned int num_layers, unsigned int batch_size, unsigned int max_seq_len,
+    unsigned int num_heads_kv, unsigned int head_dim,
+    const std::vector<unsigned int> &cache_capacities,
+    ml::train::TensorDim::DataType dtype = ml::train::TensorDim::DataType::FP16,
+    ml::train::TensorDim::Format format = ml::train::TensorDim::Format::NCHW);
+
+  /**
    * @brief Allocate KV cache with per-layer KV widths.
    * @param[in] num_layers number of attention layers
    * @param[in] batch_size batch size
@@ -82,6 +102,24 @@ public:
   void allocate(
     unsigned int num_layers, unsigned int batch_size, unsigned int max_seq_len,
     const std::vector<unsigned int> &kv_widths,
+    ml::train::TensorDim::DataType dtype = ml::train::TensorDim::DataType::FP16,
+    ml::train::TensorDim::Format format = ml::train::TensorDim::Format::NCHW);
+
+  /**
+   * @brief Allocate KV cache with per-layer widths and physical capacities.
+   *
+   * @param[in] num_layers number of attention layers
+   * @param[in] batch_size batch size
+   * @param[in] max_seq_len maximum logical sequence length
+   * @param[in] kv_widths per-layer width (num_heads_kv * head_dim)
+   * @param[in] cache_capacities per-layer physical cache heights
+   * @param[in] dtype data type for cache tensors
+   * @param[in] format tensor format
+   */
+  void allocate(
+    unsigned int num_layers, unsigned int batch_size, unsigned int max_seq_len,
+    const std::vector<unsigned int> &kv_widths,
+    const std::vector<unsigned int> &cache_capacities,
     ml::train::TensorDim::DataType dtype = ml::train::TensorDim::DataType::FP16,
     ml::train::TensorDim::Format format = ml::train::TensorDim::Format::NCHW);
 
@@ -127,9 +165,12 @@ public:
   nntrainer::Tensor &getValueCache(unsigned int layer_idx);
 
   /**
-   * @brief Get a write-pointer view into key cache at current position
-   *        for a specific batch and step_size.
+   * @brief Get a write-pointer view into key cache at current position for a
+   *        specific batch and step_size.
    *        This is where new K values should be written.
+   * @note For a compact sliding cache, this contiguous helper is valid only
+   *       before the logical position reaches the physical capacity. The
+   *       mha_core execution path rolls the bound cache tensor directly.
    * @param[in] layer_idx attention layer index
    * @param[in] batch batch index
    * @param[in] step_size number of tokens to write
@@ -151,8 +192,8 @@ public:
                                            unsigned int step_size);
 
   /**
-   * @brief Get a read view of key cache from position 0 to (cache_pos +
-   * step_size) for attention computation (Q @ K^T).
+   * @brief Get a key cache read view for attention computation (Q @ K^T).
+   * @note read_len cannot exceed the layer's physical cache capacity.
    * @param[in] layer_idx attention layer index
    * @param[in] batch batch index
    * @param[in] read_len total length to read (typically cache_pos + step_size)
@@ -181,6 +222,14 @@ public:
 
   /**
    * @brief Save KV cache to file up to specified length
+   * @note The legacy Tensor serialization framing and contiguous payload layout
+   *       are preserved. Compact layers are projected into that virtual
+   *       full-cache layout, with discarded rows written as zeros. The legacy
+   *       layout stores only the first batch_size * seq_len physical rows, so
+   *       when batch_size > 1 and seq_len < max_seq_len it cannot represent
+   *       every batch completely. After a compact layer evicts rows, only the
+   *       current logical position can be saved; an unavailable earlier
+   *       position is rejected.
    * @param[in] path file path
    * @param[in] seq_len number of positions to save
    */
@@ -188,6 +237,10 @@ public:
 
   /**
    * @brief Load KV cache from file
+   * @note For compact layers, only retained rows present in the legacy virtual
+   *       full-cache layout are loaded and absent rows are zeroed. The legacy
+   *       multi-batch limitation described by save() is intentionally
+   *       preserved for byte compatibility.
    * @param[in] path file path
    * @param[in] seq_len number of positions to load
    */
@@ -201,9 +254,15 @@ public:
   }
 
   /**
-   * @brief Get maximum sequence length (cache capacity)
+   * @brief Get maximum logical sequence length
    */
   unsigned int getMaxSeqLen() const { return max_seq_len_; }
+
+  /**
+   * @brief Get the physical cache capacity for a layer
+   * @param[in] layer_idx attention layer index
+   */
+  unsigned int getCacheCapacity(unsigned int layer_idx) const;
 
   /**
    * @brief Get batch size
@@ -220,8 +279,8 @@ private:
    * @brief Per-layer cache storage
    */
   struct LayerCache {
-    nntrainer::Tensor key_cache;   /**< (batch, 1, max_seq_len, kv_width) */
-    nntrainer::Tensor value_cache; /**< (batch, 1, max_seq_len, kv_width) */
+    nntrainer::Tensor key_cache;   /**< (batch, 1, capacity, kv_width) */
+    nntrainer::Tensor value_cache; /**< (batch, 1, capacity, kv_width) */
   };
 
   std::vector<LayerCache> layer_caches_; /**< per-layer KV caches */
@@ -233,6 +292,7 @@ private:
   unsigned int head_dim_ = 0;     /**< head dimension */
   unsigned int kv_width_ = 0;     /**< num_heads_kv * head_dim */
   std::vector<unsigned int> kv_widths_;
+  std::vector<unsigned int> cache_capacities_;
 
   ml::train::TensorDim::DataType dtype_ = ml::train::TensorDim::DataType::FP16;
   ml::train::TensorDim::Format format_ = ml::train::TensorDim::Format::NCHW;

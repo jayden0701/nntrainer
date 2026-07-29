@@ -223,7 +223,8 @@ void SentenceTransformer::allocateAndBindKVCache() {
     kv_cache.allocate(static_cast<unsigned int>(NUM_LAYERS), BATCH_SIZE,
                       static_cast<unsigned int>(MAX_SEQ_LEN),
                       static_cast<unsigned int>(NUM_KEY_VALUE_HEADS),
-                      static_cast<unsigned int>(HEAD_DIM), cache_dtype);
+                      static_cast<unsigned int>(HEAD_DIM), KV_CACHE_CAPACITIES,
+                      cache_dtype);
   }
 
   for (int i = 0; i < NUM_LAYERS; ++i) {
@@ -257,6 +258,11 @@ void SentenceTransformer::allocateAndBindKVCache() {
         vp->getDataType() != vc.getDataType()) {
       throw std::runtime_error(
         "SentenceTransformer: KV cache placeholder dtype mismatch for layer " +
+        std::to_string(i));
+    }
+    if (kp->getDim() != kc.getDim() || vp->getDim() != vc.getDim()) {
+      throw std::runtime_error(
+        "SentenceTransformer: KV cache placeholder shape mismatch for layer " +
         std::to_string(i));
     }
 

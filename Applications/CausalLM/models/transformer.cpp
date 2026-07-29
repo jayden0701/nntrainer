@@ -13,6 +13,7 @@
 #include <fstream>
 #include <mutex>
 
+#include <algorithm>
 #include <app_context.h>
 #include <engine.h>
 #include <model.h>
@@ -197,6 +198,7 @@ void Transformer::setupParameters(json &cfg, json &generation_cfg,
   NORM_EPS =
     cfg.contains("rms_norm_eps") ? cfg["rms_norm_eps"].get<float>() : 1e-5;
   GQA_SIZE = NUM_HEADS / NUM_KEY_VALUE_HEADS;
+  KV_CACHE_CAPACITIES.assign(static_cast<size_t>(NUM_LAYERS), MAX_SEQ_LEN);
 
   return;
 };
@@ -433,8 +435,10 @@ Tensor Transformer::createTransformerDecoderBlock(const int layer_id,
  * @brief Create external KV-cache placeholder tensors for one layer.
  */
 std::pair<Tensor, Tensor>
-Transformer::createKVCachePlaceholders(const int layer_id, int n_heads) {
-  const unsigned int max_timestep = static_cast<unsigned int>(MAX_SEQ_LEN);
+Transformer::createKVCachePlaceholders(const int layer_id, int n_heads,
+                                       unsigned int attention_window) {
+  const unsigned int max_timestep = resolveKVCacheCapacity(attention_window);
+  recordKVCacheCapacity(layer_id, max_timestep);
   const unsigned int kv_width =
     static_cast<unsigned int>(HEAD_DIM * n_heads / GQA_SIZE);
   const std::string cache_shape = std::to_string(BATCH_SIZE) +
@@ -465,6 +469,23 @@ Transformer::createKVCachePlaceholders(const int layer_id, int n_heads) {
               withKey("input_dtype", cache_dtype)}));
 
   return {cache_k_input(Tensor()), cache_v_input(Tensor())};
+}
+
+unsigned int
+Transformer::resolveKVCacheCapacity(unsigned int attention_window) const {
+  if (!IS_CAUSAL || attention_window == 0 || attention_window == UINT_MAX) {
+    return MAX_SEQ_LEN;
+  }
+
+  return std::min(MAX_SEQ_LEN, attention_window);
+}
+
+void Transformer::recordKVCacheCapacity(int layer_id, unsigned int capacity) {
+  NNTR_THROW_IF(layer_id < 0 ||
+                  static_cast<size_t>(layer_id) >= KV_CACHE_CAPACITIES.size(),
+                std::out_of_range)
+    << "Invalid layer index for KV-cache capacity: " << layer_id;
+  KV_CACHE_CAPACITIES[static_cast<size_t>(layer_id)] = capacity;
 }
 
 /**
@@ -498,9 +519,13 @@ Tensor Transformer::createAttention(const int layer_id, int seq_len,
      withKey("disable_bias", "true"), withKey("weight_initializer", "ones")}));
   Tensor v = wv(value);
 
+  const unsigned int attention_window =
+    (layer_id + 1) % SLIDING_WINDOW_PATTERN ? SLIDING_WINDOW : UINT_MAX;
+
   // External KV cache placeholders (per-layer). Their actual storage is owned
   // by the host (KVCacheManager) and bound at runtime via setExternalTensors.
-  auto [cache_k, cache_v] = createKVCachePlaceholders(layer_id, n_heads);
+  auto [cache_k, cache_v] =
+    createKVCachePlaceholders(layer_id, n_heads, attention_window);
 
   // Attention core layer
   LayerHandle mha(createLayer(
@@ -508,9 +533,7 @@ Tensor Transformer::createAttention(const int layer_id, int seq_len,
     {withKey("name", "layer" + std::to_string(layer_id) + "_attention"),
      withKey("num_heads", n_heads), withKey("num_heads_kv", n_heads / GQA_SIZE),
      withKey("max_timestep", std::to_string(MAX_SEQ_LEN)),
-     withKey("sliding_window", (layer_id + 1) % SLIDING_WINDOW_PATTERN
-                                 ? SLIDING_WINDOW
-                                 : UINT_MAX),
+     withKey("sliding_window", attention_window),
      withKey("rope_theta", ROPE_THETA),
      withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
      withKey("is_causal", IS_CAUSAL ? "true" : "false")}));

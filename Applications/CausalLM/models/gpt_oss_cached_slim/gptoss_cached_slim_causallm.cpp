@@ -62,13 +62,15 @@ Tensor GptOssCachedSlimCausalLM::createAttention(const int layer_id,
      withKey("weight_initializer", "ones")}));
   Tensor q = wq(query);
 
+  unsigned int sliding_window =
+    (LAYER_TYPES[layer_id] == "sliding_attention") ? SLIDING_WINDOW : UINT_MAX;
+
   // External KV cache placeholders (per-layer). Storage is owned by the host
   // (KVCacheManager) and bound at runtime via setExternalTensors.
-  auto [cache_k, cache_v] = createKVCachePlaceholders(layer_id, n_heads);
+  auto [cache_k, cache_v] =
+    createKVCachePlaceholders(layer_id, n_heads, sliding_window);
 
   // Attention core layer
-  unsigned sliding_window =
-    (LAYER_TYPES[layer_id] == "sliding_attention") ? SLIDING_WINDOW : UINT_MAX;
   // this attention uses sink!
   LayerHandle mha(createLayer(
     "mha_core",

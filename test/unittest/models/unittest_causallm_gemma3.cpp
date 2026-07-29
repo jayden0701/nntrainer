@@ -51,6 +51,14 @@ public:
                           nntr_cfg, causallm::ModelType::CAUSALLM),
     causallm_test::CausalLMTestAdapter<causallm::Gemma3CausalLM>(
       cfg, generation_cfg, nntr_cfg) {}
+
+  /**
+   * @brief Return the physical KV-cache capacity for a layer
+   */
+  unsigned int getKVCacheCapacityForTest(unsigned int layer_id) {
+    allocateAndBindKVCache();
+    return kv_cache.getCacheCapacity(layer_id);
+  }
 };
 
 /**
@@ -166,6 +174,13 @@ public:
    * @brief Return whether the tiny embedding model uses causal attention
    */
   bool isCausalForTest() const { return IS_CAUSAL; }
+
+  /**
+   * @brief Return the physical KV-cache capacity recorded for a layer
+   */
+  unsigned int getKVCacheCapacityForTest(unsigned int layer_id) const {
+    return KV_CACHE_CAPACITIES.at(layer_id);
+  }
 };
 
 /**
@@ -492,6 +507,34 @@ TEST_P(Gemma3TinyModelTest, PromptProducesExpectedLogits) {
   causallm_test::expectPromptProducesExpectedLogits(GetParam(), files);
 }
 
+/**
+ * @brief Test mixed sliding/full capacities and prefill longer than the
+ * window
+ */
+TEST(Gemma3KVCacheTest, SlidingLayerKeepsOnlyWindowDuringLongPrefill) {
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma3KVCacheTest", "SlidingLayerKeepsOnlyWindowDuringLongPrefill",
+    "FP32");
+  const auto data_type = causallm_test::makeTinyFp32DataType();
+  auto cfg = makeTinyGemma3Config();
+  auto generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  nntr_cfg["init_seq_len"] = 6;
+
+  TinyGemma3CausalLM model(cfg, generation_cfg, nntr_cfg);
+  model.initializeModel();
+  setupGemma3DeterministicWeights(model);
+
+  EXPECT_EQ(model.getKVCacheCapacityForTest(0), 4u);
+  EXPECT_EQ(model.getKVCacheCapacityForTest(1), 8u);
+
+  std::vector<unsigned int> generated;
+  ASSERT_NO_THROW(generated =
+                    model.greedyGenerateFromIds({1, 2, 3, 4, 5, 6}, 2));
+  EXPECT_EQ(generated.size(), 2u);
+}
+
 INSTANTIATE_TEST_SUITE_P(
   Gemma3, Gemma3TinyModelTest,
   ::testing::Values(makeGemma3Case(causallm_test::makeTinyFp32DataType()),
@@ -518,6 +561,8 @@ TEST(EmbeddingGemmaTinyModelTest,
   auto model = makeLoadedEmbeddingGemma(files);
 
   EXPECT_FALSE(model->isCausalForTest());
+  EXPECT_EQ(model->getKVCacheCapacityForTest(0), 8u);
+  EXPECT_EQ(model->getKVCacheCapacityForTest(1), 8u);
 
   std::vector<float> embedding;
   ASSERT_NO_THROW(embedding = model->encodePrompt("hello tok4"));
