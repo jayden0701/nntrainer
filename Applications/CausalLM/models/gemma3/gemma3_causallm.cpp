@@ -201,6 +201,7 @@ Tensor Gemma3Transformer::createAttention(const int layer_id, int seq_len,
      withKey("max_timestep", std::to_string(MAX_SEQ_LEN)),
      withKey("sliding_window", window_size),
      withKey("rope_theta", std::to_string(rope_theta)),
+     withKey("max_position_embeddings", MAX_POSITION_EMBEDDINGS),
      withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
      withKey("attn_logit_softcapping", std::to_string(ATTN_LOGIT_SOFTCAPPING)),
      withKey("is_causal", IS_CAUSAL ? "true" : "false")}));

@@ -512,6 +512,7 @@ Tensor Transformer::createAttention(const int layer_id, int seq_len,
                                  ? SLIDING_WINDOW
                                  : UINT_MAX),
      withKey("rope_theta", ROPE_THETA),
+     withKey("max_position_embeddings", MAX_POSITION_EMBEDDINGS),
      withKey("max_new_tokens", std::to_string(NUM_TO_GENERATE)),
      withKey("is_causal", IS_CAUSAL ? "true" : "false")}));
   Tensor a = mha({q, k, v, cache_k, cache_v});
