@@ -498,10 +498,8 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
         reinterpret_cast<float *>(kv_cache.getValueCache(i).getData()));
     }
 
-    std::sort(
-      cache_inputs.begin(), cache_inputs.end(),
-      [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
-
+    // Model inputs are positional. Preserve the same per-layer K,V order used
+    // when the explicit cache input layers are constructed.
     std::vector<float *> inference_inputs;
     inference_inputs.reserve(1 + cache_inputs.size());
     inference_inputs.push_back(input_sample);

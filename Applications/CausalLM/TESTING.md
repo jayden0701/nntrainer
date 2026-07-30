@@ -1,6 +1,6 @@
 # CausalLM Model Unit Test Guide
 
-`unittest_causallm_models` is the CausalLM reference test suite — 55 tests covering:
+`unittest_causallm_models` is the CausalLM reference test suite — 56 tests covering:
 
 - **Tiny-model deterministic tests**: argmax, logit, and weight round-trip checks with random weights
 - **FP32 differential tests**: compare nntrainer outputs against HuggingFace reference logits
@@ -54,11 +54,24 @@ Meson automatically extracts the fixture tarballs during build into
 The script handles meson setup, ninja build, fixture extraction, and sets
 `NNTR_QUANTIZE_BIN` automatically.
 
+To build and run the focused Gemma4 cache-order regression with actual FP16
+cache inputs:
+
+```bash
+meson setup builddir-fp16 \
+  -Denable-test=true \
+  -Denable-app=true \
+  -Denable-transformer=true \
+  -Denable-fp16=true
+ninja -C builddir-fp16 unittest_gemma4_input_order_fp16
+meson test -C builddir-fp16 unittest_gemma4_input_order_fp16
+```
+
 ### Expected result
 
 ```
-[==========] 55 tests from 22 test suites ran.
-[  PASSED  ] 55 tests.
+[==========] 56 tests from 23 test suites ran.
+[  PASSED  ] 56 tests.
 ```
 
 ### Common failures
@@ -161,8 +174,8 @@ the nntrainer build and ndk-build when only the test execution needs to be re-ru
 ### Expected result
 
 ```
-[==========] 55 tests from 22 test suites ran.
-[  PASSED  ] 55 tests.
+[==========] 56 tests from 23 test suites ran.
+[  PASSED  ] 56 tests.
 ```
 
 ### Required environment variables

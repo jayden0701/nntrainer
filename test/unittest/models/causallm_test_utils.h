@@ -409,9 +409,7 @@ private:
         "cache_v_l" + std::to_string(i),
         reinterpret_cast<float *>(this->kv_cache.getValueCache(i).getData()));
     }
-    std::sort(cache_inputs.begin(), cache_inputs.end(),
-              [](const auto &l, const auto &r) { return l.first < r.first; });
-
+    // Match CausalLM's positional per-layer K,V input order.
     std::vector<float *> input;
     input.reserve(1 + cache_inputs.size());
     input.push_back(input_sample.data());

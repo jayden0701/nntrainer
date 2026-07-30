@@ -44,6 +44,28 @@ public:
                           nntr_cfg, causallm::ModelType::CAUSALLM),
     causallm_test::CausalLMTestAdapter<causallm::Gemma4CausalLM>(
       cfg, generation_cfg, nntr_cfg) {}
+
+  /**
+   * @brief Get compiled model input dimensions for cache-order tests
+ */
+  std::vector<ml::train::TensorDim> compiledInputDimensionsForTest() {
+    return this->model->getInputDimension();
+  }
+
+  /**
+   * @brief Get KV cache dimensions in runtime layer order
+   */
+  std::vector<ml::train::TensorDim> cacheInputDimensionsForTest() {
+    this->allocateAndBindKVCache();
+
+    std::vector<ml::train::TensorDim> cache_dims;
+    cache_dims.reserve(static_cast<size_t>(tiny_gemma4_num_layers) * 2);
+    for (int layer_id = 0; layer_id < tiny_gemma4_num_layers; ++layer_id) {
+      cache_dims.push_back(this->kv_cache.getKeyCache(layer_id).getDim());
+      cache_dims.push_back(this->kv_cache.getValueCache(layer_id).getDim());
+    }
+    return cache_dims;
+  }
 };
 
 /**
@@ -91,6 +113,7 @@ causallm::json makeTinyGemma4Config() {
     {"text_config",
      {
        {"head_dim", 8},
+       {"global_head_dim", 16},
        {"hidden_size", 64},
        {"hidden_size_per_layer_input", 32},
        {"intermediate_size", 64},
@@ -193,6 +216,53 @@ makeGemma4Case(const causallm_test::TinyCausalLMDataType &data_type) {
         static_cast<TinyGemma4CausalLM &>(runner));
     },
   };
+}
+
+/**
+ * @brief Verify compiled Gemma4 cache inputs follow layer-local key/value
+ * order
+ */
+TEST(Gemma4KVCacheInputOrderTest, CompiledInputsFollowLayerOrder) {
+  auto test_case = makeGemma4Case(causallm_test::makeTinyFp32DataType());
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma4KVCacheInputOrderTest", "CompiledInputsFollowLayerOrder",
+    test_case.name);
+  auto config =
+    causallm_test::makeTinyCausalLMConfig(test_case, files.tokenizer_path);
+  config.nntrainer["init_seq_len"] = 7;
+  config.nntrainer["skip_prefill"] = true;
+
+  auto runner =
+    test_case.create_model(config.model, config.generation, config.nntrainer);
+  runner->initializeModel();
+
+  auto &model = static_cast<TinyGemma4CausalLM &>(*runner);
+  const auto compiled_dims = model.compiledInputDimensionsForTest();
+  const auto cache_dims = model.cacheInputDimensionsForTest();
+
+  ASSERT_EQ(cache_dims.size(), static_cast<size_t>(tiny_gemma4_num_layers) * 2);
+  ASSERT_EQ(compiled_dims.size(), 1u + cache_dims.size());
+
+  ASSERT_EQ(cache_dims[0].width(), 32u);
+  ASSERT_EQ(cache_dims[1].width(), 32u);
+  ASSERT_EQ(cache_dims[2].width(), 64u);
+  ASSERT_EQ(cache_dims[3].width(), 64u);
+
+#ifdef ENABLE_FP16
+  const auto expected_cache_dtype = ml::train::TensorDim::DataType::FP16;
+#else
+  const auto expected_cache_dtype = ml::train::TensorDim::DataType::UINT16;
+#endif
+  for (size_t cache_idx = 0; cache_idx < cache_dims.size(); ++cache_idx) {
+    ASSERT_EQ(compiled_dims[cache_idx + 1], cache_dims[cache_idx]);
+    ASSERT_EQ(cache_dims[cache_idx].getDataType(), expected_cache_dtype);
+  }
+
+  setupGemma4DeterministicWeights(model);
+  // skip_prefill processes six tokens, which exceeds the smaller cache
+  // backing store if the 64-wide full-attention input is lexically misbound.
+  ASSERT_NO_THROW(model.runPrompt("hello world tok3 tok4 tok5 tok6 tok7"));
+  EXPECT_TRUE(model.hasRun());
 }
 
 /**

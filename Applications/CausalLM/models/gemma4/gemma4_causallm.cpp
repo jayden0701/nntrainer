@@ -218,30 +218,27 @@ std::pair<Tensor, Tensor>
 Gemma4Transformer::createGemma4KVCachePlaceholders(const int layer_id,
                                                    unsigned int kv_width) {
   const unsigned int max_timestep = static_cast<unsigned int>(MAX_SEQ_LEN);
+  // Keep both data types as explicit inputs so graph order remains K,V for
+  // each layer instead of depending on symbolic tensor name ordering.
 #ifdef ENABLE_FP16
-  ml::train::TensorDim cache_dim(
-    {BATCH_SIZE, 1, max_timestep, kv_width},
-    {ml::train::TensorDim::Format::NCHW, ml::train::TensorDim::DataType::FP16});
-
-  Tensor cache_k(cache_dim, "cache_k_l" + std::to_string(layer_id));
-  Tensor cache_v(cache_dim, "cache_v_l" + std::to_string(layer_id));
-  return {cache_k, cache_v};
+  const char *cache_dtype = "FP16";
 #else
+  const char *cache_dtype = "UINT16";
+#endif
   const std::string cache_shape = std::to_string(BATCH_SIZE) +
                                   ":1:" + std::to_string(max_timestep) + ":" +
                                   std::to_string(kv_width);
 
   LayerHandle cache_k_input(createLayer(
-    "input",
-    {withKey("name", "cache_k_l" + std::to_string(layer_id)),
-     withKey("input_shape", cache_shape), withKey("input_dtype", "UINT16")}));
+    "input", {withKey("name", "cache_k_l" + std::to_string(layer_id)),
+              withKey("input_shape", cache_shape),
+              withKey("input_dtype", cache_dtype)}));
   LayerHandle cache_v_input(createLayer(
-    "input",
-    {withKey("name", "cache_v_l" + std::to_string(layer_id)),
-     withKey("input_shape", cache_shape), withKey("input_dtype", "UINT16")}));
+    "input", {withKey("name", "cache_v_l" + std::to_string(layer_id)),
+              withKey("input_shape", cache_shape),
+              withKey("input_dtype", cache_dtype)}));
 
   return {cache_k_input(Tensor()), cache_v_input(Tensor())};
-#endif
 }
 
 std::pair<Tensor, Tensor> Gemma4Transformer::constructModel() {
