@@ -672,6 +672,7 @@ TEST(nntrainer_ccapi_graph, simple_fc_compile_p) {
   auto model = createModel(ModelType::NEURAL_NET, {"batch_size=1"});
   EXPECT_EQ(model->compile(x, y, ml::train::ExecutionMode::INFERENCE),
             ML_ERROR_NONE);
+  EXPECT_EQ(model->getInputNames(), std::vector<std::string>({"input"}));
 }
 
 /**
