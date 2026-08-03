@@ -586,6 +586,13 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
   std::vector<float> gen_input(
     static_cast<size_t>(BATCH_SIZE) * INIT_SEQ_LEN * DIM, 0.0f);
 
+  // Build inference inputs and bind KV caches once before the decode loop.
+  // gen_input and KV cache buffers are stable for the loop's lifetime, so
+  // the pointer vector does not change between iterations.
+  input =
+    buildInferenceInputs(gen_input.data(), gen_input.size() * sizeof(float));
+  allocateAndBindKVCache();
+
   auto start_generation = std::chrono::high_resolution_clock::now();
 
   for (unsigned int token_generation_idx = input_len + 1;
@@ -599,10 +606,6 @@ void Lfm2CausalLM::run_with_embeddings(const void *inputs_embeds,
       std::copy(embed.begin(), embed.end(),
                 gen_input.data() + static_cast<size_t>(b) * INIT_SEQ_LEN * DIM);
     }
-
-    input =
-      buildInferenceInputs(gen_input.data(), gen_input.size() * sizeof(float));
-    allocateAndBindKVCache();
 
     auto output_interval =
       model->incremental_inference(BATCH_SIZE, input, label, input_len,
