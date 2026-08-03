@@ -6,7 +6,10 @@ causallm_swiglu_src_abs = [meson.current_source_dir() / 'swiglu.cpp']
 causallm_causal_conv1d_src_abs = [meson.current_source_dir() / 'causal_conv1d_layer.cpp']
 causallm_tie_word_embedding_src_abs = [meson.current_source_dir() / 'tie_word_embedding.cpp']
 causallm_lmhead_src_abs = [meson.current_source_dir() / 'lm_head.cpp']
-causallm_mha_core_abs = [meson.current_source_dir()/ 'mha_core.cpp']
+causallm_mha_core_abs = [
+    meson.current_source_dir() / 'mha_core.cpp',
+    meson.current_source_dir() / 'snapkv_policy.cpp',
+]
 causallm_embedding_src_abs = [meson.current_source_dir() / 'embedding_layer.cpp']
 causallm_reshaped_rms_norm_src_abs = [meson.current_source_dir() / 'reshaped_rms_norm.cpp']
 causallm_qkv_layer_src_abs = [meson.current_source_dir() / 'qkv_layer.cpp']

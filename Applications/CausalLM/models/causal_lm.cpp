@@ -30,6 +30,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -79,10 +80,6 @@ void CausalLM::setupParameters(json &cfg, json &generation_cfg,
   for (unsigned int i = 0; i < BATCH_SIZE; ++i)
     output_list.push_back("");
 
-  // allocate memory for the internal buffer
-  ids_history = (unsigned int *)malloc(static_cast<size_t>(BATCH_SIZE) *
-                                       MAX_SEQ_LEN * sizeof(unsigned int));
-
   BAD_WORD_IDS = nntr_cfg["bad_word_ids"].get<std::vector<unsigned int>>();
   NUM_BADWORDS = BAD_WORD_IDS.size();
 
@@ -109,6 +106,12 @@ void CausalLM::setupParameters(json &cfg, json &generation_cfg,
           .get<unsigned int>();
   }
 
+  NNTR_THROW_IF(SNAPKV_CACHE_CAPACITY > 0 && SKIP_PREFILL,
+                std::invalid_argument)
+    << "SnapKV does not support skip_prefill";
+  NNTR_THROW_IF(SNAPKV_CACHE_CAPACITY > 0 && USE_KVCACHE, std::invalid_argument)
+    << "SnapKV does not support saving or loading pre-computed KV caches";
+
   if (generation_cfg["eos_token_id"].is_array()) {
     EOS_TOKEN_ID =
       generation_cfg["eos_token_id"].empty()
@@ -130,6 +133,26 @@ void CausalLM::setupParameters(json &cfg, json &generation_cfg,
   TEMPERATURE = generation_cfg.contains("temperature")
                   ? generation_cfg["temperature"].get<float>()
                   : 0.7;
+
+  // Allocate only after all configuration parsing that can reject construction.
+  const size_t batch_count = BATCH_SIZE;
+  const size_t sequence_length = MAX_SEQ_LEN;
+  NNTR_THROW_IF(batch_count != 0 &&
+                  sequence_length >
+                    std::numeric_limits<size_t>::max() / batch_count,
+                std::overflow_error)
+    << "ids_history element count overflow";
+  const size_t history_elements = batch_count * sequence_length;
+  NNTR_THROW_IF(history_elements >
+                  std::numeric_limits<size_t>::max() / sizeof(unsigned int),
+                std::overflow_error)
+    << "ids_history byte count overflow";
+  auto *new_ids_history = static_cast<unsigned int *>(
+    malloc(history_elements * sizeof(unsigned int)));
+  if (new_ids_history == nullptr)
+    throw std::bad_alloc();
+  free(ids_history);
+  ids_history = new_ids_history;
   global_token_len = 0;
 }
 
@@ -281,6 +304,8 @@ void CausalLM::registerOutputs(
 }
 
 void CausalLM::save_kvcache(std::string path, int to_) {
+  NNTR_THROW_IF(SNAPKV_CACHE_CAPACITY > 0, std::logic_error)
+    << "save_kvcache is unavailable while SnapKV is enabled";
   if (!kv_cache.isAllocated()) {
     throw std::runtime_error(
       "save_kvcache called before allocateAndBindKVCache()");
@@ -289,6 +314,8 @@ void CausalLM::save_kvcache(std::string path, int to_) {
 }
 
 void CausalLM::load_kvcache(std::string path, int to_) {
+  NNTR_THROW_IF(SNAPKV_CACHE_CAPACITY > 0, std::logic_error)
+    << "load_kvcache is unavailable while SnapKV is enabled";
   if (!kv_cache.isAllocated()) {
     allocateAndBindKVCache();
   }

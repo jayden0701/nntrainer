@@ -390,6 +390,12 @@ protected:
   float ATTN_LOGIT_SOFTCAPPING = 0.0f; /**< attention logit softcapping */
   bool IS_CAUSAL = true;
 
+  /** SnapKV prompt-cache eviction. A zero capacity disables the feature. */
+  unsigned int SNAPKV_CACHE_CAPACITY = 0;
+  unsigned int SNAPKV_OBSERVATION_WINDOW = 32;
+  unsigned int SNAPKV_POOLING_KERNEL = 5;
+  std::string SNAPKV_POOLING = "max";
+
   // Performance metrics
   TransformerPerformanceMetrics performance_metrics;
 

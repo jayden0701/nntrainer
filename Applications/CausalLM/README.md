@@ -21,6 +21,50 @@ It supports *inference* mode (text generation) on various devices, including And
 
 For more details, please refer to the [Model Documentation](models/README.md).
 
+## SnapKV prompt-cache eviction (CPU)
+
+SnapKV can compact a long prompt's KV cache once, after the first full causal
+prefill. Add the following optional object to `nntr_config.json`:
+
+```json
+{
+  "snapkv": {
+    "cache_capacity": 2048,
+    "observation_window": 32,
+    "pooling_kernel": 5,
+    "pooling": "max"
+  }
+}
+```
+
+`cache_capacity` is required. The other fields default to the values shown;
+`pooling` accepts `max`, `avg`, or `average`. The capacity must exceed the
+observation window, and the pooling kernel must be a positive odd integer.
+The capacity must not exceed `max_seq_len`, and the query-head count must be
+divisible by the KV-head count. Prompts at or below the capacity are left
+unchanged.
+
+The current implementation targets the CPU external-cache path. It compacts
+full-attention layers independently per KV head, preserves the full-prefill
+output, and uses logical token positions for RoPE after compaction. Finite
+sliding-window layers continue using their normal cache. SnapKV is rejected for
+internal-cache layers, non-causal attention, `skip_prefill`, attention sinks,
+and pre-computed KV-cache save/load. The first compacted prefill must start at
+logical position zero.
+
+The first invocation must contain the complete, unpadded prompt for every
+batch item. Chunked prefill and padded, packed, or variable-length prompt
+batches are not supported in this version. An all-sliding-window model has no
+eligible layer, so the common SnapKV configuration is accepted but is a no-op.
+
+This version reduces the active cache length used during decoding, but the
+host-owned backing allocation remains sized to `max_seq_len`; it therefore does
+not reduce the initial cache-slab allocation or peak prefill memory. A prompt
+compacts to physical length `C`; generated tokens append without further
+eviction, producing active length `C + t`. Compaction temporarily allocates K
+and V buffers totaling `2 * C * Hkv * head_dim * element_size` bytes per batch,
+in addition to score vectors.
+
 ## Performance
 
 Measured on a **Galaxy S26 Ultra (SM-S948U)**, CPU backend, with **Qwen3-0.6B**

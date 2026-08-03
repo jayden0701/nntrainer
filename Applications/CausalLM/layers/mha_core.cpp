@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -117,10 +118,14 @@ MHACoreLayer::MHACoreLayer() :
     props::UseRope(), props::MaxPositionEmbeddings(), props::UseSink(),
     props::RopeScalingType(), props::RopeScalingFactor(),
     props::RopePartialRotaryFactor(), props::RopeScalingMaxPositionEmbeddings(),
-    props::AttnLogitSoftcapping(), props::IsCausal()),
+    props::AttnLogitSoftcapping(), props::IsCausal(),
+    props::SnapKVCacheCapacity(), props::SnapKVObservationWindow(),
+    props::SnapKVPoolingKernel(), props::SnapKVPoolingType()),
   sm(nntrainer::ActivationType::ACT_SOFTMAX),
   epsilon(1e-3),
   cache_index(0),
+  logical_position(0),
+  cache_position_offset(0),
   num_heads_Q(0),
   num_heads_KV(0),
   head_dim(0),
@@ -129,6 +134,41 @@ MHACoreLayer::MHACoreLayer() :
 }
 
 MHACoreLayer::~MHACoreLayer() {}
+
+void MHACoreLayer::setCacheIndex(unsigned int idx) {
+  const auto mapped = SnapKVPolicy::mapLogicalPosition(
+    {logical_position, cache_index, cache_position_offset,
+     snapkv_has_compacted},
+    idx);
+  logical_position = mapped.logical_position;
+  cache_index = mapped.physical_position;
+  cache_position_offset = mapped.logical_to_physical_offset;
+  snapkv_has_compacted = mapped.has_compacted;
+}
+
+void MHACoreLayer::refreshSnapKVConfig() {
+  snapkv_cache_capacity =
+    std::get<props::SnapKVCacheCapacity>(mha_core_props).get();
+  snapkv_observation_window =
+    std::get<props::SnapKVObservationWindow>(mha_core_props).get();
+  snapkv_pooling_kernel =
+    std::get<props::SnapKVPoolingKernel>(mha_core_props).get();
+  snapkv_pooling = parseSnapKVPooling(
+    std::get<props::SnapKVPoolingType>(mha_core_props).get());
+
+  if (snapkv_cache_capacity > 0) {
+    SnapKVPolicy::validateConfig(
+      snapkv_cache_capacity, snapkv_observation_window, snapkv_pooling_kernel);
+  }
+}
+
+bool MHACoreLayer::shouldCompactSnapKV(unsigned int logical_from,
+                                       unsigned int step_size) const {
+  return snapkv_cache_capacity > 0 && !snapkv_has_compacted &&
+         logical_from == 0 && cache_index == 0 &&
+         step_size > snapkv_cache_capacity && use_external_cache && is_causal &&
+         !use_sink && !skip_prefill && local_window_size == UINT_MAX;
+}
 
 /************************************************************** */
 
@@ -226,6 +266,22 @@ void MHACoreLayer::finalize(nntrainer::InitLayerContext &context) {
     skip_prefill =
       std::get<nntrainer::props::SkipPrefill>(*layer_impl_props).get();
 
+  refreshSnapKVConfig();
+  if (snapkv_cache_capacity > 0) {
+    NNTR_THROW_IF(num_heads_Q % num_heads_KV != 0, std::invalid_argument)
+      << "SnapKV requires query heads divisible by KV heads";
+    NNTR_THROW_IF(!use_external_cache, std::invalid_argument)
+      << "SnapKV requires the external KV cache path";
+    NNTR_THROW_IF(!is_causal, std::invalid_argument)
+      << "SnapKV requires causal attention";
+    NNTR_THROW_IF(use_sink, std::invalid_argument)
+      << "SnapKV does not support attention sinks";
+    NNTR_THROW_IF(skip_prefill, std::invalid_argument)
+      << "SnapKV does not support skip_prefill";
+    NNTR_THROW_IF(snapkv_cache_capacity > max_timestep, std::invalid_argument)
+      << "SnapKV cache capacity exceeds max_timestep";
+  }
+
   /** Tensor for KV-Cache (only allocate internally when not using external
    * cache) */
   if (!use_external_cache) {
@@ -307,6 +363,25 @@ void MHACoreLayer::forwarding(nntrainer::RunLayerContext &context,
   unsigned int step_size = (incremental_step_size > 0)
                              ? incremental_step_size
                              : (unsigned int)query.height();
+  NNTR_THROW_IF(step_size == 0, std::invalid_argument)
+    << "mha_core step_size must be greater than zero";
+  const unsigned int max_timestep =
+    std::get<nntrainer::props::MaxTimestep>(mha_core_props).get();
+  NNTR_THROW_IF(logical_position > max_timestep ||
+                  step_size > max_timestep - logical_position,
+                std::out_of_range)
+    << "mha_core logical cache range exceeds max_timestep";
+  NNTR_THROW_IF(use_rope &&
+                  (logical_position > max_position_embeddings ||
+                   step_size > max_position_embeddings - logical_position),
+                std::out_of_range)
+    << "mha_core logical cache range exceeds max_position_embeddings";
+  NNTR_THROW_IF(cache_index >
+                  std::numeric_limits<unsigned int>::max() - step_size,
+                std::out_of_range)
+    << "mha_core physical cache position overflow";
+
+  const unsigned int logical_from = logical_position;
   unsigned int from = cache_index;
   unsigned int to = cache_index + step_size;
 
@@ -323,6 +398,11 @@ void MHACoreLayer::forwarding(nntrainer::RunLayerContext &context,
   ml::train::TensorDim output_dim = output.getDim();
   ml::train::TensorDim cache_key_dim = cache_key.getDim();
   ml::train::TensorDim cache_value_dim = cache_value.getDim();
+  NNTR_THROW_IF(to > cache_key_dim.height() || to > cache_value_dim.height(),
+                std::out_of_range)
+    << "mha_core physical cache write exceeds external cache capacity";
+
+  snapkv_compress_current_step = shouldCompactSnapKV(logical_from, step_size);
 
   ml::train::TensorDim query_step_dim = get_step_dim(query_dim);
   ml::train::TensorDim key_step_dim = get_step_dim(key_dim);
@@ -364,38 +444,46 @@ void MHACoreLayer::forwarding(nntrainer::RunLayerContext &context,
 
       if (use_sink) {
         one_batch_incremental_forwarding(
-          batch, from, from, to, Q_step, K_step, V_step, O_step, cache_key,
-          cache_value, cache_key_dim, cache_key_step_dim, cache_value_dim,
-          cache_value_step_dim, sink);
+          batch, logical_from, from, to, Q_step, K_step, V_step, O_step,
+          cache_key, cache_value, cache_key_dim, cache_key_step_dim,
+          cache_value_dim, cache_value_step_dim, sink);
       } else {
-        one_batch_incremental_forwarding(batch, from, from, to, Q_step, K_step,
-                                         V_step, O_step, cache_key, cache_value,
-                                         cache_key_dim, cache_key_step_dim,
-                                         cache_value_dim, cache_value_step_dim);
+        one_batch_incremental_forwarding(
+          batch, logical_from, from, to, Q_step, K_step, V_step, O_step,
+          cache_key, cache_value, cache_key_dim, cache_key_step_dim,
+          cache_value_dim, cache_value_step_dim);
       }
       output_step.copyData(O_step);
 #else
       if (use_sink) {
         one_batch_incremental_forwarding(
-          batch, from, from, to, query_step, key_step, value_step, output_step,
-          cache_key, cache_value, cache_key_dim, cache_key_step_dim,
-          cache_value_dim, cache_value_step_dim, sink);
+          batch, logical_from, from, to, query_step, key_step, value_step,
+          output_step, cache_key, cache_value, cache_key_dim,
+          cache_key_step_dim, cache_value_dim, cache_value_step_dim, sink);
       } else {
         one_batch_incremental_forwarding(
-          batch, from, from, to, query_step, key_step, value_step, output_step,
-          cache_key, cache_value, cache_key_dim, cache_key_step_dim,
-          cache_value_dim, cache_value_step_dim);
+          batch, logical_from, from, to, query_step, key_step, value_step,
+          output_step, cache_key, cache_value, cache_key_dim,
+          cache_key_step_dim, cache_value_dim, cache_value_step_dim);
       }
 #endif
     } else {
       one_batch_incremental_forwarding(
-        batch, from, from, to, query_step, key_step, value_step, output_step,
-        cache_key, cache_value, cache_key_dim, cache_key_step_dim,
+        batch, logical_from, from, to, query_step, key_step, value_step,
+        output_step, cache_key, cache_value, cache_key_dim, cache_key_step_dim,
         cache_value_dim, cache_value_step_dim);
     }
   }
 
-  cache_index += step_size;
+  const auto advanced = SnapKVPolicy::advanceCachePosition(
+    {logical_position, cache_index, cache_position_offset,
+     snapkv_has_compacted},
+    step_size, snapkv_compress_current_step, snapkv_cache_capacity);
+  logical_position = advanced.logical_position;
+  cache_index = advanced.physical_position;
+  cache_position_offset = advanced.logical_to_physical_offset;
+  snapkv_has_compacted = advanced.has_compacted;
+  snapkv_compress_current_step = false;
 }
 
 /**
@@ -410,7 +498,9 @@ void MHACoreLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
   // position; route through forwarding() which reads cache_key/cache_value
   // from input slots 3/4. forwarding() advances cache_index internally.
   if (use_external_cache) {
-    cache_index = _from;
+    NNTR_THROW_IF(_to <= _from, std::invalid_argument)
+      << "mha_core incremental range must satisfy to > from";
+    setCacheIndex(_from);
     incremental_step_size = _to - _from;
     forwarding(context, training);
     incremental_step_size = 0;
@@ -561,6 +651,9 @@ void MHACoreLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
 
   // increase cache size
   cache_index += step_size;
+  logical_position = cache_index;
+  cache_position_offset = 0;
+  snapkv_has_compacted = false;
 }
 
 /**
@@ -722,13 +815,13 @@ void MHACoreLayer::one_batch_incremental_forwarding(
                                     true);
 
   // append kcache with or without rotary embedding
-  apply_rotary_emb_tensor_v2(key_step, b_cache_key_step, head_dim, cache_index,
+  apply_rotary_emb_tensor_v2(key_step, b_cache_key_step, head_dim, _from,
                              !use_rope);
 
   // append vcache without rotary embedding
   if (query_step.getDataType() == ml::train::TensorDim::DataType::FP32) {
-    apply_rotary_emb_tensor_v2(value_step, b_cache_value_step, head_dim,
-                               cache_index, true);
+    apply_rotary_emb_tensor_v2(value_step, b_cache_value_step, head_dim, _from,
+                               true);
   } else if (query_step.getDataType() == ml::train::TensorDim::DataType::FP16) {
 #ifdef ENABLE_FP16
     b_cache_value_step.copyData(value_step);
@@ -744,8 +837,7 @@ void MHACoreLayer::one_batch_incremental_forwarding(
 
   // apply rotary embedding for query
   if (use_rope) {
-    apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, cache_index,
-                               false);
+    apply_rotary_emb_tensor_v2(query_step, query_step, head_dim, _from, false);
   }
 
   /// @todo replace step_size into input height
@@ -779,6 +871,89 @@ void MHACoreLayer::one_batch_incremental_forwarding(
   compute_fp16vcache_transposed(out_, b_cached_value, attention_output_step,
                                 cache_from, num_heads_KV, gqa_size, head_dim,
                                 cache_to);
+
+  // Preserve the full-prefill output above. SnapKV only changes the cache that
+  // subsequent decode queries consume.
+  if (snapkv_compress_current_step) {
+    compactSnapKV(batch, out_, cache_key, cache_value, cache_key_dim,
+                  cache_value_dim, cache_to);
+  }
+}
+
+void MHACoreLayer::compactSnapKV(unsigned int batch,
+                                 nntrainer::Tensor &attention,
+                                 nntrainer::Tensor &cache_key,
+                                 nntrainer::Tensor &cache_value,
+                                 const ml::train::TensorDim &cache_key_dim,
+                                 const ml::train::TensorDim &cache_value_dim,
+                                 unsigned int prompt_length) {
+  NNTR_THROW_IF(prompt_length <= snapkv_cache_capacity, std::invalid_argument)
+    << "SnapKV compaction requires a prompt longer than its cache capacity";
+  NNTR_THROW_IF(num_heads_Q == 0 || num_heads_KV == 0 ||
+                  num_heads_Q % num_heads_KV != 0,
+                std::invalid_argument)
+    << "SnapKV requires query heads divisible by KV heads";
+  NNTR_THROW_IF(cache_key_dim.width() != num_heads_KV * head_dim ||
+                  cache_value_dim.width() != num_heads_KV * head_dim,
+                std::invalid_argument)
+    << "SnapKV external cache width does not match KV-head geometry";
+  NNTR_THROW_IF(cache_key_dim.batch() != cache_value_dim.batch() ||
+                  batch >= cache_key_dim.batch(),
+                std::out_of_range)
+    << "SnapKV batch index is outside the external cache";
+  NNTR_THROW_IF(cache_key.getDataType() != cache_value.getDataType(),
+                std::invalid_argument)
+    << "SnapKV key and value cache dtypes must match";
+
+  std::vector<float> scores;
+  if (attention.getDataType() == ml::train::TensorDim::DataType::FP32) {
+    scores = SnapKVPolicy::observationScores(
+      attention.getData<float>(), attention.size(), prompt_length,
+      snapkv_observation_window, static_cast<unsigned int>(num_heads_Q));
+  } else if (attention.getDataType() == ml::train::TensorDim::DataType::FP16) {
+#ifdef ENABLE_FP16
+    scores = SnapKVPolicy::observationScoresTyped(
+      attention.getData<_FP16>(), attention.size(), prompt_length,
+      snapkv_observation_window, static_cast<unsigned int>(num_heads_Q));
+#else
+    NNTR_THROW_IF(true, std::invalid_argument)
+      << "SnapKV received FP16 attention without FP16 support";
+#endif
+  } else {
+    NNTR_THROW_IF(true, std::invalid_argument)
+      << "SnapKV supports only FP32 or FP16 attention scores";
+  }
+
+  const unsigned int prefix_length = prompt_length - snapkv_observation_window;
+  const auto pooled_query_scores = SnapKVPolicy::poolScores(
+    scores, static_cast<unsigned int>(num_heads_Q), prefix_length,
+    snapkv_pooling_kernel, snapkv_pooling);
+  const auto pooled = SnapKVPolicy::aggregateGQAScores(
+    pooled_query_scores, static_cast<unsigned int>(num_heads_Q),
+    static_cast<unsigned int>(num_heads_KV), prefix_length);
+  const unsigned int retained_prefix =
+    snapkv_cache_capacity - snapkv_observation_window;
+  const auto selected =
+    SnapKVPolicy::selectTopK(pooled, static_cast<unsigned int>(num_heads_KV),
+                             prefix_length, retained_prefix);
+
+  const size_t element_size = cache_key_dim.getDataTypeSize();
+  NNTR_THROW_IF(element_size == 0 ||
+                  element_size != cache_value_dim.getDataTypeSize(),
+                std::invalid_argument)
+    << "SnapKV cache element sizes must match";
+  const size_t key_batch_offset =
+    static_cast<size_t>(batch) * cache_key_dim.getFeatureLen() * element_size;
+  const size_t value_batch_offset =
+    static_cast<size_t>(batch) * cache_value_dim.getFeatureLen() * element_size;
+  auto *key_batch = cache_key.getData<unsigned char>() + key_batch_offset;
+  auto *value_batch = cache_value.getData<unsigned char>() + value_batch_offset;
+
+  SnapKVPolicy::compactCache(
+    key_batch, value_batch, element_size, cache_key_dim.height(),
+    static_cast<unsigned int>(num_heads_KV),
+    static_cast<unsigned int>(head_dim), prompt_length,
+    snapkv_observation_window, snapkv_cache_capacity, selected);
 }
 
 void MHACoreLayer::one_batch_incremental_forwarding(
@@ -1564,6 +1739,23 @@ void MHACoreLayer::setProperty(const std::vector<std::string> &values) {
   }
 
   auto remain_props = loadProperties(props, mha_core_props);
+  refreshSnapKVConfig();
+  if (snapkv_cache_capacity > 0 && num_heads_Q > 0) {
+    NNTR_THROW_IF(num_heads_Q % num_heads_KV != 0, std::invalid_argument)
+      << "SnapKV requires query heads divisible by KV heads";
+    NNTR_THROW_IF(!use_external_cache, std::invalid_argument)
+      << "SnapKV requires the external KV cache path";
+    NNTR_THROW_IF(!is_causal, std::invalid_argument)
+      << "SnapKV requires causal attention";
+    NNTR_THROW_IF(use_sink, std::invalid_argument)
+      << "SnapKV does not support attention sinks";
+    NNTR_THROW_IF(skip_prefill, std::invalid_argument)
+      << "SnapKV does not support skip_prefill";
+    const unsigned int max_timestep =
+      std::get<nntrainer::props::MaxTimestep>(mha_core_props).get();
+    NNTR_THROW_IF(snapkv_cache_capacity > max_timestep, std::invalid_argument)
+      << "SnapKV cache capacity exceeds max_timestep";
+  }
   LayerImpl::setProperty(remain_props);
 }
 

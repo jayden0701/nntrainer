@@ -40,6 +40,7 @@
 #include <cpu_backend.h>
 #include <layer_impl.h>
 #include <limits.h>
+#include <snapkv_policy.h>
 #include <util_simd.h>
 
 #include <string>
@@ -74,6 +75,46 @@ public:
   static constexpr const char *key =
     "sliding_window";                        /**< unique key to access */
   using prop_tag = nntrainer::uint_prop_tag; /**< property type */
+};
+
+/**
+ * @brief Post-prefill physical cache capacity. Zero disables SnapKV.
+ */
+class SnapKVCacheCapacity : public nntrainer::Property<unsigned int> {
+public:
+  SnapKVCacheCapacity(unsigned int value = 0) { set(value); };
+  static constexpr const char *key = "snapkv_cache_capacity";
+  using prop_tag = nntrainer::uint_prop_tag;
+};
+
+/**
+ * @brief Number of trailing prompt queries used to score the prefix.
+ */
+class SnapKVObservationWindow : public nntrainer::Property<unsigned int> {
+public:
+  SnapKVObservationWindow(unsigned int value = 32) { set(value); };
+  static constexpr const char *key = "snapkv_observation_window";
+  using prop_tag = nntrainer::uint_prop_tag;
+};
+
+/**
+ * @brief Odd kernel width for stride-one SnapKV pooling.
+ */
+class SnapKVPoolingKernel : public nntrainer::Property<unsigned int> {
+public:
+  SnapKVPoolingKernel(unsigned int value = 5) { set(value); };
+  static constexpr const char *key = "snapkv_pooling_kernel";
+  using prop_tag = nntrainer::uint_prop_tag;
+};
+
+/**
+ * @brief SnapKV pooling operation (`max` or `avg`).
+ */
+class SnapKVPoolingType : public nntrainer::Property<std::string> {
+public:
+  SnapKVPoolingType(const std::string &value = "max") { set(value); };
+  static constexpr const char *key = "snapkv_pooling";
+  using prop_tag = nntrainer::str_prop_tag;
 };
 
 /**
@@ -322,15 +363,29 @@ public:
 
   /**
    * @brief Set the cache index for external cache mode.
-   *        Must be called before forwarding() when use_external_cache is true.
-   * @param[in] idx current write position in the KV cache
+   * @param[in] idx Absolute logical position. After SnapKV eviction, only the
+   * current append position or zero (reset) is accepted.
    */
-  WIN_EXPORT void setCacheIndex(unsigned int idx) { cache_index = idx; }
+  WIN_EXPORT void setCacheIndex(unsigned int idx);
 
   /**
-   * @brief Get the current cache index
+   * @brief Get the next physical cache row used for writing
    */
   WIN_EXPORT unsigned int getCacheIndex() const { return cache_index; }
+
+  /**
+   * @brief Get the logical model position represented by the next cache row.
+   */
+  WIN_EXPORT unsigned int getLogicalPosition() const {
+    return logical_position;
+  }
+
+  /**
+   * @brief Get logical-to-physical position offset introduced by eviction.
+   */
+  WIN_EXPORT unsigned int getCachePositionOffset() const {
+    return cache_position_offset;
+  }
 
   inline static const std::string type = "mha_core";
 
@@ -345,14 +400,17 @@ private:
     props::MaxPositionEmbeddings, props::UseSink, props::RopeScalingType,
     props::RopeScalingFactor, props::RopePartialRotaryFactor,
     props::RopeScalingMaxPositionEmbeddings, props::AttnLogitSoftcapping,
-    props::IsCausal>
+    props::IsCausal, props::SnapKVCacheCapacity, props::SnapKVObservationWindow,
+    props::SnapKVPoolingKernel, props::SnapKVPoolingType>
     mha_core_props; /**< mha_core layer properties */
 
   /** softmax activation operation */
   nntrainer::ActiFunc sm;
 
-  float epsilon;            /** to avoid overflow */
-  unsigned int cache_index; /** idx of kv cache */
+  float epsilon;                      /** to avoid overflow */
+  unsigned int cache_index;           /** idx of kv cache */
+  unsigned int logical_position;      /**< absolute position used for RoPE */
+  unsigned int cache_position_offset; /**< logical minus physical position */
 
   /**
    * @brief Whether to use externally provided cache tensors
@@ -375,6 +433,14 @@ private:
   float attn_logit_softcapping = 0.0f;
   bool is_causal;
   bool skip_prefill = false;
+
+  /** SnapKV one-shot prompt eviction configuration and state. */
+  unsigned int snapkv_cache_capacity = 0;
+  unsigned int snapkv_observation_window = 32;
+  unsigned int snapkv_pooling_kernel = 5;
+  SnapKVPooling snapkv_pooling = SnapKVPooling::MAX;
+  bool snapkv_has_compacted = false;
+  bool snapkv_compress_current_step = false;
 
   enum INOUT_INDEX {
     /** input index */
@@ -504,6 +570,29 @@ private:
                                      nntrainer::Tensor &output, int from,
                                      int num_cache_head, int gqa_size,
                                      int head_dim, int to);
+
+  /**
+   * @brief Synchronize cached SnapKV members from layer properties.
+   */
+  void refreshSnapKVConfig();
+
+  /**
+   * @brief Whether the current external-cache prefill should be
+   * compacted.
+   */
+  bool shouldCompactSnapKV(unsigned int logical_from,
+                           unsigned int step_size) const;
+
+  /**
+   * @brief Score and compact one batch after its full prefill output is
+   * ready.
+   */
+  void compactSnapKV(unsigned int batch, nntrainer::Tensor &attention,
+                     nntrainer::Tensor &cache_key,
+                     nntrainer::Tensor &cache_value,
+                     const ml::train::TensorDim &cache_key_dim,
+                     const ml::train::TensorDim &cache_value_dim,
+                     unsigned int prompt_length);
 
   /************** END OF  ROTARY EMBEDDING *************/
 

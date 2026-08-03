@@ -10,7 +10,12 @@
  * @brief  This file defines Transformer's basic actions
  */
 
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <fstream>
+#include <functional>
+#include <limits>
 #include <mutex>
 
 #include <app_context.h>
@@ -145,6 +150,69 @@ void Transformer::setupParameters(json &cfg, json &generation_cfg,
   EMBEDDING_FILE_NAME = nntr_cfg.value("embedding_file_name", std::string());
   PLE_FILE_NAME = nntr_cfg.value("ple_file_name", std::string());
 
+  if (nntr_cfg.contains("snapkv")) {
+    const auto &snapkv = nntr_cfg.at("snapkv");
+    NNTR_THROW_IF(!snapkv.is_object(), std::invalid_argument)
+      << "snapkv must be a JSON object";
+    NNTR_THROW_IF(!snapkv.contains("cache_capacity"), std::invalid_argument)
+      << "snapkv.cache_capacity is required";
+
+    auto positive_uint = [&snapkv](const char *field,
+                                   unsigned int default_value) {
+      if (!snapkv.contains(field))
+        return default_value;
+
+      const auto &value = snapkv.at(field);
+      uint64_t converted = 0;
+      if (value.is_number_unsigned()) {
+        converted = value.get<uint64_t>();
+      } else if (value.is_number_integer()) {
+        const int64_t signed_value = value.get<int64_t>();
+        NNTR_THROW_IF(signed_value <= 0, std::invalid_argument)
+          << "snapkv." << field << " must be a positive integer";
+        converted = static_cast<uint64_t>(signed_value);
+      } else {
+        NNTR_THROW_IF(true, std::invalid_argument)
+          << "snapkv." << field << " must be a positive integer";
+      }
+      NNTR_THROW_IF(converted == 0 ||
+                      converted > std::numeric_limits<unsigned int>::max(),
+                    std::invalid_argument)
+        << "snapkv." << field << " is outside the unsigned-int range";
+      return static_cast<unsigned int>(converted);
+    };
+
+    SNAPKV_CACHE_CAPACITY = positive_uint("cache_capacity", 0);
+    SNAPKV_OBSERVATION_WINDOW = positive_uint("observation_window", 32);
+    SNAPKV_POOLING_KERNEL = positive_uint("pooling_kernel", 5);
+    if (snapkv.contains("pooling")) {
+      NNTR_THROW_IF(!snapkv.at("pooling").is_string(), std::invalid_argument)
+        << "snapkv.pooling must be a string";
+      SNAPKV_POOLING = snapkv.at("pooling").get<std::string>();
+    }
+
+    NNTR_THROW_IF(SNAPKV_CACHE_CAPACITY == 0, std::invalid_argument)
+      << "snapkv.cache_capacity must be greater than zero";
+    NNTR_THROW_IF(SNAPKV_OBSERVATION_WINDOW == 0, std::invalid_argument)
+      << "snapkv.observation_window must be greater than zero";
+    NNTR_THROW_IF(SNAPKV_CACHE_CAPACITY <= SNAPKV_OBSERVATION_WINDOW,
+                  std::invalid_argument)
+      << "snapkv.cache_capacity must exceed snapkv.observation_window";
+    NNTR_THROW_IF(SNAPKV_POOLING_KERNEL == 0 || SNAPKV_POOLING_KERNEL % 2 == 0,
+                  std::invalid_argument)
+      << "snapkv.pooling_kernel must be a positive odd number";
+    std::transform(SNAPKV_POOLING.begin(), SNAPKV_POOLING.end(),
+                   SNAPKV_POOLING.begin(), [](unsigned char value) {
+                     return static_cast<char>(std::tolower(value));
+                   });
+    NNTR_THROW_IF(SNAPKV_POOLING != "max" && SNAPKV_POOLING != "avg" &&
+                    SNAPKV_POOLING != "average",
+                  std::invalid_argument)
+      << "snapkv.pooling must be 'max' or 'avg'";
+    NNTR_THROW_IF(SNAPKV_CACHE_CAPACITY > MAX_SEQ_LEN, std::invalid_argument)
+      << "snapkv.cache_capacity must not exceed max_seq_len";
+  }
+
   if (cfg.contains("is_causal")) {
     IS_CAUSAL = cfg["is_causal"].get<bool>();
   } else if (cfg.contains("use_bidirectional_attention") &&
@@ -226,6 +294,28 @@ void Transformer::initialize() {
 
   if (model->compile(x, y, ml::train::ExecutionMode::INFERENCE)) {
     throw std::invalid_argument("Model compilation failed.");
+  }
+
+  if (SNAPKV_CACHE_CAPACITY > 0) {
+    const std::vector<std::string> snapkv_props = {
+      withKey("snapkv_cache_capacity", SNAPKV_CACHE_CAPACITY),
+      withKey("snapkv_observation_window", SNAPKV_OBSERVATION_WINDOW),
+      withKey("snapkv_pooling_kernel", SNAPKV_POOLING_KERNEL),
+      withKey("snapkv_pooling", SNAPKV_POOLING)};
+    size_t mha_count = 0;
+    std::function<void(ml::train::Layer &, nntrainer::RunLayerContext &,
+                       void *)>
+      configure_snapkv =
+        [&snapkv_props, &mha_count](ml::train::Layer &layer,
+                                    nntrainer::RunLayerContext &, void *) {
+          if (layer.getType() != causallm::MHACoreLayer::type)
+            return;
+          layer.setProperty(snapkv_props);
+          ++mha_count;
+        };
+    model->forEachLayer(configure_snapkv, nullptr);
+    NNTR_THROW_IF(mha_count == 0, std::invalid_argument)
+      << "SnapKV was configured, but the model has no mha_core layers";
   }
 
   is_initialized = true;

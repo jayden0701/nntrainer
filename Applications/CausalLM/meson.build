@@ -245,6 +245,22 @@ if get_option('enable-test')
     suite: 'unittests'
   )
 
+  unittest_snapkv_policy = executable(
+    'unittest_snapkv_policy',
+    meson.source_root() / 'test' / 'unittest' / 'layers' / 'unittest_snapkv_policy.cpp',
+    meson.source_root() / 'Applications' / 'CausalLM' / 'layers' / 'snapkv_policy.cpp',
+    dependencies: [gtest_main_dep],
+    include_directories: causallm_layer_inc,
+    build_by_default: true,
+    install: false,
+  )
+
+  test('unittest_snapkv_policy', unittest_snapkv_policy,
+    args: '--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), 'unittest_snapkv_policy'),
+    timeout: 60,
+    suite: 'unittests'
+  )
+
   # Extract causallm_reference fixture binaries from packaging/
   causallm_fixture_tars = [
     meson.source_root() / 'packaging' / 'causallm_reference_generation.tar.gz',
