@@ -144,6 +144,7 @@ void Transformer::setupParameters(json &cfg, json &generation_cfg,
   FC_LAYER_DTYPE = nntr_cfg["fc_layer_dtype"];
   EMBEDDING_FILE_NAME = nntr_cfg.value("embedding_file_name", std::string());
   PLE_FILE_NAME = nntr_cfg.value("ple_file_name", std::string());
+  PLE_SPLIT = nntr_cfg.value("ple_split", false);
 
   if (cfg.contains("is_causal")) {
     IS_CAUSAL = cfg["is_causal"].get<bool>();
@@ -274,7 +275,7 @@ std::pair<Tensor, Tensor> Transformer::constructModel() {
 std::vector<std::string> Transformer::buildEmbeddingLayerProperties(
   const std::string &name, unsigned int in_dim, unsigned int out_dim,
   const std::string &weight_dtype, float scale,
-  const std::string &quantized_lut_path) const {
+  const std::string &quantized_lut_path, bool virtual_weight) const {
   std::vector<std::string> props = {
     withKey("name", name),
     withKey("in_dim", std::to_string(in_dim)),
@@ -285,6 +286,9 @@ std::vector<std::string> Transformer::buildEmbeddingLayerProperties(
 
   if (!quantized_lut_path.empty())
     props.emplace_back(withKey("quantized_lut_path", quantized_lut_path));
+
+  if (virtual_weight)
+    props.emplace_back(withKey("virtual_weight", "true"));
 
   return props;
 }

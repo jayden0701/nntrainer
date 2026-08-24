@@ -43,6 +43,44 @@ namespace {
 std::mutex quant_lut_cache_mutex;
 std::unordered_map<std::string, std::weak_ptr<QuantLut>> quant_lut_cache;
 
+class VirtualWeightGuard {
+public:
+  explicit VirtualWeightGuard(nntrainer::Tensor &weight) : weight(weight) {
+    if (weight.isVirtual()) {
+      weight.activate();
+      active = true;
+    }
+  }
+
+  ~VirtualWeightGuard() noexcept {
+    if (!active)
+      return;
+
+    try {
+      release();
+    } catch (const std::exception &e) {
+      ml_loge("Failed to deactivate virtual embedding weight: %s", e.what());
+    } catch (...) {
+      ml_loge("Failed to deactivate virtual embedding weight");
+    }
+  }
+
+  void release() {
+    if (!active)
+      return;
+
+    weight.deactivate();
+    active = false;
+  }
+
+  VirtualWeightGuard(const VirtualWeightGuard &) = delete;
+  VirtualWeightGuard &operator=(const VirtualWeightGuard &) = delete;
+
+private:
+  nntrainer::Tensor &weight;
+  bool active = false;
+};
+
 bool hasJsonExtension(const std::string &path) {
   return std::filesystem::path(path).extension() == ".json";
 }
@@ -451,7 +489,8 @@ EmbeddingLayer::EmbeddingLayer() :
   LayerImpl(),
   embedding_props(nntrainer::props::InDim(), nntrainer::props::OutDim(),
                   nntrainer::props::Scale(), props::QuantizedLutPath(),
-                  props::OutputQuantScale(), props::OutputQuantOffset()),
+                  props::OutputQuantScale(), props::OutputQuantOffset(),
+                  props::VirtualWeight()),
   weight_idx(std::numeric_limits<unsigned>::max()) {}
 
 void EmbeddingLayer::finalize(nntrainer::InitLayerContext &context) {
@@ -460,6 +499,9 @@ void EmbeddingLayer::finalize(nntrainer::InitLayerContext &context) {
 
   auto &quantized_lut_path = std::get<props::QuantizedLutPath>(embedding_props);
   const bool has_quantized_lut = !quantized_lut_path.empty();
+  const auto &virtual_weight = std::get<props::VirtualWeight>(embedding_props);
+  const bool use_virtual_weight =
+    !virtual_weight.empty() && virtual_weight.get();
   context.setInputDataType(nntrainer::TensorDim::DataType::FP32);
 
   const nntrainer::TensorDim &input_dim =
@@ -482,6 +524,8 @@ void EmbeddingLayer::finalize(nntrainer::InitLayerContext &context) {
 
   quant_lut.reset();
   if (has_quantized_lut) {
+    NNTR_THROW_IF(use_virtual_weight, std::invalid_argument)
+      << "virtual_weight is not supported with quantized_lut_path";
     quant_lut =
       get_or_load_quant_lut(quantized_lut_path.get(), in_dim, out_dim);
     NNTR_THROW_IF(quant_lut->in_dim != in_dim, std::invalid_argument)
@@ -537,7 +581,7 @@ void EmbeddingLayer::finalize(nntrainer::InitLayerContext &context) {
 
   weight_idx = context.requestWeight(
     dim, weight_initializer, weight_regularizer, weight_regularizer_constant,
-    weight_decay, "Embedding", true);
+    weight_decay, "Embedding", !use_virtual_weight, use_virtual_weight);
 }
 
 void EmbeddingLayer::setProperty(const std::vector<std::string> &values) {
@@ -657,6 +701,8 @@ void EmbeddingLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
   }
 
   nntrainer::Tensor &weight = context.getWeight(weight_idx);
+  VirtualWeightGuard virtual_weight_guard(weight);
+
   nntrainer::Tensor &hidden_ = context.getOutput(SINGLE_INOUT_IDX);
   nntrainer::Tensor &input_ = context.getInput(SINGLE_INOUT_IDX);
 
@@ -745,6 +791,8 @@ void EmbeddingLayer::incremental_forwarding(nntrainer::RunLayerContext &context,
               << "\n hidden: " << hidden_ << std::endl;
 #endif
   }
+
+  virtual_weight_guard.release();
 }
 
 void EmbeddingLayer::calcDerivative(nntrainer::RunLayerContext &context) {
@@ -769,6 +817,7 @@ void EmbeddingLayer::save(std::ofstream &file,
   for (unsigned int i = 0; i < run_context.getNumWeights(); ++i) {
     if (run_context.isGradientFirstAccess(i)) {
       auto &weight = run_context.getWeight(i);
+      VirtualWeightGuard virtual_weight_guard(weight);
       if (dtype == nntrainer::TensorDim::DataType::NONE ||
           weight.getDataType() == dtype)
         weight.save(file);
@@ -831,6 +880,7 @@ void EmbeddingLayer::save(std::ofstream &file,
             << "This dtype is not supported in save with quantization";
         }
       }
+      virtual_weight_guard.release();
     }
   }
 }

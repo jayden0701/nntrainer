@@ -63,6 +63,15 @@ public:
   using prop_tag = nntrainer::int_prop_tag;
 };
 
+/**
+ * @brief Keep the embedding weight out of memory until it is used.
+ */
+class VirtualWeight final : public nntrainer::Property<bool> {
+public:
+  static constexpr const char *key = "virtual_weight";
+  using prop_tag = nntrainer::bool_prop_tag;
+};
+
 } // namespace props
 
 /**
@@ -217,7 +226,8 @@ private:
 
   std::tuple<nntrainer::props::InDim, nntrainer::props::OutDim,
              nntrainer::props::Scale, props::QuantizedLutPath,
-             props::OutputQuantScale, props::OutputQuantOffset>
+             props::OutputQuantScale, props::OutputQuantOffset,
+             props::VirtualWeight>
     embedding_props;
   unsigned int weight_idx;
   std::shared_ptr<QuantLut> quant_lut;

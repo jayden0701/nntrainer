@@ -9,6 +9,7 @@
  * @bug		No known bugs except for NYI items
  */
 
+#include <limits>
 #include <numeric>
 
 #include <thread_manager.h>
@@ -1407,6 +1408,9 @@ void Tensor::read(std::ifstream &file, size_t start_offset,
   NNTR_THROW_IF(!getContiguous(), std::invalid_argument)
     << getName() << " is not contiguous, cannot read.";
 
+  if (start_offset == std::numeric_limits<size_t>::max())
+    start_offset = getFileOffset();
+
   // save the start_offset_info
   read_offset = start_offset;
 
@@ -1423,6 +1427,9 @@ void Tensor::read(ReadSource src, size_t start_offset, bool read_from_offset,
                   int file_fd) {
   NNTR_THROW_IF(!getContiguous(), std::invalid_argument)
     << getName() << " is not contiguous, cannot read.";
+
+  if (start_offset == std::numeric_limits<size_t>::max())
+    start_offset = getFileOffset();
 
   // save the start_offset_info
   read_offset = start_offset;

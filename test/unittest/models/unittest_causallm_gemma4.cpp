@@ -18,11 +18,29 @@
 #include <layer.h>
 #include <layer_context.h>
 
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace {
 
 constexpr int tiny_gemma4_num_layers = 2;
+constexpr unsigned int tiny_gemma4_per_layer_input_width = 32;
+
+std::vector<char> readBinaryFile(const std::filesystem::path &path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file)
+    throw std::runtime_error("Failed to open test weight file: " +
+                             path.string());
+
+  return {std::istreambuf_iterator<char>(file),
+          std::istreambuf_iterator<char>()};
+}
 
 /**
  * @brief Tiny Gemma4 CausalLM adapter for common model tests
@@ -75,6 +93,102 @@ void setupGemma4DeterministicWeights(TinyGemma4CausalLM &model) {
         }
       }
     });
+}
+
+/**
+ * @brief Populate non-zero PLE weights for the FSU regression.
+ */
+void setupGemma4PleSensitiveWeights(TinyGemma4CausalLM &model) {
+  setupGemma4DeterministicWeights(model);
+
+  model.forEachLayer(
+    [](ml::train::Layer &layer, nntrainer::RunLayerContext &context, void *) {
+      if (layer.getName() == "embedding0") {
+        auto &weight = context.getWeight(0);
+        ASSERT_GT(weight.getDim().width(), 1u);
+        weight.setValue(0, 0, 1, 1, 0.25f);
+        weight.setValue(0, 0, 2, 0, 1.5f);
+        weight.setValue(0, 0, 3, 0, 0.5f);
+      } else if (layer.getName().rfind("layer", 0) == 0 &&
+                 layer.getName().find("_per_layer_input_embedding") !=
+                   std::string::npos) {
+        auto &weight = context.getWeight(0);
+        ASSERT_GT(weight.getDim().width(), 1u);
+        for (unsigned int token_id : {1u, 2u, 3u, 4u})
+          weight.setValue(0, 0, token_id, 1, static_cast<float>(token_id));
+      } else if (layer.getName() == "per_layer_input_embedding") {
+        auto &weight = context.getWeight(0);
+        ASSERT_GT(weight.getDim().width(), tiny_gemma4_per_layer_input_width);
+        // The packed table concatenates each layer's PLE columns. Its
+        // layer_id * P + 1 column matches split table feature 1.
+        for (unsigned int layer_id = 0;
+             layer_id < static_cast<unsigned int>(tiny_gemma4_num_layers);
+             ++layer_id) {
+          for (unsigned int token_id : {1u, 2u, 3u, 4u}) {
+            weight.setValue(0, 0, token_id,
+                            layer_id * tiny_gemma4_per_layer_input_width + 1,
+                            static_cast<float>(token_id));
+          }
+        }
+      } else if (layer.getName().find("_per_layer_input_gate") !=
+                 std::string::npos) {
+        // FC weights are [1, 1, input, output] in the NCHW test graph. Route
+        // decoder feature 0 to PLE feature 1, not a pure scale RMSNorm erases.
+        auto &weight = context.getWeight(0);
+        ASSERT_GT(weight.getDim().height(), 1u);
+        ASSERT_GT(weight.getDim().width(), 1u);
+        weight.setValue(0, 0, 0, 1, 1.0f);
+      } else if (layer.getName().find("_per_layer_input_proj") !=
+                 std::string::npos) {
+        // Route PLE feature 1 to hidden feature 1 with the same layout.
+        auto &weight = context.getWeight(0);
+        ASSERT_GT(weight.getDim().height(), 1u);
+        ASSERT_GT(weight.getDim().width(), 1u);
+        weight.setValue(0, 0, 1, 1, 1.0f);
+      }
+    });
+}
+
+/**
+ * @brief Remove only split PLE table values while keeping its
+ * gate/projection.
+ */
+void clearGemma4SplitPleEmbeddingWeights(TinyGemma4CausalLM &model) {
+  model.forEachLayer(
+    [](ml::train::Layer &layer, nntrainer::RunLayerContext &context, void *) {
+      if (layer.getName().find("_per_layer_input_embedding") !=
+          std::string::npos) {
+        context.getWeight(0).setValue(0.0f);
+      }
+    });
+}
+
+/**
+ * @brief Read whether every per-decoder PLE embedding has the FSU state
+ */
+struct PleWeightFsuState {
+  unsigned int count = 0;
+  bool all_virtual = true;
+  bool all_allocated = true;
+  bool any_allocated = false;
+};
+
+PleWeightFsuState getPleWeightFsuState(TinyGemma4CausalLM &model) {
+  PleWeightFsuState state;
+
+  model.forEachLayer([&state](ml::train::Layer &layer,
+                              nntrainer::RunLayerContext &context, void *) {
+    if (layer.getName().find("_per_layer_input_embedding") == std::string::npos)
+      return;
+
+    ASSERT_EQ(context.getNumWeights(), 1u);
+    ++state.count;
+    state.all_virtual &= context.getWeight(0).isVirtual();
+    state.all_allocated &= context.getWeight(0).isAllocated();
+    state.any_allocated |= context.getWeight(0).isAllocated();
+  });
+
+  return state;
 }
 
 /**
@@ -137,8 +251,9 @@ makeGemma4LayerDtypeMap(const causallm_test::TinyCausalLMDataType &data_type) {
       dtype_map[prefix + "_ffn_gate"] = dtype;
       dtype_map[prefix + "_ffn_up"] = dtype;
       dtype_map[prefix + "_ffn_down"] = dtype;
-      // Gemma4-specific per-layer FC weights
+      // Gemma4-specific per-layer FC weights and split PLE embedding.
       // hidden_size_per_layer_input=32 ensures width is divisible by 32
+      dtype_map[prefix + "_per_layer_input_embedding"] = dtype;
       dtype_map[prefix + "_per_layer_input_gate"] = dtype;
       dtype_map[prefix + "_per_layer_input_proj"] = dtype;
     }
@@ -246,6 +361,309 @@ TEST_P(Gemma4TinyModelTest, WeightRoundTripProducesSameLogits) {
 TEST_P(Gemma4TinyModelTest, PromptProducesExpectedLogits) {
   const auto files = makeFiles();
   causallm_test::expectPromptProducesExpectedLogits(GetParam(), files);
+}
+
+/**
+ * @brief Split PLE remains resident, including Windows FSU fallback.
+ */
+TEST(Gemma4PleFsuTest, SplitPleWeightsRemainResidentAndWindowsFsuFallback) {
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma4PleFsuTest", "SplitPleWeightsRemainResidentAndWindowsFsuFallback",
+    "FP32");
+  const auto data_type = causallm_test::makeTinyFp32DataType();
+  auto model_cfg = makeTinyGemma4Config();
+  auto generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  nntr_cfg["ple_split"] = true;
+#if defined(_WIN32)
+  // Windows must construct split PLE weights as resident even when FSU is on.
+  nntr_cfg["fsu"] = true;
+  nntr_cfg["fsu_lookahead"] = 1;
+#endif
+
+  TinyGemma4CausalLM model(model_cfg, generation_cfg, nntr_cfg);
+  model.initializeModel();
+
+  const auto state = getPleWeightFsuState(model);
+  EXPECT_EQ(state.count, tiny_gemma4_num_layers);
+  EXPECT_FALSE(state.all_virtual);
+  EXPECT_TRUE(state.all_allocated);
+}
+
+/**
+ * @brief Split Tensor PLE cannot be combined with a sidecar LUT
+ */
+TEST(Gemma4PleFsuTest, RejectsSidecarPleWithSplitLayout) {
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma4PleFsuTest", "RejectsSidecarPleWithSplitLayout", "FP32");
+  const auto data_type = causallm_test::makeTinyFp32DataType();
+  auto model_cfg = makeTinyGemma4Config();
+  auto generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  nntr_cfg["ple_split"] = true;
+  nntr_cfg["ple_file_name"] = (files.dir / "ple_sidecar.bin").string();
+
+  TinyGemma4CausalLM model(model_cfg, generation_cfg, nntr_cfg);
+  EXPECT_THROW(model.initializeModel(), std::invalid_argument);
+}
+
+/**
+ * @brief Packed and resident split PLE graphs have equivalent algebra.
+ */
+TEST(Gemma4PleFsuTest, LegacyPackedPleMatchesResidentSplitGraph) {
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma4PleFsuTest", "LegacyPackedPleMatchesResidentSplitGraph", "FP32");
+  const auto data_type = causallm_test::makeTinyFp32DataType();
+  const std::vector<unsigned int> ids = {1, 4, 2, 3};
+
+  auto legacy_model_cfg = makeTinyGemma4Config();
+  auto legacy_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto legacy_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  TinyGemma4CausalLM legacy(legacy_model_cfg, legacy_generation_cfg,
+                            legacy_nntr_cfg);
+  legacy.initializeModel();
+  setupGemma4PleSensitiveWeights(legacy);
+
+  auto split_model_cfg = makeTinyGemma4Config();
+  auto split_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto split_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  split_nntr_cfg["ple_split"] = true;
+  TinyGemma4CausalLM split(split_model_cfg, split_generation_cfg,
+                           split_nntr_cfg);
+  split.initializeModel();
+  setupGemma4PleSensitiveWeights(split);
+
+  const auto legacy_prefill = legacy.prefillLogitsFromIds(ids);
+  const auto split_prefill = split.prefillLogitsFromIds(ids);
+  ASSERT_EQ(legacy_prefill.size(), split_prefill.size());
+  for (size_t i = 0; i < legacy_prefill.size(); ++i)
+    EXPECT_NEAR(legacy_prefill[i], split_prefill[i], 1e-4f) << "logit " << i;
+  EXPECT_EQ(legacy.greedyGenerateFromIds(ids, 2),
+            split.greedyGenerateFromIds(ids, 2));
+}
+
+/**
+ * @brief Virtual PLE preserves resident prefill and decode results.
+ */
+TEST(Gemma4PleFsuTest, LazyPleWeightMatchesResidentPrefillAndDecode) {
+#if defined(_WIN32)
+  GTEST_SKIP() << "virtual tensor mmap is not supported on Windows";
+#else
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma4PleFsuTest", "LazyPleWeightMatchesResidentPrefillAndDecode", "FP32");
+  const auto data_type = causallm_test::makeTinyFp32DataType();
+  const std::vector<unsigned int> ids = {1, 4, 2, 3};
+
+  auto source_model_cfg = makeTinyGemma4Config();
+  auto source_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto source_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  source_nntr_cfg["ple_split"] = true;
+  TinyGemma4CausalLM source(source_model_cfg, source_generation_cfg,
+                            source_nntr_cfg);
+  source.initializeModel();
+  setupGemma4PleSensitiveWeights(source);
+  source.saveWeight(files.weight_path.string());
+
+  const auto resident_prefill = source.prefillLogitsFromIds(ids);
+  const auto resident_tokens = source.greedyGenerateFromIds(ids, 2);
+
+  // Use a separate model so its KV cache cannot affect the source result.
+  // Keep the PLE gate/projection identical and clear only the PLE table. The
+  // non-zero path is feature 0 -> feature 1 -> feature 1, which changes the
+  // normalized hidden-state direction rather than only its magnitude.
+  auto zero_ple_model_cfg = makeTinyGemma4Config();
+  auto zero_ple_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto zero_ple_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  zero_ple_nntr_cfg["ple_split"] = true;
+  TinyGemma4CausalLM zero_ple_model(zero_ple_model_cfg, zero_ple_generation_cfg,
+                                    zero_ple_nntr_cfg);
+  zero_ple_model.initializeModel();
+  setupGemma4PleSensitiveWeights(zero_ple_model);
+  clearGemma4SplitPleEmbeddingWeights(zero_ple_model);
+  const auto zero_ple_prefill = zero_ple_model.prefillLogitsFromIds(ids);
+  ASSERT_EQ(resident_prefill.size(), zero_ple_prefill.size());
+  bool has_ple_contribution = false;
+  for (size_t i = 0; i < resident_prefill.size(); ++i) {
+    if (std::fabs(resident_prefill[i] - zero_ple_prefill[i]) > 1e-5f) {
+      has_ple_contribution = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_ple_contribution)
+    << "non-zero split PLE must change at least one prefill logit";
+
+  auto fsu_model_cfg = makeTinyGemma4Config();
+  auto fsu_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto fsu_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  fsu_nntr_cfg["fsu"] = true;
+  fsu_nntr_cfg["fsu_lookahead"] = 1;
+  fsu_nntr_cfg["ple_split"] = true;
+
+  TinyGemma4CausalLM fsu_model(fsu_model_cfg, fsu_generation_cfg, fsu_nntr_cfg);
+  fsu_model.initializeModel();
+  fsu_model.loadWeight(files.weight_path.string());
+
+  const auto backing_bytes = readBinaryFile(files.weight_path);
+  const auto backing_size = std::filesystem::file_size(files.weight_path);
+  ASSERT_FALSE(backing_bytes.empty());
+  const auto rejected_path = files.dir / "fsu_save_rejected.bin";
+  EXPECT_FALSE(std::filesystem::exists(rejected_path));
+
+  // Transformer wraps NeuralNetwork's pre-open invalid_argument as
+  // runtime_error. The backing file must remain usable after either rejection.
+  EXPECT_THROW(fsu_model.saveWeight(files.weight_path.string()),
+               std::runtime_error);
+  EXPECT_EQ(std::filesystem::file_size(files.weight_path), backing_size);
+  EXPECT_EQ(readBinaryFile(files.weight_path), backing_bytes);
+  EXPECT_THROW(fsu_model.saveWeight(rejected_path.string()),
+               std::runtime_error);
+  EXPECT_FALSE(std::filesystem::exists(rejected_path));
+
+  const auto state_before = getPleWeightFsuState(fsu_model);
+  EXPECT_EQ(state_before.count, tiny_gemma4_num_layers);
+  EXPECT_TRUE(state_before.all_virtual);
+  EXPECT_FALSE(state_before.any_allocated);
+
+  const auto fsu_prefill = fsu_model.prefillLogitsFromIds(ids);
+  ASSERT_EQ(fsu_prefill.size(), resident_prefill.size());
+  for (size_t i = 0; i < resident_prefill.size(); ++i)
+    EXPECT_NEAR(fsu_prefill[i], resident_prefill[i], 1e-4f) << "logit " << i;
+  EXPECT_EQ(std::filesystem::file_size(files.weight_path), backing_size);
+  EXPECT_EQ(readBinaryFile(files.weight_path), backing_bytes);
+
+  const auto state_after_prefill = getPleWeightFsuState(fsu_model);
+  EXPECT_EQ(state_after_prefill.count, tiny_gemma4_num_layers);
+  EXPECT_TRUE(state_after_prefill.all_virtual);
+  EXPECT_FALSE(state_after_prefill.any_allocated);
+
+  const auto fsu_tokens = fsu_model.greedyGenerateFromIds(ids, 2);
+  EXPECT_EQ(fsu_tokens, resident_tokens);
+
+  const auto state_after_decode = getPleWeightFsuState(fsu_model);
+  EXPECT_EQ(state_after_decode.count, tiny_gemma4_num_layers);
+  EXPECT_TRUE(state_after_decode.all_virtual);
+  EXPECT_FALSE(state_after_decode.any_allocated);
+#endif
+}
+
+/**
+ * @brief Q4_0 split PLE keeps resident and virtual inference identical.
+ */
+TEST(Gemma4PleFsuTest, Q40LazyPleWeightMatchesResidentSplitLayout) {
+#if defined(_WIN32)
+  GTEST_SKIP() << "virtual tensor mmap is not supported on Windows";
+#else
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma4PleFsuTest", "Q40LazyPleWeightMatchesResidentSplitLayout",
+    "Q40_FP32");
+  const auto fp32_data_type = causallm_test::makeTinyFp32DataType();
+  const auto q40_data_type = causallm_test::makeTinyQ40Fp32DataType();
+  const std::vector<unsigned int> ids = {1, 4, 2, 3};
+
+  auto source_model_cfg = makeTinyGemma4Config();
+  auto source_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto source_nntr_cfg = causallm_test::makeTinyNntrainerConfig(
+    files.tokenizer_path, fp32_data_type);
+  source_nntr_cfg["ple_split"] = true;
+  TinyGemma4CausalLM source(source_model_cfg, source_generation_cfg,
+                            source_nntr_cfg);
+  source.initializeModel();
+  setupGemma4PleSensitiveWeights(source);
+  source.saveWeightWithDtype(files.weight_path.string(),
+                             makeGemma4LayerDtypeMap(q40_data_type));
+
+  auto resident_model_cfg = makeTinyGemma4Config();
+  auto resident_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto resident_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, q40_data_type);
+  resident_nntr_cfg["ple_split"] = true;
+  TinyGemma4CausalLM resident(resident_model_cfg, resident_generation_cfg,
+                              resident_nntr_cfg);
+  resident.initializeModel();
+  resident.loadWeight(files.weight_path.string());
+  const auto resident_prefill = resident.prefillLogitsFromIds(ids);
+  const auto resident_tokens = resident.greedyGenerateFromIds(ids, 2);
+
+  auto fsu_model_cfg = makeTinyGemma4Config();
+  auto fsu_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto fsu_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, q40_data_type);
+  fsu_nntr_cfg["fsu"] = true;
+  fsu_nntr_cfg["fsu_lookahead"] = 1;
+  fsu_nntr_cfg["ple_split"] = true;
+  TinyGemma4CausalLM fsu_model(fsu_model_cfg, fsu_generation_cfg, fsu_nntr_cfg);
+  fsu_model.initializeModel();
+  fsu_model.loadWeight(files.weight_path.string());
+
+  const auto state_before = getPleWeightFsuState(fsu_model);
+  EXPECT_EQ(state_before.count, tiny_gemma4_num_layers);
+  EXPECT_TRUE(state_before.all_virtual);
+  EXPECT_FALSE(state_before.any_allocated);
+
+  const auto fsu_prefill = fsu_model.prefillLogitsFromIds(ids);
+  ASSERT_EQ(fsu_prefill.size(), resident_prefill.size());
+  for (size_t i = 0; i < resident_prefill.size(); ++i)
+    EXPECT_NEAR(fsu_prefill[i], resident_prefill[i], 1e-4f) << "logit " << i;
+
+  EXPECT_EQ(fsu_model.greedyGenerateFromIds(ids, 2), resident_tokens);
+  const auto state_after_decode = getPleWeightFsuState(fsu_model);
+  EXPECT_EQ(state_after_decode.count, tiny_gemma4_num_layers);
+  EXPECT_TRUE(state_after_decode.all_virtual);
+  EXPECT_FALSE(state_after_decode.any_allocated);
+#endif
+}
+
+/**
+ * @brief Virtual PLE is unmapped when its embedding lookup throws.
+ */
+TEST(Gemma4PleFsuTest, VirtualPleUnmapsAfterInvalidPleToken) {
+#if defined(_WIN32)
+  GTEST_SKIP() << "virtual tensor mmap is not supported on Windows";
+#else
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma4PleFsuTest", "VirtualPleUnmapsAfterInvalidPleToken", "FP32");
+  const auto data_type = causallm_test::makeTinyFp32DataType();
+
+  auto source_model_cfg = makeTinyGemma4Config();
+  source_model_cfg["text_config"]["vocab_size_per_layer_input"] = 4;
+  auto source_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto source_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  source_nntr_cfg["ple_split"] = true;
+  TinyGemma4CausalLM source(source_model_cfg, source_generation_cfg,
+                            source_nntr_cfg);
+  source.initializeModel();
+  setupGemma4DeterministicWeights(source);
+  source.saveWeight(files.weight_path.string());
+
+  auto fsu_model_cfg = makeTinyGemma4Config();
+  fsu_model_cfg["text_config"]["vocab_size_per_layer_input"] = 4;
+  auto fsu_generation_cfg = causallm_test::makeTinyGenerationConfig();
+  auto fsu_nntr_cfg =
+    causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, data_type);
+  fsu_nntr_cfg["fsu"] = true;
+  fsu_nntr_cfg["fsu_lookahead"] = 1;
+  fsu_nntr_cfg["ple_split"] = true;
+  TinyGemma4CausalLM fsu_model(fsu_model_cfg, fsu_generation_cfg, fsu_nntr_cfg);
+  fsu_model.initializeModel();
+  fsu_model.loadWeight(files.weight_path.string());
+
+  // Token 4 is valid for the primary vocabulary (size 32), but invalid for
+  // the intentionally smaller PLE vocabulary (size 4), so the exception is
+  // thrown after the virtual PLE weight is activated.
+  EXPECT_THROW(fsu_model.prefillLogitsFromIds({4}), std::invalid_argument);
+  const auto state_after_error = getPleWeightFsuState(fsu_model);
+  EXPECT_EQ(state_after_error.count, tiny_gemma4_num_layers);
+  EXPECT_TRUE(state_after_error.all_virtual);
+  EXPECT_FALSE(state_after_error.any_allocated);
+#endif
 }
 
 INSTANTIATE_TEST_SUITE_P(

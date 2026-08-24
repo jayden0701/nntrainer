@@ -717,6 +717,16 @@ void NeuralNetwork::save(
     << "Cannot save model if not initialized yet, path: " << file_path
     << " format: " << static_cast<unsigned>(format);
 
+  const bool saves_weights =
+    format == ml::train::ModelFormat::MODEL_FORMAT_BIN ||
+    format == ml::train::ModelFormat::MODEL_FORMAT_INI_WITH_BIN ||
+    format == ml::train::ModelFormat::MODEL_FORMAT_SAFETENSORS;
+  NNTR_THROW_IF(saves_weights && std::get<props::Fsu>(model_flex_props),
+                std::invalid_argument)
+    << "Saving a model with fsu=true is not supported because its weights "
+       "may still reside in FSU backing storage. Reload the model with "
+       "fsu=false before saving.";
+
   NNTR_THROW_IF(format != ml::train::ModelFormat::MODEL_FORMAT_BIN &&
                   dtype != TensorDim::DataType::NONE,
                 std::runtime_error)

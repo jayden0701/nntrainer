@@ -474,6 +474,10 @@ public:
         if (run_context.getWeight(i).getDataType() ==
             TensorDim::DataType::BCQ) {
           run_context.getWeight(i).readFSU();
+        } else if (run_context.getWeight(i).isVirtual() &&
+                   run_context.isGradientFirstAccess(i)) {
+          run_context.getWeight(i).read(file, start_offset, read_from_offset,
+                                        file_fd);
         }
       }
     } else {
@@ -524,6 +528,10 @@ public:
         if (run_context.getWeight(i).getDataType() ==
             TensorDim::DataType::BCQ) {
           run_context.getWeight(i).readFSU();
+        } else if (run_context.getWeight(i).isVirtual() &&
+                   run_context.isGradientFirstAccess(i)) {
+          run_context.getWeight(i).read(src, start_offset, read_from_offset,
+                                        file_fd);
         }
       }
     } else {

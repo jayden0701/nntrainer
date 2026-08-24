@@ -280,21 +280,19 @@ protected:
    */
   virtual std::pair<Tensor, Tensor> constructModel();
 
-  /**
-   * @brief Build common CausalLM embedding layer properties
-   * @param name Layer name
-   * @param in_dim Vocabulary/input dimension
-   * @param out_dim Embedding output dimension
-   * @param weight_dtype Layer weight dtype
-   * @param scale Embedding scale
-   * @param quantized_lut_path Optional sidecar LUT path
-   * @return Layer property strings
-   */
-  std::vector<std::string>
-  buildEmbeddingLayerProperties(const std::string &name, unsigned int in_dim,
-                                unsigned int out_dim,
-                                const std::string &weight_dtype, float scale,
-                                const std::string &quantized_lut_path) const;
+  /// @brief Build common CausalLM embedding layer properties
+  /// @param name Layer name
+  /// @param in_dim Vocabulary/input dimension
+  /// @param out_dim Embedding output dimension
+  /// @param weight_dtype Layer weight dtype
+  /// @param scale Embedding scale
+  /// @param quantized_lut_path Optional sidecar LUT path
+  /// @param virtual_weight Request an on-demand mapped embedding weight
+  /// @return Layer property strings
+  std::vector<std::string> buildEmbeddingLayerProperties(
+    const std::string &name, unsigned int in_dim, unsigned int out_dim,
+    const std::string &weight_dtype, float scale,
+    const std::string &quantized_lut_path, bool virtual_weight = false) const;
 
   /**
    * @brief Create one Transformer decoder block (norm + attention + residual +
@@ -374,6 +372,7 @@ protected:
   std::string FC_LAYER_DTYPE;  /** custom_fc_lora */
   std::string EMBEDDING_FILE_NAME;
   std::string PLE_FILE_NAME;
+  bool PLE_SPLIT = false; /**< Split PLE table layout */
 
   unsigned int SLIDING_WINDOW = UINT_MAX;
   unsigned int SLIDING_WINDOW_PATTERN = 5;

@@ -98,6 +98,9 @@ public:
 
 protected:
   Tensor per_layer_input;
+  Tensor per_layer_input_tokens;
+  bool use_split_per_layer_embedding = false;
+  bool use_virtual_per_layer_embedding = false;
   std::vector<Tensor> layer_k_norms;
   std::vector<Tensor> layer_v_norms;
 };

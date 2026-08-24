@@ -264,14 +264,26 @@ std::pair<Tensor, Tensor> Gemma4Transformer::constructModel() {
   const unsigned int per_layer_total_dim =
     NUM_LAYERS * HIDDEN_SIZE_PER_LAYER_INPUT;
 
-  // try using same low bit precision as fc layers
-  LayerHandle per_layer_embedding(createLayer(
-    "embedding_layer",
-    buildEmbeddingLayerProperties("per_layer_input_embedding",
-                                  VOCAB_SIZE_PER_LAYER_INPUT,
-                                  per_layer_total_dim, FC_LAYER_DTYPE,
-                                  EMBEDDING_PER_LAYER_SCALE, PLE_FILE_NAME)));
-  Tensor per_layer_embedding_out = per_layer_embedding(x);
+  NNTR_THROW_IF(PLE_SPLIT && !PLE_FILE_NAME.empty(), std::invalid_argument)
+    << "ple_split is not supported with ple_file_name";
+
+  use_split_per_layer_embedding = PLE_SPLIT;
+#ifndef _WIN32
+  use_virtual_per_layer_embedding =
+    use_split_per_layer_embedding && MEMORY_SWAP;
+#endif
+
+  Tensor per_layer_embedding_out;
+  if (!use_split_per_layer_embedding) {
+    // A sidecar LUT is not a Tensor-backed weight and cannot be virtualized.
+    LayerHandle per_layer_embedding(createLayer(
+      "embedding_layer",
+      buildEmbeddingLayerProperties("per_layer_input_embedding",
+                                    VOCAB_SIZE_PER_LAYER_INPUT,
+                                    per_layer_total_dim, FC_LAYER_DTYPE,
+                                    EMBEDDING_PER_LAYER_SCALE, PLE_FILE_NAME)));
+    per_layer_embedding_out = per_layer_embedding(x);
+  }
 
   LayerHandle per_layer_projection(createLayer(
     "fully_connected",
@@ -298,23 +310,26 @@ std::pair<Tensor, Tensor> Gemma4Transformer::constructModel() {
     }));
   Tensor normalized_projection = projection_norm(scaled_projection);
 
-  LayerHandle per_layer_sum(
-    createLayer("addition", {withKey("name", "per_layer_input_sum")}));
-  Tensor per_layer_sum_out =
-    per_layer_sum({per_layer_embedding_out, normalized_projection});
+  if (use_split_per_layer_embedding) {
+    per_layer_input = normalized_projection;
+    per_layer_input_tokens = x;
+  } else {
+    LayerHandle per_layer_sum(
+      createLayer("addition", {withKey("name", "per_layer_input_sum")}));
+    Tensor per_layer_sum_out =
+      per_layer_sum({per_layer_embedding_out, normalized_projection});
 
-  // TODO : change per_layer_input_scale to non hard-coded way
-
-  float per_layer_input_scale = std::sqrt(0.5f);
-
-  LayerHandle per_layer_input_scale_layer(
-    createLayer("scalar_multiply",
-                {
-                  withKey("name", "per_layer_input_scale"),
-                  withKey("packed", "false"),
-                  withKey("multiplier", std::to_string(per_layer_input_scale)),
-                }));
-  per_layer_input = per_layer_input_scale_layer(per_layer_sum_out);
+    // TODO : change per_layer_input_scale to non hard-coded way
+    float per_layer_input_scale = std::sqrt(0.5f);
+    LayerHandle per_layer_input_scale_layer(createLayer(
+      "scalar_multiply",
+      {
+        withKey("name", "per_layer_input_scale"),
+        withKey("packed", "false"),
+        withKey("multiplier", std::to_string(per_layer_input_scale)),
+      }));
+    per_layer_input = per_layer_input_scale_layer(per_layer_sum_out);
+  }
 
   layer_k_norms.assign(NUM_LAYERS, Tensor());
   layer_v_norms.assign(NUM_LAYERS, Tensor());
@@ -422,6 +437,36 @@ Tensor Gemma4Transformer::createTransformerDecoderBlock(const int layer_id,
   LayerHandle per_layer_slice(
     createLayer("per_layer_slice", per_layer_slice_props));
   Tensor per_layer_input_slice = per_layer_slice(per_layer_input);
+
+  if (use_split_per_layer_embedding) {
+    const std::string layer_name = "layer" + std::to_string(layer_id);
+    auto per_layer_embedding_props = buildEmbeddingLayerProperties(
+      layer_name + "_per_layer_input_embedding", VOCAB_SIZE_PER_LAYER_INPUT,
+      HIDDEN_SIZE_PER_LAYER_INPUT, FC_LAYER_DTYPE, EMBEDDING_PER_LAYER_SCALE,
+      "", use_virtual_per_layer_embedding);
+    appendSkipPrefillIfNeeded(per_layer_embedding_props, is_kv_shared_layer);
+    LayerHandle per_layer_embedding(
+      createLayer("embedding_layer", per_layer_embedding_props));
+    Tensor per_layer_embedding_out =
+      per_layer_embedding(per_layer_input_tokens);
+
+    std::vector<std::string> per_layer_sum_props = {
+      withKey("name", layer_name + "_per_layer_input_sum")};
+    appendSkipPrefillIfNeeded(per_layer_sum_props, is_kv_shared_layer);
+    LayerHandle per_layer_sum(createLayer("addition", per_layer_sum_props));
+    Tensor per_layer_sum_out =
+      per_layer_sum({per_layer_embedding_out, per_layer_input_slice});
+
+    const float per_layer_input_scale = std::sqrt(0.5f);
+    std::vector<std::string> per_layer_input_scale_props = {
+      withKey("name", layer_name + "_per_layer_input_scale"),
+      withKey("packed", "false"),
+      withKey("multiplier", std::to_string(per_layer_input_scale))};
+    appendSkipPrefillIfNeeded(per_layer_input_scale_props, is_kv_shared_layer);
+    LayerHandle per_layer_input_scale_layer(
+      createLayer("scalar_multiply", per_layer_input_scale_props));
+    per_layer_input_slice = per_layer_input_scale_layer(per_layer_sum_out);
+  }
 
   std::vector<std::string> per_layer_input_gate_props = {
     withKey("name",

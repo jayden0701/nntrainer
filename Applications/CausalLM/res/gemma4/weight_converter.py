@@ -19,7 +19,7 @@
 ## - KV sharing for the last 20 layers (layer >= 15): wk / wv / k_norm are not
 ##   emitted, matching nntrainer's createSharedAttention()
 ## - Double-wide MLP for KV-shared layers (shape is taken from the source tensor)
-## - Per-layer input embedding / projection / norm (global, emitted with layer 0)
+## - Legacy packed or split per-layer input embedding layouts
 ## - Tied word embeddings: the lm head shares embedding0, so the safetensors
 ##   path emits no separate output_of_causallm entry, while the .bin path keeps
 ##   the trailing duplicate that nntrainer's binary lm-head save expects.
@@ -134,6 +134,33 @@ class LazyTensor:
         return self._handle.get_tensor(self._key)
 
 
+class PerLayerEmbeddingSlice:
+    """One layer-width view of Gemma4's packed per-layer embedding."""
+
+    def __init__(self, tensor, layer_idx, n_layers):
+        self._tensor = tensor
+        self._layer_idx = layer_idx
+        self._n_layers = n_layers
+        rows, total_width = tensor.shape
+        if total_width % n_layers:
+            raise ValueError(
+                "embed_tokens_per_layer width must be divisible by num layers"
+            )
+        self._shape = (rows, total_width // n_layers)
+
+    @property
+    def shape(self):
+        return self._shape
+
+    def materialize(self):
+        width = self._shape[1]
+        start = self._layer_idx * width
+        end = start + width
+        if isinstance(self._tensor, LazyTensor):
+            return self._tensor._handle.get_slice(self._tensor._key)[:, start:end]
+        return self._tensor[:, start:end]
+
+
 class SafetensorsState:
     """A lazy, dict-like view over one or more safetensors files.
 
@@ -191,7 +218,7 @@ def load_model_state(model_path):
     return model.state_dict(), "HuggingFace model state_dict"
 
 
-def iter_gemma4_weight_specs(params, config):
+def iter_gemma4_weight_specs(params, config, split_ple=False):
     """Yield (nntr_name, suffix, torch_tensor, transpose) in nntrainer order.
 
     The ordering matches nntrainer's binary save/load order. The names and
@@ -260,10 +287,20 @@ def iter_gemma4_weight_specs(params, config):
         yield (f"layer{layer_idx}_per_layer_input_gate", SUFFIX_WEIGHT,
                resolve(f"{lp}per_layer_input_gate.weight"), True)
 
-        # Global per-layer input weights live in the graph next to layer 0.
+        # Split PLE creates one embedding table per decoder layer. Its binary
+        # layout is intentionally distinct from the legacy packed PLE layout.
+        if split_ple:
+            yield (f"layer{layer_idx}_per_layer_input_embedding",
+                   SUFFIX_EMBEDDING,
+                   PerLayerEmbeddingSlice(
+                       resolve("embed_tokens_per_layer.weight"), layer_idx,
+                       n_layers), False)
+
+        # Global per-layer input projection/norm are first consumed by layer 0.
         if layer_idx == 0:
-            yield ("per_layer_input_embedding", SUFFIX_EMBEDDING,
-                   resolve("embed_tokens_per_layer.weight"), False)
+            if not split_ple:
+                yield ("per_layer_input_embedding", SUFFIX_EMBEDDING,
+                       resolve("embed_tokens_per_layer.weight"), False)
             yield ("per_layer_input_projection", SUFFIX_WEIGHT,
                    resolve("per_layer_model_projection.weight"), True)
             yield ("per_layer_projection_norm", SUFFIX_GAMMA,
@@ -303,7 +340,8 @@ def _transposed_shape(tensor, transpose):
     return shape
 
 
-def save_gemma4_bin(params, config, dtype, file, tie_word_embeddings):
+def save_gemma4_bin(params, config, dtype, file, tie_word_embeddings,
+                    split_ple=False):
     """Write Gemma4 weights as the nntrainer binary (.bin) layout.
 
     Streams one tensor at a time: each weight is converted to numpy, written,
@@ -312,7 +350,7 @@ def save_gemma4_bin(params, config, dtype, file, tie_word_embeddings):
     total_bytes = 0
     count = 0
     for _name, _suffix, tensor, transpose in iter_gemma4_weight_specs(
-            params, config):
+            params, config, split_ple):
         arr = tensor_to_numpy(tensor, dtype, transpose)
         arr.tofile(file)
         total_bytes += arr.nbytes
@@ -335,7 +373,7 @@ def save_gemma4_bin(params, config, dtype, file, tie_word_embeddings):
 
 
 def save_gemma4_safetensors(params, config, dtype, output_path,
-                            tie_word_embeddings):
+                            tie_word_embeddings, split_ple=False):
     """Write Gemma4 weights as a safetensors file keyed by nntrainer names.
 
     The safetensors layout is [8-byte header length][header JSON][raw data].
@@ -350,7 +388,7 @@ def save_gemma4_safetensors(params, config, dtype, output_path,
     safetensors_dtype = SAFETENSORS_DTYPE_MAP[dtype]
     itemsize = np.dtype(dtype).itemsize
 
-    specs = list(iter_gemma4_weight_specs(params, config))
+    specs = list(iter_gemma4_weight_specs(params, config, split_ple))
 
     # With tied embeddings the lm head shares embedding0's tensor, so nntrainer
     # stores a single deduped entry and no separate output_of_causallm is added.
@@ -422,6 +460,12 @@ def parse_args():
         action="store_true",
         help="Save weights in safetensors format instead of binary format",
     )
+    parser.add_argument(
+        "--ple_split",
+        action="store_true",
+        help=("Write the split PLE layout; requires ple_split=true in "
+              "nntr_config.json"),
+    )
 
     return parser.parse_args()
 
@@ -451,17 +495,20 @@ def main():
     print(f"  KV shared layers: {text_config.num_kv_shared_layers}")
     print(f"  Tie word embeddings: {tie_word_embeddings}")
     print(f"  Output dtype: {args.data_type}")
+    print(f"  Split PLE layout: {args.ple_split}")
 
     if args.safetensors:
         output_name = get_safetensors_output_name(args.output_name)
         save_gemma4_safetensors(
-            params, config, args.data_type, output_name, tie_word_embeddings
+            params, config, args.data_type, output_name, tie_word_embeddings,
+            args.ple_split
         )
         return
 
     with open(args.output_name, "wb") as output_file:
         save_gemma4_bin(
-            params, config, args.data_type, output_file, tie_word_embeddings
+            params, config, args.data_type, output_file, tie_word_embeddings,
+            args.ple_split
         )
     print(f"Saved binary: {args.output_name}")
 

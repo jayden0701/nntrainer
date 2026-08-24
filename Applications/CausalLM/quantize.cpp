@@ -478,7 +478,7 @@ buildLayerDtypeMap(int num_layers, DataType fc_dtype, DataType embd_dtype,
     dtype_map["token_type_embedding"] = embd_dtype;
   }
 
-  // Gemma4 PLE layers - set to Q4_0 first
+  // Legacy packed Gemma4 PLE embedding
   dtype_map["per_layer_input_embedding"] = fc_dtype;
   // Gemma4 PLE projection
   dtype_map["per_layer_input_projection"] = fc_dtype;
@@ -486,6 +486,10 @@ buildLayerDtypeMap(int num_layers, DataType fc_dtype, DataType embd_dtype,
   // Transformer decoder layers
   for (int i = 0; i < num_layers; ++i) {
     std::string prefix = "layer" + std::to_string(i);
+
+    // Split Gemma4 PLE embedding. This entry is ignored by models using the
+    // legacy packed PLE layout.
+    dtype_map[prefix + "_per_layer_input_embedding"] = fc_dtype;
 
     // Attention FC layers
     if (fc_dtype != DataType::FP32 && fc_dtype != DataType::NONE) {
