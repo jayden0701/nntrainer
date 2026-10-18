@@ -250,8 +250,9 @@ class MainActivity : AppCompatActivity() {
     private var trainLastIterNs: Long = 0L
     private val trainIterMs = ArrayDeque<Double>()
     private var trainDataPath: String = ObservedDemoCatalog.users.first().data
-    /** separate validation JSONL (empty: validate on the training data when
-     *  --validate-style validation is on); implies the validation pass */
+    /** Validation is optional and off for this demo; retain its path when disabled. */
+    private var trainValidationEnabled: Boolean = false
+    /** Empty path with validation enabled evaluates the training data. */
     private var trainValidDataPath: String = ObservedDemoCatalog.users.first().training.getString("valid_data")
     /** stop early after N epochs without a validation improvement (0 = off) */
     private var trainPatience: String = "0"
@@ -405,7 +406,7 @@ class MainActivity : AppCompatActivity() {
             DEMO_USERS,
             { action ->
                 demoTrainingSettings.snapshot(DEMO_USERS[demoUser].id,
-                    if (trainTask == "decision") trainingValues(buildTrainingParams()) else null,
+                    if (trainTask == "decision") trainingValues(buildTrainingSettings()) else null,
                     combined = action == "run_all")
             },
             { trainRunning || demoRunning || streaming },
@@ -1009,7 +1010,19 @@ class MainActivity : AppCompatActivity() {
             content.addView(labelView(t, "TRAINING DATA"))
             content.addView(roundedEditText(t, trainDataPath, mono = true) { trainDataPath = it })
             spacer(content, 8)
-            content.addView(labelView(t, "VALIDATION DATA (optional, implies validate)"))
+            content.addView(androidx.appcompat.widget.SwitchCompat(this).apply {
+                text = "Validation · 매 epoch 후 검증"
+                setTextColor(t.onSurface)
+                isChecked = trainValidationEnabled
+                isEnabled = !trainRunning && !demoRunning
+                setOnCheckedChangeListener { _, checked -> trainValidationEnabled = checked }
+            })
+            content.addView(TextView(this).apply {
+                text = "OFF: 검증·early stopping 생략 · 경로와 patience 설정은 보관"
+                textSize = 11f
+                setTextColor(t.onSurfaceVar)
+            })
+            content.addView(labelView(t, "VALIDATION DATA (Validation ON일 때 사용)"))
             content.addView(roundedEditText(t, trainValidDataPath, mono = true) { trainValidDataPath = it })
             spacer(content, 8)
             val r1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -3025,7 +3038,11 @@ class MainActivity : AppCompatActivity() {
         }
 
     /** The same Settings values feed manual training and per-user demo training. */
-    private fun buildTrainingParams(): org.json.JSONObject {
+    private fun buildTrainingParams(): org.json.JSONObject =
+        org.json.JSONObject(nativeTrainingParameters(trainingValues(buildTrainingSettings())))
+
+    /** Preserve disabled validation fields in editable drafts, never in native parameters. */
+    private fun buildTrainingSettings(): org.json.JSONObject {
         val params = org.json.JSONObject()
             .put("model_path", trainModelPath.trim()).put("data_path", trainDataPath.trim())
             .put("lr", trainLr.trim().toDoubleOrNull() ?: 2e-4)
@@ -3040,8 +3057,9 @@ class MainActivity : AppCompatActivity() {
             .put("train_norms", trainNorms).put("lora_qat", trainQatEnabled)
             .put("lora_weight_q4", trainWeightQ4).put("seed", DEMO_SEED)
             .put("patience", trainPatience.trim().toIntOrNull() ?: 0)
+            .put("validation_enabled", trainValidationEnabled).put("validate", trainValidationEnabled)
         if (trainTask == "decision") params.put("objective", trainObjective)
-        if (trainValidDataPath.isNotBlank()) params.put("valid_data", trainValidDataPath.trim()).put("validate", true)
+        if (trainValidDataPath.isNotBlank()) params.put("valid_data", trainValidDataPath.trim())
         if (trainOutputPath.isNotBlank()) params.put("output_path", trainOutputPath.trim())
         if (trainResumePath.isNotBlank()) params.put("lora_path", trainResumePath.trim())
         if (trainHybrid && trainTrunkPath.isNotBlank()) params.put("hybrid_trunk", trainTrunkPath.trim())
@@ -3049,7 +3067,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveDemoTrainingSettings() {
-        if (trainTask == "decision") demoTrainingSettings.save(DEMO_USERS[demoUser].id, trainingValues(buildTrainingParams()))
+        if (trainTask == "decision") demoTrainingSettings.save(DEMO_USERS[demoUser].id, trainingValues(buildTrainingSettings()))
     }
 
     private fun trainingValues(params: org.json.JSONObject): Map<String, Any> =
@@ -3060,6 +3078,7 @@ class MainActivity : AppCompatActivity() {
         trainModelPath = params.getString("model_path")
         trainDataPath = params.getString("data_path")
         trainValidDataPath = params.optString("valid_data")
+        trainValidationEnabled = params.optBoolean("validation_enabled", false)
         trainTrunkPath = params.optString("hybrid_trunk")
         trainHybrid = trainTrunkPath.isNotBlank()
         trainTask = params.getString("task")

@@ -16,6 +16,65 @@ class DemoTrainingSettingsTest {
 
     private fun settings() = DemoTrainingSettings(mapOf("u02" to defaults("u02"), "u03" to defaults("u03")))
 
+    @Test fun validationDefaultsOffEvenWithCatalogValidationPaths() {
+        val settings = settings()
+        for (user in listOf("u02", "u03")) {
+            val draft = settings.load(user)
+            assertEquals(false, draft["validation_enabled"])
+            assertEquals("/data/$user/validation.jsonl", draft["valid_data"])
+            val native = nativeTrainingParameters(draft)
+            assertEquals(false, native["validate"])
+            assertEquals(0, native["patience"])
+            assertFalse(native.containsKey("valid_data"))
+            assertFalse(native.containsKey("validation_enabled"))
+        }
+    }
+
+    @Test fun validationOffGatesEveryNativeEnablePathAndCanBeReenabled() {
+        val settings = settings()
+        settings.save("u02", defaults("u02") + mapOf("validation_enabled" to false, "patience" to 3))
+        val off = nativeTrainingParameters(settings.load("u02"))
+        assertEquals(false, off["validate"])
+        assertEquals(0, off["patience"])
+        assertFalse(off.containsKey("valid_data"))
+        val enabled = settings.load("u02") + ("validation_enabled" to true)
+        settings.save("u02", enabled)
+        val on = nativeTrainingParameters(settings.load("u02"))
+        assertEquals(true, on["validate"])
+        assertEquals(3, on["patience"])
+        assertEquals("/data/u02/validation.jsonl", on["valid_data"])
+        assertFalse(on.containsKey("validation_enabled"))
+        assertEquals(3, settings.load("u02")["patience"])
+    }
+
+    @Test fun validationSelectionIsIndependentForIndividualRuns() {
+        val settings = settings()
+        val run = settings.snapshot("u02", defaults("u02") + ("validation_enabled" to true), combined = false)
+        assertEquals(true, nativeTrainingParameters(run.getValue("u02"))["validate"])
+        assertEquals(false, nativeTrainingParameters(run.getValue("u03"))["validate"])
+        assertEquals(true, settings.load("u02")["validation_enabled"])
+        assertEquals(false, settings.load("u03")["validation_enabled"])
+    }
+
+    @Test fun combinedValidationSelectionUsesCurrentToggleAndKeepsUserPaths() {
+        val settings = settings()
+        val on = settings.snapshot("u03", defaults("u03") + mapOf("validation_enabled" to true, "patience" to 2), combined = true)
+        for (user in listOf("u02", "u03")) {
+            val native = nativeTrainingParameters(on.getValue(user))
+            assertEquals(true, native["validate"])
+            assertEquals("/data/$user/validation.jsonl", native["valid_data"])
+            assertEquals(2, native["patience"])
+        }
+        val off = settings.snapshot("u02", settings.load("u02") + ("validation_enabled" to false), combined = true)
+        for (user in listOf("u02", "u03")) {
+            val native = nativeTrainingParameters(off.getValue(user))
+            assertEquals(false, native["validate"])
+            assertEquals(0, native["patience"])
+            assertFalse(native.containsKey("valid_data"))
+            assertEquals("/data/$user/validation.jsonl", settings.load(user)["valid_data"])
+        }
+    }
+
     @Test fun combinedRunFromBRetainsEditedSettingsWhenItReachesC() {
         val settings = settings()
         val edited = defaults("u02") + mapOf(

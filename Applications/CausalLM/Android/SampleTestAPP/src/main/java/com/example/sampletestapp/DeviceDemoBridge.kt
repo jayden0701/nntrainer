@@ -65,7 +65,9 @@ class DeviceDemoBridge(
                 .put("expected_data_sha256", user.metadata.getString("data_sha256"))
                 .put("expected_data_rows", user.metadata.getInt("expected_data_rows"))
                 .put("frequency_baseline", user.metadata.getJSONObject("frequency_baseline"))
-                .put("persona", user.metadata.getString("persona")).put("train_config", JSONObject(user.training.toString()))
+                .put("persona", user.metadata.getString("persona"))
+                .put("train_config", JSONObject(nativeTrainingParameters(user.training.keys().asSequence()
+                    .associateWith { user.training.get(it) })).put("seed", DEMO_SEED))
                 .put("validation_path", user.training.getString("valid_data"))
                 .put("validation_sha256", digest(File(user.training.getString("valid_data"))))
                 .put("validation_rows", user.metadata.getInt("validation_rows"))
@@ -304,9 +306,12 @@ class DeviceDemoBridge(
     private fun savedLabel(ms: Long) = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.KOREA).format(java.util.Date(ms))
     private fun parameters(u: Int, output: String): JSONObject {
         val definition = users[u]
-        val params = JSONObject(commandConfigs[u].toString())
+        val draft = commandConfigs[u]
+        val params = JSONObject(nativeTrainingParameters(draft.keys().asSequence().associateWith { draft.get(it) }))
         check(digest(File(params.getString("data_path"))) == definition.metadata.getString("data_sha256")) { "Training dataset hash mismatch" }
-        check(digest(File(params.getString("valid_data"))) == definition.metadata.getString("valid_sha256")) { "Validation dataset hash mismatch" }
+        if (params.optBoolean("validate") && params.optString("valid_data").isNotBlank()) {
+            check(digest(File(params.getString("valid_data"))) == definition.metadata.getString("valid_sha256")) { "Validation dataset hash mismatch" }
+        }
         require(params.getInt("epochs") > 0 && params.getInt("batch_size") > 0) { "Epochs and batch size must be positive" }
         params.put("output_path", output)
         return params

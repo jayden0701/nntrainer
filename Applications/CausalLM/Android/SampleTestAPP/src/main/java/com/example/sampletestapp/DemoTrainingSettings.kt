@@ -4,6 +4,17 @@ package com.example.sampletestapp
 /** Shuffle seed of every demo training run (fixed so runs are reproducible). */
 internal const val DEMO_SEED = 1
 
+/** Keep editable validation settings in the draft, but gate all native enable paths. */
+internal fun nativeTrainingParameters(settings: Map<String, Any>): Map<String, Any> =
+    settings.toMutableMap().apply {
+        val enabled = remove("validation_enabled") == true
+        put("validate", enabled)
+        if (!enabled) {
+            remove("valid_data")
+            put("patience", 0)
+        }
+    }
+
 /** Editable per-user drafts and immutable command snapshots of flat training parameters. */
 internal class DemoTrainingSettings(initial: Map<String, Map<String, Any>>) {
     private val drafts = initial.mapValues { fixedSeed(it.value) }.toMutableMap()
@@ -37,9 +48,12 @@ internal class DemoTrainingSettings(initial: Map<String, Map<String, Any>>) {
         return drafts.mapValues { it.value.toMap() }
     }
 
-    private fun fixedSeed(settings: Map<String, Any>) = settings.toMutableMap().apply { put("seed", DEMO_SEED) }.toMap()
+    private fun fixedSeed(settings: Map<String, Any>) = settings.toMutableMap().apply {
+        put("seed", DEMO_SEED)
+        putIfAbsent("validation_enabled", false)
+    }.toMap()
 
     private companion object {
-        val USER_FIELDS = setOf("data_path", "valid_data", "validate", "output_path", "lora_path")
+        val USER_FIELDS = setOf("data_path", "valid_data", "output_path", "lora_path")
     }
 }
