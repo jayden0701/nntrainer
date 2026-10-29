@@ -84,6 +84,9 @@ def main():
     ap.add_argument("--norm_fp16", action="store_true",
                     help="write RMSNorm gammas as FP16 (mixed bin for the "
                          "FP32-weight / FP16-activation quantize path)")
+    ap.add_argument("--embedding_fp32", action="store_true",
+                    help="preserve FP32 embedding bytes in a float16 dense "
+                         "graph (runtime embedding/lmhead dtype must match)")
     args = ap.parse_args()
 
     out_dtype = np.float32 if args.data_type == "float32" else np.float16
@@ -100,11 +103,12 @@ def main():
     total = [0]
     f = open(args.output_name, "wb")
 
-    def w(arr, is_rms=False, transpose=False):
+    def w(arr, is_rms=False, transpose=False, dtype=None):
         a = arr
         if transpose:
             a = a.T
-        dt = np.float16 if (is_rms and norm_fp16) else out_dtype
+        dt = dtype if dtype is not None else (
+            np.float16 if (is_rms and norm_fp16) else out_dtype)
         a = np.ascontiguousarray(a, dtype=dt)
         a.tofile(f)
         total[0] += a.nbytes
@@ -113,7 +117,8 @@ def main():
         return read(f"model.layers.{layer}.{name}.weight")
 
     # embedding (as-is)
-    w(read("model.embed_tokens.weight"))
+    w(read("model.embed_tokens.weight"),
+      dtype=np.float32 if args.embedding_fp32 else None)
 
     for i in range(n_layers):
         lp = f"model.layers.{i}."

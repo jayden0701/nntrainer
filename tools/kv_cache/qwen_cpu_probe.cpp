@@ -30,7 +30,9 @@ json readJson(const std::filesystem::path &path) {
 /** Observes logits without changing the selected distribution. */
 class Capture final : public causallm::LogitsProcessor {
 public:
-  explicit Capture(std::filesystem::path output) : output_(std::move(output)) {}
+  explicit Capture(std::filesystem::path output,
+                   std::vector<unsigned int> forced = {}) :
+    output_(std::move(output)), forced_(std::move(forced)) {}
 
   void process(float *logits, unsigned int count, unsigned int batch) override {
     if (batch != 0)
@@ -58,6 +60,16 @@ public:
                     {"vocab_size", count},
                     {"all_finite", finite},
                     {"top10", top}});
+    // Optional fixed-token workload: record original logits first, then force
+    // a non-EOS token so graph threshold/long-session coverage is
+    // deterministic.
+    if (!forced_.empty()) {
+      const auto id = forced_[(rows.size() - 1) % forced_.size()];
+      if (id >= count)
+        throw std::invalid_argument("Forced token exceeds vocabulary");
+      std::fill(logits, logits + count, -1.0e30f);
+      logits[id] = 1.0e30f;
+    }
   }
 
   void acceptToken(unsigned int id, unsigned int batch) override {
@@ -71,6 +83,7 @@ public:
 
 private:
   std::filesystem::path output_;
+  std::vector<unsigned int> forced_;
 };
 } // namespace
 
@@ -107,7 +120,8 @@ int main(int argc, char **argv) {
       if (turn.contains("input_ids") && json(input_ids) != turn.at("input_ids"))
         throw std::runtime_error("HF and nntrainer input token IDs disagree");
       const int before = running.getKvLen();
-      Capture capture(output);
+      Capture capture(output,
+                      turn.value("forced_ids", std::vector<unsigned int>{}));
       running.setLogitsProcessor(&capture);
       try {
         running.run(prompt, false, "", "", false);
