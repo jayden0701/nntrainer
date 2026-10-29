@@ -319,7 +319,8 @@ void KVCacheManager::allocateCpu(
   if (cuda) {
 #if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
     if ((nntr_env_on("NNTR_CUDA_KV_GRAPH") &&
-         nntr_env_on("NNTR_CUDA_GRAPH") != nntr_env_on("NNTR_CUDA_M2B")) ||
+         (nntr_env_on("NNTR_CUDA_DEV_ACT") ||
+          nntr_env_on("NNTR_CUDA_GRAPH") != nntr_env_on("NNTR_CUDA_M2B"))) ||
         batch_size != 1 || dtype != DataType::FP16 ||
         format != ml::train::TensorDim::Format::NCHW || heads.empty() ||
         std::getenv("NNTR_KV_INT8") || std::getenv("NNTR_KV_OHWI") ||

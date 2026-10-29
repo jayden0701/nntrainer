@@ -84,7 +84,8 @@ struct CacheStats {
 
 /** Geometry and publication only; attention/RoPE stay in the model/layer.
  * Thread confined. Ordered device consumers may precede completion;
- * publication\n * always waits for checked completion.
+ * publication
+ * always waits for checked completion.
  */
 class KvCacheManager {
 public:
