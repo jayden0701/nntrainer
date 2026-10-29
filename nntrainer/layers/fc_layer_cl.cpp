@@ -12,7 +12,11 @@
 
 #include <cstdlib>
 #include <fc_layer_cl.h>
+#include <kv_cache/kv_cache_manager.h>
 #include <variant>
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+#include <cuda_kv_storage.h>
+#endif
 
 #include <limits>
 
@@ -181,6 +185,7 @@ void FullyConnectedLayerCl::incremental_forwarding(RunLayerContext &context,
   Tensor &weight = context.getWeight(weight_idx[FCParams::weight]);
   Tensor &input_ = context.getInput(SINGLE_INOUT_IDX);
   Tensor &hidden_ = context.getOutput(SINGLE_INOUT_IDX);
+  kv::KvStepScope::prepareValueProducer(&hidden_);
 
   TensorDim input_dim = input_.getDim();
   TensorDim hidden_dim = hidden_.getDim();
@@ -213,7 +218,32 @@ void FullyConnectedLayerCl::incremental_forwarding(RunLayerContext &context,
   Tensor input_step = input_.getSharedDataTensor(input_step_dim, 0, true);
   Tensor hidden_step = hidden_.getSharedDataTensor(hidden_step_dim, 0, true);
 
-  input_step.getOps()->fc(input_step, weight, hidden_step);
+  bool slot_written = false;
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+  if (auto *base = kv::KvStepScope::slotValueBase(&hidden_)) {
+    auto &disable = std::get<props::DisableBias>(*layer_impl_props);
+    auto &activation = std::get<props::FusedActivation>(fc_props);
+    if (input_step.getDataType() != TensorDim::DataType::FP16 ||
+        weight.getDataType() != TensorDim::DataType::FP16 ||
+        hidden_step.getDataType() != TensorDim::DataType::FP16 ||
+        input_step.height() != 1 || input_step.batch() != 1 ||
+        weight.height() != input_step.width() ||
+        weight.width() != hidden_step.width() || disable.empty() ||
+        !disable.get() ||
+        (!activation.empty() && activation.get() != ActivationType::ACT_NONE))
+      throw std::invalid_argument(
+        "Replay V requires bias-free dense FP16 projection");
+    if (!cuda::kvValueSlot(
+          reinterpret_cast<const unsigned short *>(input_step.getData<_FP16>()),
+          reinterpret_cast<const unsigned short *>(weight.getData<_FP16>()),
+          static_cast<unsigned short *>(base), hidden_step.width(),
+          input_step.width()))
+      throw std::runtime_error("Replay final V projection failed");
+    slot_written = true;
+  }
+#endif
+  if (!slot_written)
+    input_step.getOps()->fc(input_step, weight, hidden_step);
 
   if (auto &disable_bias = std::get<props::DisableBias>(*layer_impl_props);
       disable_bias.empty() || disable_bias.get() == false) {
@@ -231,6 +261,8 @@ void FullyConnectedLayerCl::incremental_forwarding(RunLayerContext &context,
   auto &fused_act = std::get<props::FusedActivation>(fc_props);
   if (!fused_act.empty() && fused_act.get() != ActivationType::ACT_NONE)
     hidden_step.getOps()->apply_activation(hidden_step, (int)fused_act.get());
+  kv::KvStepScope::valueProduced(&hidden_, hidden_step.getData<char>(),
+                                 hidden_step.bytes());
 }
 
 void FullyConnectedLayerCl::read(std::ifstream &file,

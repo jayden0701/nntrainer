@@ -15,8 +15,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
-#include <unordered_set>
 
 #include <cuda_runtime.h>
 
@@ -26,15 +26,10 @@
 namespace nntrainer {
 
 namespace {
-// Host-fallback ownership set (pointers from MemAllocator::alloc, not
-// cudaMallocManaged). ContextManager is a global singleton so no per-instance
-// state is needed; keep this hidden in the .cpp.
-std::mutex host_owned_mtx;
-std::unordered_set<void *> host_owned;
-// cudaHostAlloc(Mapped) ownership -- must be freed with cudaFreeHost, not
-// cudaFree.
-std::mutex pinned_owned_mtx;
-std::unordered_set<void *> pinned_owned;
+// Actual allocation ranges and release routes, including host fallback.
+// ContextManager retains the primary context for the process lifetime.
+std::mutex allocation_mutex;
+std::map<uintptr_t, AllocationInfo> allocations;
 
 // [WDDM coherence, field 2026-07-09] On the RTX 5070 Laptop (sm_120, WDDM,
 // concurrentManagedAccess=0) managed memory is empirically incoherent in BOTH
@@ -66,14 +61,39 @@ CudaMemAllocator::CudaMemAllocator(bool device_only) :
   cuda::ContextManager::Global();
 }
 
-void CudaMemAllocator::track_host_owned(void *ptr) {
-  std::lock_guard<std::mutex> lk(host_owned_mtx);
-  host_owned.insert(ptr);
+void CudaMemAllocator::record(void *ptr, size_t bytes, AllocationKind kind) {
+  AllocationInfo info{kind, ptr, bytes, -1, 0};
+  if (kind != AllocationKind::Host) {
+    auto &context = cuda::ContextManager::Global();
+    info.device = context.GetDeviceOrdinal();
+    info.context = reinterpret_cast<uintptr_t>(context.GetContext());
+  }
+  try {
+    std::lock_guard<std::mutex> lock(allocation_mutex);
+    allocations.emplace(reinterpret_cast<uintptr_t>(ptr), info);
+  } catch (...) {
+    if (kind == AllocationKind::Host)
+      MemAllocator::free(ptr);
+    else if (kind == AllocationKind::CudaHostMapped)
+      cudaFreeHost(ptr);
+    else
+      cudaFree(ptr);
+    throw;
+  }
 }
 
-bool CudaMemAllocator::consume_host_owned(void *ptr) {
-  std::lock_guard<std::mutex> lk(host_owned_mtx);
-  return host_owned.erase(ptr) > 0;
+AllocationInfo CudaMemAllocator::describeAllocation(const void *ptr) const {
+  if (!ptr)
+    return {};
+  const auto address = reinterpret_cast<uintptr_t>(ptr);
+  std::lock_guard<std::mutex> lock(allocation_mutex);
+  auto found = allocations.upper_bound(address);
+  if (found == allocations.begin())
+    return {};
+  --found;
+  if (address - found->first >= found->second.bytes)
+    return {};
+  return found->second;
 }
 
 void CudaMemAllocator::alloc(void **ptr, size_t size, size_t alignment) {
@@ -105,10 +125,7 @@ void CudaMemAllocator::alloc(void **ptr, size_t size, size_t alignment) {
         const bool uva_same =
           cudaHostGetDevicePointer(&dp, hp, 0) == cudaSuccess && dp == hp;
         if (uva_same) {
-          {
-            std::lock_guard<std::mutex> lk(pinned_owned_mtx);
-            pinned_owned.insert(hp);
-          }
+          record(hp, size, AllocationKind::CudaHostMapped);
           // Honor MemAllocator's calloc contract: cudaHostAlloc gives no zero
           // guarantee -- the runtime may recycle pinned blocks, and a consumer
           // that reads before it writes then sees a previous tenant's bytes
@@ -186,6 +203,9 @@ void CudaMemAllocator::alloc(void **ptr, size_t size, size_t alignment) {
                 size, cudaGetErrorString(se));
         cudaFree(dptr);
       } else {
+        record(dptr, size,
+               dev_only ? AllocationKind::CudaDevice
+                        : AllocationKind::CudaManaged);
         *ptr = dptr;
         if (dbg)
           fprintf(stderr, "[UVMDBG] %s %zu bytes -> %p OK\n",
@@ -201,26 +221,31 @@ void CudaMemAllocator::alloc(void **ptr, size_t size, size_t alignment) {
     cudaGetLastError();
   }
   // size==0 or managed alloc failed -> host buffer (correctness > speed). The
-  // matching free() consults host_owned to pick std::free vs cudaFree.
+  // matching free() consults the actual allocation record.
   MemAllocator::alloc(ptr, size, alignment);
-  track_host_owned(*ptr);
+  record(*ptr, size, AllocationKind::Host);
 }
 
 void CudaMemAllocator::free(void *ptr) {
-  if (ptr == nullptr)
+  if (!ptr)
     return;
-  if (consume_host_owned(ptr)) {
-    MemAllocator::free(ptr);
-    return;
-  }
+  AllocationKind kind;
   {
-    std::lock_guard<std::mutex> lk(pinned_owned_mtx);
-    if (pinned_owned.erase(ptr) > 0) {
-      cudaFreeHost(ptr);
+    std::lock_guard<std::mutex> lock(allocation_mutex);
+    auto found = allocations.find(reinterpret_cast<uintptr_t>(ptr));
+    if (found == allocations.end()) {
+      ml_loge("CUDA allocator cannot free an unowned pointer");
       return;
     }
+    kind = found->second.kind;
+    allocations.erase(found);
   }
-  cudaFree(ptr);
+  if (kind == AllocationKind::Host)
+    MemAllocator::free(ptr);
+  else if (kind == AllocationKind::CudaHostMapped)
+    cudaFreeHost(ptr);
+  else
+    cudaFree(ptr);
 }
 
 } // namespace nntrainer

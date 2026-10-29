@@ -184,7 +184,8 @@ test('unittest_causallm_runtime', causallm_runtime_test,
 if get_option('enable-cuda')
   foreach cuda_kernel_test: ['unittest_cuda_kernels_layernorm',
                              'unittest_cuda_kernels_gelu',
-                             'unittest_cuda_kernels_fc_qs4cx']
+                             'unittest_cuda_kernels_fc_qs4cx',
+                             'unittest_kv_cache_cuda']
     cuda_kernel_test_exe = executable(
       cuda_kernel_test,
       cuda_kernel_test + '.cpp',
@@ -193,6 +194,10 @@ if get_option('enable-cuda')
       install_dir: application_install_dir
     )
     test(cuda_kernel_test, cuda_kernel_test_exe,
+      env: cuda_kernel_test == 'unittest_kv_cache_cuda' ?
+        ['NNTR_ENGINE=cuda', 'NNTR_CUDA_HOST_MAPPED=1',
+         'NNTR_CUDA_DECODE_GRAPH=0', 'NNTR_CUDA_GRAPH=0',
+         'NNTR_CUDA_M2B=0', 'NNTR_CUDA_PREFILL_GRAPH=0'] : [],
       args: ['--gtest_output=xml:@0@/@1@.xml'.format(
         meson.build_root(), cuda_kernel_test)],
       timeout: test_timeout,

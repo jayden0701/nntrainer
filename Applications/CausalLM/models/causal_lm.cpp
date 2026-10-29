@@ -462,6 +462,15 @@ void CausalLM::allocateAndBindKVCache() {
     if (any_kv_shared)
       kv_cache.setLayerKVSources(std::move(kv_sources));
 
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
+    if (nntr_env_on("NNTR_CUDA_KV_GRAPH")) {
+      nntrainer::cuda_reset_decode_graph_cache();
+      if (!nntrainer::cuda::cuda_attention_splitkv_prewarm(
+            static_cast<int>(MAX_SEQ_LEN), NUM_HEADS, 2 * HEAD_DIM))
+        throw std::runtime_error(
+          "Core replay attention workspace preparation failed");
+    }
+#endif
     kv_cache.allocate(static_cast<unsigned int>(NUM_LAYERS), BATCH_SIZE,
                       max_timestep, kv_widths, cache_dtype,
                       ml::train::TensorDim::Format::NCHW, kv_heads);
@@ -631,14 +640,100 @@ std::vector<float *> CausalLM::incrementalInference(
   // Tensor slices and publishes readiness after K and V have been produced.
   std::optional<nntrainer::kv::StepLease> cpu_step;
   std::unique_ptr<nntrainer::kv::KvStepScope> cpu_scope;
-  if (kv_cache.usesCpuStorage()) {
+  if (kv_cache.usesCoreStorage()) {
     cpu_step.emplace(kv_cache.beginStep(from, to));
     cpu_scope = kv_cache.bindStep(*cpu_step);
   }
+  // Bind only after activation-pool allocation, at the real FC invocation.
+  // Both the final producer and its sole MHA consumer must see the destination.
+  struct ValueBindings {
+    struct Saved {
+      nntrainer::Tensor *tensor;
+      std::shared_ptr<nntrainer::MemoryData> memory;
+      size_t offset;
+    };
+    std::vector<Saved> saved;
+    void bind(nntrainer::Tensor *tensor,
+              const std::shared_ptr<nntrainer::MemoryData> &memory,
+              size_t offset) {
+      for (const auto &entry : saved)
+        if (entry.tensor == tensor)
+          throw std::logic_error("KV output was rebound more than once");
+      saved.push_back({tensor, tensor->getMemoryData(), tensor->getOffset()});
+      tensor->setData(memory, offset, false);
+    }
+    ~ValueBindings() {
+      for (auto i = saved.rbegin(); i != saved.rend(); ++i)
+        i->tensor->setData(i->memory, i->offset, false);
+    }
+  } value_bindings;
+  if (kv_cache.directValueWrites()) {
+    if (!cpu_scope || MEMORY_SWAP)
+      throw std::invalid_argument(
+        "Direct CUDA V requires an eager resident graph");
+    value_bindings.saved.reserve(static_cast<size_t>(NUM_LAYERS) * 2);
+    for (int i = 0; i < NUM_LAYERS; ++i) {
+      const auto name = getKVValueProducerName(i);
+      if (name.empty())
+        throw std::invalid_argument(
+          "Model has no direct V producer declaration");
+      nntrainer::Tensor *producer = nullptr, *consumer = nullptr;
+      model->forEachLayer(
+        [&](ml::train::Layer &layer, nntrainer::RunLayerContext &context,
+            void *) {
+          if (layer.getName() == name && layer.getType() == "fully_connected")
+            producer = &context.getOutput(0);
+          if (layer.getName() == "layer" + std::to_string(i) + "_attention" &&
+              context.getNumInputs() == 5)
+            consumer = &context.getInput(2);
+        },
+        nullptr);
+      if (!producer || !consumer)
+        throw std::invalid_argument(
+          "Declared V producer/consumer absent from graph");
+      auto slice = kv_cache.getValueCacheWriteView(i, 0, to - from);
+      if (producer->getDataType() != slice.getDataType() ||
+          consumer->getDataType() != slice.getDataType() ||
+          producer->width() != slice.width() ||
+          consumer->width() != slice.width() ||
+          producer->height() < to - from || consumer->height() < to - from ||
+          producer->batch() != 1 || consumer->batch() != 1)
+        throw std::invalid_argument("Direct V producer shape or type mismatch");
+      auto memory = slice.getMemoryData();
+      auto offset = slice.getOffset();
+      cpu_scope->registerValueProducer(
+        i, producer,
+        [&, producer, consumer, memory,
+         offset](const nntrainer::kv::KvView &view) {
+          value_bindings.bind(producer, memory, offset);
+          if (consumer != producer)
+            value_bindings.bind(consumer, memory, offset);
+          if (producer->getData<char>() != view.writableAddress() ||
+              consumer->getData<char>() != view.writableAddress())
+            throw std::logic_error(
+              "V output binding differs from its checked view");
+        });
+    }
+  }
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
+  if (nntrainer::kv::KvStepScope::replayBinding().owner)
+    nntrainer::cuda::cuda_set_pos(static_cast<int>(from), static_cast<int>(to));
+#endif
   nntrainer::sharedConstTensors output_tensors =
     nn->incremental_inference(input_tensors, init_seq_len, from, to);
-  if (cpu_step)
+  if (cpu_step) {
     kv_cache.commitStep(std::move(*cpu_step));
+    if (!kv_cache.usesCpuStorage() && nntr_env_on("NNTR_KV_GPU_TRACE")) {
+      const auto stats = kv_cache.coreStats();
+      std::fprintf(
+        stderr,
+        "[kv-gpu-step] from=%u to=%u backing_bytes=%zu device_reads=%zu "
+        "direct_v=%zu append_copy_bytes=%zu captures=%zu replays=%zu\n",
+        from, to, stats.backing_bytes, stats.device_attention_calls,
+        stats.direct_value_writes, stats.append_copy_bytes,
+        stats.graph_captures, stats.graph_replays);
+    }
+  }
 
   // Output conversion identical to the float* overload in neuralnet.cpp.
   std::vector<float *> output;
@@ -813,7 +908,7 @@ std::vector<float *> CausalLM::incrementalInference(
   // mha_core advances only its own internal cache_index during forwarding,
   // so without this getKvLen()/save_kvcache() would report the stale
   // prefill-start position (advanceKVCachePosition had no caller).
-  if (kv_cache.isAllocated() && !kv_cache.usesCpuStorage() &&
+  if (kv_cache.isAllocated() && !kv_cache.usesCoreStorage() &&
       to <= kv_cache.getMaxSeqLen())
     kv_cache.setPosition(to);
 

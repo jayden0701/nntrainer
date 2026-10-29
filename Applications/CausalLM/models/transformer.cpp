@@ -507,6 +507,7 @@ void Transformer::initialize() {
   if (auto feed = getGraphReplayFeedNodes(); !feed.empty()) {
     auto *nn = static_cast<nntrainer::NeuralNetwork *>(model.get());
     nn->setGraphReplayFeedNodes(std::move(feed));
+    nn->setGraphReplayTailNodes(getGraphReplayTailNodes());
     // And the position the capture stops being valid at, so the backend can
     // recapture instead of replaying a graph built for the other window regime.
     nn->setGraphReplayExpiryPosition(getGraphReplayExpiryPosition());

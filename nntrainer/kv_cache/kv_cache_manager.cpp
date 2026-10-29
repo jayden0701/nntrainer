@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * @file kv_cache_manager.cpp
- * @brief Synchronous CPU KV ownership, views and transactional publication.
+ * @brief Synchronous host/device KV ownership, views and transactional
+ * publication.
  * @author Codex (OpenAI)
- * @bug Sessions are thread confined; asynchronous device access is unsupported.
+ * @bug Sessions are thread confined; asynchronous publication is unsupported.
  */
 #include <kv_cache/kv_cache_manager.h>
 
@@ -17,10 +18,14 @@ struct ViewEpoch {
   uint64_t active_step = 0;
 };
 
+enum class ProducerState { Missing, Ordered, Complete };
+
 struct SessionState {
   CacheSpec spec;
+  std::shared_ptr<KvStorageOperations> operations;
   std::vector<std::shared_ptr<KvStorage>> keys, values;
-  std::vector<bool> ready;
+  std::vector<ProducerState> ready;
+  uint64_t replay_generation = 1;
   std::shared_ptr<ViewEpoch> epoch = std::make_shared<ViewEpoch>();
   size_t position = 0;
   uint64_t next_step = 0;
@@ -35,14 +40,27 @@ void KvView::validate(bool write) const {
     throw std::logic_error("Stale or non-writable KV view");
 }
 
-const void *KvView::data() const {
+const AllocationInfo &KvView::allocationInfo() const {
+  validate(false);
+  return storage_->allocationInfo();
+}
+const void *KvView::address() const {
   validate(false);
   return static_cast<const char *>(storage_->data()) + offset_;
 }
-
-void *KvView::writableData() const {
+void *KvView::writableAddress() const {
   validate(true);
   return static_cast<char *>(storage_->data()) + offset_;
+}
+const void *KvView::data() const {
+  if (!allocationInfo().hostAddressable())
+    throw std::logic_error("Device KV view cannot be dereferenced on the host");
+  return address();
+}
+void *KvView::writableData() const {
+  if (!allocationInfo().hostAddressable())
+    throw std::logic_error("Device KV view cannot be dereferenced on the host");
+  return writableAddress();
 }
 
 StepLease::StepLease(std::shared_ptr<SessionState> state, uint64_t id,
@@ -68,10 +86,20 @@ StepLease &StepLease::operator=(StepLease &&other) noexcept {
 
 void StepLease::abort() noexcept {
   if (state_ && state_->epoch->active_step == id_) {
+    if (state_->operations) {
+      try {
+        state_->operations->synchronize();
+      } catch (...) {
+        state_->valid = false;
+      }
+    }
     if (state_->overwrites)
       state_->valid = false;
     state_->epoch->active_step = 0;
     ++state_->epoch->generation;
+    ++state_->replay_generation;
+    if (state_->operations)
+      state_->operations->invalidateReplay();
   }
   state_.reset();
 }
@@ -79,29 +107,44 @@ void StepLease::abort() noexcept {
 StepLease::~StepLease() { abort(); }
 
 KvCacheManager::KvCacheManager() = default;
-KvCacheManager::~KvCacheManager() = default;
+KvCacheManager::~KvCacheManager() {
+  if (state_ && state_->operations)
+    state_->operations->invalidateReplay();
+}
 
-void KvCacheManager::initialize(const CacheSpec &spec,
-                                std::shared_ptr<MemAllocator> allocator) {
+void KvCacheManager::initialize(
+  const CacheSpec &spec, std::shared_ptr<MemAllocator> allocator,
+  std::shared_ptr<KvStorageOperations> operations) {
   const auto bytes = spec.validate();
   if (state_ && state_->epoch->active_step)
     throw std::logic_error("KV step is in flight");
   auto next = std::make_shared<SessionState>();
   next->spec = spec;
-  next->stats.backing_bytes = bytes;
+  next->operations = operations;
+  next->stats.backing_bytes = operations ? 0 : bytes;
   for (const auto &s : spec.layers) {
     if (s.source >= 0) {
       next->keys.push_back(next->keys[s.source]);
       next->values.push_back(next->values[s.source]);
     } else {
-      next->keys.push_back(KvStorage::create(s.planeBytes(), allocator));
-      next->values.push_back(KvStorage::create(s.planeBytes(), allocator));
+      next->keys.push_back(
+        KvStorage::create(s.planeBytes(), allocator, operations));
+      next->values.push_back(
+        KvStorage::create(s.planeBytes(), allocator, operations));
+      if (operations)
+        next->stats.backing_bytes =
+          checkedAdd(next->stats.backing_bytes,
+                     checkedAdd(next->keys.back()->allocationInfo().bytes,
+                                next->values.back()->allocationInfo().bytes));
       ++next->stats.owner_layers;
     }
   }
   next->ready.resize(spec.layers.size());
-  if (state_)
+  if (state_) {
     ++state_->epoch->generation;
+    if (state_->operations)
+      state_->operations->invalidateReplay();
+  }
   state_ = std::move(next);
 }
 
@@ -118,7 +161,7 @@ StepLease KvCacheManager::beginStep(size_t count) {
   state_->overwrites = false;
   for (const auto &s : state_->spec.layers)
     state_->overwrites |= to > s.capacity;
-  std::fill(state_->ready.begin(), state_->ready.end(), false);
+  std::fill(state_->ready.begin(), state_->ready.end(), ProducerState::Missing);
   // Old read ranges must expire before a new step can overwrite ring rows.
   ++state_->epoch->generation;
   state_->epoch->active_step = ++state_->next_step;
@@ -141,7 +184,7 @@ std::vector<KvView> KvCacheManager::views(const StepLease &step, size_t layer,
     size_t owner = layer;
     while (state_->spec.layers[owner].source >= 0)
       owner = state_->spec.layers[owner].source;
-    if (!state_->ready[owner])
+    if (state_->ready[owner] == ProducerState::Missing)
       throw std::logic_error("KV producer is not ready");
   }
   const size_t from =
@@ -188,31 +231,59 @@ void KvCacheManager::markReady(const StepLease &step, size_t layer) {
   if (state_->spec.layers.at(layer).source >= 0 ||
       !state_->spec.layers.at(layer).has_producer)
     throw std::invalid_argument("KV alias has no producer");
-  state_->ready[layer] = true;
+  bool completed = true;
+  if (state_->operations) {
+    try {
+      completed = state_->operations->producerReady();
+    } catch (...) {
+      state_->valid = false;
+      throw;
+    }
+  }
+  state_->ready[layer] =
+    completed ? ProducerState::Complete : ProducerState::Ordered;
 }
 
 void KvCacheManager::commit(StepLease &&step) {
   checkStep(step);
   for (size_t i = 0; i < state_->ready.size(); ++i)
     if (state_->spec.layers[i].source < 0 &&
-        state_->spec.layers[i].has_producer && !state_->ready[i])
+        state_->spec.layers[i].has_producer &&
+        state_->ready[i] == ProducerState::Missing)
       throw std::logic_error("KV commit before all producers completed");
+  if (state_->operations) {
+    try {
+      state_->operations->synchronize();
+    } catch (...) {
+      state_->valid = false;
+      throw;
+    }
+  }
   state_->position = step.to_;
   state_->epoch->active_step = 0;
   step.state_.reset();
 }
 
 void KvCacheManager::abort(StepLease &&step) {
-  checkStep(step);
+  // A failed device completion invalidates the session, but its live lease must
+  // still be drainable. Publication checks require valid(); abort does not.
+  if (!state_ || step.state_ != state_ || !step.id_ ||
+      state_->epoch->active_step != step.id_)
+    throw std::logic_error("Invalid KV step lease");
   step.abort();
 }
 
 void KvCacheManager::reset() {
   if (!state_ || state_->epoch->active_step)
     throw std::logic_error("Cannot reset an uninitialized or active KV cache");
+  if (state_->operations)
+    state_->operations->synchronize();
   state_->valid = true;
   state_->position = 0;
   ++state_->epoch->generation;
+  ++state_->replay_generation;
+  if (state_->operations)
+    state_->operations->invalidateReplay();
 }
 
 void KvCacheManager::setPosition(size_t position) {
@@ -222,6 +293,9 @@ void KvCacheManager::setPosition(size_t position) {
     throw std::out_of_range("KV position exceeds capacity");
   state_->position = position;
   ++state_->epoch->generation;
+  ++state_->replay_generation;
+  if (state_->operations)
+    state_->operations->invalidateReplay();
 }
 
 size_t KvCacheManager::committedLength() const {
@@ -263,6 +337,7 @@ KvStepScope::KvStepScope(KvCacheManager &manager, const StepLease &step) :
     if (layer.batch != 1 || layer.capacity != layer.max_tokens)
       throw std::invalid_argument(
         "CPU graph KV views require batch-1 linear storage");
+  value_producers_.resize(manager_.state_->spec.layers.size());
   current_ = this;
 }
 
@@ -272,6 +347,155 @@ void KvStepScope::validate() const {
   if (current_ != this)
     throw std::logic_error("CPU KV access escaped its graph scope");
   manager_.checkStep(step_);
+}
+
+void KvStepScope::registerValueProducer(
+  size_t layer, const void *producer,
+  std::function<void(const KvView &)> bind) {
+  validate();
+  if (!producer || !bind || layer >= value_producers_.size() ||
+      value_producers_[layer].token)
+    throw std::invalid_argument("Invalid or duplicate KV value producer");
+  for (const auto &registered : value_producers_)
+    if (registered.token == producer)
+      throw std::invalid_argument("A KV producer cannot bind multiple owners");
+  manager_.writeValue(step_, layer); // Validate owner and write permission now.
+  value_producers_[layer] = {producer, std::move(bind), false, false};
+}
+
+void KvStepScope::prepareValueProducer(const void *producer) {
+  if (!current_)
+    return;
+  auto &scope = *current_;
+  scope.validate();
+  for (size_t i = 0; i < scope.value_producers_.size(); ++i) {
+    auto &registered = scope.value_producers_[i];
+    if (registered.token != producer)
+      continue;
+    if (registered.bound)
+      throw std::logic_error("KV value producer executed twice in one step");
+    auto views = scope.manager_.writeValue(scope.step_, i);
+    if (views.size() != 1)
+      throw std::logic_error("Direct V producer requires linear KV storage");
+    registered.bind(views[0]);
+    registered.bound = true;
+    return;
+  }
+}
+
+void KvStepScope::valueProduced(const void *producer, const void *address,
+                                size_t bytes) {
+  if (!current_)
+    return;
+  auto &scope = *current_;
+  scope.validate();
+  for (size_t i = 0; i < scope.value_producers_.size(); ++i) {
+    auto &registered = scope.value_producers_[i];
+    if (registered.token != producer)
+      continue;
+    auto views = scope.manager_.writeValue(scope.step_, i);
+    if (!registered.bound || registered.submitted || views.size() != 1 ||
+        views[0].writableAddress() != address || views[0].sizeBytes() != bytes)
+      throw std::logic_error(
+        "Final V producer wrote outside its checked slice");
+    // This is submission, not GPU completion. markReady synchronizes the
+    // stream.
+    registered.submitted = true;
+    ++scope.manager_.state_->stats.direct_value_writes;
+    return;
+  }
+}
+
+KvReplayBinding KvStepScope::replayBinding() {
+  if (!current_)
+    return {};
+  auto &scope = *current_;
+  scope.validate();
+  auto &state = *scope.manager_.state_;
+  if (!state.operations || !state.operations->supportsReplay())
+    return {};
+  KvReplayBinding result{scope.manager_.state_, state.replay_generation, {}};
+  for (const auto &producer : scope.value_producers_) {
+    if (!producer.token)
+      throw std::logic_error(
+        "Replay requires every final V producer declaration");
+    result.producers.push_back(producer.token);
+  }
+  return result;
+}
+
+void *KvStepScope::slotValueBase(const void *producer) {
+  if (!current_)
+    return nullptr;
+  auto &scope = *current_;
+  scope.validate();
+  auto &state = *scope.manager_.state_;
+  if (!state.operations || !state.operations->supportsReplay() ||
+      scope.step_.to() - scope.step_.from() != 1 || scope.step_.from() == 0)
+    return nullptr;
+  for (size_t i = 0; i < scope.value_producers_.size(); ++i)
+    if (scope.value_producers_[i].token == producer)
+      return state.values[i]->data();
+  return nullptr;
+}
+
+void KvStepScope::capturedSubmission() {
+  if (!current_ || !replayBinding().owner)
+    return;
+  auto &scope = *current_;
+  for (size_t i = 0; i < scope.value_producers_.size(); ++i)
+    if (!scope.value_producers_[i].submitted ||
+        scope.manager_.state_->ready[i] == ProducerState::Missing)
+      throw std::logic_error("Captured KV graph has an unsubmitted producer");
+  ++scope.manager_.state_->stats.graph_captures;
+}
+
+void KvStepScope::replaySubmission(const KvReplayBinding &binding) {
+  if (!current_ || !binding.owner || binding != replayBinding())
+    throw std::logic_error("Stale KV replay binding");
+  auto &scope = *current_;
+  for (size_t i = 0; i < scope.value_producers_.size(); ++i) {
+    scope.manager_.markReady(scope.step_, i);
+    ++scope.manager_.state_->stats.direct_value_writes;
+    ++scope.manager_.state_->stats.device_attention_calls;
+  }
+  ++scope.manager_.state_->stats.graph_replays;
+}
+
+bool KvStepScope::deviceStep() {
+  if (!current_)
+    return false;
+  current_->validate();
+  return current_->manager_.state_->operations != nullptr;
+}
+
+void KvStepScope::noteAppendCopy(size_t bytes) {
+  if (!current_)
+    return;
+  current_->validate();
+  auto &stats = current_->manager_.state_->stats;
+  stats.append_copy_bytes = checkedAdd(stats.append_copy_bytes, bytes);
+}
+
+void KvStepScope::noteDeviceRead(const void *key, const void *value,
+                                 size_t bytes) {
+  if (!current_)
+    return;
+  auto &scope = *current_;
+  scope.validate();
+  const auto &state = *scope.manager_.state_;
+  for (size_t i = 0; i < state.spec.layers.size(); ++i) {
+    if (state.keys[i]->data() != key || state.values[i]->data() != value)
+      continue;
+    const auto views = scope.manager_.readKey(scope.step_, i);
+    if (views.size() != 1 || views[0].address() != key ||
+        views[0].sizeBytes() != bytes)
+      throw std::logic_error(
+        "Device attention read differs from checked KV view");
+    ++scope.manager_.state_->stats.device_attention_calls;
+    return;
+  }
+  throw std::logic_error("Device attention does not read its core KV backing");
 }
 
 std::unique_ptr<KvLayerAccess> KvStepScope::access(const void *key,
@@ -310,16 +534,31 @@ void KvLayerAccess::validateWrite(const void *key, const void *value,
                                   size_t bytes) const {
   checkedScope();
   if (key_write_.size() != 1 || value_write_.size() != 1 ||
-      key_write_[0].writableData() != key ||
-      value_write_[0].writableData() != value ||
+      key_write_[0].writableAddress() != key ||
+      value_write_[0].writableAddress() != value ||
       key_write_[0].sizeBytes() != bytes ||
       value_write_[0].sizeBytes() != bytes)
     throw std::logic_error(
       "CPU producer Tensor is outside its checked KV write view");
 }
 
+bool KvLayerAccess::directValue(const void *value, size_t bytes) const {
+  auto &scope = checkedScope();
+  const auto &producer = scope.value_producers_[layer_];
+  if (!producer.token)
+    return false;
+  if (!producer.submitted || value_write_.size() != 1 ||
+      value_write_[0].writableAddress() != value ||
+      value_write_[0].sizeBytes() != bytes)
+    throw std::logic_error("MHA did not receive its final V producer output");
+  return true;
+}
+
 void KvLayerAccess::producerReady() {
   auto &scope = checkedScope();
+  const auto &producer = scope.value_producers_[layer_];
+  if (producer.token && !producer.submitted)
+    throw std::logic_error("KV V producer did not execute");
   scope.manager_.markReady(scope.step_, layer_);
   key_read_ = scope.manager_.readKey(scope.step_, layer_);
   value_read_ = scope.manager_.readValue(scope.step_, layer_);
@@ -329,7 +568,7 @@ void KvLayerAccess::validateRead(const void *key, const void *value,
                                  size_t bytes) const {
   checkedScope();
   if (key_read_.size() != 1 || value_read_.size() != 1 ||
-      key_read_[0].data() != key || value_read_[0].data() != value ||
+      key_read_[0].address() != key || value_read_[0].address() != value ||
       key_read_[0].sizeBytes() != bytes || value_read_[0].sizeBytes() != bytes)
     throw std::logic_error(
       "CPU consumer Tensor is outside its checked KV read view");

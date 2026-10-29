@@ -4,8 +4,10 @@
  * @author Codex (OpenAI)
  * @bug Covers synchronous CPU storage; device integration is not exercised.
  */
+#include <basic_planner.h>
 #include <gtest/gtest.h>
 #include <kv_cache/kv_cache_manager.h>
+#include <memory_pool.h>
 #include <tensor.h>
 
 #include <cstring>
@@ -455,6 +457,278 @@ TEST(KvCacheCore, emptyOrMovedViewAccessIsRejected) {
   EXPECT_NE(moved.bufferId(), 0u);
   EXPECT_EQ(view.bufferId(), 0u);
   EXPECT_THROW(view.data(), std::logic_error);
+}
+
+namespace {
+class FakeDeviceAllocator : public CountingAllocator,
+                            public nntrainer::AllocationReporter {
+public:
+  size_t bytes = 0;
+  nntrainer::AllocationKind actual = nntrainer::AllocationKind::CudaDevice;
+  bool isDeviceVisible() const override { return true; }
+  bool isHostAddressable() const override { return false; }
+  bool isSVM() const override { return false; }
+  void alloc(void **ptr, size_t size, size_t alignment) override {
+    CountingAllocator::alloc(ptr, size, alignment);
+    bytes = size;
+  }
+  nntrainer::AllocationInfo describeAllocation(const void *ptr) const override {
+    return {actual, ptr, bytes, 0, 1};
+  }
+};
+class FakeOperations : public KvStorageOperations {
+public:
+  bool fail = false;
+  bool fail_zero = false;
+  size_t waits = 0;
+  nntrainer::AllocationKind kind() const override {
+    return nntrainer::AllocationKind::CudaDevice;
+  }
+  void synchronize() override {
+    ++waits;
+    if (fail)
+      throw std::runtime_error("injected completion failure");
+  }
+  void zero(void *p, size_t n) override {
+    if (fail_zero)
+      throw std::runtime_error("injected initialization failure");
+    std::memset(p, 0, n);
+  }
+  void read(void *h, const void *p, size_t n) override {
+    synchronize();
+    std::memcpy(h, p, n);
+  }
+  void write(void *p, const void *h, size_t n) override {
+    synchronize();
+    std::memcpy(p, h, n);
+  }
+};
+} // namespace
+
+TEST(KvCacheCore, strictDeviceProfileRejectsFallbackAndFreesIt) {
+  auto allocator = std::make_shared<FakeDeviceAllocator>();
+  allocator->actual = nntrainer::AllocationKind::Host;
+  auto operations = std::make_shared<FakeOperations>();
+  EXPECT_THROW(KvStorage::create(128, allocator, operations),
+               std::invalid_argument);
+  EXPECT_EQ(allocator->allocations, 1u);
+  EXPECT_EQ(allocator->frees, 1u);
+  operations->fail_zero = true;
+  allocator->actual = nntrainer::AllocationKind::CudaDevice;
+  EXPECT_THROW(KvStorage::create(128, allocator, operations),
+               std::runtime_error);
+  EXPECT_EQ(allocator->frees, 2u);
+}
+
+TEST(KvCacheCore, poolMetadataDescribesActualHostFallback) {
+  auto allocator = std::make_shared<FakeDeviceAllocator>();
+  allocator->actual = nntrainer::AllocationKind::Host;
+  nntrainer::MemoryPool pool(allocator);
+  auto token = pool.requestMemory(128, 1, 2);
+  pool.planLayout(nntrainer::BasicPlanner());
+  pool.allocate();
+  auto memory = pool.getMemory(token);
+  EXPECT_TRUE(memory->isHostAddressable());
+  EXPECT_FALSE(memory->isSVM());
+  pool.deallocate();
+}
+
+TEST(KvCacheCore, nativeDeviceViewsRejectHostAccessAndCheckPublication) {
+  auto allocator = std::make_shared<FakeDeviceAllocator>();
+  auto operations = std::make_shared<FakeOperations>();
+  KvCacheManager manager;
+  manager.initialize(spec(), allocator, operations);
+  auto step = manager.beginStep(2);
+  auto key = manager.writeKey(step, 0)[0];
+  auto value = manager.writeValue(step, 0)[0];
+  EXPECT_THROW(key.data(), std::logic_error);
+  EXPECT_THROW(key.writableData(), std::logic_error);
+  EXPECT_FALSE(manager.keyMemory(0)->isHostAddressable());
+  auto scope = manager.bindStep(step);
+  auto access =
+    KvStepScope::access(manager.keyMemory(0)->getAddr<void>(),
+                        manager.valueMemory(0)->getAddr<void>(), 0, 0, 2);
+  access->validateWrite(key.writableAddress(), value.writableAddress(),
+                        key.sizeBytes());
+  const auto before = operations->waits;
+  access->producerReady();
+  EXPECT_GT(operations->waits, before);
+  access->validateRead(key.address(), value.address(), key.sizeBytes());
+  manager.commit(std::move(step));
+  EXPECT_EQ(manager.committedLength(), 2u);
+  EXPECT_THROW(key.writableAddress(), std::logic_error);
+}
+
+TEST(KvCacheCore, completionFailureNeverPublishesAndAbortDrains) {
+  auto allocator = std::make_shared<FakeDeviceAllocator>();
+  auto operations = std::make_shared<FakeOperations>();
+  KvCacheManager manager;
+  manager.initialize(spec(), allocator, operations);
+  auto step = manager.beginStep(1);
+  manager.markReady(step, 0);
+  operations->fail = true;
+  EXPECT_THROW(manager.commit(std::move(step)), std::runtime_error);
+  EXPECT_EQ(manager.committedLength(), 0u);
+  EXPECT_FALSE(manager.valid());
+  const auto before = operations->waits;
+  EXPECT_NO_THROW(manager.abort(std::move(step)));
+  EXPECT_GT(operations->waits, before);
+  EXPECT_THROW(manager.reset(), std::runtime_error);
+  operations->fail = false;
+  manager.reset();
+  EXPECT_TRUE(manager.valid());
+}
+
+TEST(KvCacheCore, deviceSnapshotIoChecksRangesAndPinsOwner) {
+  auto allocator = std::make_shared<FakeDeviceAllocator>();
+  auto operations = std::make_shared<FakeOperations>();
+  auto storage = KvStorage::create(128, allocator, operations);
+  auto memory = storage->memory();
+  const unsigned int input = 0x12345678;
+  unsigned int output = 0;
+  storage->write(&input, 64, sizeof(input));
+  storage->read(&output, 64, sizeof(output));
+  EXPECT_EQ(input, output);
+  EXPECT_THROW(storage->read(&output, 127, sizeof(output)), std::out_of_range);
+  EXPECT_THROW(storage->write(&input, std::numeric_limits<size_t>::max(), 1),
+               std::out_of_range);
+  storage.reset();
+  EXPECT_EQ(allocator->frees, 0u);
+  memory.reset();
+  EXPECT_EQ(allocator->frees, 1u);
+  EXPECT_GT(operations->waits, 0u);
+}
+
+TEST(KvCacheCore, allocatorRejectsAlignmentRoundingOverflow) {
+  nntrainer::MemAllocator allocator;
+  void *ptr = nullptr;
+  EXPECT_THROW(allocator.alloc(&ptr, std::numeric_limits<size_t>::max(), 64),
+               std::overflow_error);
+  EXPECT_EQ(ptr, nullptr);
+}
+
+TEST(KvCacheCore, declaredFinalValueProducerMustExecuteInsideItsCheckedScope) {
+  KvCacheManager manager;
+  manager.initialize(spec());
+  auto step = manager.beginStep(2);
+  auto scope = manager.bindStep(step);
+  int token = 0;
+  auto view = manager.writeValue(step, 0)[0];
+  bool bound = false;
+  scope->registerValueProducer(0, &token, [&](const KvView &destination) {
+    EXPECT_EQ(destination.writableAddress(), view.writableAddress());
+    bound = true;
+  });
+  auto access =
+    KvStepScope::access(manager.keyMemory(0)->getAddr<void>(),
+                        manager.valueMemory(0)->getAddr<void>(), 0, 0, 2);
+  EXPECT_THROW(access->producerReady(), std::logic_error);
+  EXPECT_THROW(access->directValue(view.address(), view.sizeBytes()),
+               std::logic_error);
+  KvStepScope::prepareValueProducer(&token);
+  EXPECT_TRUE(bound);
+  EXPECT_THROW(KvStepScope::valueProduced(&token, view.address(), 1),
+               std::logic_error);
+  KvStepScope::valueProduced(&token, view.address(), view.sizeBytes());
+  EXPECT_TRUE(access->directValue(view.address(), view.sizeBytes()));
+  EXPECT_THROW(KvStepScope::prepareValueProducer(&token), std::logic_error);
+  access->producerReady();
+  manager.commit(std::move(step));
+  EXPECT_EQ(manager.stats().direct_value_writes, 1u);
+}
+
+namespace {
+class OrderedOperations : public FakeOperations {
+public:
+  bool producerReady() override {
+    ++dependencies;
+    return false;
+  }
+  bool supportsReplay() const override { return true; }
+  size_t dependencies = 0;
+};
+} // namespace
+
+TEST(KvCacheCore, orderedSubmissionWaitsBeforePublicationAndPropagatesFailure) {
+  auto operations = std::make_shared<OrderedOperations>();
+  KvCacheManager manager;
+  manager.initialize(spec(), std::make_shared<FakeDeviceAllocator>(),
+                     operations);
+  auto step = manager.beginStep(1);
+  manager.markReady(step, 0);
+  EXPECT_EQ(operations->dependencies, 1u);
+  EXPECT_EQ(operations->waits, 0u);
+  EXPECT_NO_THROW(manager.readKey(step, 0));
+  EXPECT_EQ(manager.committedLength(), 0u);
+  operations->fail = true;
+  EXPECT_THROW(manager.commit(std::move(step)), std::runtime_error);
+  EXPECT_EQ(manager.committedLength(), 0u);
+  EXPECT_FALSE(manager.valid());
+  operations->fail = false;
+  manager.abort(std::move(step));
+  manager.reset();
+  auto next = manager.beginStep(1);
+  manager.markReady(next, 0);
+  manager.commit(std::move(next));
+  EXPECT_EQ(manager.committedLength(), 1u);
+}
+
+TEST(KvCacheCore,
+     replayBindingPinsIdentityAndRejectsResetAbortAndForeignOwners) {
+  auto operations = std::make_shared<OrderedOperations>();
+  KvCacheManager manager;
+  manager.initialize(spec(), std::make_shared<FakeDeviceAllocator>(),
+                     operations);
+  int producer = 0;
+  auto step = manager.beginStep(1);
+  auto scope = manager.bindStep(step);
+  scope->registerValueProducer(0, &producer, [](const KvView &) {});
+  const auto binding = KvStepScope::replayBinding();
+  EXPECT_NE(binding.owner, nullptr);
+  EXPECT_THROW(KvStepScope::capturedSubmission(), std::logic_error);
+  KvStepScope::prepareValueProducer(&producer);
+  auto view = manager.writeValue(step, 0)[0];
+  KvStepScope::valueProduced(&producer, view.address(), view.sizeBytes());
+  manager.markReady(step, 0);
+  KvStepScope::capturedSubmission();
+  manager.commit(std::move(step));
+  scope.reset();
+  auto next = manager.beginStep(1);
+  scope = manager.bindStep(next);
+  scope->registerValueProducer(0, &producer, [](const KvView &) {});
+  EXPECT_TRUE(binding == KvStepScope::replayBinding());
+  KvStepScope::replaySubmission(binding);
+  manager.commit(std::move(next));
+  scope.reset();
+  EXPECT_EQ(manager.stats().graph_captures, 1u);
+  EXPECT_EQ(manager.stats().graph_replays, 1u);
+  manager.setPosition(1);
+  next = manager.beginStep(1);
+  scope = manager.bindStep(next);
+  scope->registerValueProducer(0, &producer, [](const KvView &) {});
+  EXPECT_THROW(KvStepScope::replaySubmission(binding), std::logic_error);
+  auto before_abort = KvStepScope::replayBinding();
+  scope.reset();
+  manager.abort(std::move(next));
+  next = manager.beginStep(1);
+  scope = manager.bindStep(next);
+  scope->registerValueProducer(0, &producer, [](const KvView &) {});
+  EXPECT_TRUE(before_abort != KvStepScope::replayBinding());
+  scope.reset();
+  manager.abort(std::move(next));
+  manager.reset();
+  next = manager.beginStep(1);
+  scope = manager.bindStep(next);
+  scope->registerValueProducer(0, &producer, [](const KvView &) {});
+  EXPECT_TRUE(binding != KvStepScope::replayBinding());
+  scope.reset();
+  manager.abort(std::move(next));
+  manager.initialize(spec(), std::make_shared<FakeDeviceAllocator>(),
+                     operations);
+  next = manager.beginStep(1);
+  scope = manager.bindStep(next);
+  scope->registerValueProducer(0, &producer, [](const KvView &) {});
+  EXPECT_NE(binding.owner, KvStepScope::replayBinding().owner);
 }
 
 GTEST_API_ int main(int argc, char **argv) {

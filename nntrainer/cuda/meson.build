@@ -15,6 +15,7 @@ cuda_sources = [
   'cuda_fc_qs4cx.cpp',
   'cuda_rope.cpp',
   'cuda_attention.cpp',
+  'cuda_kv_storage.cpp',
 ]
 
 

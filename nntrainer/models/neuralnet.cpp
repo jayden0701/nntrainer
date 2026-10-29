@@ -57,7 +57,7 @@
 #endif
 #if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
 #include <cuda_context_manager.h> // cuda::drain_if_async
-#include <cuda_fc_qs4cx.h> // [wprefetch] cuda_fc_qs4cx_prefetch_weight
+#include <cuda_fc_qs4cx.h>        // [wprefetch] cuda_fc_qs4cx_prefetch_weight
 #endif
 
 #include <activation_realizer.h>
@@ -708,6 +708,13 @@ sharedConstTensors NeuralNetwork::incremental_forwarding(
     // node must not touch the cache plan either. Inert unless a backend has
     // entered feed-only mode for this one forward, so the CPU and OpenCL walks
     // are bit-identical.
+    const bool replay_tail =
+      std::find(graph_replay_tail_nodes_.begin(),
+                graph_replay_tail_nodes_.end(),
+                node->getName()) != graph_replay_tail_nodes_.end();
+    if ((step_skip_replay_tail_ && replay_tail) ||
+        (step_replay_tail_only_ && !replay_tail))
+      return;
     if (step_feed_only_ &&
         std::find(graph_replay_feed_nodes_.begin(),
                   graph_replay_feed_nodes_.end(),

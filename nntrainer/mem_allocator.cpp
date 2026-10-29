@@ -13,6 +13,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <mem_allocator.h>
 #include <memory_pool.h>
 #include <nntrainer_error.h>
@@ -47,6 +48,9 @@ void MemAllocator::alloc(void **ptr, size_t size, size_t alignment) {
                 std::invalid_argument)
     << "MemAllocator::alloc: alignment must be a non-zero power of two";
 
+  NNTR_THROW_IF(size > std::numeric_limits<size_t>::max() - (alignment - 1),
+                std::overflow_error)
+    << "MemAllocator::alloc: alignment rounding overflow";
   const size_t aligned_size = round_up(size, alignment);
 
 #if defined(_WIN32)
@@ -68,6 +72,15 @@ void MemAllocator::free(void *ptr) {
 #else
   std::free(ptr);
 #endif
+}
+
+AllocationInfo MemAllocator::describe(const void *ptr) const {
+  if (const auto *reporter = dynamic_cast<const AllocationReporter *>(this))
+    return reporter->describeAllocation(ptr);
+  if (!ptr || !isHostAddressable() || isDeviceVisible() || isSVM() ||
+      needsRegister())
+    return {};
+  return {AllocationKind::Host, ptr, 0, -1, 0};
 }
 
 bool MemAllocator::supportsResidency(ResidencyClass cls) const {

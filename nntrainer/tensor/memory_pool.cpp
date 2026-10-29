@@ -279,11 +279,15 @@ std::shared_ptr<MemoryData> MemoryPool::getMemory(unsigned int idx) {
   // GPU then reads zeros through its own mapping and the model
   // answers something else, silently. The flags belong to the TOKEN, not to
   // the allocator: no memory, no planes.
-  mem_data->setSVM(shared != nullptr && allocator_->isSVM());
+  const auto actual = allocator_->describe(shared);
+  const bool described = actual.kind != AllocationKind::Unknown;
+  mem_data->setSVM(shared != nullptr &&
+                   (described ? actual.openClSvm() : allocator_->isSVM()));
   // Host addressability is taken from the allocator alone (a null-slice token
   // is not special-cased here): a device-only plane (cudaMalloc) must be
   // staged, never dereferenced, and the allocator is the only thing that knows.
-  mem_data->setHostAddressable(allocator_->isHostAddressable());
+  mem_data->setHostAddressable(described ? actual.hostAddressable()
+                                         : allocator_->isHostAddressable());
   return mem_data;
 }
 

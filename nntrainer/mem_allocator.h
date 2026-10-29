@@ -14,6 +14,7 @@
 #define __MEM_ALLOCATOR_H__
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -22,6 +23,72 @@
 namespace nntrainer {
 
 class MemoryPool;
+
+/** Actual allocation result, distinct from allocator-wide capabilities. */
+enum class AllocationKind {
+  Unknown,
+  Host,
+  CudaDevice,
+  CudaManaged,
+  CudaHostMapped,
+  OpenClSvmCoarse,
+  OpenClSvmFine
+};
+
+/** Native allocation range. A zero byte count means the range is unspecified.
+ * Context is an opaque identity, never a runtime handle for callers to release.
+ */
+struct AllocationInfo {
+  AllocationKind kind = AllocationKind::Unknown;
+  const void *base = nullptr;
+  size_t bytes = 0;
+  int device = -1;
+  uintptr_t context = 0;
+
+  /** Observed native-base alignment, not a driver page-size guarantee. */
+  size_t alignment() const {
+    const auto address = reinterpret_cast<uintptr_t>(base);
+    return static_cast<size_t>(address & (~address + 1));
+  }
+  bool hostAddressable() const {
+    switch (kind) {
+    case AllocationKind::Host:
+    case AllocationKind::CudaManaged:
+    case AllocationKind::CudaHostMapped:
+    case AllocationKind::OpenClSvmCoarse:
+    case AllocationKind::OpenClSvmFine:
+      return true;
+    default:
+      return false;
+    }
+  }
+  bool deviceVisible() const {
+    switch (kind) {
+    case AllocationKind::CudaDevice:
+    case AllocationKind::CudaManaged:
+    case AllocationKind::CudaHostMapped:
+    case AllocationKind::OpenClSvmCoarse:
+    case AllocationKind::OpenClSvmFine:
+      return true;
+    default:
+      return false;
+    }
+  }
+  bool openClSvm() const {
+    return kind == AllocationKind::OpenClSvmCoarse ||
+           kind == AllocationKind::OpenClSvmFine;
+  }
+};
+
+/** Optional per-allocation reporting, without extending MemAllocator's vtable.
+ * Existing external allocators keep their virtual layout. Device allocators
+ * opt in through this separate interface; old device allocators report Unknown.
+ */
+class AllocationReporter {
+public:
+  virtual ~AllocationReporter() = default;
+  virtual AllocationInfo describeAllocation(const void *ptr) const = 0;
+};
 
 /**
  * @brief MemAllocator, Memory allocator class
@@ -61,6 +128,14 @@ public:
    * a vendor allocator's release call.
    */
   virtual void free(void *ptr);
+
+  /** Describe an allocation, including interior pool slices.
+   * The default only describes plain host allocators. Device allocators must
+   * override this to distinguish their actual results and host fallbacks.
+   * Unknown preserves legacy pool behavior but is rejected by strict KV
+   * storage.
+   */
+  AllocationInfo describe(const void *ptr) const;
 
   /**
    * @brief Backend identifier ("cpu" / "gpu-svm" / "qnn-rpc").

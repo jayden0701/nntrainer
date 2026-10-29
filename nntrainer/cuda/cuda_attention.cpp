@@ -11,6 +11,7 @@
  */
 
 #include "cuda_attention.h"
+#include <kv_cache/kv_cache_manager.h>
 
 #include <cuda_blas_manager.h>
 #include <cuda_context.h>
@@ -211,6 +212,9 @@ const unsigned short *mirror_kv(const unsigned short *host, size_t elems) {
   const bool dev = nntrainer::cuda::dev_accessible(host);
   if (dev)
     return host; // already device-accessible
+  if (kv::KvStepScope::deviceStep())
+    throw std::logic_error(
+      "Strict core KV cannot create a CUDA history mirror");
   std::lock_guard<std::mutex> lk(g_kv_mtx);
   auto &e = g_kv_mirror[host];
   size_t bytes = elems * sizeof(unsigned short);

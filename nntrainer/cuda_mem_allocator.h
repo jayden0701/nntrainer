@@ -28,7 +28,7 @@ namespace nntrainer {
 /**
  * @brief CUDA Unified Memory (managed) allocator.
  */
-class CudaMemAllocator : public MemAllocator {
+class CudaMemAllocator : public MemAllocator, public AllocationReporter {
 public:
   /**
    * @brief Ensure the CUDA device + primary context exist before any
@@ -57,6 +57,7 @@ public:
    * cudaFree for managed pointers, std::free for host-fallback pointers.
    */
   void free(void *ptr) override;
+  AllocationInfo describeAllocation(const void *ptr) const override;
 
   std::string getName() override {
     return device_only_ ? "cuda-dev" : "cuda-uvm";
@@ -90,8 +91,7 @@ public:
 
 private:
   bool device_only_;
-  void track_host_owned(void *ptr);
-  bool consume_host_owned(void *ptr);
+  void record(void *ptr, size_t bytes, AllocationKind kind);
 };
 
 } // namespace nntrainer

@@ -275,6 +275,10 @@ public:
   virtual std::vector<std::string> getGraphReplayFeedNodes() const {
     return {};
   }
+  /** Nodes reading GPU results on the host must run after graph completion. */
+  virtual std::vector<std::string> getGraphReplayTailNodes() const {
+    return {};
+  }
 
   /**
    * @brief run the Transformer model
@@ -358,6 +362,14 @@ public:
    * head dims / KV head counts) override it. Lets one base allocate/bind serve
    * every model instead of a per-model copy of the whole routine.
    */
+  /** Final V producer declaration for the opt-in direct CUDA KV profile.
+   * Empty means this model has not supplied a validated producer binding.
+   */
+  virtual std::string getKVValueProducerName(int layer_id) const {
+    (void)layer_id;
+    return {};
+  }
+
   virtual unsigned int getKVCacheWidth(int layer_id) const {
     (void)layer_id;
     return static_cast<unsigned int>(NUM_KEY_VALUE_HEADS) *

@@ -17,6 +17,9 @@
 #include <functional>
 
 namespace nntrainer {
+namespace kv {
+class KvStorage;
+}
 
 using MemoryDataValidateCallback = std::function<void(unsigned int)>;
 
@@ -61,6 +64,7 @@ class MemoryData {
    *          accidental modification from other parts of the codebase.
    */
   friend class MemoryPool;
+  friend class kv::KvStorage; // Owned, checked KV allocation metadata bridge.
 
   /**
    * @brief TensorPool is granted friend access to call setResidency()

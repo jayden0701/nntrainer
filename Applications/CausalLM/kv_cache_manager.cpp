@@ -27,6 +27,7 @@
 
 #if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
 #include <cuda_context_manager.h>
+#include <cuda_kv_storage.h>
 #include <cuda_mem_allocator.h>
 #endif
 
@@ -78,12 +79,19 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
   const auto runtime = RuntimeConfig::capture();
   const auto &selected = runtime.engine;
   const bool cpu = runtime.cpu && !runtime.cpu_kv_legacy;
-  if (cpu) {
+  const bool cuda_core = nntr_env_on("NNTR_CUDA_KV_CORE");
+  if (nntr_env_on("NNTR_CUDA_KV_GRAPH") && !cuda_core)
+    throw std::invalid_argument("CUDA replay KV requires core storage");
+  if (cuda_core && selected != "cuda")
+    throw std::invalid_argument("CUDA core KV requires the CUDA engine");
+  if (cpu || cuda_core) {
     allocateCpu(num_layers, batch_size, max_seq_len, kv_widths, dtype, format,
-                kv_heads);
+                kv_heads, cuda_core);
     return;
   }
   cpu_cache_.reset();
+  cuda_storage_ = false;
+  direct_value_ = false;
 
   batch_size_ = batch_size;
   max_seq_len_ = max_seq_len;
@@ -296,7 +304,8 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
 void KVCacheManager::allocateCpu(
   unsigned int num_layers, unsigned int batch_size, unsigned int max_seq_len,
   const std::vector<unsigned int> &widths, ml::train::TensorDim::DataType dtype,
-  ml::train::TensorDim::Format format, const std::vector<unsigned int> &heads) {
+  ml::train::TensorDim::Format format, const std::vector<unsigned int> &heads,
+  bool cuda) {
   using DataType = ml::train::TensorDim::DataType;
   using namespace nntrainer::kv;
   if ((!heads.empty() && heads.size() != num_layers) ||
@@ -306,6 +315,33 @@ void KVCacheManager::allocateCpu(
       (dtype != DataType::FP32 && dtype != DataType::FP16 &&
        dtype != DataType::UINT16))
     throw std::invalid_argument("Unsupported CPU KV geometry or storage type");
+
+  if (cuda) {
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+    if ((nntr_env_on("NNTR_CUDA_KV_GRAPH") &&
+         nntr_env_on("NNTR_CUDA_GRAPH") != nntr_env_on("NNTR_CUDA_M2B")) ||
+        batch_size != 1 || dtype != DataType::FP16 ||
+        format != ml::train::TensorDim::Format::NCHW || heads.empty() ||
+        std::getenv("NNTR_KV_INT8") || std::getenv("NNTR_KV_OHWI") ||
+        ((nntr_env_on("NNTR_CUDA_GRAPH") || nntr_env_on("NNTR_CUDA_M2B")) &&
+         !nntr_env_on("NNTR_CUDA_KV_GRAPH")) ||
+        (nntr_env_on("NNTR_CUDA_KV_GRAPH") &&
+         std::getenv("NNTR_CUDA_KV_DIRECT") &&
+         !nntr_env_on("NNTR_CUDA_KV_DIRECT")) ||
+        nntr_env_on("NNTR_CUDA_PREFILL_GRAPH") ||
+        !nntr_env_on("NNTR_CUDA_ATTN") || !nntr_env_on("NNTR_CUDA_ROPE") ||
+        !nntr_env_on("NNTR_CUDA_QKNORM") || !nntr_env_on("NNTR_CUDA_ELTWISE"))
+      throw std::invalid_argument(
+        "CUDA core KV requires FP16 batch-1 eager attention and GPU RoPE");
+    for (unsigned int i = 0; i < num_layers; ++i)
+      if (getLayerKVSource(i) >= 0 ||
+          (!layer_producers_.empty() && !layer_producers_[i]))
+        throw std::invalid_argument(
+          "CUDA core KV does not yet support alias or hybrid producers");
+#else
+    throw std::invalid_argument("CUDA core KV requires a CUDA FP16 build");
+#endif
+  }
 
   CacheSpec spec;
   for (unsigned int i = 0; i < num_layers; ++i) {
@@ -332,7 +368,16 @@ void KVCacheManager::allocateCpu(
     spec.layers.push_back(s);
   }
   auto next = std::make_unique<nntrainer::kv::KvCacheManager>();
-  next->initialize(spec);
+  if (cuda) {
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+    next->initialize(spec, std::make_shared<nntrainer::CudaMemAllocator>(true),
+                     nntrainer::cuda::makeKvStorageOperations(
+                       nntrainer::AllocationKind::CudaDevice,
+                       nntr_env_on("NNTR_CUDA_KV_GRAPH")));
+#endif
+  } else {
+    next->initialize(spec);
+  }
   std::vector<LayerCache> caches(num_layers);
   for (unsigned int i = 0; i < num_layers; ++i) {
     ml::train::TensorDim dim(
@@ -346,6 +391,9 @@ void KVCacheManager::allocateCpu(
   }
   layer_caches_ = std::move(caches);
   cpu_cache_ = std::move(next);
+  cuda_storage_ = cuda;
+  const char *direct = std::getenv("NNTR_CUDA_KV_DIRECT");
+  direct_value_ = cuda && (!direct || nntr_env_on("NNTR_CUDA_KV_DIRECT"));
   svm_pool_.reset();
   batch_size_ = batch_size;
   max_seq_len_ = max_seq_len;
@@ -355,8 +403,9 @@ void KVCacheManager::allocateCpu(
   dtype_ = dtype;
   format_ = format;
   cache_pos_ = 0;
-  reportKVShare(num_layers, batch_size, dtype, "core-cpu");
-  if (nntr_env_on("NNTR_KV_CPU_TRACE")) {
+  reportKVShare(num_layers, batch_size, dtype,
+                cuda ? "core-cuda-device" : "core-cpu");
+  if (!cuda && nntr_env_on("NNTR_KV_CPU_TRACE")) {
     const auto stats = cpu_cache_->stats();
     std::fprintf(stderr,
                  "[kv-cpu-storage] backing_bytes=%zu owner_layers=%zu\n",

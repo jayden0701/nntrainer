@@ -3140,77 +3140,89 @@ void MHACoreLayer::one_batch_incremental_forwarding(
         }
       }
 
-      // append vcache without rotary embedding
-      if (query_step.getDataType() == ml::train::TensorDim::DataType::FP32) {
-        apply_rotary_emb_tensor_v2(value_step, b_cache_value_step, head_dim,
-                                   cache_index, false);
-      } else if (query_step.getDataType() ==
-                 ml::train::TensorDim::DataType::FP16) {
+      const bool direct_value =
+        cpu_access &&
+        cpu_access->directValue(value_step.getData<char>(), value_step.bytes());
+      if (!direct_value) {
+        if (cpu_access)
+          nntrainer::kv::KvStepScope::noteAppendCopy(
+            b_cache_value_step.bytes());
+        // append vcache without rotary embedding
+        if (query_step.getDataType() == ml::train::TensorDim::DataType::FP32) {
+          apply_rotary_emb_tensor_v2(value_step, b_cache_value_step, head_dim,
+                                     cache_index, false);
+        } else if (query_step.getDataType() ==
+                   ml::train::TensorDim::DataType::FP16) {
 #ifdef ENABLE_FP16
-        bool v_copy_gpu = false;
+          bool v_copy_gpu = false;
 #if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
-        {
-          static const bool cuda_elt = nntr_env_on("NNTR_CUDA_ROPE");
-          // V-copy historically stayed host for the prefill big-step (height>1)
-          // because a host attention path could read the V cache unsynced. With
-          // GPU attention (NNTR_CUDA_ATTN) + UVM KV cache (NNTR_CUDA_KV_UVM),
-          // prefill attention reads the cache on the GPU (same stream), so a
-          // GPU V copy is a GPU->GPU handoff -- no host read, no drain. Gated
-          // by NNTR_CUDA_VCOPY_PREFILL (defaulted on by the CudaContext device
-          // profiles; =0 restores the host copy); removes the per-layer
-          // finishIfAsync bubble that made async-on prefill slow.
-          static const bool vcopy_prefill =
-            nntr_env_on("NNTR_CUDA_VCOPY_PREFILL");
-          auto *vin =
-            reinterpret_cast<unsigned short *>(value_step.getData<_FP16>());
-          auto *vout = reinterpret_cast<unsigned short *>(
-            b_cache_value_step.getData<_FP16>());
-          const bool dev = nntrainer::cuda::dev_accessible(vout);
-          // Device-only KV (NNTR_CUDA_KV_DEV): the host copyData fallback
-          // below would dereference a cudaMalloc pointer -- always take the
-          // GPU copy for a device-only destination, independent of the
-          // VCOPY_PREFILL opt-in. Asked via the MemoryData residency stamp
-          // (pool-bind time), not a per-call driver query -- layering rule.
-          const auto v_md = b_cache_value_step.getMemoryData();
-          const bool v_dev_only = v_md && !v_md->isHostAddressable();
-          static const bool m2b_v = nntrainer::cuda::decodeGraphEnabled();
-          if (cuda_elt && dev &&
-              (value_step.height() == 1 || vcopy_prefill || v_dev_only)) {
-            if (m2b_v && m2b_replayable_step) {
-              // M2-B: write V into the cache at the live slot d_pos[0] computed
-              // on-device (vbase = cache BASE for this batch) -> correct on
-              // replay.
-              unsigned short *vbase =
-                reinterpret_cast<unsigned short *>(
-                  cache_value.getData<_FP16>()) +
-                (size_t)batch * cache_value_dim.getFeatureLen();
-              if (nntrainer::cuda::cuda_scalar_mul_fp16_slot(
-                    vin, vbase, (unsigned int)value_step.size(), 1.0f,
-                    (int)cache_value_dim.width(),
-                    /*ring_cap=*/(int)kv_ring_cap))
+          {
+            static const bool cuda_elt = nntr_env_on("NNTR_CUDA_ROPE");
+            // V-copy historically stayed host for the prefill big-step
+            // (height>1) because a host attention path could read the V cache
+            // unsynced. With GPU attention (NNTR_CUDA_ATTN) + UVM KV cache
+            // (NNTR_CUDA_KV_UVM), prefill attention reads the cache on the GPU
+            // (same stream), so a GPU V copy is a GPU->GPU handoff -- no host
+            // read, no drain. Gated by NNTR_CUDA_VCOPY_PREFILL (defaulted on by
+            // the CudaContext device profiles; =0 restores the host copy);
+            // removes the per-layer finishIfAsync bubble that made async-on
+            // prefill slow.
+            static const bool vcopy_prefill =
+              nntr_env_on("NNTR_CUDA_VCOPY_PREFILL");
+            auto *vin =
+              reinterpret_cast<unsigned short *>(value_step.getData<_FP16>());
+            auto *vout = reinterpret_cast<unsigned short *>(
+              b_cache_value_step.getData<_FP16>());
+            const bool dev = nntrainer::cuda::dev_accessible(vout);
+            // Device-only KV (NNTR_CUDA_KV_DEV): the host copyData fallback
+            // below would dereference a cudaMalloc pointer -- always take the
+            // GPU copy for a device-only destination, independent of the
+            // VCOPY_PREFILL opt-in. Asked via the MemoryData residency stamp
+            // (pool-bind time), not a per-call driver query -- layering rule.
+            const auto v_md = b_cache_value_step.getMemoryData();
+            const bool v_dev_only = v_md && !v_md->isHostAddressable();
+            static const bool m2b_v = nntrainer::cuda::decodeGraphEnabled();
+            if (cuda_elt && dev &&
+                (value_step.height() == 1 || vcopy_prefill || v_dev_only)) {
+              if (m2b_v && m2b_replayable_step) {
+                // M2-B: write V into the cache at the live slot d_pos[0]
+                // computed on-device (vbase = cache BASE for this batch) ->
+                // correct on replay.
+                unsigned short *vbase =
+                  reinterpret_cast<unsigned short *>(
+                    cache_value.getData<_FP16>()) +
+                  (size_t)batch * cache_value_dim.getFeatureLen();
+                if (nntrainer::cuda::cuda_scalar_mul_fp16_slot(
+                      vin, vbase, (unsigned int)value_step.size(), 1.0f,
+                      (int)cache_value_dim.width(),
+                      /*ring_cap=*/(int)kv_ring_cap))
+                  v_copy_gpu = true;
+              } else if (nntrainer::cuda::cuda_scalar_mul_fp16(
+                           vin, vout, (unsigned int)value_step.size(), 1.0f)) {
                 v_copy_gpu = true;
-            } else if (nntrainer::cuda::cuda_scalar_mul_fp16(
-                         vin, vout, (unsigned int)value_step.size(), 1.0f)) {
-              v_copy_gpu = true;
+              }
             }
           }
-        }
 #endif
-        if (!v_copy_gpu) {
+          if (!v_copy_gpu) {
 #if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
-          nntrainer::cuda::drain_if_async();
-          NNTR_THROW_IF(
-            b_cache_value_step.getMemoryData() &&
-              !b_cache_value_step.getMemoryData()->isHostAddressable(),
-            std::runtime_error)
-            << "device-only KV (NNTR_CUDA_KV_DEV) requires the GPU V-copy; the "
-               "host copyData fallback would fault -- check NNTR_CUDA_ELTWISE";
+            nntrainer::cuda::drain_if_async();
+            NNTR_THROW_IF(
+              b_cache_value_step.getMemoryData() &&
+                !b_cache_value_step.getMemoryData()->isHostAddressable(),
+              std::runtime_error)
+              << "device-only KV (NNTR_CUDA_KV_DEV) requires the GPU V-copy; "
+                 "the "
+                 "host copyData fallback would fault -- check "
+                 "NNTR_CUDA_ELTWISE";
 #endif
-          b_cache_value_step.copyData(value_step);
-        }
+            b_cache_value_step.copyData(value_step);
+          }
 #else
-        NNTR_THROW_IF(true, std::invalid_argument) << "enable-fp16 is not set!";
+          NNTR_THROW_IF(true, std::invalid_argument)
+            << "enable-fp16 is not set!";
 #endif
+        }
       }
     }
   } else {
@@ -4921,8 +4933,11 @@ void MHACoreLayer::gemm_attention(nntrainer::Tensor &query_step,
         if (nntrainer::cuda::cuda_attention_interleaved_fp16(
               Q_fp16_src, Kbase, Vbase, O_fp16, (int)num_heads_Q,
               (int)num_heads_KV, (int)N_q, (int)N_kv, (int)cache_from, (int)d,
-              win, /*softcap=*/0.0f, /*ring_cap=*/(int)kv_ring_cap))
+              win, /*softcap=*/0.0f, /*ring_cap=*/(int)kv_ring_cap)) {
+          nntrainer::kv::KvStepScope::noteDeviceRead(
+            Kbase, Vbase, (size_t)N_kv * num_heads_KV * d * sizeof(uint16_t));
           return;
+        }
       }
     }
   }

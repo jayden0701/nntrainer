@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 /** @file kv_cache_manager.h
- * @brief Internal synchronous CPU cache, single session and single live step.
+ * @brief Internal synchronous host/device cache, single session and single live
+ * step.
  * @author Codex (OpenAI)
- * @bug Sessions are thread confined; asynchronous device access is unsupported.
+ * @bug Sessions are thread confined; asynchronous publication is unsupported.
  */
 #ifndef NNTRAINER_CORE_KV_CACHE_MANAGER_H
 #define NNTRAINER_CORE_KV_CACHE_MANAGER_H
@@ -10,6 +11,7 @@
 #include <kv_cache/kv_cache_spec.h>
 #include <kv_cache/kv_storage.h>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -21,7 +23,7 @@ class KvStepScope;
 class KvLayerAccess;
 
 /** Byte range with strong allocation ownership and a checked generation.
- * Read data is const; writableData() additionally checks the live step.
+ * Host data is const; writableData() additionally checks the live step.
  * Beginning another step invalidates earlier views before ring rows can change.
  * A raw pointer must not be retained past the synchronous operation.
  */
@@ -29,6 +31,10 @@ class KvView {
 public:
   const void *data() const;
   void *writableData() const;
+  /** Native address for a backend dispatch; not a host dereference permit. */
+  const void *address() const;
+  void *writableAddress() const;
+  const AllocationInfo &allocationInfo() const;
   size_t offsetBytes() const { return offset_; }
   size_t sizeBytes() const { return bytes_; }
   uint64_t bufferId() const { return storage_ ? storage_->identity() : 0; }
@@ -69,10 +75,16 @@ private:
 struct CacheStats {
   size_t backing_bytes = 0;
   size_t owner_layers = 0;
+  size_t device_attention_calls = 0;
+  size_t append_copy_bytes = 0;
+  size_t direct_value_writes = 0;
+  size_t graph_captures = 0;
+  size_t graph_replays = 0;
 };
 
 /** Geometry and publication only; attention/RoPE stay in the model/layer.
- * Thread confined. No asynchronous backend completion is advertised.
+ * Thread confined. Ordered device consumers may precede completion;
+ * publication\n * always waits for checked completion.
  */
 class KvCacheManager {
 public:
@@ -83,7 +95,8 @@ public:
 
   void initialize(
     const CacheSpec &spec,
-    std::shared_ptr<MemAllocator> allocator = std::make_shared<MemAllocator>());
+    std::shared_ptr<MemAllocator> allocator = std::make_shared<MemAllocator>(),
+    std::shared_ptr<KvStorageOperations> operations = nullptr);
   StepLease beginStep(size_t token_count);
   std::vector<KvView> writeKey(const StepLease &, size_t layer,
                                size_t batch = 0);
@@ -122,14 +135,17 @@ private:
   std::shared_ptr<SessionState> state_;
 };
 
-/** Checked linear CPU access, held across the actual producer and consumer.
- * Tensor adapters must validate their exact raw slice before executing math.
- * This does not make arbitrary escaped raw Tensor pointers generation-safe.
+/** Checked linear host/device access, held across the actual producer and
+ * consumer. Tensor adapters must validate their exact raw slice before
+ * executing math. This does not make arbitrary escaped raw Tensor pointers
+ * generation-safe.
  */
 class KvLayerAccess {
 public:
   void validateWrite(const void *key, const void *value, size_t bytes) const;
   void producerReady();
+  /** A declared final producer must have submitted this exact V slice. */
+  bool directValue(const void *value, size_t bytes) const;
   void validateRead(const void *key, const void *value, size_t bytes) const;
 
 private:
@@ -143,14 +159,47 @@ private:
 };
 
 /** Thread-confined bridge shared by graph and MHA DSOs through libnntrainer.
- * No nested graph execution, asynchronous backend or ring layout is supported.
- * The scope must be destroyed before its lease and cache manager.
+ * No nested graph execution or ring layout is supported. Replay requires an\n *
+ * explicit backend and a retained, generation-checked binding. The scope must
+ * be destroyed before its lease and cache manager.
  */
+struct KvReplayBinding {
+  std::shared_ptr<void> owner;
+  uint64_t generation = 0;
+  std::vector<const void *> producers;
+  bool operator==(const KvReplayBinding &other) const {
+    return owner == other.owner && generation == other.generation &&
+           producers == other.producers;
+  }
+  bool operator!=(const KvReplayBinding &other) const {
+    return !(*this == other);
+  }
+};
+
 class KvStepScope {
 public:
+  /** A retained identity covers immutable geometry/context/backing; generation
+   * changes on reset/restore/abort, not on ordinary contiguous steps.
+   */
+  static KvReplayBinding replayBinding();
+  static void capturedSubmission();
+  static void replaySubmission(const KvReplayBinding &);
+  /** Native final V base for the declared single-row slot producer. */
+  static void *slotValueBase(const void *producer);
   ~KvStepScope();
   KvStepScope(const KvStepScope &) = delete;
   KvStepScope &operator=(const KvStepScope &) = delete;
+  /** Register a model-declared producer token, not a parsed layer name.
+   * Binding runs inside the producer after activation-pool allocation.
+   */
+  void registerValueProducer(size_t layer, const void *producer,
+                             std::function<void(const KvView &)> bind);
+  static void prepareValueProducer(const void *producer);
+  static void valueProduced(const void *producer, const void *address,
+                            size_t bytes);
+  static bool deviceStep();
+  static void noteAppendCopy(size_t bytes);
+  static void noteDeviceRead(const void *key, const void *value, size_t bytes);
   static std::unique_ptr<KvLayerAccess> access(const void *key_base,
                                                const void *value_base,
                                                size_t batch, size_t from,
@@ -164,6 +213,13 @@ private:
   static thread_local KvStepScope *current_;
   KvCacheManager &manager_;
   const StepLease &step_;
+  struct ValueProducer {
+    const void *token = nullptr;
+    std::function<void(const KvView &)> bind;
+    bool bound = false;
+    bool submitted = false;
+  };
+  std::vector<ValueProducer> value_producers_;
   std::shared_ptr<char> lifetime_ = std::make_shared<char>(0);
 };
 

@@ -105,7 +105,12 @@ public:
 
   /** Synchronous CPU graph transaction; GPU compatibility paths stay separate.
    */
-  bool usesCpuStorage() const { return cpu_cache_ != nullptr; }
+  bool usesCoreStorage() const { return cpu_cache_ != nullptr; }
+  bool directValueWrites() const { return direct_value_; }
+  bool usesCpuStorage() const { return usesCoreStorage() && !cuda_storage_; }
+  nntrainer::kv::CacheStats coreStats() const {
+    return cpu_cache_ ? cpu_cache_->stats() : nntrainer::kv::CacheStats{};
+  }
   nntrainer::kv::StepLease beginStep(unsigned int from, unsigned int to);
   void commitStep(nntrainer::kv::StepLease &&step);
   std::unique_ptr<nntrainer::kv::KvStepScope>
@@ -377,7 +382,8 @@ private:
                    const std::vector<unsigned int> &kv_widths,
                    ml::train::TensorDim::DataType dtype,
                    ml::train::TensorDim::Format format,
-                   const std::vector<unsigned int> &kv_heads);
+                   const std::vector<unsigned int> &kv_heads,
+                   bool cuda = false);
   /**
    * @brief FNV-1a over the per-layer geometry vectors, so the header can refuse
    *        a file whose widths / ring capacities / alias map differ without
@@ -434,6 +440,8 @@ private:
    */
   std::shared_ptr<nntrainer::MemoryPool> svm_pool_;
   std::unique_ptr<nntrainer::kv::KvCacheManager> cpu_cache_;
+  bool direct_value_ = false;
+  bool cuda_storage_ = false; /**< Strict CUDA core storage, opt-in. */
   std::vector<bool> layer_producers_;
 
   unsigned int cache_pos_ = 0;    /**< current write position */

@@ -480,6 +480,16 @@ public:
    * @param v true to enter feed-only mode, false to leave it
    */
   void setStepFeedOnly(bool v) { step_feed_only_ = v; }
+  /** Host consumers are excluded from capture and run after checked completion.
+   */
+  void setGraphReplayTailNodes(std::vector<std::string> names) {
+    graph_replay_tail_nodes_ = std::move(names);
+  }
+  const std::vector<std::string> &getGraphReplayTailNodes() const {
+    return graph_replay_tail_nodes_;
+  }
+  void setStepSkipReplayTail(bool v) { step_skip_replay_tail_ = v; }
+  void setStepReplayTailOnly(bool v) { step_replay_tail_only_ = v; }
 
   /**
    * @brief Token position at or beyond which a captured step graph is invalid.
@@ -830,6 +840,9 @@ private:
     false; /**< gate for the device graph capture of a prefill step (a warmup
                 run has to stay eager) */
 
+  bool step_skip_replay_tail_ = false;
+  bool step_replay_tail_only_ = false;
+  std::vector<std::string> graph_replay_tail_nodes_;
   bool step_feed_only_ =
     false; /**< when set, one forward runs only graph_replay_feed_nodes_ */
 

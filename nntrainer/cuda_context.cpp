@@ -41,7 +41,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cuda_runtime.h>
+#include <kv_cache/kv_cache_manager.h>
 #include <neuralnet.h>
+#include <stdexcept>
 
 namespace nntrainer {
 
@@ -613,6 +615,29 @@ template const int CudaContext::registerFactory<nntrainer::Layer>(
 // sees.
 static cudaGraphExec_t cached_exec = nullptr;
 static sharedConstTensors cached_out;
+static kv::KvReplayBinding cached_binding;
+static NeuralNetwork *cached_network = nullptr;
+
+/** Always leave capture mode on C++ failure, before a lease tries to drain. */
+class KvCaptureGuard {
+public:
+  ~KvCaptureGuard() {
+    auto &sm = cuda::StreamManager::Global();
+    if (sm.isCapturing()) {
+      cudaGraph_t discarded = nullptr;
+      sm.endCapture(&discarded);
+      if (discarded)
+        cudaGraphDestroy(discarded);
+      cudaGetLastError();
+      cuda::kv_regime_seal();
+    }
+  }
+};
+
+static void graphCheck(cudaError_t status) {
+  if (status != cudaSuccess)
+    throw std::runtime_error(cudaGetErrorString(status));
+}
 
 void cuda_reset_decode_graph_cache() {
   // Makes NO cudart call unless a graph exists: a process that never ran the
@@ -623,6 +648,8 @@ void cuda_reset_decode_graph_cache() {
     cached_exec = nullptr;
   }
   cached_out = {};
+  cached_binding = {};
+  cached_network = nullptr;
 }
 
 // CUDA override of the decode/prefill step.
@@ -687,6 +714,25 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
   static unsigned int captured_at = 0;
   bool captured = false;
 
+  const auto binding = kv::KvStepScope::replayBinding();
+  const bool core_graph = binding.owner != nullptr;
+  struct TailGuard {
+    NeuralNetwork &nn;
+    ~TailGuard() {
+      nn.setStepFeedOnly(false);
+      nn.setStepSkipReplayTail(false);
+      nn.setStepReplayTailOnly(false);
+    }
+  } tail_guard{nn};
+  if (core_graph) {
+    if (nn.getGraphReplayTailNodes().empty())
+      throw std::invalid_argument(
+        "Core replay requires declared host tail nodes");
+    nn.setStepSkipReplayTail(true);
+  }
+  if (cached_exec && (cached_binding != binding || cached_network != &nn))
+    cuda_reset_decode_graph_cache();
+
   const bool feed_declared = !nn.getGraphReplayFeedNodes().empty();
   const bool single_token = (to - from) == 1 && from != 0;
 
@@ -724,6 +770,8 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
     cudaGraphExecDestroy(cached_exec);
     cached_exec = nullptr;
     cached_out = {};
+    cached_binding = {};
+    cached_network = nullptr;
   }
 
   // A capture freezes every launch parameter the host computed for it, and some
@@ -753,6 +801,8 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
     cudaGraphExecDestroy(cached_exec);
     cached_exec = nullptr;
     cached_out = {};
+    cached_binding = {};
+    cached_network = nullptr;
   }
 
   if (decode_graph && feed_declared && !single_token &&
@@ -765,6 +815,8 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
     cudaGraphExecDestroy(cached_exec);
     cached_exec = nullptr;
     cached_out = {};
+    cached_binding = {};
+    cached_network = nullptr;
     // The gather nodes captured in that graph are gone with it: the per-token
     // feed must dispatch (or host-decode) eagerly. Nothing on this tree sets
     // the flag back to true after a capture, so the feed re-dispatches every
@@ -810,6 +862,9 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
   static unsigned int warm_left = m2b_warm;
   if (from == 0 || (to - from) > 1)
     warm_left = m2b_warm; /* new sequence or a multi-token step */
+  if (core_graph && !regime_holds)
+    warm_left =
+      (std::max)(1u, m2b_warm); // warm new dispatch workspaces before capture
 
   if (decode_graph && feed_declared && single_token && cached_exec == nullptr &&
       warm_left > 0) {
@@ -823,14 +878,24 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
     auto &sm = nntrainer::cuda::StreamManager::Global();
     if (cached_exec != nullptr) {
       nn.setStepFeedOnly(true);
-      out = nn.incremental_forwarding(from, to, input, label, false);
+      try {
+        out = nn.incremental_forwarding(from, to, input, label, false);
+      } catch (...) {
+        nn.setStepFeedOnly(false);
+        cuda_reset_decode_graph_cache();
+        throw;
+      }
       nn.setStepFeedOnly(false);
       nntrainer::cuda::cuda_set_pos((int)from, (int)from + 1);
-      cudaGraphLaunch(cached_exec, sm.GetStream());
-      cudaStreamSynchronize(sm.GetStream());
+      graphCheck(cudaGraphLaunch(cached_exec, sm.GetStream()));
+      if (core_graph)
+        kv::KvStepScope::replaySubmission(cached_binding);
+      else
+        graphCheck(cudaStreamSynchronize(sm.GetStream()));
       out = cached_out;
       captured = true;
     } else if (sm.beginCapture()) {
+      KvCaptureGuard capture_guard;
       nntrainer::cuda::cuda_set_pos((int)from, (int)from + 1);
       // Collect the host comparisons this forward takes, so a later step can
       // ask whether they still hold.
@@ -849,13 +914,28 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
         }
         if (cudaGraphInstantiate(&cached_exec, graph, 0) == cudaSuccess) {
           captured_at = from;
-          cudaGraphLaunch(cached_exec, sm.GetStream());
-          cudaStreamSynchronize(sm.GetStream());
+          try {
+            if (core_graph)
+              kv::KvStepScope::capturedSubmission();
+            graphCheck(cudaGraphLaunch(cached_exec, sm.GetStream()));
+            if (!core_graph)
+              graphCheck(cudaStreamSynchronize(sm.GetStream()));
+          } catch (...) {
+            cudaGraphDestroy(graph);
+            cuda_reset_decode_graph_cache();
+            throw;
+          }
+          cached_binding = binding;
+          cached_network = &nn;
           cached_out = out;
           captured = true;
         }
         cudaGraphDestroy(graph);
+        if (core_graph && !captured)
+          throw std::runtime_error("Core KV graph instantiation failed");
       } else {
+        if (core_graph)
+          throw std::runtime_error("Core KV stream capture failed");
         // The capture was invalidated (an allocation inside it, typically).
         // Clear the sticky error so the eager fallback below is not blamed.
         cudaGetLastError();
@@ -867,6 +947,7 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
       from == 0 && (to - from) > 1) {
     auto &sm = nntrainer::cuda::StreamManager::Global();
     if (sm.beginCapture()) {
+      KvCaptureGuard capture_guard;
       out = nn.incremental_forwarding(from, to, input, label, false);
       cudaGraph_t graph = nullptr;
       if (sm.endCapture(&graph) && graph != nullptr) {
@@ -887,6 +968,15 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
   if (!captured)
     out = nn.incremental_forwarding(from, to, input, label, false);
 
+  if (core_graph) {
+    // This is the host-consumer boundary, also used by eager/prewarm. Captured
+    // host math would otherwise read unexecuted GPU results during recording.
+    graphCheck(
+      cudaStreamSynchronize(cuda::StreamManager::Global().GetStream()));
+    nn.setStepSkipReplayTail(false);
+    nn.setStepReplayTailOnly(true);
+    out = nn.incremental_forwarding(from, to, input, label, false);
+  }
   return out;
 }
 

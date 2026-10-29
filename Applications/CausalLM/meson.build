@@ -620,6 +620,46 @@ if get_option('enable-test')
   # Built even in FP16-enabled builds (where the broad model-unittest set above
   # is skipped), so engine=cuda first-light can be validated against the HF
   # reference. Run with NNTR_ENGINE=cuda (or cpu for a baseline).
+  if get_option('enable-cuda') and get_option('enable-fp16')
+    cuda_kv_graph = executable(
+      'unittest_kv_cache_cuda_graph',
+      [
+        meson.source_root() / 'test/unittest/models/causallm_test_utils.cpp',
+        meson.source_root() / 'test/unittest/models/unittest_kv_cache_cuda_graph.cpp',
+      ],
+      dependencies: [nntrainer_dep, nntrainer_ccapi_dep, gtest_main_dep,
+                     causallm_layer_dependencies, causallm_dep],
+      include_directories: causallm_inc + [causallm_unittest_inc],
+      install: false,
+    )
+    test('unittest_kv_cache_cuda_graph', cuda_kv_graph,
+      args: ['--gtest_output=xml:@0@/unittest_kv_cache_cuda_graph.xml'.format(meson.build_root()),
+             '--gtest_filter=-CudaKvGraph.replay*'],
+      env: ['NNTR_ENGINE=cuda', 'NNTR_CUDA_KV_CORE=1', 'NNTR_CUDA_KV_DEV=1',
+            'NNTR_CUDA_HOST_MAPPED=1', 'NNTR_CUDA_ATTN=1', 'NNTR_CUDA_ROPE=1',
+            'NNTR_CUDA_QKNORM=1', 'NNTR_CUDA_ELTWISE=1',
+            'NNTR_CUDA_DEV_ACT=0',
+            'NNTR_CUDA_ASYNC=0', 'NNTR_CUDA_DECODE_GRAPH=0',
+            'NNTR_CUDA_GRAPH=0', 'NNTR_CUDA_M2B=0',
+            'NNTR_CUDA_PREFILL_GRAPH=0'],
+      timeout: 180,
+      suite: 'unittests',
+    )
+    test('unittest_kv_cache_cuda_replay', cuda_kv_graph,
+      args: ['--gtest_output=xml:@0@/unittest_kv_cache_cuda_replay.xml'.format(meson.build_root()),
+             '--gtest_filter=CudaKvGraph.replay*'],
+      env: ['NNTR_ENGINE=cuda', 'NNTR_CUDA_KV_CORE=1', 'NNTR_CUDA_KV_GRAPH=1',
+            'NNTR_CUDA_KV_DEV=1', 'NNTR_CUDA_HOST_MAPPED=1',
+            'NNTR_CUDA_ATTN=1', 'NNTR_CUDA_ROPE=1', 'NNTR_CUDA_QKNORM=1',
+            'NNTR_CUDA_ELTWISE=1', 'NNTR_CUDA_DEV_ACT=0', 'NNTR_CUDA_ASYNC=1',
+            'NNTR_CUDA_DECODE_GRAPH=1', 'NNTR_CUDA_GRAPH=1', 'NNTR_CUDA_M2B=1',
+            'NNTR_CUDA_PREFILL_GRAPH=0', 'NNTR_CUDA_GRAPH_DBG=1'],
+      timeout: 180,
+      suite: 'unittests',
+    )
+
+  endif
+
   if get_option('enable-cuda')
     unittest_cuda_gemma4 = executable(
       'unittest_cuda_gemma4',

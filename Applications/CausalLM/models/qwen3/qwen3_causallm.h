@@ -16,6 +16,7 @@
 #define __QWEN_CAUSAL_LM_H__ __QWEN_CAUSAL_LM_H__
 
 #include <causal_lm.h>
+#include <env_compat.h>
 
 namespace causallm {
 
@@ -36,6 +37,9 @@ public:
                          Tensor value) override;
 
   void registerCustomLayers() override;
+  std::string getKVValueProducerName(int layer_id) const override {
+    return "layer" + std::to_string(layer_id) + "_wv";
+  }
 
   /** @copydoc Transformer::getLayerSlidingWindow(int) — one uniform window for
    *  every layer (no full-attention interleave), so the base pattern rule does
@@ -74,6 +78,18 @@ public:
     Qwen3Transformer(cfg, generation_cfg, nntr_cfg) {}
 
   virtual ~Qwen3CausalLM() = default;
+  /** Only the explicitly validated core replay profile refreshes embedding0. */
+  std::vector<std::string> getGraphReplayFeedNodes() const override {
+    return nntr_env_on("NNTR_CUDA_KV_GRAPH")
+             ? std::vector<std::string>{"embedding0"}
+             : std::vector<std::string>{};
+  }
+
+  std::vector<std::string> getGraphReplayTailNodes() const override {
+    return nntr_env_on("NNTR_CUDA_KV_GRAPH")
+             ? std::vector<std::string>{"output_of_causallm"}
+             : std::vector<std::string>{};
+  }
 
   void registerCustomLayers() override;
 

@@ -654,6 +654,13 @@ public:
     // GPU-path failure) on the host-coherent UVM tensors. NOTE that it is only
     // correct while the tensors ARE host-addressable -- see the FP16 arm above
     // for the case where they are not.
+    if ((input.getMemoryData() &&
+         !input.getMemoryData()->isHostAddressable()) ||
+        (weight.getMemoryData() &&
+         !weight.getMemoryData()->isHostAddressable()) ||
+        (output.getMemoryData() &&
+         !output.getMemoryData()->isHostAddressable()))
+      throw std::runtime_error("CUDA FC kernel declined device-only operands");
     CpuComputeOps::fc(input, weight, output);
   }
 };
