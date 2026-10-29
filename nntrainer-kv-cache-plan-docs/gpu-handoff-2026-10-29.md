@@ -8,8 +8,9 @@ Android 기기는 없다. 최신 결과는 [G6 실행 기록](gpu-cuda-replay-ex
 
 읽는 순서:
 
-1. [CUDA 실행 기록](gpu-cuda-execution.md)
-2. [단계별 계획](gpu-extension-plan.md): G0–G4 및 첫 G5 실행, G6/OpenCL/Android 후속
+1. [G6 decode replay 실행 기록](gpu-cuda-replay-execution.md)
+2. [eager 실행 기록](gpu-cuda-execution.md)과 [단계별 계획](gpu-extension-plan.md):
+   G0–G5 및 scoped G6 decode 검증 완료, prefill capture/OpenCL/Android 후속
 3. 초기 [분석](gpu-extension-analysis.md)은 구현 전 기록
 4. 필요 시 [기존 CPU 인계](handoff-2026-10-29.md)
 
@@ -54,6 +55,14 @@ pattern handoff 결과를 이들 기능의 증거로 사용하지 않는다.
 
 ## 검증과 artifact
 
+G6 최신 build는 `build-kv-gpu-cuda-g6`다.
+core31/storage8/eager graph7/replay4 PASS, CPU243 PASS+기존1 SKIP,
+sanitizer31 PASS다. 최신 Qwen fixed-token/실제 greedy/HF/snapshot/2-turn 검증과
+실제 graph launch audit가 모두 PASS다.
+원본은 G6 build `validation/qwen-replay-final/manifest.json`,
+`final-tests.log`, `cuda-call-audit/summary.json`에 있다.
+아래 표는 보존한 **이전 eager 단계** artifact다.
+
 | 항목 | 결과 / 경로 |
 |---|---|
 | CPU | 241 PASS + 1 기존 QINT4 SKIP, `build-kv-gpu-cpu-regression/validation/test-abi-final.log` |
@@ -78,7 +87,7 @@ candidate observer는 현재 전체 header/runtime과 맞춰 빌드한다.
 ## 재개 순서
 
 1. git status/HEAD와 최신 실행 기록을 확인하고 기존 uncommitted 변경을 유지한다.
-2. 필요 시 matching candidate build의 serial CUDA tests를 실행한다.
+2. 필요 시 matching G6 build의 serial CUDA tests를 실행한다. 이전 eager/baseline runtime은 보존한다.
 3. G6 decode 구현·검증은 별도 실행 기록에서 확인한다.
    prefill capture/다중 stream/slot kernel 최적화는 후속이다.
 4. 최적화 시 현재 eager output/copy/completion 결과를 유지한다.

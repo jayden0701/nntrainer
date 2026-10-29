@@ -95,10 +95,21 @@ Ordered 상태에서도 실제 completion 실패 시 publication을 금지하는
 - classic 대비 수치 gate 통과.
 - 성공 trace의 append_copy_bytes=0 및 capture/replay counter 증가.
 
-방어 조건 추가 후 동일 검증과 HF frozen reference의 실제 greedy 비교를
-`validation/qwen-replay-final/`에서 실행한다.
-최종 완료 여부는 해당 manifest의 pass 및 log에서 확인한다.
-fixed-token 결과를 실제 greedy 검증으로 계산하지 않는다.
+방어 조건 추가 후 최종 `validation/qwen-replay-final/manifest.json`도 **PASS**다.
+fixed-token 비교와 별도로 arithmetic/geography의 실제 greedy를 ordered/replay 각각 실행했다.
+
+- HF FP32와 greedy token 일치, 전체 logits finite.
+  max_abs=0.057732, step별 mean_abs=0.008929로 사전 기준 통과.
+- ordered/replay의 실제 greedy 전체 logits도 bitwise 동일.
+- 두 후속 turn position=114/161, live/resumed 및 ordered/replay 모두 일치.
+- 마지막 성공 trace는 captures=3/replays=80, append_copy_bytes=0이다.
+- `validation/cuda-call-audit/`의 인터포저로 실제 cudaGraphLaunch **7회**와
+  반환값 전부 success를 확인했다.
+  관측 `kv_value_slot` dispatch=56, append identity kernel=0이며,
+  인터포저를 붙인 출력도 원래 greedy token/logits와 byte 동일하다.
+  이 kernel dispatch 수는 capture 때의 host 호출을 포함하며 replay 내부 실행 횟수 합계는 아니다.
+
+최초 fixed-token 결과와 실제 greedy 검증 결과를 구분해 기록했다.
 
 ```bash
 meson test -C build-kv-gpu-cuda-g6 --no-rebuild --num-processes 1 --print-errorlogs \
