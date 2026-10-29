@@ -1,12 +1,21 @@
 # CPU/GPU/NPU 공용 KV cache manager 구현 계획
 
+> GPU 후속 계획 (2026-10-29): [PC/WSL 환경·소스 분석](gpu-extension-analysis.md),
+> [CUDA부터 진행하는 구현 계획](gpu-extension-plan.md),
+> [다음 세션 인계](gpu-handoff-2026-10-29.md).
+> 사용자 조건은 **현재 PC/WSL에서 GPU 검증 먼저 → Android 실기기 이후**다.
+> 후속 구현 승인 후 CUDA eager Qwen3의 직접 읽기·쓰기와 모델/성능 검증을 수행했다.
+> 최신 결과는 [CUDA 구현·실행 기록](gpu-cuda-execution.md)에 있다.
+> G6 decode capture/replay도 연결했다. [G6 실행 기록](gpu-cuda-replay-execution.md)에서
+> 지원 범위와 검증을 확인한다. OpenCL·Android·실제 모델 CPU↔GPU 전환은 후속이다.
+
 > Linux 실행 기록: [환경 검토와 단계별 검증](linux-cpu-execution.md).
 > Android 실행 기록: [빌드와 단위 검증](android-build-checks.md),
 > [Qwen3 실기기 검증과 동일 CPU allocation 접근 범위](android-cpu-validation.md).
 > 리뷰 후속: [안전장치·CI 보강](review-followup.md), [성능 측정](cpu-performance.md),
 > [다음 backend 조사](next-backend-review.md).
 > 일반 환경 재현 절차는 [CPU KV 검증 안내](../docs/kv-cache-cpu-validation.md)를 참고한다.
-> 현재 사용자 확정 순서는 **Linux CPU → Android Arm CPU → 이후 추후 결정**이다.
+> CPU 단계에서 확정했던 순서는 **Linux CPU → Android Arm CPU → 이후 추후 결정**이다.
 > 아래 Windows 분석 당시 로드맵과 실제 실행 결과를 구분한다.
 
 이 계획은 기존 CausalLM KV manager를 core의 backend 독립 모듈로 발전시키고,
@@ -15,7 +24,7 @@
 
 - 기준: upstream main `141871a58ff439e3caeac40c1632ff8ac3543d20`, 2026-10-28 분석
 - 최초 범위: Linux/Android, batch=1, active session=1, inference
-- 현재 구현 순서: 공통 계약 → Linux CPU → Android Arm CPU → 이후 추후 결정.
+- CPU 단계의 구현 순서: 공통 계약 → Linux CPU → Android Arm CPU.
   OpenCL/QNN/CUDA 절은 후속 후보 설계이며 현재 CPU 단계의 완료를 대체하지 않는다.
 - 최초 작성 범위: 설계·개발 계획. 이후 제품 구현과 실제 Linux 검증 결과는
   [실행 기록](linux-cpu-execution.md), [Qwen3 기준 모델 검증](qwen3-cpu-validation.md)에 남긴다.
