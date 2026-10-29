@@ -3,13 +3,15 @@
 """Time fixed CUDA Qwen workloads using matching legacy/candidate observers.
 
 No downloads or builds. Correctness is validated separately. Trace is disabled;
-each profile runs in a fresh process, in baseline/direct/direct/baseline order.
+each profile runs in a fresh process, in ABBA order. Replay mode compares the
+same observer and slot arithmetic with graph execution disabled/enabled.
 """
 
 from pathlib import Path
 import argparse
 import hashlib
 import json
+import math
 import os
 import statistics
 import subprocess
@@ -19,13 +21,30 @@ from validate_qwen3_cuda import digest
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--model", type=Path, required=True)
-parser.add_argument("--baseline-probe", type=Path, required=True)
+parser.add_argument(
+    "--baseline-probe",
+    type=Path,
+    help="legacy observer; replay mode uses candidate for both arms",
+)
 parser.add_argument("--candidate-probe", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--nvidia-smi", default="/usr/lib/wsl/lib/nvidia-smi")
+parser.add_argument("--mode", choices=("legacy", "replay"), default="legacy")
+parser.add_argument("--contexts", type=int, nargs="+", default=(1024, 4096))
+parser.add_argument("--decode-tokens", type=int)
+parser.add_argument("--warmup", type=int, default=1)
+parser.add_argument("--repetitions", type=int, default=3)
 args = parser.parse_args()
+if args.mode == "legacy" and args.baseline_probe is None:
+    parser.error("--baseline-probe is required for legacy mode")
+decode_tokens = args.decode_tokens or (32 if args.mode == "replay" else 8)
+if decode_tokens < 4 or args.warmup < 1 or args.repetitions < 1:
+    parser.error("use decode>=4, warmup>=1, repetitions>=1")
+if any(context < 1 or context + decode_tokens >= 8192 for context in args.contexts):
+    parser.error("contexts plus decode must fit below 8192")
+profiles = ("ordered", "replay") if args.mode == "replay" else ("baseline", "direct")
 root = Path(__file__).resolve().parents[2]
-base = args.baseline_probe.resolve()
+base = (args.baseline_probe or args.candidate_probe).resolve()
 candidate = args.candidate_probe.resolve()
 model = args.model.resolve()
 out = args.output.resolve()
@@ -103,7 +122,10 @@ manifest = {
     "source_diff_sha256": hashlib.sha256(
         subprocess.check_output(["git", "diff"], cwd=root)
     ).hexdigest(),
-    "scope": "dense FP16; mapped activations; device KV; eager; chunk128",
+    "scope": "dense FP16; mapped activations; device KV; chunk128",
+    "mode": args.mode,
+    "profiles": profiles,
+    "environment_by_profile": {},
     "runs": [],
     "comparison": [],
 }
@@ -122,20 +144,30 @@ for name, probe in (("baseline", base), ("candidate", candidate)):
         "sha256": digest(probe),
         "libraries": libraries,
     }
+if args.mode == "replay":
+    env.update(
+        NNTR_CUDA_KV_CORE="1",
+        NNTR_CUDA_KV_GRAPH="1",
+        NNTR_CUDA_KV_DIRECT="1",
+        NNTR_CUDA_ASYNC="1",
+    )
+manifest["environment"] = {k: v for k, v in env.items() if k.startswith("NNTR_")}
 manifest["weights_sha256"] = digest(model / cfg["model_file_name"])
 manifest["runner_sha256"] = digest(Path(__file__))
-for context in (1024, 4096):
+for context in args.contexts:
     request = {
         "context_tokens": context,
-        "decode_tokens": 8,
-        "warmup": 1,
-        "repetitions": 3,
+        "decode_tokens": decode_tokens,
+        "warmup": args.warmup,
+        "repetitions": args.repetitions,
         "expected_plane": 128,
         "expected_prefill_chunk": 128,
     }
     request_file = out / f"request-{context}.json"
     request_file.write_text(json.dumps(request, indent=2) + "\n")
-    for index, profile in enumerate(("baseline", "direct", "direct", "baseline")):
+    for index, profile in enumerate(
+        (profiles[0], profiles[1], profiles[1], profiles[0])
+    ):
         prefix = out / f"{context}-{index}-{profile}"
         run = {
             "context": context,
@@ -148,7 +180,26 @@ for context in (1024, 4096):
             NNTR_CUDA_KV_CORE="0" if profile == "baseline" else "1",
             NNTR_CUDA_KV_DIRECT="1",
         )
-        probe = base if profile == "baseline" else candidate
+        if args.mode == "replay":
+            on = "1" if profile == "replay" else "0"
+            current.update(
+                NNTR_CUDA_KV_CORE="1",
+                NNTR_CUDA_KV_GRAPH="1",
+                NNTR_CUDA_GRAPH=on,
+                NNTR_CUDA_M2B=on,
+                NNTR_CUDA_DECODE_GRAPH=on,
+            )
+        manifest["environment_by_profile"][profile] = {
+            k: v for k, v in current.items() if k.startswith("NNTR_")
+        }
+        request["require_replay"] = profile == "replay"
+        request["require_direct"] = args.mode == "replay"
+        request_file.write_text(json.dumps(request, indent=2) + "\n")
+        probe = (
+            candidate
+            if args.mode == "replay"
+            else (base if profile == "baseline" else candidate)
+        )
         start = time.monotonic()
         with (
             prefix.with_suffix(".stdout.txt").open("w") as stdout,
@@ -201,17 +252,37 @@ for context in (1024, 4096):
                 for t in run["report"]["trials"]
                 if not t["warmup"]
             ]
-            for profile in ("baseline", "direct")
+            for profile in profiles
         }
-        baseline = statistics.median(samples["baseline"])
-        direct = statistics.median(samples["direct"])
+        baseline = statistics.median(samples[profiles[0]])
+        direct = statistics.median(samples[profiles[1]])
         comparison["metrics"][metric] = {
-            "baseline_median": baseline,
-            "direct_median": direct,
+            profiles[0] + "_median": baseline,
+            profiles[1] + "_median": direct,
             "change_percent": 100 * (direct / baseline - 1),
-            "baseline_p95": sorted(samples["baseline"])[-1],
-            "direct_p95": sorted(samples["direct"])[-1],
-            "samples_per_profile": len(samples["baseline"]),
+            profiles[0] + "_p95": sorted(samples[profiles[0]])[
+                math.ceil(0.95 * len(samples[profiles[0]])) - 1
+            ],
+            profiles[1] + "_p95": sorted(samples[profiles[1]])[
+                math.ceil(0.95 * len(samples[profiles[1]])) - 1
+            ],
+            "samples_per_profile": len(samples[profiles[0]]),
+        }
+    comparison["steady_inter_token_ms"] = {}
+    for profile in profiles:
+        intervals = [
+            value
+            for run in rows
+            if run["profile"] == profile
+            for trial in run["report"]["trials"]
+            if not trial["warmup"]
+            for value in trial["decode_logits_intervals_ms"][2:]
+        ]
+        comparison["steady_inter_token_ms"][profile] = {
+            "median": statistics.median(intervals),
+            "p95": sorted(intervals)[math.ceil(0.95 * len(intervals)) - 1],
+            "samples": len(intervals),
+            "excludes": "first two decode intervals of each measured trial",
         }
     comparison["budget_5_percent_pass"] = all(
         value["change_percent"] <= 5

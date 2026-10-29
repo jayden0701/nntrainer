@@ -24,6 +24,8 @@ def main():
                         help="Matching project source/header checkout for a preserved ABI")
     parser.add_argument("--header-tree-revision",
                         help="Provenance label for --header-tree, e.g. git archive revision")
+    parser.add_argument("--kv-statistics", action="store_true",
+                        help="Enable current CausalLM KV counters in timing source")
     args = parser.parse_args()
     if args.header_revision and args.header_tree:
         parser.error("Choose --header-revision or --header-tree")
@@ -138,6 +140,8 @@ def main():
     obj = output.with_suffix(".o")
     # The app uses -ffast-math on Android. The observer must still detect NaN/
     # infinity instead of having std::isfinite optimized to an unconditional true.
+    if args.kv_statistics:
+        compile_args.append("-DNNTR_BENCH_KV_STATS=1")
     compile_args += ["-fno-fast-math", "-c", str(source),
                      "-o", str(obj)]
     subprocess.run(compile_args, cwd=compile_dir, check=True)

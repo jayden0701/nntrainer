@@ -77,6 +77,11 @@ int main(int argc, char **argv) {
     auto generation = readJson(directory / "generation_config.json");
     auto nntr = readJson(directory / "nntr_config.json");
     const auto request = readJson(argv[2]);
+#ifndef NNTR_BENCH_KV_STATS
+    if (request.value("require_replay", false) ||
+        request.value("require_direct", false))
+      throw std::runtime_error("Rebuild this benchmark with --kv-statistics");
+#endif
     const unsigned int context = request.at("context_tokens");
     const unsigned int decode = request.at("decode_tokens");
     const unsigned int warmup = request.at("warmup");
@@ -153,11 +158,28 @@ int main(int argc, char **argv) {
       causal->setSessionTokenPosition(0);
       FixedTokens tokens(decode + 1);
       model->setLogitsProcessor(&tokens);
+#ifdef NNTR_BENCH_KV_STATS
+      const auto before_stats = causal->kvCacheStatistics();
+#endif
       const auto begin = Clock::now();
       model->run(prompt, false, "", "", false);
       const auto end = Clock::now();
       model->setLogitsProcessor(nullptr);
       const auto metrics = model->getPerformanceMetrics();
+#ifdef NNTR_BENCH_KV_STATS
+      const auto after_stats = causal->kvCacheStatistics();
+      const auto captures =
+        after_stats.graph_captures - before_stats.graph_captures;
+      const auto replays =
+        after_stats.graph_replays - before_stats.graph_replays;
+      if (request.value("require_replay", false) &&
+          (captures == 0 || replays < decode - 2))
+        throw std::runtime_error("Requested graph replay did not execute");
+      if (request.value("require_direct", false) &&
+          after_stats.append_copy_bytes != before_stats.append_copy_bytes)
+        throw std::runtime_error("Direct KV workload performed append copies");
+#endif
+
       if (tokens.ids.size() != decode + 1 ||
           tokens.ready.size() != decode + 1 ||
           metrics.prefill_tokens != context ||
@@ -185,6 +207,13 @@ int main(int argc, char **argv) {
          {"decode_steady_median_ms", metrics.decode_steady_ms},
          {"peak_memory_kb", metrics.peak_memory_kb},
          {"position_after", model->getKvLen()},
+#ifdef NNTR_BENCH_KV_STATS
+         {"kv_backing_bytes", after_stats.backing_bytes},
+         {"graph_captures", captures},
+         {"graph_replays", replays},
+         {"kv_append_copy_bytes",
+          after_stats.append_copy_bytes - before_stats.append_copy_bytes},
+#endif
          {"forced_ids", tokens.ids}});
     }
     std::ofstream output(argv[3]);

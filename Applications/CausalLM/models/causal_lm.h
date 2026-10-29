@@ -155,6 +155,11 @@ public:
    */
   void resetLogitsProcessor() override;
 
+  /** Read-only counters for diagnostics; exposes no mutable cache backing. */
+  nntrainer::kv::CacheStats kvCacheStatistics() const {
+    return kv_cache.coreStats();
+  }
+
   /**
    * @brief Current KV-cache write position (absolute token position)
    */
