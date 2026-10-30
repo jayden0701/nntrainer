@@ -13,6 +13,7 @@
 #include <layer.h>
 #include <layer_context.h>
 #include <neuralnet.h>
+#include <numeric>
 #include <qwen3_causallm.h>
 #include <vector>
 
@@ -376,4 +377,56 @@ TEST_F(CudaKvGraph, replayAdmissionRequiresCoreAndCoherentSwitches) {
     EXPECT_THROW(cache.allocate(1, 1, 16, 2, 16), std::invalid_argument);
   }
   EXPECT_FALSE(cache.isAllocated());
+}
+
+TEST_F(CudaKvGraph, replayHostHeadPreservesFp32WeightPrecision) {
+  auto model = makeModel("replay_precision", 16);
+  model->stepLogitsFromIds({1, 4}, 0);
+  nntrainer::Tensor *input = nullptr, *weight = nullptr;
+  model->forEachLayer(
+    [&](ml::train::Layer &layer, nntrainer::RunLayerContext &context, void *) {
+      if (layer.getName() == "output_of_causallm") {
+        input = &context.getInput(0);
+        weight = &context.getWeight(0);
+      }
+    });
+  ASSERT_NE(input, nullptr);
+  ASSERT_NE(weight, nullptr);
+  ASSERT_EQ(weight->getDataType(), ml::train::TensorDim::DataType::FP32);
+  const size_t width = input->width();
+  const auto *hidden =
+    input->getData<_FP16>() + width; // last row of 2-token prefill
+  std::vector<size_t> order(width);
+  std::iota(order.begin(), order.end(), 0);
+  std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+    return std::fabs(static_cast<float>(hidden[a])) >
+           std::fabs(static_cast<float>(hidden[b]));
+  });
+  const size_t a = order[0], b = order[1];
+  const float x = static_cast<float>(hidden[a]);
+  const float y = static_cast<float>(hidden[b]);
+  ASSERT_GT(std::fabs(y), .01f);
+  float wa = 0, wb = 0;
+  double expected = 0, narrowed = 0;
+  for (float candidate : {1024.1f, 1024.2f, 1024.4f, 2048.7f, 4096.5f}) {
+    wa = candidate;
+    wb = (-wa * x + .125f) / y;
+    expected = static_cast<double>(wa) * x + static_cast<double>(wb) * y;
+    narrowed = static_cast<double>(static_cast<_FP16>(wa)) * x +
+               static_cast<double>(static_cast<_FP16>(wb)) * y;
+    if (std::fabs(narrowed - expected) > .05)
+      break;
+  }
+  ASSERT_GT(std::fabs(narrowed - expected), .05);
+  // Row 31 is never used as an input token, even though embedding/head are
+  // tied.
+  auto *row = weight->getData<float>() + 31 * width;
+  std::fill(row, row + width, 0.0f);
+  row[a] = wa;
+  row[b] = wb;
+  model->cacheManager().reset();
+  const auto logits = model->stepLogitsFromIds({1, 4}, 0);
+  ASSERT_GT(logits.size(), 31u);
+  EXPECT_NEAR(logits[31], expected, .002);
+  EXPECT_GT(std::fabs(logits[31] - narrowed), .04);
 }
