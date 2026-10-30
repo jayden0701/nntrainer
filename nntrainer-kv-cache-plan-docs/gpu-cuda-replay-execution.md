@@ -1,5 +1,8 @@
 # G6 CUDA decode capture/replay — PC/WSL (2026-10-29)
 
+> 브랜치 분리 후 현재 적용 범위는 [출력층 최적화 분리 기록](gpu-branch-separation.md)을 따른다.
+> KV/G6 기본 branch에서는 출력층 최적화를 제외하고, `fix/cuda-host-head-fp32`에만 추가한다.
+
 [CUDA eager A+B](gpu-cuda-execution.md)에 기존 CUDA Graph 실행기를 연결했다.
 작업 브랜치는 `feat/kv-cache-cuda-replay`, 지정 remote는
 `jayden=https://github.com/jayden0701/nntrainer`다.
@@ -77,7 +80,7 @@ KV allocation 시 workspace를 준비하고 regime 변경 후 eager prewarm을 �
 | core portable | 31 PASS |
 | CUDA storage/event/capture completion | 8 PASS |
 | 기존 실제 CUDA wrapper/graph | 7 PASS |
-| 신규 decode replay | 5 PASS |
+| 신규 decode replay | 기본 branch 4 PASS / 출력층 branch 5 PASS |
 | non-FP16 CPU 회귀 | 243 PASS + 기존 QINT4 1 SKIP |
 | CPU-only ASan/UBSan/LSan core | 31 PASS |
 

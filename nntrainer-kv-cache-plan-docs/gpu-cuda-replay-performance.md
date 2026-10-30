@@ -1,5 +1,8 @@
 # G6 성능 비교와 출력층 병목 — PC/WSL (2026-10-30)
 
+> 브랜치 분리 후 현재 적용 범위는 [출력층 최적화 분리 기록](gpu-branch-separation.md)을 따른다.
+> KV/G6 기본 branch에서는 출력층 최적화를 제외하고, `fix/cuda-host-head-fp32`에만 추가한다.
+
 [G6 실행 기록](gpu-cuda-replay-execution.md)의 correctness 검증 후,
 ordered eager와 capture/replay를 같은 연산·설정으로 비교했다.
 측정 중 발견한 **기존 FP32 출력층의 전체 가중치 변환 비용**을 별도 커밋

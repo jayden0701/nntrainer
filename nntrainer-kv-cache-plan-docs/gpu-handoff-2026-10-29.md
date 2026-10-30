@@ -1,5 +1,8 @@
 # GPU 작업 인계 — PC/WSL 우선 (2026-10-29)
 
+> 브랜치 분리 후 현재 적용 범위는 [출력층 최적화 분리 기록](gpu-branch-separation.md)을 따른다.
+> KV/G6 기본 branch에서는 출력층 최적화를 제외하고, `fix/cuda-host-head-fp32`에만 추가한다.
+
 ## 현재 상태
 
 처음에는 계획만 작성했으나 후속 구현·테스트 승인에 따라
@@ -59,7 +62,7 @@ pattern handoff 결과를 이들 기능의 증거로 사용하지 않는다.
 ## 검증과 artifact
 
 G6 최신 build는 `build-kv-gpu-cuda-g6`다.
-core31/storage8/eager graph7/replay5 PASS, CPU243 PASS+기존1 SKIP,
+core31/storage8/eager graph7/replay4 PASS(출력층 branch는 replay5 PASS), CPU243 PASS+기존1 SKIP,
 sanitizer31 PASS다. 최신 Qwen fixed-token/실제 greedy/HF/snapshot/2-turn 검증과
 실제 graph launch audit가 모두 PASS다.
 출력층 수정 후에는 `validation/perf-session/optimized-correctness/manifest.json`도 PASS다.

@@ -40,7 +40,6 @@
 #include <cuda_fc_qs4cx.h>
 #include <cuda_runtime.h>
 #include <cuda_stream_manager.h>
-#include <kv_cache/kv_cache_manager.h>
 
 #if defined(ENABLE_FP16)
 namespace {
@@ -802,56 +801,22 @@ void TieWordEmbedding::incremental_forwarding_lmhead(
         const char *fc = std::getenv("NNTR_FC_INT8_GPU");
         return (fc && std::atoi(fc) != 0) ? 1 : 0;
       }();
-      bool projection_done = false;
-#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
-      // This profile declares the head as a host tail, after checked GPU
-      // completion. Preserve FP32 weights and widen only the tiny input row.
-      // HalfTensor::dot would narrow the entire vocabulary matrix to FP16,
-      // then the x86 half GEMV widens it back for BLAS on every token.
-      if (kv::KvStepScope::replayBinding().owner &&
-          input_step.getDataType() == nntrainer::TensorDim::DataType::FP16 &&
-          weight.width() == hidden_size && hidden_step.width() == vocab_size) {
-        if (cuda::StreamManager::Global().isCapturing())
-          throw std::logic_error(
-            "Host FP32 head cannot execute during capture");
-        if (!input_step.getMemoryData()->isHostAddressable() ||
-            !weight.getMemoryData()->isHostAddressable() ||
-            !hidden_step.getMemoryData()->isHostAddressable())
-          throw std::invalid_argument(
-            "Core replay host head requires host-addressable tensors");
-        std::vector<float> logits(vocab_size);
-        nntrainer::shgemv(
-          static_cast<unsigned int>(
-            ml::train::TensorDim::StorageOrder::ROW_MAJOR),
-          false, vocab_size, hidden_size, 1.0f, weight.getData<float>(),
-          hidden_size, input_step.getData<_FP16>(), 1, 0.0f, logits.data(), 1);
-        if (out_fp16) {
-          auto *dst = hidden_step.getData<_FP16>();
-          for (unsigned int v = 0; v < vocab_size; ++v)
-            dst[v] = static_cast<_FP16>(logits[v]);
-        } else {
-          std::memcpy(hidden_step.getData<float>(), logits.data(),
-                      logits.size() * sizeof(float));
-        }
-        projection_done = true;
-      }
-#endif
-
+      bool gpu_done = false;
       // lmhead_gemv_fp32w_cl is only declared/defined under ENABLE_OPENCL
       // (blas_kernels.h is included behind that guard above). Requiring
       // ENABLE_OPENCL here too keeps the FP16-but-no-OpenCL build (e.g. the
-      // CPU/HTP libnntrainer) compiling: projection_done stays false and the
-      // host lm_head path below runs.
+      // CPU/HTP libnntrainer) compiling: gpu_done stays false and the host
+      // lm_head path below runs.
 #if defined(ENABLE_FP16) && defined(ENABLE_OPENCL)
-      if (!projection_done && lmhead_gpu_fp32 != 0 &&
+      if (lmhead_gpu_fp32 != 0 &&
           input_step.getDataType() == nntrainer::TensorDim::DataType::FP16 &&
           weight.width() == hidden_size && hidden_step.width() == vocab_size) {
         std::vector<float> logits_f32(vocab_size);
-        projection_done = nntrainer::lmhead_gemv_fp32w_cl(
+        gpu_done = nntrainer::lmhead_gemv_fp32w_cl(
           static_cast<const void *>(weight.getData<float>()),
           static_cast<const void *>(input_step.getData<_FP16>()),
           logits_f32.data(), vocab_size, hidden_size);
-        if (projection_done) {
+        if (gpu_done) {
           if (out_fp16) {
             _FP16 *o = hidden_step.getData<_FP16>();
             for (unsigned int v = 0; v < vocab_size; ++v)
@@ -863,7 +828,7 @@ void TieWordEmbedding::incremental_forwarding_lmhead(
         }
       }
 #endif
-      if (!projection_done) {
+      if (!gpu_done) {
         // All-FP32 case (FP32 weight AND FP32 act/logits): raw CPU BLAS on
         // the already host-lowered buffers instead of Tensor::dot. dot()
         // dispatches the tensors' ATTACHED op table, which on an engine=gpu

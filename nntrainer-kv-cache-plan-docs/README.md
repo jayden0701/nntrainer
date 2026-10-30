@@ -1,5 +1,8 @@
 # CPU/GPU/NPU 공용 KV cache manager 구현 계획
 
+> 브랜치 분리 후 현재 적용 범위는 [출력층 최적화 분리 기록](gpu-branch-separation.md)을 따른다.
+> KV/G6 기본 branch에서는 출력층 최적화를 제외하고, `fix/cuda-host-head-fp32`에만 추가한다.
+
 > GPU 후속 계획 (2026-10-29): [PC/WSL 환경·소스 분석](gpu-extension-analysis.md),
 > [CUDA부터 진행하는 구현 계획](gpu-extension-plan.md),
 > [다음 세션 인계](gpu-handoff-2026-10-29.md).
