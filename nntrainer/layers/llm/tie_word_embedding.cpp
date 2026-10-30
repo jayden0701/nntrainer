@@ -851,7 +851,39 @@ void TieWordEmbedding::incremental_forwarding_lmhead(
                            1.0f, input_step.getData<float>(), hidden_size,
                            weight.getData<float>(), hidden_size, 0.0f,
                            hidden_step.getData<float>(), vocab_size);
-        } else {
+        }
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+        else if (cuda::engine_selected() &&
+                 input_step.getDataType() == TensorDim::DataType::FP16 &&
+                 weight.width() == hidden_size &&
+                 hidden_step.width() == vocab_size &&
+                 input_step.channel() == 1 && hidden_step.height() == 1 &&
+                 hidden_step.channel() == 1 &&
+                 !cuda::StreamManager::Global().isCapturing() &&
+                 input_step.getMemoryData()->isHostAddressable() &&
+                 weight.getMemoryData()->isHostAddressable() &&
+                 hidden_step.getMemoryData()->isHostAddressable()) {
+          // Keep FP32 head weights intact: HalfTensor::dot narrows the whole
+          // vocabulary matrix, then the host half GEMV widens it again.
+          // Only widen the input row and narrow the final logits instead.
+          cuda::drain_if_async();
+          std::vector<float> logits(vocab_size);
+          nntrainer::shgemv(
+            static_cast<unsigned int>(TensorDim::StorageOrder::ROW_MAJOR),
+            false, vocab_size, hidden_size, 1.0f, weight.getData<float>(),
+            hidden_size, input_step.getData<_FP16>(), 1, 0.0f, logits.data(),
+            1);
+          if (out_fp16) {
+            auto *dst = hidden_step.getData<_FP16>();
+            for (unsigned int v = 0; v < vocab_size; ++v)
+              dst[v] = static_cast<_FP16>(logits[v]);
+          } else {
+            std::memcpy(hidden_step.getData<float>(), logits.data(),
+                        logits.size() * sizeof(float));
+          }
+        }
+#endif
+        else {
           input_step.dot(weight, hidden_step, false, true);
         }
       }

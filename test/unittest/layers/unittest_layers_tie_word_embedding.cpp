@@ -4,7 +4,7 @@
  *
  * @file unittest_layers_tie_word_embedding.cpp
  * @date 01 October 2026
- * @brief Host lm_head of the tied word embedding with a Q6_K weight.
+ * @brief Host lm_head of the tied word embedding with Q6_K and FP32 weights.
  * @see   https://github.com/nntrainer/nntrainer
  * @author Jijoong Moon <jijoong.moon@samsung.com>
  * @bug   No known bugs except for NYI items
@@ -16,6 +16,8 @@
  *       bit for bit, on the backends that implement the integer dot, and
  *   (2) every logit stays within the q8_K quantization bound of the fp32
  *       reference (dequantize the row, fp32 dot).
+ * The CUDA host head also preserves FP32 weights with FP16 activations and
+ * either FP16 or FP32 logits, without narrowing the vocabulary matrix.
  */
 #include <algorithm>
 #include <cmath>
@@ -31,6 +33,10 @@
 #include <tie_word_embedding.h>
 #include <var_grad.h>
 #include <weight.h>
+
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+#include <cuda_context_manager.h>
+#endif
 
 /**
  * The OpenCL / CUDA builds may take a device lm_head GEMV ahead of the host
@@ -219,4 +225,87 @@ TEST(TieWordEmbeddingLmHead, q6_K_host_fp16_activation_p) {
   TiedLmHeadRun r = runTiedLmHead("FP16");
   checkTiedLmHead(r, 1.0f / 1024.0f);
 }
+#endif
+
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+namespace {
+
+/** @brief Exercise the CUDA host head with FP32 weights and FP16 input. */
+std::vector<float> runFp32HostHead(nntrainer::TensorDim::DataType output_type,
+                                   bool skip_prefill = false,
+                                   bool mismatched_weight = false) {
+  using nntrainer::TensorDim;
+  constexpr unsigned int hidden = 4, vocab = 3;
+  TensorDim in_dim(2, 1, 2, hidden,
+                   {nntrainer::Tformat::NCHW, TensorDim::DataType::FP16});
+  nntrainer::TieWordEmbedding layer;
+  layer.setProperty(
+    {"unit=3", "disable_bias=true",
+     std::string("skip_prefill=") + (skip_prefill ? "true" : "false")});
+  nntrainer::InitLayerContext init_ctx(
+    {in_dim}, {true}, false, "fp32_host_head", "", 0.0,
+    {"NCHW", "FP32", "FP16"}, 1.0, ml::train::ExecutionMode::INFERENCE);
+  layer.finalize(init_ctx);
+
+  TensorDim w_dim = std::get<0>(init_ctx.getWeightsSpec()[0]);
+  if (mismatched_weight)
+    w_dim.width(hidden - 1);
+  nntrainer::Weight weight(w_dim, nntrainer::Initializer::ZEROS,
+                           nntrainer::WeightRegularizer::NONE, 1.0f, 0.0f, 0.0f,
+                           false, true, "fp32_host_head:weight");
+  const std::vector<float> weights = {1024.25f, -1024.0f, 0, 0, 0, 0,
+                                      1,        0,        0, 0, 0, 1};
+  std::copy_n(weights.data(), w_dim.getDataLen(),
+              weight.getVariableRef().getData<float>());
+  nntrainer::Var_Grad input(in_dim, nntrainer::Initializer::ZEROS, false, true,
+                            "fp32_host_head:input");
+  // Only the last row of each batch contributes to the head.
+  const std::vector<float> values = {7, 7, 7, 7, 1, 1, 3.5f, -2,
+                                     7, 7, 7, 7, 2, 2, -4,   1};
+  for (size_t i = 0; i < values.size(); ++i)
+    input.getVariableRef().getData<_FP16>()[i] = static_cast<_FP16>(values[i]);
+  TensorDim out_dim = init_ctx.getOutSpecs()[0].variable_spec.dim;
+  out_dim.setDataType(output_type);
+  nntrainer::Var_Grad output(out_dim, nntrainer::Initializer::ZEROS, false,
+                             true, "fp32_host_head:output");
+  nntrainer::RunLayerContext run_ctx("fp32_host_head", false, 0.0f, false, 1.0f,
+                                     nullptr, false, {&weight}, {&input},
+                                     {&output}, {});
+  layer.incremental_forwarding(run_ctx, 0, 2, false);
+  EXPECT_TRUE(std::equal(weights.begin(), weights.begin() + w_dim.getDataLen(),
+                         weight.getVariableRef().getData<float>()));
+  std::vector<float> logits(2 * vocab);
+  for (size_t i = 0; i < logits.size(); ++i)
+    logits[i] =
+      output_type == TensorDim::DataType::FP16
+        ? static_cast<float>(output.getVariableRef().getData<_FP16>()[i])
+        : output.getVariableRef().getData<float>()[i];
+  return logits;
+}
+
+/** @brief Check both supported output dtypes at the host boundary. */
+class TieWordEmbeddingFp32HostHead
+  : public ::testing::TestWithParam<nntrainer::TensorDim::DataType> {};
+
+TEST_P(TieWordEmbeddingFp32HostHead, preserves_weight_precision_p) {
+  if (!nntrainer::cuda::engine_selected())
+    GTEST_SKIP() << "Requires NNTR_ENGINE=cuda";
+  // Narrowing 1024.25 to FP16 would make the first logit zero.
+  EXPECT_EQ(runFp32HostHead(GetParam()),
+            (std::vector<float>{0.25f, 3.5f, -2, 0.5f, -4, 1}));
+}
+
+TEST_P(TieWordEmbeddingFp32HostHead, skip_prefill_does_not_project_n) {
+  EXPECT_EQ(runFp32HostHead(GetParam(), true), std::vector<float>(6, 0.0f));
+}
+
+TEST_P(TieWordEmbeddingFp32HostHead, mismatched_weight_is_rejected_n) {
+  EXPECT_THROW(runFp32HostHead(GetParam(), false, true), std::runtime_error);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+  OutputTypes, TieWordEmbeddingFp32HostHead,
+  ::testing::Values(nntrainer::TensorDim::DataType::FP16,
+                    nntrainer::TensorDim::DataType::FP32));
+} // namespace
 #endif
