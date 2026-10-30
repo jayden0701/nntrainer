@@ -127,7 +127,21 @@ extern "C" __global__ void kv_value_slot(const unsigned short *x,
   int n = blockIdx.x * blockDim.x + threadIdx.x;
   if (n >= N) return;
   float sum = 0.0f;
-  for (int k = 0; k < K; ++k) {
+  int k = 0;
+#ifdef NNTR_KV_VALUE_BULK
+  // Expose independent loads without changing the ordered FP32 FMA chain.
+  // Keep the remainder separate: NVRTC's unrolled remainder is slow for K<64.
+  const int bulk = K & ~63;
+#pragma unroll 64
+  for (; k < bulk; ++k) {
+    float a, b;
+    unsigned short ah = x[k], bh = w[(long long)k * N + n];
+    asm("cvt.f32.f16 %0, %1;" : "=f"(a) : "h"(ah));
+    asm("cvt.f32.f16 %0, %1;" : "=f"(b) : "h"(bh));
+    sum = __fmaf_rn(a, b, sum);
+  }
+#endif
+  for (; k < K; ++k) {
     float a, b;
     unsigned short ah = x[k], bh = w[(long long)k * N + n];
     asm("cvt.f32.f16 %0, %1;" : "=f"(a) : "h"(ah));
@@ -139,8 +153,8 @@ extern "C" __global__ void kv_value_slot(const unsigned short *x,
   base[(long long)pos[0] * N + n] = result;
 }
 )CU";
-  auto kernel =
-    CudaContext::Global().registerCudaKernel(source, "kv_value_slot");
+  auto kernel = CudaContext::Global().registerCudaKernel(
+    source, "kv_value_slot", inputs >= 256 ? "-DNNTR_KV_VALUE_BULK=1" : "");
   if (!kernel)
     return false;
   auto *pos = cuda_pos_buffer();

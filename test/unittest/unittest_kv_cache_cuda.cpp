@@ -5,7 +5,10 @@
  * @author Codex (OpenAI)
  * @bug Covers eager single-stream execution; model and replay are separate.
  */
+#include <cmath>
+#include <cstring>
 #include <cuda_context_manager.h>
+#include <cuda_fp16.h>
 #include <cuda_kv_storage.h>
 #include <cuda_mem_allocator.h>
 #include <cuda_runtime.h>
@@ -207,6 +210,82 @@ TEST_F(CudaKv, orderedGraphWaitsBeforePublishingDeviceWrites) {
   EXPECT_THROW(
     cuda::makeKvStorageOperations(AllocationKind::CudaHostMapped, true),
     std::invalid_argument);
+}
+
+TEST_F(CudaKv, valueProjectionPreservesFmaOrderAndReplaySlotGuards) {
+  auto allocator = std::make_shared<CudaMemAllocator>(true);
+  auto operations = cuda::makeKvStorageOperations();
+  auto &stream = cuda::StreamManager::Global();
+  // Include output block tails and input unroll boundaries, plus Qwen width.
+  for (const auto &shape : std::vector<std::pair<int, int>>{{1, 1},
+                                                            {31, 63},
+                                                            {129, 65},
+                                                            {127, 127},
+                                                            {131, 129},
+                                                            {129, 256},
+                                                            {129, 257},
+                                                            {129, 511},
+                                                            {1024, 1024}}) {
+    const int outputs = shape.first, inputs = shape.second;
+    SCOPED_TRACE(::testing::Message() << outputs << "x" << inputs);
+    std::vector<__half> x(inputs), w(size_t(inputs) * outputs);
+    for (int k = 0; k < inputs; ++k)
+      x[k] = __float2half_rn(float((k * 13) % 29 - 14) / 17.0f);
+    for (size_t i = 0; i < w.size(); ++i)
+      w[i] = __float2half_rn(float(int((i * 19) % 37) - 18) / 71.0f);
+    std::vector<unsigned short> expected(outputs);
+    for (int n = 0; n < outputs; ++n) {
+      float sum = 0;
+      for (int k = 0; k < inputs; ++k)
+        sum = std::fma(__half2float(x[k]),
+                       __half2float(w[size_t(k) * outputs + n]), sum);
+      const auto half = __float2half_rn(sum);
+      std::memcpy(&expected[n], &half, sizeof(half));
+    }
+    auto input = KvStorage::create(x.size() * 2, allocator, operations);
+    auto weight = KvStorage::create(w.size() * 2, allocator, operations);
+    auto value =
+      KvStorage::create(size_t(outputs) * 4 * 2, allocator, operations);
+    input->write(x.data(), 0, x.size() * 2);
+    weight->write(w.data(), 0, w.size() * 2);
+    std::vector<unsigned short> bytes(size_t(outputs) * 4, 0x3555);
+    value->write(bytes.data(), 0, bytes.size() * 2);
+    auto launch = [&]() {
+      return cuda::kvValueSlot(
+        static_cast<const unsigned short *>(input->data()),
+        static_cast<const unsigned short *>(weight->data()),
+        static_cast<unsigned short *>(value->data()), outputs, inputs);
+    };
+    // Compile before capture. The capture must read the next device position.
+    cuda::cuda_set_pos(1, 2);
+    ASSERT_TRUE(launch());
+    operations->synchronize();
+    cudaGraph_t graph = nullptr;
+    ASSERT_TRUE(stream.beginCapture());
+    const bool launched = launch();
+    const bool ended = stream.endCapture(&graph);
+    ASSERT_TRUE(launched);
+    ASSERT_TRUE(ended);
+    cudaGraphExec_t exec = nullptr;
+    const auto status = cudaGraphInstantiate(&exec, graph, 0);
+    if (status != cudaSuccess) {
+      cudaGraphDestroy(graph);
+      FAIL() << cudaGetErrorString(status);
+    }
+    cuda::cuda_set_pos(2, 3);
+    const auto replay = cudaGraphLaunch(exec, stream.GetStream());
+    const auto completed = cudaStreamSynchronize(stream.GetStream());
+    EXPECT_EQ(cudaGraphExecDestroy(exec), cudaSuccess);
+    EXPECT_EQ(cudaGraphDestroy(graph), cudaSuccess);
+    ASSERT_EQ(replay, cudaSuccess);
+    ASSERT_EQ(completed, cudaSuccess);
+    value->read(bytes.data(), 0, bytes.size() * 2);
+    for (size_t i = 0; i < bytes.size(); ++i) {
+      const size_t row = i / outputs;
+      EXPECT_EQ(bytes[i], row == 1 || row == 2 ? expected[i % outputs] : 0x3555)
+        << i;
+    }
+  }
 }
 
 GTEST_API_ int main(int argc, char **argv) {

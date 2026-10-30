@@ -12,6 +12,7 @@
 > G6 decode capture/replay도 연결했다. [G6 실행 기록](gpu-cuda-replay-execution.md)에서
 > 지원 범위와 검증을 확인한다. [G6 성능 비교와 출력층 병목 수정](gpu-cuda-replay-performance.md)도 완료했다.
 > Android NDK 부분 compile/link를 확인했으나 Android GPU 실행은 미검증이다.
+> CUDA V slot 커널 후속 최적화와 현재 검증은 [실행 기록](gpu-cuda-value-slot-performance.md)을 참고한다.
 > OpenCL·Android GPU·실제 모델 CPU↔GPU 전환은 후속이다.
 
 > Linux 실행 기록: [환경 검토와 단계별 검증](linux-cpu-execution.md).

@@ -1,6 +1,8 @@
 # 출력층 최적화 브랜치 분리 (2026-10-30)
 
 사용자 요청에 따라 KV/G6 확장과 기존 FP32 출력층 변환 최적화를 분리했다.
+아래 테스트 수는 분리 직후8be027ee/9790c69f 기준이다.
+이후 기본 CUDA branch의 변경은 [V slot 후속 기록](gpu-cuda-value-slot-performance.md)을 따른다.
 
 | branch | 포함 범위 |
 |---|---|
