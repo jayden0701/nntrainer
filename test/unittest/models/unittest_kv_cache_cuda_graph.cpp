@@ -7,6 +7,10 @@
  */
 #include <causallm_test_utils.h>
 #include <cmath>
+#include <cuda_attention.h>
+#include <cuda_fp16.h>
+#include <cuda_kv_storage.h>
+#include <cuda_mem_allocator.h>
 #include <cuda_runtime.h>
 #include <cuda_stream_manager.h>
 #include <gtest/gtest.h>
@@ -40,13 +44,14 @@ protected:
       GTEST_SKIP() << "No CUDA device";
   }
   std::unique_ptr<Model> makeModel(const std::string &name,
-                                   unsigned int capacity = 8) {
+                                   unsigned int capacity = 8,
+                                   unsigned int head_dim = 16) {
     auto files = causallm_test::makeTinyCausalLMFiles("CudaKv", name, "FP16");
     causallm::json cfg = {{"architectures", {"Qwen3ForCausalLM"}},
                           {"bos_token_id", 0},
                           {"eos_token_id", {31}},
-                          {"head_dim", 16},
-                          {"hidden_size", 64},
+                          {"head_dim", head_dim},
+                          {"hidden_size", 4 * head_dim},
                           {"intermediate_size", 64},
                           {"is_causal", true},
                           {"max_position_embeddings", capacity},
@@ -376,4 +381,180 @@ TEST_F(CudaKvGraph, replayAdmissionRequiresCoreAndCoherentSwitches) {
     EXPECT_THROW(cache.allocate(1, 1, 16, 2, 16), std::invalid_argument);
   }
   EXPECT_FALSE(cache.isAllocated());
+}
+
+TEST_F(CudaKvGraph, replaySplitKvStagingMatchesReferenceAndMovingInputs) {
+  auto allocator = std::make_shared<nntrainer::CudaMemAllocator>(true);
+  auto ops = nntrainer::cuda::makeKvStorageOperations();
+  auto &stream = nntrainer::cuda::StreamManager::Global();
+  constexpr int capacity = 1152, guard = 32;
+  struct Shape {
+    int hq, hkv, d, window;
+    float softcap;
+  };
+  for (const auto &shape : std::vector<Shape>{{16, 8, 128, capacity, 0},
+                                              {8, 8, 256, capacity, 0},
+                                              {8, 1, 512, capacity, .7f},
+                                              {16, 8, 128, 129, 0}}) {
+    const auto [hq, hkv, d, window, softcap] = shape;
+    SCOPED_TRACE(::testing::Message()
+                 << hq << "/" << hkv << " d=" << d << " window=" << window);
+    ASSERT_TRUE(
+      nntrainer::cuda::cuda_attention_splitkv_prewarm(capacity, hq, d));
+    std::vector<__half> q(size_t(hq) * d, __float2half_rn(0.0f)),
+      k(size_t(capacity) * hkv * d), v(k.size());
+    for (size_t i = 0; i < k.size(); ++i) {
+      k[i] = __float2half_rn(float(int((i * 19) % 37) - 18) / 71);
+      v[i] = __float2half_rn(float(int((i * 7) % 43) - 21) / 53);
+    }
+    auto qi = nntrainer::kv::KvStorage::create(q.size() * 2, allocator, ops);
+    auto ki = nntrainer::kv::KvStorage::create(k.size() * 2, allocator, ops);
+    auto vi = nntrainer::kv::KvStorage::create(v.size() * 2, allocator, ops);
+    auto oi = nntrainer::kv::KvStorage::create((q.size() + 2 * guard) * 2,
+                                               allocator, ops);
+    ki->write(k.data(), 0, k.size() * 2);
+    vi->write(v.data(), 0, v.size() * 2);
+    auto *out = static_cast<unsigned short *>(oi->data()) + guard;
+    auto launch = [&](int length) {
+      return nntrainer::cuda::cuda_attention_interleaved_fp16(
+        static_cast<const unsigned short *>(qi->data()),
+        static_cast<const unsigned short *>(ki->data()),
+        static_cast<const unsigned short *>(vi->data()), out, hq, hkv, 1,
+        length, length - 1, d, window, softcap);
+    };
+    struct Graph {
+      cudaGraph_t graph = nullptr;
+      cudaGraphExec_t exec = nullptr;
+      ~Graph() {
+        cudaStreamSynchronize(
+          nntrainer::cuda::StreamManager::Global().GetStream());
+        if (exec)
+          cudaGraphExecDestroy(exec);
+        if (graph)
+          cudaGraphDestroy(graph);
+      }
+    } captured;
+    nntrainer::cuda::cuda_set_pos(64, 65);
+    qi->write(q.data(), 0, q.size() * 2);
+    ASSERT_TRUE(launch(65)); // warm kernels/scratch outside capture
+    ops->synchronize();
+    if (hq == hkv) {
+      // No head-fusion bracket here: the short-grid staging choice alone
+      // must expire when the fifth chunk becomes live.
+      nntrainer::cuda::kv_regime_begin(65);
+      ASSERT_TRUE(launch(65));
+      nntrainer::cuda::kv_regime_seal();
+      EXPECT_TRUE(nntrainer::cuda::kv_regime_holds(256));
+      EXPECT_FALSE(nntrainer::cuda::kv_regime_holds(257));
+      nntrainer::cuda::kv_regime_invalidate();
+    }
+    ASSERT_TRUE(stream.beginCapture());
+    const bool submitted = launch(65);
+    const bool ended = stream.endCapture(&captured.graph);
+    ASSERT_TRUE(submitted);
+    ASSERT_TRUE(ended);
+    ASSERT_EQ(cudaGraphInstantiate(&captured.exec, captured.graph, 0),
+              cudaSuccess);
+    for (int length : {65, 66, 79, 127, 129, 256, 257, 513, 1089}) {
+      SCOPED_TRACE(length);
+      for (size_t i = 0; i < q.size(); ++i)
+        q[i] = __float2half_rn(float(int((i * 13 + length) % 29) - 14) / 17);
+      qi->write(q.data(), 0, q.size() * 2);
+      nntrainer::cuda::cuda_set_pos(length - 1, length);
+      ASSERT_TRUE(launch(length));
+      std::vector<unsigned short> eager(q.size());
+      oi->read(eager.data(), guard * 2, eager.size() * 2);
+      std::vector<unsigned short> bytes(q.size() + 2 * guard, 0x3555);
+      oi->write(bytes.data(), 0, bytes.size() * 2);
+      ASSERT_EQ(cudaGraphLaunch(captured.exec, stream.GetStream()),
+                cudaSuccess);
+      oi->read(bytes.data(), 0, bytes.size() * 2);
+      for (int g = 0; g < guard; ++g) {
+        EXPECT_EQ(bytes[g], 0x3555);
+        EXPECT_EQ(bytes[guard + q.size() + g], 0x3555);
+      }
+      for (size_t i = 0; i < eager.size(); ++i)
+        ASSERT_EQ(bytes[guard + i], eager[i]) << i;
+      // Independent double-precision causal/window/softcap attention.
+      const int lo = std::max(0, length - window);
+      for (int h = 0; h < hq; ++h) {
+        const int kh = h / (hq / hkv);
+        std::vector<double> scores(length - lo);
+        double maximum = -1e30, total = 0;
+        for (int j = lo; j < length; ++j) {
+          double dot = 0;
+          for (int dd = 0; dd < d; ++dd)
+            dot += double(__half2float(q[size_t(h) * d + dd])) *
+                   __half2float(k[(size_t(j) * hkv + kh) * d + dd]);
+          double score = dot / std::sqrt(double(d));
+          if (softcap > 0)
+            score = softcap * std::tanh(score / softcap);
+          scores[j - lo] = score;
+          maximum = std::max(maximum, score);
+        }
+        for (auto &score : scores) {
+          score = std::exp(score - maximum);
+          total += score;
+        }
+        for (int dd = 0; dd < d; ++dd) {
+          double expected = 0;
+          for (int j = lo; j < length; ++j)
+            expected +=
+              scores[j - lo] * __half2float(v[(size_t(j) * hkv + kh) * d + dd]);
+          expected /= total;
+          const auto bits = eager[size_t(h) * d + dd];
+          const float value = __half2float(__ushort_as_half(bits));
+          ASSERT_TRUE(std::isfinite(value));
+          EXPECT_NEAR(value, expected, 0.0003 + 0.002 * std::abs(expected))
+            << h << ":" << dd;
+        }
+      }
+    }
+  }
+}
+
+TEST_F(CudaKvGraph, replayRecapturesAtSplitKvStagingBoundary) {
+  std::vector<std::vector<float>> golden;
+  std::vector<unsigned short> keys, values;
+  const std::vector<unsigned int> prompt{1, 4};
+  {
+    auto eager = makeModel("staging_eager", 288, 128);
+    eager->replayFeeds(false);
+    golden.push_back(eager->stepLogitsFromIds(prompt, 0));
+    for (unsigned int pos = 2; pos < 265; ++pos)
+      golden.push_back(eager->stepLogitsFromIds({pos % 20 + 1}, pos));
+    auto &cache = eager->cacheManager();
+    keys.resize(cache.getKeyCache(0).size());
+    values.resize(keys.size());
+    ASSERT_EQ(cudaMemcpy(keys.data(), cache.getKeyCache(0).getData<char>(),
+                         keys.size() * 2, cudaMemcpyDeviceToHost),
+              cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(values.data(), cache.getValueCache(0).getData<char>(),
+                         values.size() * 2, cudaMemcpyDeviceToHost),
+              cudaSuccess);
+  }
+  auto replay = makeModel("staging_replay", 288, 128);
+  EXPECT_EQ(golden[0], replay->stepLogitsFromIds(prompt, 0));
+  size_t before_boundary = 0;
+  for (unsigned int pos = 2; pos < 265; ++pos) {
+    EXPECT_EQ(golden[pos - 1], replay->stepLogitsFromIds({pos % 20 + 1}, pos))
+      << pos;
+    if (pos == 255)
+      before_boundary = replay->cacheManager().coreStats().graph_captures;
+  }
+  auto &cache = replay->cacheManager();
+  EXPECT_GT(before_boundary, 0u);
+  EXPECT_GT(cache.coreStats().graph_captures, before_boundary);
+  EXPECT_GT(cache.coreStats().graph_replays, 2u);
+  EXPECT_EQ(cache.coreStats().append_copy_bytes, 0u);
+  EXPECT_EQ(cache.getPosition(), 265u);
+  std::vector<unsigned short> actual(keys.size());
+  ASSERT_EQ(cudaMemcpy(actual.data(), cache.getKeyCache(0).getData<char>(),
+                       actual.size() * 2, cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  EXPECT_EQ(actual, keys);
+  ASSERT_EQ(cudaMemcpy(actual.data(), cache.getValueCache(0).getData<char>(),
+                       actual.size() * 2, cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  EXPECT_EQ(actual, values);
 }

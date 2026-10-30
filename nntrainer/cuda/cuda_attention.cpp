@@ -674,9 +674,14 @@ splitkv_warp_body(const unsigned short *q, const unsigned short *k,
                                         max_n_chunks, clip, ring_cap);         \
   }
 // HPW=1: the unfused launch, kept as the kill-switch / narrow-grid path.
+// Short-grid variants stage four keys without changing the per-warp key
+// order. Keep KPI=1 for wide grids to avoid extra register pressure.
 SPLITKV_WARP_ENTRY(attn_partial_w128, 4, 1, 1)
+SPLITKV_WARP_ENTRY(attn_partial_w128_p4, 4, 1, 4)
 SPLITKV_WARP_ENTRY(attn_partial_w256, 8, 1, 1)
+SPLITKV_WARP_ENTRY(attn_partial_w256_p4, 8, 1, 4)
 SPLITKV_WARP_ENTRY(attn_partial_w512, 16, 1, 1)
+SPLITKV_WARP_ENTRY(attn_partial_w512_p4, 16, 1, 4)
 // Fused launches. KPI=4 throughout (measured best, or within noise of best, on
 // every shape); HPW is capped per head_dim by the register budget -- d=512
 // needs VPL=16 registers per head, so HPW>4 there spills.
@@ -1318,6 +1323,17 @@ bool attention_splitkv_decode(const unsigned short *q, const unsigned short *k,
   if (hpw > 1) {
     snprintf(fname, sizeof(fname), "attn_partial_w%d_h%d", d, hpw);
     wname = fname;
+  }
+  if (warp_ok && hpw == 1) {
+    // Short contexts have too few blocks to hide per-key load latency. On
+    // wider grids KPI=4 can instead lose occupancy to its staged registers.
+    // Freeze the same choice under replay and expire it at the chunk boundary.
+    if (!clip && max_nc > 4)
+      kv_regime_gt(N_kv, 4 * chunk_kv);
+    if (eff_nc <= 4) {
+      snprintf(fname, sizeof(fname), "attn_partial_w%d_p4", d);
+      wname = fname;
+    }
   }
   auto kp =
     warp_ok

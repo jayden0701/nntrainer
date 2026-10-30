@@ -5,6 +5,8 @@ OpenCL은 다른 원격 환경의 담당 범위이므로 수정하지 않았다.
 기본 branch는 `feat/kv-cache-cuda-replay`, 시작점은 `8be027ee`다.
 별도 `fix/cuda-host-head-fp32`의 출력층 최적화는 가져오지 않았다.
 
+이후 CUDA attention 작업은 [선행 읽기·profiling 기록](gpu-cuda-attention-performance.md)을 참고한다.
+
 ## 변경
 
 G6 `kvValueSlot`은 입력 FP16 row와 dense FP16 weight[K,N]를 읽어

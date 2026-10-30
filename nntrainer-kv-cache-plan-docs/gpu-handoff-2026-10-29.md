@@ -5,7 +5,8 @@
 
 ## 현재 상태
 
-최신 CUDA 후속은 [V slot 커널 최적화](gpu-cuda-value-slot-performance.md)다.
+최신 CUDA 후속은 [attention 선행 읽기·profiling](gpu-cuda-attention-performance.md)이다.
+그 전 [V slot 커널 최적화](gpu-cuda-value-slot-performance.md)도 완료했다.
 OpenCL은 다른 원격 환경의 담당 범위로 이 후속에서 수정하지 않았다.
 
 처음에는 계획만 작성했으나 후속 구현·테스트 승인에 따라
@@ -65,11 +66,11 @@ pattern handoff 결과를 이들 기능의 증거로 사용하지 않는다.
 ## 검증과 artifact
 
 G6 최신 build는 `build-kv-gpu-cuda-g6`다.
-core31/storage9/eager graph7/replay4 PASS(분리 당시 출력층 branch는 storage8/replay5 PASS), CPU243 PASS+기존1 SKIP,
+core31/storage9/eager graph7/replay6 PASS(분리 당시 출력층 branch는 storage8/replay5 PASS), CPU243 PASS+기존1 SKIP,
 sanitizer31 PASS다. 최신 Qwen fixed-token/실제 greedy/HF/snapshot/2-turn 검증과
 실제 graph launch audit가 모두 PASS다.
-V slot 후속은 `validation/value-slot/qwen-final/manifest.json`도 PASS다.
-이 V 커널 변경 전후440쌍 logits bytes가 모두 같다.
+V slot 후속과 `validation/attention/qwen-final/manifest.json` 모두 PASS다.
+V slot 및 attention 각각 변경 전후440쌍 logits bytes가 모두 같다.
 출력층 수정 후에는 `validation/perf-session/optimized-correctness/manifest.json`도 PASS다.
 수정 후 ordered/replay byte 동일성과 수정 전후 수치 차이를 구분한다.
 911eb7e3의440쌍 byte 동일 주장은 오류이며 성능 기록에 정정 수치를 남겼다.
@@ -107,9 +108,12 @@ candidate observer는 현재 전체 header/runtime과 맞춰 빌드한다.
 3. G6 decode 구현·검증은 별도 실행 기록에서 확인한다.
    1K/4K ABBA 및 head 병목 개선은 성능 기록을 확인한다.
    V slot 초기 최적화와 shape별 microbenchmark는 완료했다.
-   원격 CI 복구 후 전체 Android/Windows build, 이후 attention/split-KV 병목 profile을 진행한다.
+   attention/split-KV 분리 profiling과 짧은 grid 선행 읽기도 완료했다.
+   원격 CI 복구 후 전체 Android/Windows build 검증은 별도로 남아 있다.
+   다음 CUDA 분석은 실제 kernel 선택이 같은 동안 불필요한 chunk별 재캡처를 줄이는 것이다.
    prefill capture/다중 stream/추가 kernel 최적화는 후속이다.
 4. 최적화 시 현재 eager output/copy/completion 결과를 유지한다.
-5. host-mapped attention 전환/OpenCL은 독립 capability gate로 진행한다.
+5. host-mapped CUDA attention 전환은 독립 capability gate로 진행한다.
+   OpenCL 작업은 다른 원격 환경의 범위로 유지한다.
 6. commit 요청이 생기면 AGENTS.md의 DCO `git commit -s`, `[component]`,
    `Co-authored-by: Codex (OpenAI)`와 PR template을 따른다.
