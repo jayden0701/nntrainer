@@ -4,6 +4,8 @@
 
 처음에는 계획만 작성했으나 후속 구현·테스트 승인에 따라
 **CUDA eager Qwen3 A+B 및 G6 decode capture/replay**까지 구현하고 현재 PC에서 검증했다.
+G6 성능 비교와 기존 host 출력층의 가중치 변환 비용 개선도 완료했다.
+[성능·플랫폼 확인 기록](gpu-cuda-replay-performance.md)을 먼저 확인한다.
 Android 기기는 없다. 최신 결과는 [G6 실행 기록](gpu-cuda-replay-execution.md)과 [eager 실행 기록](gpu-cuda-execution.md)에 있다.
 
 읽는 순서:
@@ -19,7 +21,8 @@ Android 기기는 없다. 최신 결과는 [G6 실행 기록](gpu-cuda-replay-ex
 - WSL `/home/jayden/nntrainer`,
   Windows `\\wsl.localhost\Ubuntu\home\jayden\nntrainer`.
 - branch `feat/kv-cache-cuda-replay`,
-  HEAD `25230aafe1a230e8dc497921d1149d52f6eabdad` (PR #4460).
+  시작점 `25230aafe1a230e8dc497921d1149d52f6eabdad` (PR #4460).
+  G6 성능 도구 d15e3e6d, host head 최적화911eb7e3; 최신 HEAD는 git log로 확인한다.
 - base `141871a58ff439e3caeac40c1632ff8ac3543d20`.
 - 사용자 요청으로 기존 작업을 새 branch로 옮겼다.
 - push 대상은 `jayden=https://github.com/jayden0701/nntrainer`다.
@@ -56,9 +59,12 @@ pattern handoff 결과를 이들 기능의 증거로 사용하지 않는다.
 ## 검증과 artifact
 
 G6 최신 build는 `build-kv-gpu-cuda-g6`다.
-core31/storage8/eager graph7/replay4 PASS, CPU243 PASS+기존1 SKIP,
+core31/storage8/eager graph7/replay5 PASS, CPU243 PASS+기존1 SKIP,
 sanitizer31 PASS다. 최신 Qwen fixed-token/실제 greedy/HF/snapshot/2-turn 검증과
 실제 graph launch audit가 모두 PASS다.
+출력층 수정 후에는 `validation/perf-session/optimized-correctness/manifest.json`도 PASS다.
+수정 후 ordered/replay byte 동일성과 수정 전후 수치 차이를 구분한다.
+911eb7e3의440쌍 byte 동일 주장은 오류이며 성능 기록에 정정 수치를 남겼다.
 원본은 G6 build `validation/qwen-replay-final/manifest.json`,
 `final-tests.log`, `cuda-call-audit/summary.json`에 있다.
 아래 표는 보존한 **이전 eager 단계** artifact다.
@@ -77,7 +83,9 @@ sanitizer31 PASS다. 최신 Qwen fixed-token/실제 greedy/HF/snapshot/2-turn �
 
 공개 모델은 `build-kv-gpu-cuda/models/` 아래 ignored 상태다.
 revision/hash는 실행 기록과 gpu-model-manifest.json에 있다.
-초기 실패 로그도 보존했다. 다른 OS/전체 CI/CodeQL은 미실행이다.
+초기 실패 로그도 보존했다. Android NDK r26d 부분 compile/link 및8개 syntax-check는 PASS다.
+Android runtime/전체 CausalLM cross-link/Windows/전체 CI/CodeQL은 미실행이다.
+원격 Android/Windows workflow dispatch는 HTTP422(Actions disabled)로 거절되었다.
 
 **변경 전 baseline은 `build-kv-gpu-cuda-baseline`**다.
 Ninja를 다시 실행하면 현재 source로 덮어쓸 수 있다. `--no-rebuild`로만 실행한다.
@@ -89,6 +97,8 @@ candidate observer는 현재 전체 header/runtime과 맞춰 빌드한다.
 1. git status/HEAD와 최신 실행 기록을 확인하고 기존 uncommitted 변경을 유지한다.
 2. 필요 시 matching G6 build의 serial CUDA tests를 실행한다. 이전 eager/baseline runtime은 보존한다.
 3. G6 decode 구현·검증은 별도 실행 기록에서 확인한다.
+   1K/4K ABBA 및 head 병목 개선은 성능 기록을 확인한다.
+   원격 CI 복구 후 전체 Android/Windows build, 이후 kernel 병목 profile을 진행한다.
    prefill capture/다중 stream/slot kernel 최적화는 후속이다.
 4. 최적화 시 현재 eager output/copy/completion 결과를 유지한다.
 5. host-mapped attention 전환/OpenCL은 독립 capability gate로 진행한다.

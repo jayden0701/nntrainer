@@ -28,7 +28,7 @@ export NNTR_KV_GPU_TRACE=1 NNTR_CUDA_GRAPH_DBG=1
 ```
 
 KV_GRAPH=1은 CORE=1과 DIRECT=1이 필요하다.
-GRAPH/M2B 불일치와 prefill capture는 allocation에서 거절한다.
+GRAPH/M2B 불일치, prefill capture, DEV_ACT=1은 allocation에서 거절한다.
 비교용 ordered eager는 KV_GRAPH=1을 유지하고 GRAPH/M2B/DECODE_GRAPH만 0으로 둔다.
 
 ## 연결과 완료 규칙
@@ -77,7 +77,7 @@ KV allocation 시 workspace를 준비하고 regime 변경 후 eager prewarm을 �
 | core portable | 31 PASS |
 | CUDA storage/event/capture completion | 8 PASS |
 | 기존 실제 CUDA wrapper/graph | 7 PASS |
-| 신규 decode replay | 4 PASS |
+| 신규 decode replay | 5 PASS |
 | non-FP16 CPU 회귀 | 243 PASS + 기존 QINT4 1 SKIP |
 | CPU-only ASan/UBSan/LSan core | 31 PASS |
 
@@ -132,6 +132,10 @@ observer의 선택형 forced_ids는 원래 logits를 기록한 후 다음 token�
 prefill capture/다중 stream/Android/OpenCL은 후속이다.
 명시적인 host tail이 있으며 모델 전체를 GPU graph로 실행하는 profile은 아니다.
 G5 1K/4K 성능을 G6 수치로 사용하지 않는다.
-G6 latency와 dense V slot kernel 최적화는 별도 측정 대상이다.
-다른 OS/전체 원격 CI/CodeQL은 미실행이다.
+G6 1K/4K latency와 기존 FP32 host head 병목 수정 결과는
+[성능 비교 기록](gpu-cuda-replay-performance.md)에 있다.
+출력층 수정 후 ordered/replay·HF·snapshot 검증도 다시 PASS했다.
+일반 CPU/legacy CUDA 경로는 유지했다. dense V slot kernel 최적화는 후속이다.
+Android NDK 부분 compile/link는 PASS했으나 실기기 실행은 없다.
+GitHub dispatch는422로 거절되었으며 Windows/전체 원격 CI/CodeQL은 미실행이다.
 모델·빌드·로그는 ignored local artifact이며 source/재현 문서만 커밋한다.
