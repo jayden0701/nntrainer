@@ -5,8 +5,11 @@
  * @author Codex (OpenAI)
  * @bug Synthetic weights; public model parity and capture/replay are separate.
  */
+#include <algorithm>
+#include <array>
 #include <causallm_test_utils.h>
 #include <cmath>
+#include <cuda.h>
 #include <cuda_attention.h>
 #include <cuda_fp16.h>
 #include <cuda_kv_storage.h>
@@ -518,10 +521,10 @@ TEST_F(CudaKvGraph, replayRecapturesAtSplitKvStagingBoundary) {
   std::vector<unsigned short> keys, values;
   const std::vector<unsigned int> prompt{1, 4};
   {
-    auto eager = makeModel("staging_eager", 288, 128);
+    auto eager = makeModel("staging_eager", 704, 128);
     eager->replayFeeds(false);
     golden.push_back(eager->stepLogitsFromIds(prompt, 0));
-    for (unsigned int pos = 2; pos < 265; ++pos)
+    for (unsigned int pos = 2; pos < 641; ++pos)
       golden.push_back(eager->stepLogitsFromIds({pos % 20 + 1}, pos));
     auto &cache = eager->cacheManager();
     keys.resize(cache.getKeyCache(0).size());
@@ -533,21 +536,23 @@ TEST_F(CudaKvGraph, replayRecapturesAtSplitKvStagingBoundary) {
                          values.size() * 2, cudaMemcpyDeviceToHost),
               cudaSuccess);
   }
-  auto replay = makeModel("staging_replay", 288, 128);
+  auto replay = makeModel("staging_replay", 704, 128);
   EXPECT_EQ(golden[0], replay->stepLogitsFromIds(prompt, 0));
   size_t before_boundary = 0;
-  for (unsigned int pos = 2; pos < 265; ++pos) {
+  for (unsigned int pos = 2; pos < 641; ++pos) {
     EXPECT_EQ(golden[pos - 1], replay->stepLogitsFromIds({pos % 20 + 1}, pos))
       << pos;
     if (pos == 255)
       before_boundary = replay->cacheManager().coreStats().graph_captures;
   }
   auto &cache = replay->cacheManager();
-  EXPECT_GT(before_boundary, 0u);
+  EXPECT_EQ(before_boundary, 2u); // first decode and dense->split at 65
+  EXPECT_EQ(cache.coreStats().graph_captures, 3u); // plus staging->plain at 257
+  RecordProperty("captures_through_641", cache.coreStats().graph_captures);
   EXPECT_GT(cache.coreStats().graph_captures, before_boundary);
   EXPECT_GT(cache.coreStats().graph_replays, 2u);
   EXPECT_EQ(cache.coreStats().append_copy_bytes, 0u);
-  EXPECT_EQ(cache.getPosition(), 265u);
+  EXPECT_EQ(cache.getPosition(), 641u);
   std::vector<unsigned short> actual(keys.size());
   ASSERT_EQ(cudaMemcpy(actual.data(), cache.getKeyCache(0).getData<char>(),
                        actual.size() * 2, cudaMemcpyDeviceToHost),
@@ -557,4 +562,108 @@ TEST_F(CudaKvGraph, replayRecapturesAtSplitKvStagingBoundary) {
                        actual.size() * 2, cudaMemcpyDeviceToHost),
             cudaSuccess);
   EXPECT_EQ(actual, values);
+}
+
+TEST_F(CudaKvGraph, replayRegimeMatchesActualSplitKvLaunchGeometry) {
+  causallm_test::ScopedEnv flash("NNTR_CUDA_FLASH_DECODE", "64");
+  using Signature = std::vector<std::array<uintptr_t, 8>>;
+  auto allocator = std::make_shared<nntrainer::CudaMemAllocator>(true);
+  auto ops = nntrainer::cuda::makeKvStorageOperations();
+  auto &stream = nntrainer::cuda::StreamManager::Global();
+  constexpr int capacity = 8192;
+  const std::vector<int> lengths{65,   66,   128,  129,  130,  192, 256,
+                                 257,  448,  449,  640,  641,  960, 961,
+                                 1984, 1985, 2048, 2049, 4096, 8192};
+  struct Shape {
+    int hq, hkv, d, window;
+  };
+  for (const auto &shape : std::vector<Shape>{{16, 8, 128, capacity},
+                                              {12, 2, 256, capacity},
+                                              {8, 1, 512, capacity},
+                                              {8, 8, 128, capacity},
+                                              {4, 2, 64, capacity},
+                                              {16, 8, 128, 129}}) {
+    const auto [hq, hkv, d, window] = shape;
+    SCOPED_TRACE(::testing::Message()
+                 << hq << "/" << hkv << " d=" << d << " window=" << window);
+    ASSERT_TRUE(
+      nntrainer::cuda::cuda_attention_splitkv_prewarm(capacity, hq, d));
+    auto q =
+      nntrainer::kv::KvStorage::create(size_t(hq) * d * 2, allocator, ops);
+    auto k = nntrainer::kv::KvStorage::create(size_t(capacity) * hkv * d * 2,
+                                              allocator, ops);
+    auto v = nntrainer::kv::KvStorage::create(size_t(capacity) * hkv * d * 2,
+                                              allocator, ops);
+    auto o =
+      nntrainer::kv::KvStorage::create(size_t(hq) * d * 2, allocator, ops);
+    auto capture_signature = [&](int length, Signature &signature) {
+      auto launch = [&]() {
+        return nntrainer::cuda::cuda_attention_interleaved_fp16(
+          static_cast<const unsigned short *>(q->data()),
+          static_cast<const unsigned short *>(k->data()),
+          static_cast<const unsigned short *>(v->data()),
+          static_cast<unsigned short *>(o->data()), hq, hkv, 1, length,
+          length - 1, d, window, 0);
+      };
+      nntrainer::cuda::cuda_set_pos(length - 1, length);
+      if (!launch())
+        return false;
+      ops->synchronize(); // all kernels are compiled before capture
+      struct Graph {
+        cudaGraph_t value = nullptr;
+        ~Graph() {
+          if (value)
+            cudaGraphDestroy(value);
+        }
+      } graph;
+      if (!stream.beginCapture())
+        return false;
+      const bool submitted = launch();
+      const bool ended = stream.endCapture(&graph.value);
+      if (!submitted || !ended)
+        return false;
+      size_t count = 0;
+      if (cudaGraphGetNodes(graph.value, nullptr, &count) != cudaSuccess)
+        return false;
+      std::vector<cudaGraphNode_t> nodes(count);
+      if (cudaGraphGetNodes(graph.value, nodes.data(), &count) != cudaSuccess)
+        return false;
+      for (auto node : nodes) {
+        cudaGraphNodeType type;
+        if (cudaGraphNodeGetType(node, &type) != cudaSuccess)
+          return false;
+        if (type != cudaGraphNodeTypeKernel)
+          continue;
+        CUDA_KERNEL_NODE_PARAMS params{};
+        if (cuGraphKernelNodeGetParams(reinterpret_cast<CUgraphNode>(node),
+                                       &params) != CUDA_SUCCESS)
+          return false;
+        signature.push_back({reinterpret_cast<uintptr_t>(params.func),
+                             params.gridDimX, params.gridDimY, params.gridDimZ,
+                             params.blockDimX, params.blockDimY,
+                             params.blockDimZ, params.sharedMemBytes});
+      }
+      std::sort(signature.begin(), signature.end());
+      return signature.size() == 2;
+    };
+    nntrainer::cuda::kv_regime_seal();
+    std::vector<Signature> signatures(lengths.size());
+    for (size_t i = 0; i < lengths.size(); ++i)
+      ASSERT_TRUE(capture_signature(lengths[i], signatures[i]));
+    // Compare the validity table with independently observed kernel identity,
+    // grid, block and shared-memory size instead of duplicating the selector.
+    for (size_t i = 0; i < lengths.size(); ++i) {
+      Signature actual;
+      nntrainer::cuda::kv_regime_begin(lengths[i]);
+      const bool captured = capture_signature(lengths[i], actual);
+      nntrainer::cuda::kv_regime_seal();
+      ASSERT_TRUE(captured);
+      ASSERT_EQ(actual, signatures[i]);
+      for (size_t j = 0; j < lengths.size(); ++j)
+        EXPECT_EQ(nntrainer::cuda::kv_regime_holds(lengths[j]),
+                  signatures[i] == signatures[j])
+          << lengths[i] << " -> " << lengths[j];
+    }
+    nntrainer::cuda::kv_regime_invalidate();
+  }
 }

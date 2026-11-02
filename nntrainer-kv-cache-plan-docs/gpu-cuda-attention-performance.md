@@ -3,6 +3,8 @@
 `feat/kv-cache-cuda-replay`의 `c0493936`에서 이어서 attention을 분석했다.
 OpenCL과 `fix/cuda-host-head-fp32`는 수정하지 않았다.
 
+이후 재캡처 조건 변경은 [후속 실행 기록](gpu-cuda-recapture-execution.md)을 따른다.
+
 ## 측정으로 정한 범위
 
 기존 split-KV는 partial과 reduce 두 kernel이다.

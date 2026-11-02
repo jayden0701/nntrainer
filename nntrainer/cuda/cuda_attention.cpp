@@ -1220,6 +1220,10 @@ bool attention_splitkv_decode(const unsigned short *q, const unsigned short *k,
   const int *dpos =
     (decode_graph && g_sk_max_nchunks > 0) ? cuda_pos_buffer() : nullptr;
   int max_nc = dpos ? g_sk_max_nchunks : n_chunks;
+  // Without a live device position, the captured scalar arguments freeze the
+  // key count and query position. Such a graph cannot certify later steps.
+  if (!dpos)
+    kv_regime_exact(N_kv);
   // On a sliding layer only the keys inside the window are ever
   // read, so anchoring the chunk grid at the window's chunk-aligned low bound
   // (see attn_partial) turns the whole-context grid into a window-sized one:
@@ -1293,26 +1297,20 @@ bool attention_splitkv_decode(const unsigned short *q, const unsigned short *k,
   const int eff_nc = clip ? max_nc : ((n_chunks < max_nc) ? n_chunks : max_nc);
   int hpw = 1;
   if (fuse_on && warp_ok && gqa_all > 1) {
-    // [kv-regime] On an unclipped (full-attention) layer eff_nc is the live
-    // chunk count, so the fused-head choice below -- kernel name AND gridDim.x
-    // -- is a step function of the key count. The comment on fuse_on says the
-    // fold is bit-identical to HPW=1, but "the geometry stays valid" is not the
-    // same claim as "the bytes are the same", and a default has to rest on the
-    // stronger one. Report the bracket of key counts that yields this eff_nc:
-    // the capture then lives until the chunk count moves (every chunk_kv tokens
-    // on a global layer, never on a window-clipped one, where eff_nc is a
-    // per-layer constant).
-    if (!clip) {
-      kv_regime_gt(N_kv, (eff_nc - 1) * chunk_kv);
-      if (eff_nc < max_nc)
-        kv_regime_gt(N_kv, eff_nc * chunk_kv);
-    }
+    // Record eligibility boundaries, not every intermediate chunk count.
+    // With dpos the scratch stride/grid is fixed: only the selected HPW can
+    // change the launch geometry. Clipped layers already have a fixed eff_nc.
     const int hpw_cap = (d == 512) ? 4 : 6; // register budget per head_dim
     static const int cand[] = {6, 4, 3, 2};
     for (int i = 0; i < 4; ++i) {
       const int hp = cand[i];
       if (hp > hpw_cap || (gqa_all % hp) != 0 || (HQ % hp) != 0)
         continue;
+      const int groups = HQ / hp;
+      const int needed_chunks = (min_blocks - 1) / groups + 1;
+      // An unreachable candidate cannot change before this backing's capacity.
+      if (dpos && !clip && needed_chunks <= max_nc)
+        kv_regime_gt(N_kv, (needed_chunks - 1) * chunk_kv);
       if ((long)(HQ / hp) * eff_nc < (long)min_blocks)
         continue;
       hpw = hp;

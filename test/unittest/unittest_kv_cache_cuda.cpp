@@ -7,6 +7,8 @@
  */
 #include <cmath>
 #include <cstring>
+#include <cuda_attention.h>
+#include <cuda_context.h>
 #include <cuda_context_manager.h>
 #include <cuda_fp16.h>
 #include <cuda_kv_storage.h>
@@ -286,6 +288,30 @@ TEST_F(CudaKv, valueProjectionPreservesFmaOrderAndReplaySlotGuards) {
         << i;
     }
   }
+}
+
+TEST_F(CudaKv, splitKvWithoutLivePositionRequiresExactReplayLength) {
+  (void)CudaContext::Global();
+  auto allocator = std::make_shared<CudaMemAllocator>(true);
+  auto ops = cuda::makeKvStorageOperations();
+  ASSERT_TRUE(cuda::cuda_attention_splitkv_prewarm(128, 4, 16));
+  auto q = KvStorage::create(4 * 16 * 2, allocator, ops);
+  auto k = KvStorage::create(128 * 2 * 16 * 2, allocator, ops);
+  auto v = KvStorage::create(128 * 2 * 16 * 2, allocator, ops);
+  auto o = KvStorage::create(4 * 16 * 2, allocator, ops);
+  cuda::kv_regime_begin(65);
+  const bool submitted = cuda::cuda_attention_interleaved_fp16(
+    static_cast<const unsigned short *>(q->data()),
+    static_cast<const unsigned short *>(k->data()),
+    static_cast<const unsigned short *>(v->data()),
+    static_cast<unsigned short *>(o->data()), 4, 2, 1, 65, 64, 16, 128, 0);
+  cuda::kv_regime_seal();
+  ASSERT_TRUE(submitted);
+  ops->synchronize();
+  EXPECT_TRUE(cuda::kv_regime_holds(65));
+  EXPECT_FALSE(cuda::kv_regime_holds(64));
+  EXPECT_FALSE(cuda::kv_regime_holds(66));
+  cuda::kv_regime_invalidate();
 }
 
 GTEST_API_ int main(int argc, char **argv) {

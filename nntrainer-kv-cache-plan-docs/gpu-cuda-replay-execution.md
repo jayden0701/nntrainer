@@ -78,9 +78,9 @@ KV allocation 시 workspace를 준비하고 regime 변경 후 eager prewarm을 �
 | 검증 | 결과 |
 |---|---|
 | core portable | 31 PASS |
-| CUDA storage/event/capture completion | 9 PASS |
+| CUDA storage/event/capture completion | 10 PASS |
 | 기존 실제 CUDA wrapper/graph | 7 PASS |
-| 신규 decode replay | 기본 branch 6 PASS / 분리 당시 출력층 branch 5 PASS |
+| 신규 decode replay | 기본 branch 7 PASS / 분리 당시 출력층 branch 5 PASS |
 | non-FP16 CPU 회귀 | 243 PASS + 기존 QINT4 1 SKIP |
 | CPU-only ASan/UBSan/LSan core | 31 PASS |
 
@@ -140,7 +140,8 @@ G6 1K/4K latency와 기존 FP32 host head 병목 수정 결과는
 출력층 수정 후 ordered/replay·HF·snapshot 검증도 다시 PASS했다.
 일반 CPU/legacy CUDA 경로는 유지했다.
 이후 [V slot 커널 최적화](gpu-cuda-value-slot-performance.md) 및
-[attention 선행 읽기](gpu-cuda-attention-performance.md)와 전후 byte 검증을 완료했다.
+[attention 선행 읽기](gpu-cuda-attention-performance.md),
+[재캡처 감소](gpu-cuda-recapture-execution.md)와 전후 byte 검증을 완료했다.
 Android NDK 부분 compile/link는 PASS했으나 실기기 실행은 없다.
 GitHub dispatch는422로 거절되었으며 Windows/전체 원격 CI/CodeQL은 미실행이다.
 모델·빌드·로그는 ignored local artifact이며 source/재현 문서만 커밋한다.
