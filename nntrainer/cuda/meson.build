@@ -1,4 +1,5 @@
 cuda_sources = [
+  'cuda_lmhead.cpp',
   'cuda_context_manager.cpp',
   'cuda_stream_manager.cpp',
   'cuda_buffer.cpp',

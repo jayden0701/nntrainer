@@ -36,6 +36,8 @@
 
 #if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
 #include <cuda_context_manager.h>
+#include <cuda_lmhead.h>
+#include <cuda_stream_manager.h>
 #endif
 
 /**
@@ -301,6 +303,106 @@ TEST_P(TieWordEmbeddingFp32HostHead, skip_prefill_does_not_project_n) {
 
 TEST_P(TieWordEmbeddingFp32HostHead, mismatched_weight_is_rejected_n) {
   EXPECT_THROW(runFp32HostHead(GetParam(), false, true), std::runtime_error);
+}
+
+TEST_P(TieWordEmbeddingFp32HostHead, gpu_reference_and_reuse_p) {
+  if (!nntrainer::cuda::engine_selected())
+    GTEST_SKIP() << "Requires NNTR_ENGINE=cuda";
+  constexpr unsigned int n = 11, k = 37;
+  std::vector<float> weight(n * k);
+  std::vector<_FP16> input(k), half_output(n);
+  std::vector<float> output(n);
+  for (size_t i = 0; i < weight.size(); ++i)
+    weight[i] = std::sin(static_cast<float>(i)) * .3f;
+  nntrainer::cuda::Fp32LmHead head;
+  const bool half = GetParam() == nntrainer::TensorDim::DataType::FP16;
+  for (int step = 0; step < 3; ++step) {
+    for (unsigned int j = 0; j < k; ++j)
+      input[j] =
+        static_cast<_FP16>((static_cast<int>(j % 7) - 3) * .25f * (step + 1));
+    nntrainer::cuda::Buffer device_input(step == 2 ? k * sizeof(_FP16) : 0);
+    nntrainer::cuda::Buffer device_output(step == 2 ? n * sizeof(float) : 0);
+    if (step == 2) {
+      ASSERT_TRUE(device_input.WriteData(input.data()));
+    }
+    void *destination =
+      half ? static_cast<void *>(half_output.data()) : output.data();
+    ASSERT_TRUE(head.run(
+      weight.data(),
+      step == 2 ? static_cast<const unsigned short *>(device_input.GetBuffer())
+                : reinterpret_cast<const unsigned short *>(input.data()),
+      step == 2 ? device_output.GetBuffer() : destination, n, k, half));
+    if (step == 2) {
+      ASSERT_TRUE(device_output.ReadDataRegion(
+        n * (half ? sizeof(_FP16) : sizeof(float)), destination));
+    }
+    EXPECT_EQ(head.residentBytes(),
+              n * k * sizeof(float) + k * sizeof(_FP16) + n * sizeof(float));
+    for (unsigned int row = 0; row < n; ++row) {
+      double expected = 0;
+      for (unsigned int j = 0; j < k; ++j)
+        expected += static_cast<double>(weight[row * k + j]) *
+                    static_cast<float>(input[j]);
+      if (half) {
+        expected = static_cast<float>(static_cast<_FP16>(expected));
+        output[row] = static_cast<float>(half_output[row]);
+      }
+      EXPECT_NEAR(output[row], expected, half ? .002 : .00001);
+    }
+  }
+}
+
+TEST_P(TieWordEmbeddingFp32HostHead, gpu_invalid_arguments_n) {
+  nntrainer::cuda::Fp32LmHead head;
+  float weight = 1, output = 7;
+  unsigned short input = 0;
+  EXPECT_FALSE(head.run(nullptr, &input, &output, 1, 1, false));
+  EXPECT_FALSE(head.run(&weight, nullptr, &output, 1, 1, false));
+  EXPECT_FALSE(head.run(&weight, &input, nullptr, 1, 1, false));
+  EXPECT_FALSE(head.run(&weight, &input, &output, 0, 1, false));
+  EXPECT_FALSE(head.run(&weight, &input, &output, 1, 0, false));
+  EXPECT_EQ(output, 7);
+  EXPECT_EQ(head.residentBytes(), 0u);
+}
+
+TEST_P(TieWordEmbeddingFp32HostHead, gpu_owner_releases_memory_p) {
+  if (!nntrainer::cuda::engine_selected())
+    GTEST_SKIP() << "Requires NNTR_ENGINE=cuda";
+  std::vector<float> weight(512 * 512, .25f), output(512);
+  std::vector<_FP16> input(512, static_cast<_FP16>(1));
+  auto run = [&]() {
+    nntrainer::cuda::Fp32LmHead head;
+    EXPECT_TRUE(head.run(weight.data(),
+                         reinterpret_cast<const unsigned short *>(input.data()),
+                         output.data(), 512, 512, false));
+    EXPECT_FLOAT_EQ(output[0], 128);
+  };
+  run(); // Warm the runtime and kernel cache before measuring allocations.
+  size_t before = 0, after = 0, total = 0;
+  ASSERT_EQ(cudaMemGetInfo(&before, &total), cudaSuccess);
+  for (int i = 0; i < 3; ++i)
+    run();
+  ASSERT_EQ(cudaMemGetInfo(&after, &total), cudaSuccess);
+  EXPECT_GE(after + 65536, before);
+}
+
+TEST_P(TieWordEmbeddingFp32HostHead, gpu_capture_does_not_allocate_n) {
+  if (!nntrainer::cuda::engine_selected())
+    GTEST_SKIP() << "Requires NNTR_ENGINE=cuda";
+  auto &stream = nntrainer::cuda::StreamManager::Global();
+  nntrainer::cuda::Fp32LmHead head;
+  float weight = 1, output = 7;
+  unsigned short input = 0;
+  ASSERT_TRUE(stream.beginCapture());
+  const bool projected = head.run(&weight, &input, &output, 1, 1, false);
+  cudaGraph_t graph = nullptr;
+  const bool ended = stream.endCapture(&graph);
+  if (graph)
+    cudaGraphDestroy(graph);
+  EXPECT_TRUE(ended);
+  EXPECT_FALSE(projected);
+  EXPECT_EQ(head.residentBytes(), 0u);
+  EXPECT_EQ(output, 7);
 }
 
 INSTANTIATE_TEST_SUITE_P(

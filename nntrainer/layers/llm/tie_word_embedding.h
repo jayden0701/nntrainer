@@ -25,6 +25,11 @@
 #include <common_properties.h>
 #include <layer_devel.h>
 #include <layer_impl.h>
+#include <memory>
+
+namespace nntrainer::cuda {
+class Fp32LmHead;
+}
 
 namespace nntrainer {
 
@@ -159,6 +164,7 @@ private:
   enum mode mode_;
   std::array<unsigned int, 4> weight_idx; /**< indices of the weights */
   bool skip_prefill = false;
+  std::shared_ptr<cuda::Fp32LmHead> cuda_head_; /**< owned resident head */
 
   WIN_EXPORT void finalize_embedding(nntrainer::InitLayerContext &context);
   WIN_EXPORT void finalize_lmhead(nntrainer::InitLayerContext &context);

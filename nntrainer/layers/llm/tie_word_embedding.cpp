@@ -38,6 +38,7 @@
 #if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
 #include <cuda_context_manager.h>
 #include <cuda_fc_qs4cx.h>
+#include <cuda_lmhead.h>
 #include <cuda_runtime.h>
 #include <cuda_stream_manager.h>
 
@@ -126,6 +127,7 @@ TieWordEmbedding::TieWordEmbedding() :
 }
 
 void TieWordEmbedding::finalize(nntrainer::InitLayerContext &context) {
+  cuda_head_.reset();
   if (!std::get<nntrainer::props::SkipPrefill>(*layer_impl_props).empty())
     skip_prefill =
       std::get<nntrainer::props::SkipPrefill>(*layer_impl_props).get();
@@ -486,6 +488,8 @@ void TieWordEmbedding::incremental_forwarding_embedding(
 void TieWordEmbedding::incremental_forwarding_lmhead(
   nntrainer::RunLayerContext &context, unsigned int from, unsigned int to,
   bool training) {
+  if (training)
+    cuda_head_.reset();
   bool is_prefill = !from;
   if (skip_prefill && is_prefill)
     return;
@@ -802,13 +806,30 @@ void TieWordEmbedding::incremental_forwarding_lmhead(
         return (fc && std::atoi(fc) != 0) ? 1 : 0;
       }();
       bool gpu_done = false;
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+      const char *cuda_head = std::getenv("NNTR_CUDA_FP32_HEAD");
+      if (!training && cuda::engine_selected() &&
+          (!cuda_head || cuda_head[0] != '0') &&
+          input_step.getDataType() == TensorDim::DataType::FP16 &&
+          input_step.channel() == 1 && weight.width() == hidden_size &&
+          hidden_step.width() == vocab_size && hidden_step.height() == 1 &&
+          hidden_step.channel() == 1 &&
+          !cuda::StreamManager::Global().isCapturing()) {
+        if (!cuda_head_)
+          cuda_head_ = std::make_shared<cuda::Fp32LmHead>();
+        gpu_done = cuda_head_->run(
+          weight.getData<float>(),
+          reinterpret_cast<const unsigned short *>(input_step.getData<_FP16>()),
+          hidden_step.getData<char>(), vocab_size, hidden_size, out_fp16);
+      }
+#endif
       // lmhead_gemv_fp32w_cl is only declared/defined under ENABLE_OPENCL
       // (blas_kernels.h is included behind that guard above). Requiring
       // ENABLE_OPENCL here too keeps the FP16-but-no-OpenCL build (e.g. the
       // CPU/HTP libnntrainer) compiling: gpu_done stays false and the host
       // lm_head path below runs.
 #if defined(ENABLE_FP16) && defined(ENABLE_OPENCL)
-      if (lmhead_gpu_fp32 != 0 &&
+      if (!gpu_done && lmhead_gpu_fp32 != 0 &&
           input_step.getDataType() == nntrainer::TensorDim::DataType::FP16 &&
           weight.width() == hidden_size && hidden_step.width() == vocab_size) {
         std::vector<float> logits_f32(vocab_size);
@@ -939,6 +960,7 @@ void TieWordEmbedding::read(
   nntrainer::TensorDim::DataType definedWeightDataType, bool fsu,
   size_t start_offset, bool read_from_offset, int file_fd) {
 
+  cuda_head_.reset();
   // Only read when mode is embedding
   if (mode_ == mode::embedding) {
     for (unsigned int i = 0; i < context.getNumWeights(); ++i) {
@@ -960,6 +982,7 @@ void TieWordEmbedding::read(
   nntrainer::TensorDim::DataType definedWeightDataType, bool fsu,
   size_t start_offset, bool read_from_offset, int file_fd) {
 
+  cuda_head_.reset();
   // Only read when mode is embedding
   if (mode_ == mode::embedding) {
     for (unsigned int i = 0; i < context.getNumWeights(); ++i) {
