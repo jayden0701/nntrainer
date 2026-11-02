@@ -18,6 +18,7 @@
 #include <compute_ops.h>
 #include <cpu_ops_table.h>
 #include <env_compat.h>
+#include <kv_cache/kv_cache_manager.h>
 #include <nntrainer_log.h>
 
 #include <cstdio>
@@ -190,6 +191,9 @@ public:
     // Host gelu fallback: sync first so the host read of GPU-produced gate/up
     // is coherent under NNTR_CUDA_ASYNC (no-op in sync mode).
     cuda::StreamManager::Global().finishIfAsync();
+    if (cuda::StreamManager::Global().isCapturing() &&
+        kv::KvStepScope::deviceStep())
+      throw std::runtime_error("Core KV capture cannot execute host fallback");
     CpuComputeOps::geglu(in1, in2, out, active_rows, row_offset);
   }
 
@@ -219,6 +223,9 @@ public:
     }
 #endif
     cuda::StreamManager::Global().finishIfAsync();
+    if (cuda::StreamManager::Global().isCapturing() &&
+        kv::KvStepScope::deviceStep())
+      throw std::runtime_error("Core KV capture cannot execute host fallback");
     CpuComputeOps::swiglu(in1, in2, out, active_rows, row_offset);
   }
 
@@ -661,6 +668,9 @@ public:
         (output.getMemoryData() &&
          !output.getMemoryData()->isHostAddressable()))
       throw std::runtime_error("CUDA FC kernel declined device-only operands");
+    if (cuda::StreamManager::Global().isCapturing() &&
+        kv::KvStepScope::deviceStep())
+      throw std::runtime_error("Core KV capture cannot execute host fallback");
     CpuComputeOps::fc(input, weight, output);
   }
 };

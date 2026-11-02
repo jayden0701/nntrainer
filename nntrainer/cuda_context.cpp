@@ -40,6 +40,7 @@
 // graph API (cuda_context.h already pulls in the stream/context managers).
 #include <cstdio>
 #include <cstdlib>
+#include <cuda_attention.h>
 #include <cuda_runtime.h>
 #include <kv_cache/kv_cache_manager.h>
 #include <neuralnet.h>
@@ -945,23 +946,43 @@ sharedConstTensors CudaContext::runDecode(NeuralNetwork &nn, unsigned int from,
 
   if (!captured && prefill_graph && !nn.isPrefillCaptureDisabled() &&
       from == 0 && (to - from) > 1) {
+    if (core_graph && !cuda::cuda_attention_prefill_prewarm(
+                        static_cast<int>(to - from), static_cast<int>(to)))
+      throw std::runtime_error(
+        "Core prefill attention workspace preparation failed");
     auto &sm = nntrainer::cuda::StreamManager::Global();
     if (sm.beginCapture()) {
       KvCaptureGuard capture_guard;
-      out = nn.incremental_forwarding(from, to, input, label, false);
-      cudaGraph_t graph = nullptr;
-      if (sm.endCapture(&graph) && graph != nullptr) {
+      struct PrefillGraph {
+        cudaGraph_t graph = nullptr;
         cudaGraphExec_t exec = nullptr;
-        if (cudaGraphInstantiate(&exec, graph, 0) == cudaSuccess) {
-          cudaGraphLaunch(exec, sm.GetStream());
-          cudaStreamSynchronize(sm.GetStream());
-          cudaGraphExecDestroy(exec);
-          captured = true;
+        ~PrefillGraph() {
+          if (exec)
+            cudaGraphExecDestroy(exec);
+          if (graph)
+            cudaGraphDestroy(graph);
         }
-        cudaGraphDestroy(graph);
+      } prefill;
+      out = nn.incremental_forwarding(from, to, input, label, false);
+      if (sm.endCapture(&prefill.graph) && prefill.graph != nullptr) {
+        const auto status =
+          cudaGraphInstantiate(&prefill.exec, prefill.graph, 0);
+        if (status == cudaSuccess) {
+          if (core_graph)
+            kv::KvStepScope::capturedSubmission();
+          graphCheck(cudaGraphLaunch(prefill.exec, sm.GetStream()));
+          graphCheck(cudaStreamSynchronize(sm.GetStream()));
+          captured = true;
+        } else if (core_graph) {
+          throw std::runtime_error("Core KV prefill instantiation failed");
+        }
+      } else if (core_graph) {
+        throw std::runtime_error("Core KV prefill stream capture failed");
       } else {
         cudaGetLastError();
       }
+    } else if (core_graph) {
+      throw std::runtime_error("Core KV prefill capture could not begin");
     }
   }
 

@@ -329,7 +329,8 @@ void KVCacheManager::allocateCpu(
         (nntr_env_on("NNTR_CUDA_KV_GRAPH") &&
          std::getenv("NNTR_CUDA_KV_DIRECT") &&
          !nntr_env_on("NNTR_CUDA_KV_DIRECT")) ||
-        nntr_env_on("NNTR_CUDA_PREFILL_GRAPH") ||
+        (nntr_env_on("NNTR_CUDA_PREFILL_GRAPH") &&
+         !nntr_env_on("NNTR_CUDA_KV_GRAPH")) ||
         !nntr_env_on("NNTR_CUDA_ATTN") || !nntr_env_on("NNTR_CUDA_ROPE") ||
         !nntr_env_on("NNTR_CUDA_QKNORM") || !nntr_env_on("NNTR_CUDA_ELTWISE"))
       throw std::invalid_argument(

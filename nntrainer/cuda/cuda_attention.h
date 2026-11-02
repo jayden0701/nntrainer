@@ -85,6 +85,14 @@ bool cuda_attention_splitkv_prewarm(int max_seq_len, int max_hq,
                                     int max_head_dim);
 
 /**
+ * @brief Prepare reusable FP16 GEMM-attention score scratch before capture.
+ * @param query_rows Number of query rows in the prefill step.
+ * @param kv_len Number of keys in that step.
+ * @return false on invalid dimensions, overflow, capture or allocation failure.
+ */
+bool cuda_attention_prefill_prewarm(int query_rows, int kv_len);
+
+/**
  * @brief Model-teardown hook: drop every lazily-latched attention cache in this
  *        translation unit -- the host-pointer-keyed device KV mirror, the
  *        split-KV decode scratch, the GEMM-attention score scratch, and the

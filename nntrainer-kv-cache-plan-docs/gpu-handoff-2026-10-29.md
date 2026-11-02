@@ -5,13 +5,15 @@
 
 ## 현재 상태
 
-최신 CUDA 후속은 [불필요한 decode 재캡처 감소](gpu-cuda-recapture-execution.md)다.
+최신 CUDA 후속은 [초기 prefill capture 연결](gpu-cuda-prefill-execution.md)이다.
+KV와 독립적인 기존 CUDA 개선은 [변경 분류](gpu-cuda-change-audit.md)에 정리했다.
+[불필요한 decode 재캡처 감소](gpu-cuda-recapture-execution.md)도 완료했다.
 [attention 선행 읽기·profiling](gpu-cuda-attention-performance.md)도 완료했다.
 그 전 [V slot 커널 최적화](gpu-cuda-value-slot-performance.md)도 완료했다.
 OpenCL은 다른 원격 환경의 담당 범위로 이 후속에서 수정하지 않았다.
 
 처음에는 계획만 작성했으나 후속 구현·테스트 승인에 따라
-**CUDA eager Qwen3 A+B 및 G6 decode capture/replay**까지 구현하고 현재 PC에서 검증했다.
+**CUDA eager Qwen3 A+B, G6 decode capture/replay, 초기 prefill one-shot capture**까지 구현하고 현재 PC에서 검증했다.
 G6 성능 비교와 기존 host 출력층의 가중치 변환 비용 개선도 완료했다.
 [성능·플랫폼 확인 기록](gpu-cuda-replay-performance.md)을 먼저 확인한다.
 Android 기기는 없다. 최신 결과는 [G6 실행 기록](gpu-cuda-replay-execution.md)과 [eager 실행 기록](gpu-cuda-execution.md)에 있다.
@@ -20,7 +22,7 @@ Android 기기는 없다. 최신 결과는 [G6 실행 기록](gpu-cuda-replay-ex
 
 1. [G6 decode replay 실행 기록](gpu-cuda-replay-execution.md)
 2. [eager 실행 기록](gpu-cuda-execution.md)과 [단계별 계획](gpu-extension-plan.md):
-   G0–G5 및 scoped G6 decode 검증 완료, prefill capture/OpenCL/Android 후속
+   G0–G5, scoped G6 decode 및 초기 prefill capture 검증; OpenCL/Android 후속
 3. 초기 [분석](gpu-extension-analysis.md)은 구현 전 기록
 4. 필요 시 [기존 CPU 인계](handoff-2026-10-29.md)
 
@@ -60,13 +62,18 @@ MemAllocator vtable은 optional AllocationReporter로 보존했다.
 `usesCoreStorage()`는 CPU/CUDA 공통, `usesCpuStorage()`는 CPU만 뜻한다.
 private cpu_cache_ 이름은 유지했다.
 
-prefill capture, 다중 stream/async publication, managed coherence,
+prefill graph 재사용/후속 chunk capture, 다중 stream/async publication, managed coherence,
 OpenCL/Android/NPU, 실제 모델 CPU↔GPU 전환, INT8/alias/hybrid는 후속이다.
 pattern handoff 결과를 이들 기능의 증거로 사용하지 않는다.
 
 ## 검증과 artifact
 
 G6 최신 build는 `build-kv-gpu-cuda-g6`다.
+초기 prefill 연결 후 CUDA71 PASS(SKIP0), 이번 CUDA-off CPU205 PASS+기존1 SKIP,
+Qwen correctness PASS, prefill off/on logits504쌍 및 snapshot bytes 동일을 확인했다.
+새 artifact는 `validation/prefill/summary.json`,
+`qwen-capture/manifest.json`, `prefill-toggle-comparison.json`이다.
+아래 core/storage/replay 수치와 CPU243은 이전 재캡처 단계의 검증 기록이다.
 core31/storage10/eager graph7/replay7 PASS(분리 당시 출력층 branch는 storage8/replay5 PASS), CPU243 PASS+기존1 SKIP,
 sanitizer31 PASS다. 최신 Qwen fixed-token/실제 greedy/HF/snapshot/2-turn 검증과
 실제 graph launch audit가 모두 PASS다.
@@ -113,7 +120,7 @@ candidate observer는 현재 전체 header/runtime과 맞춰 빌드한다.
    attention/split-KV 분리 profiling과 짧은 grid 선행 읽기도 완료했다.
    원격 CI 복구 후 전체 Android/Windows build 검증은 별도로 남아 있다.
    불필요한 chunk별 재캡처 감소와 fusion on/off55개 테스트씩도 완료했다.
-   prefill capture/다중 stream/추가 kernel 최적화는 후속이다.
+   초기 prefill one-shot capture는 연결했다. graph 재사용/후속 chunk capture/다중 stream은 후속이다.
 4. 최적화 시 현재 eager output/copy/completion 결과를 유지한다.
 5. host-mapped CUDA attention 전환은 독립 capability gate로 진행한다.
    OpenCL 작업은 다른 원격 환경의 범위로 유지한다.

@@ -15,6 +15,8 @@
 > CUDA V slot 커널 후속 최적화와 현재 검증은 [실행 기록](gpu-cuda-value-slot-performance.md)을 참고한다.
 > 이후 [CUDA attention 선행 읽기·profiling](gpu-cuda-attention-performance.md)과
 > [불필요한 decode 재캡처 감소](gpu-cuda-recapture-execution.md)도 검증했다.
+> [초기 prefill capture 연결](gpu-cuda-prefill-execution.md)도 구현했다.
+> KV 도입과 독립적인 기존 CUDA 개선은 [변경 분류](gpu-cuda-change-audit.md)를 참고한다.
 > OpenCL·Android GPU·실제 모델 CPU↔GPU 전환은 후속이다.
 
 > Linux 실행 기록: [환경 검토와 단계별 검증](linux-cpu-execution.md).

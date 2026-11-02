@@ -33,6 +33,10 @@ public:
                           causallm::ModelType::CAUSALLM),
     CausalLMTestAdapter(cfg, generation, config) {}
 
+  void prefillCapture(bool enabled) {
+    auto *nn = dynamic_cast<nntrainer::NeuralNetwork *>(this->model.get());
+    nn->setPrefillCaptureDisabled(!enabled);
+  }
   void replayFeeds(bool enabled) {
     auto *nn = dynamic_cast<nntrainer::NeuralNetwork *>(this->model.get());
     nn->setGraphReplayFeedNodes(enabled ? std::vector<std::string>{"embedding0"}
@@ -48,7 +52,8 @@ protected:
   }
   std::unique_ptr<Model> makeModel(const std::string &name,
                                    unsigned int capacity = 8,
-                                   unsigned int head_dim = 16) {
+                                   unsigned int head_dim = 16,
+                                   unsigned int initial_rows = 4) {
     auto files = causallm_test::makeTinyCausalLMFiles("CudaKv", name, "FP16");
     causallm::json cfg = {{"architectures", {"Qwen3ForCausalLM"}},
                           {"bos_token_id", 0},
@@ -71,6 +76,7 @@ protected:
     auto config =
       causallm_test::makeTinyNntrainerConfig(files.tokenizer_path, dtype);
     config["max_seq_len"] = capacity;
+    config["init_seq_len"] = initial_rows;
     auto result = std::make_unique<Model>(cfg, generation, config);
     result->initializeModel();
     result->forEachLayer([](ml::train::Layer &layer,
@@ -381,6 +387,9 @@ TEST_F(CudaKvGraph, replayAdmissionRequiresCoreAndCoherentSwitches) {
   }
   {
     causallm_test::ScopedEnv prefill("NNTR_CUDA_PREFILL_GRAPH", "1");
+    causallm_test::ScopedEnv unordered("NNTR_CUDA_KV_GRAPH", "0");
+    causallm_test::ScopedEnv eager_graph("NNTR_CUDA_GRAPH", "0");
+    causallm_test::ScopedEnv eager_slots("NNTR_CUDA_M2B", "0");
     EXPECT_THROW(cache.allocate(1, 1, 16, 2, 16), std::invalid_argument);
   }
   EXPECT_FALSE(cache.isAllocated());
@@ -666,4 +675,138 @@ TEST_F(CudaKvGraph, replayRegimeMatchesActualSplitKvLaunchGeometry) {
     }
     nntrainer::cuda::kv_regime_invalidate();
   }
+}
+
+TEST_F(CudaKvGraph, prefillColdCaptureMatchesEagerAndContinuation) {
+  std::vector<std::vector<float>> golden;
+  std::vector<unsigned short> keys, values;
+  {
+    auto captured = makeModel("prefill_cold", 32, 128);
+    golden.push_back(captured->stepLogitsFromIds({1, 4, 2}, 0));
+    EXPECT_EQ(captured->cacheManager().coreStats().graph_captures, 1u);
+    golden.push_back(captured->stepLogitsFromIds({3, 5}, 3));
+    EXPECT_EQ(captured->cacheManager().coreStats().graph_captures, 1u);
+    for (unsigned int pos = 5; pos < 11; ++pos)
+      golden.push_back(captured->stepLogitsFromIds({pos % 20 + 1}, pos));
+    auto &cache = captured->cacheManager();
+    EXPECT_EQ(cache.getPosition(), 11u);
+    EXPECT_EQ(cache.coreStats().append_copy_bytes, 0u);
+    keys.resize(cache.getKeyCache(0).size());
+    values.resize(keys.size());
+    ASSERT_EQ(cudaMemcpy(keys.data(), cache.getKeyCache(0).getData<char>(),
+                         keys.size() * 2, cudaMemcpyDeviceToHost),
+              cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(values.data(), cache.getValueCache(0).getData<char>(),
+                         values.size() * 2, cudaMemcpyDeviceToHost),
+              cudaSuccess);
+  }
+  auto eager = makeModel("prefill_eager", 32, 128);
+  eager->prefillCapture(false);
+  eager->replayFeeds(false);
+  EXPECT_EQ(golden[0], eager->stepLogitsFromIds({1, 4, 2}, 0));
+  EXPECT_EQ(golden[1], eager->stepLogitsFromIds({3, 5}, 3));
+  for (unsigned int pos = 5; pos < 11; ++pos)
+    EXPECT_EQ(golden[pos - 3], eager->stepLogitsFromIds({pos % 20 + 1}, pos))
+      << pos;
+  std::vector<unsigned short> actual(keys.size());
+  ASSERT_EQ(cudaMemcpy(actual.data(),
+                       eager->cacheManager().getKeyCache(0).getData<char>(),
+                       actual.size() * 2, cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  EXPECT_EQ(actual, keys);
+  ASSERT_EQ(cudaMemcpy(actual.data(),
+                       eager->cacheManager().getValueCache(0).getData<char>(),
+                       actual.size() * 2, cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  EXPECT_EQ(actual, values);
+  EXPECT_EQ(eager->cacheManager().coreStats().graph_captures, 0u);
+}
+
+TEST_F(CudaKvGraph, prefillResetAndSnapshotRestoreMatchFresh) {
+  auto model = makeModel("prefill_reset", 32, 128);
+  const auto initial = model->stepLogitsFromIds({1, 4, 2}, 0);
+  auto files =
+    causallm_test::makeTinyCausalLMFiles("CudaKv", "prefill_snapshot", "FP16");
+  const auto path = (files.dir / "kv.bin").string();
+  auto &cache = model->cacheManager();
+  cache.save(path, 3);
+  const auto continuation = model->stepLogitsFromIds({3, 5}, 3);
+  const auto decode = model->stepLogitsFromIds({2}, 5);
+  EXPECT_EQ(cache.load(path, 3), 3u);
+  EXPECT_EQ(continuation, model->stepLogitsFromIds({3, 5}, 3));
+  EXPECT_EQ(decode, model->stepLogitsFromIds({2}, 5));
+  for (int repeat = 0; repeat < 3; ++repeat) {
+    const auto captures = cache.coreStats().graph_captures;
+    cache.reset();
+    EXPECT_EQ(initial, model->stepLogitsFromIds({1, 4, 2}, 0));
+    EXPECT_EQ(cache.coreStats().graph_captures, captures + 1);
+    EXPECT_EQ(continuation, model->stepLogitsFromIds({3, 5}, 3));
+    EXPECT_EQ(decode, model->stepLogitsFromIds({2}, 5));
+    EXPECT_EQ(cache.getPosition(), 6u);
+  }
+  EXPECT_EQ(cache.coreStats().append_copy_bytes, 0u);
+}
+
+TEST_F(CudaKvGraph, prefillHostFallbackFailsBeforePublicationAndRetries) {
+  auto model = makeModel("prefill_failure", 32, 128);
+  nntrainer::Tensor *gamma = nullptr;
+  model->forEachLayer(
+    [&](ml::train::Layer &layer, nntrainer::RunLayerContext &context, void *) {
+      if (!gamma && causallm_test::isRmsNormLayerType(layer.getType()))
+        gamma = &context.getWeight(0);
+    });
+  ASSERT_NE(gamma, nullptr);
+  auto saved = *gamma;
+  *gamma = saved.clone(ml::train::TensorDim::DataType::FP32);
+  EXPECT_THROW(model->stepLogitsFromIds({1, 4, 2}, 0), std::runtime_error);
+  auto &cache = model->cacheManager();
+  EXPECT_EQ(cache.getPosition(), 0u);
+  EXPECT_EQ(cache.coreStats().graph_captures, 0u);
+  EXPECT_FALSE(nntrainer::cuda::StreamManager::Global().isCapturing());
+  *gamma = saved;
+  EXPECT_NO_THROW(model->stepLogitsFromIds({1, 4, 2}, 0));
+  EXPECT_EQ(cache.getPosition(), 3u);
+  EXPECT_EQ(cache.coreStats().graph_captures, 1u);
+  EXPECT_NO_THROW(model->stepLogitsFromIds({3}, 3));
+  EXPECT_EQ(cache.getPosition(), 4u);
+}
+
+TEST_F(CudaKvGraph, prefillWideInitialChunkMatchesEager) {
+  std::vector<unsigned int> prompt(128);
+  for (unsigned int i = 0; i < prompt.size(); ++i)
+    prompt[i] = i % 20 + 1;
+  std::vector<float> expected, continuation;
+  std::vector<unsigned short> keys, values;
+  {
+    auto captured = makeModel("prefill_wide", 160, 128, 128);
+    expected = captured->stepLogitsFromIds(prompt, 0);
+    auto &cache = captured->cacheManager();
+    EXPECT_EQ(cache.coreStats().graph_captures, 1u);
+    continuation = captured->stepLogitsFromIds({3}, 128);
+    keys.resize(cache.getKeyCache(0).size());
+    values.resize(keys.size());
+    ASSERT_EQ(cudaMemcpy(keys.data(), cache.getKeyCache(0).getData<char>(),
+                         keys.size() * 2, cudaMemcpyDeviceToHost),
+              cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(values.data(), cache.getValueCache(0).getData<char>(),
+                         values.size() * 2, cudaMemcpyDeviceToHost),
+              cudaSuccess);
+  }
+  auto eager = makeModel("prefill_wide_eager", 160, 128, 128);
+  eager->prefillCapture(false);
+  eager->replayFeeds(false);
+  EXPECT_EQ(expected, eager->stepLogitsFromIds(prompt, 0));
+  EXPECT_EQ(continuation, eager->stepLogitsFromIds({3}, 128));
+  auto &cache = eager->cacheManager();
+  EXPECT_EQ(cache.getPosition(), 129u);
+  EXPECT_EQ(cache.coreStats().graph_captures, 0u);
+  std::vector<unsigned short> actual(keys.size());
+  ASSERT_EQ(cudaMemcpy(actual.data(), cache.getKeyCache(0).getData<char>(),
+                       actual.size() * 2, cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  EXPECT_EQ(actual, keys);
+  ASSERT_EQ(cudaMemcpy(actual.data(), cache.getValueCache(0).getData<char>(),
+                       actual.size() * 2, cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  EXPECT_EQ(actual, values);
 }

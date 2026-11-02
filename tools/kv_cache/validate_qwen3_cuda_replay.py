@@ -9,9 +9,9 @@ fixed-token requests. Does not download, build, or alter model weights.
 import argparse
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
+from pathlib import Path
 
 from validate_qwen3_cuda import compare, digest, save
 
@@ -27,6 +27,10 @@ def main():
         help="passed G5 validation directory containing rendered requests",
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--prefill-capture", action="store_true",
+        help="enable initial prefill capture in ordered/replay profiles",
+    )
     args = parser.parse_args()
     import numpy as np
 
@@ -108,6 +112,7 @@ def main():
         "runs": [],
         "comparisons": [],
         "scope": "44 fixed tokens; chunk8; threshold64; two live/restored turns",
+        "prefill_capture": args.prefill_capture,
     }
     linked = subprocess.check_output(["ldd", str(args.probe.resolve())], text=True)
     (output / "ldd.txt").write_text(linked)
@@ -127,6 +132,9 @@ def main():
             env,
             NNTR_CUDA_KV_GRAPH="0" if profile == "classic" else "1",
             NNTR_CUDA_ASYNC="0" if profile == "classic" else "1",
+            NNTR_CUDA_PREFILL_GRAPH=(
+                "1" if args.prefill_capture and profile != "classic" else "0"
+            ),
             **{
                 name: "1" if profile == "replay" else "0"
                 for name in (
@@ -158,12 +166,16 @@ def main():
                     str(request_file),
                     str(report_file),
                 ],
+                check=False,
                 env=current,
                 stdout=stdout,
                 stderr=stderr,
                 timeout=600,
             )
-        row = {"profile": profile, "exit_code": result.returncode}
+        row = {
+            "profile": profile, "exit_code": result.returncode,
+            "environment": {k: v for k, v in current.items() if k.startswith("NNTR_")},
+        }
         manifest["runs"].append(row)
         save(output / "manifest.json", manifest)
         if result.returncode:
@@ -180,6 +192,9 @@ def main():
         )
         row["trace"] = rows
         trace_pass = bool(rows) and all(int(r[0]) == 0 for r in rows)
+        if args.prefill_capture and profile != "classic":
+            row["initial_prefill_captured"] = bool(rows) and int(rows[0][1]) == 1
+            trace_pass &= row["initial_prefill_captured"]
         if profile == "replay":
             trace_pass &= any(int(r[1]) > 1 and int(r[2]) > 0 for r in rows)
             row["threshold_recapture"] = "retired at kv=65" in trace
@@ -237,6 +252,7 @@ def main():
                 env,
                 NNTR_CUDA_KV_GRAPH="1",
                 NNTR_CUDA_ASYNC="1",
+                NNTR_CUDA_PREFILL_GRAPH="1" if args.prefill_capture else "0",
                 **{
                     name: "1" if profile == "replay" else "0"
                     for name in (
@@ -258,6 +274,7 @@ def main():
                         str(request_file),
                         str(report_file),
                     ],
+                    check=False,
                     env=current,
                     stdout=stdout,
                     stderr=stderr,

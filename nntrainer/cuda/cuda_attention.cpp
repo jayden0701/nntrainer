@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cuda_runtime.h>
 
+#include <limits>
 #include <mutex>
 #include <unordered_map>
 
@@ -1418,6 +1419,28 @@ bool attention_splitkv_decode(const unsigned short *q, const unsigned short *k,
 float *g_scores = nullptr;
 size_t g_scores_cap = 0;
 std::mutex g_ga_mtx;
+int gemm_attention_mode() {
+  static const int mode = []() {
+    const char *e = std::getenv("NNTR_CUDA_GEMM_ATTN");
+    if (e == nullptr || e[0] == '\0')
+      return -1;
+    return std::max(0, atoi(e));
+  }();
+  return mode;
+}
+bool ensure_gemm_scores(size_t need) {
+  if (need <= g_scores_cap)
+    return true;
+  if (g_scores)
+    cudaFree(g_scores);
+  if (cudaMalloc(&g_scores, need * sizeof(unsigned short)) != cudaSuccess) {
+    g_scores = nullptr;
+    g_scores_cap = 0;
+    return false;
+  }
+  g_scores_cap = need;
+  return true;
+}
 bool attention_gemm_prefill_fp16(const unsigned short *q,
                                  const unsigned short *k,
                                  const unsigned short *v, unsigned short *o,
@@ -1434,16 +1457,8 @@ bool attention_gemm_prefill_fp16(const unsigned short *q,
     return false;
   // scratch scores [N_q, N_kv] fp16 reused across heads (heads run serially).
   const size_t need = (size_t)N_q * N_kv;
-  if (need > g_scores_cap) {
-    if (g_scores)
-      cudaFree(g_scores);
-    if (cudaMalloc(&g_scores, need * sizeof(unsigned short)) != cudaSuccess) {
-      g_scores = nullptr;
-      g_scores_cap = 0;
-      return false;
-    }
-    g_scores_cap = need;
-  }
+  if (!ensure_gemm_scores(need))
+    return false;
   auto *scores = reinterpret_cast<unsigned short *>(g_scores);
   const int gqa = HQ / HKV;
   const int HD_Q = HQ * d, HD_KV = HKV * d;
@@ -1673,6 +1688,23 @@ bool cuda_attention_splitkv_prewarm(int max_seq_len, int max_hq,
   return true;
 }
 
+bool cuda_attention_prefill_prewarm(int query_rows, int kv_len) {
+  if (query_rows <= 0 || kv_len <= 0 || StreamManager::Global().isCapturing())
+    return false;
+  // Reserve the full-attention upper bound only if a layer can select GEMM.
+  // Short discrete-GPU prefills use block-Q and need no quadratic workspace.
+  const int mode = gemm_attention_mode();
+  if (mode == 0 || (mode != 1 && !ContextManager::Global().isIntegrated() &&
+                    kv_len < (mode > 1 ? mode : 4096)))
+    return true;
+  if (size_t(query_rows) > std::numeric_limits<size_t>::max() /
+                             sizeof(unsigned short) / size_t(kv_len))
+    return false;
+  ContextManager::Global().EnsureCurrent();
+  std::lock_guard<std::mutex> lock(g_ga_mtx);
+  return ensure_gemm_scores(size_t(query_rows) * size_t(kv_len));
+}
+
 bool cuda_attention_interleaved_fp16(const unsigned short *q_fp16,
                                      const unsigned short *k_fp16,
                                      const unsigned short *v_fp16,
@@ -1739,13 +1771,7 @@ bool cuda_attention_interleaved_fp16(const unsigned short *q_fp16,
   // kill switch (block-Q everywhere, the pre-lever behaviour byte-for-byte);
   // =1 -> force ON for every layer and every shape (the historical opt-in);
   // =N>1 -> default gating with the long-context threshold set to N keys.
-  static const int gemm_attn_mode = []() {
-    const char *e = std::getenv("NNTR_CUDA_GEMM_ATTN");
-    if (e == nullptr || e[0] == '\0')
-      return -1; // default
-    const int v = atoi(e);
-    return (v <= 0) ? 0 : v; // 0 = off, 1 = force, N>1 = threshold
-  }();
+  const int gemm_attn_mode = gemm_attention_mode();
   static const bool integrated_gpu = ContextManager::Global().isIntegrated();
   // window<=0 or window>=N_kv -> no sliding mask (full causal); mha passes
   // INT_MAX for global layers. Hoisted here because the GEMM default keys off

@@ -634,7 +634,7 @@ if get_option('enable-test')
     )
     test('unittest_kv_cache_cuda_graph', cuda_kv_graph,
       args: ['--gtest_output=xml:@0@/unittest_kv_cache_cuda_graph.xml'.format(meson.build_root()),
-             '--gtest_filter=-CudaKvGraph.replay*'],
+             '--gtest_filter=-CudaKvGraph.replay*:CudaKvGraph.prefill*'],
       env: ['NNTR_ENGINE=cuda', 'NNTR_CUDA_KV_CORE=1', 'NNTR_CUDA_KV_DEV=1',
             'NNTR_CUDA_HOST_MAPPED=1', 'NNTR_CUDA_ATTN=1', 'NNTR_CUDA_ROPE=1',
             'NNTR_CUDA_QKNORM=1', 'NNTR_CUDA_ELTWISE=1',
@@ -657,6 +657,28 @@ if get_option('enable-test')
       timeout: 180,
       suite: 'unittests',
     )
+
+    foreach gemm_attention: ['0', '1']
+      foreach decode_graph: ['0', '1']
+        prefill_test_name = decode_graph == '1' ? 'unittest_kv_cache_cuda_prefill_decode' : 'unittest_kv_cache_cuda_prefill'
+        if gemm_attention == '1'
+          prefill_test_name += '_gemm'
+        endif
+        test(prefill_test_name, cuda_kv_graph,
+          args: ['--gtest_output=xml:@0@/@1@.xml'.format(meson.build_root(), prefill_test_name),
+                 '--gtest_filter=CudaKvGraph.prefill*'],
+          env: ['NNTR_ENGINE=cuda', 'NNTR_CUDA_KV_CORE=1', 'NNTR_CUDA_KV_GRAPH=1',
+                'NNTR_CUDA_KV_DEV=1', 'NNTR_CUDA_HOST_MAPPED=1',
+                'NNTR_CUDA_ATTN=1', 'NNTR_CUDA_ROPE=1', 'NNTR_CUDA_QKNORM=1',
+                'NNTR_CUDA_ELTWISE=1', 'NNTR_CUDA_DEV_ACT=0', 'NNTR_CUDA_ASYNC=1',
+                'NNTR_CUDA_DECODE_GRAPH=' + decode_graph,
+                'NNTR_CUDA_GRAPH=' + decode_graph, 'NNTR_CUDA_M2B=' + decode_graph,
+                'NNTR_CUDA_PREFILL_GRAPH=1', 'NNTR_CUDA_GEMM_ATTN=' + gemm_attention, 'NNTR_CUDA_GRAPH_DBG=1'],
+          timeout: 180,
+          suite: 'unittests',
+        )
+      endforeach
+    endforeach
 
   endif
 

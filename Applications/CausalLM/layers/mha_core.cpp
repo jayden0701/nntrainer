@@ -1248,6 +1248,22 @@ void MHACoreLayer::finalize(nntrainer::InitLayerContext &context) {
   }
 #endif // ENABLE_OPENCL (OHWI mirror prebuild)
 #endif
+
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1 && defined(ENABLE_FP16)
+  if (nntr_engine_env() == "cuda" && nntr_env_on("NNTR_CUDA_KV_GRAPH") &&
+      nntr_env_on("NNTR_CUDA_PREFILL_GRAPH") &&
+      context.getActivationDataType() == ml::train::TensorDim::DataType::FP16) {
+    // Capture cannot allocate/upload the first RoPE LUT. Prepare the existing
+    // shared tables at model initialization, before a KV step is reserved.
+    const std::lock_guard<std::mutex> lock(rope_init_mtx);
+    precompute_freqs(head_dim, rope_lut_positions(), theta, true);
+    cached_freqs_cos_fp16 = freqs_cos_fp16;
+    cached_freqs_sin_fp16 = freqs_sin_fp16;
+    if (!rope_lut_device(cached_freqs_cos_fp16, head_dim / 2) ||
+        !rope_lut_device(cached_freqs_sin_fp16, head_dim / 2))
+      throw std::runtime_error("Core prefill RoPE table preparation failed");
+  }
+#endif
 }
 
 /************************************************************** */

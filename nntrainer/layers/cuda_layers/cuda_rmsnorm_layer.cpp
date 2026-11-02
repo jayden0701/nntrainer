@@ -22,6 +22,7 @@
 #include <cuda_runtime.h>
 #include <cuda_stream_manager.h>
 
+#include <kv_cache/kv_cache_manager.h>
 #include <layer_context.h>
 #include <nntrainer_error.h>
 
@@ -119,6 +120,9 @@ void rmsnorm_dispatch(const Tensor &in, const Tensor &gamma, Tensor &out,
     }
   }
 #endif
+  if (cuda::StreamManager::Global().isCapturing() &&
+      kv::KvStepScope::deviceStep())
+    throw std::runtime_error("Core KV capture requires GPU RMSNorm");
   // Host rmsnorm fallback: sync first so the host read of GPU-produced input is
   // coherent under NNTR_CUDA_ASYNC (no-op in sync mode).
   cuda::StreamManager::Global().finishIfAsync();
