@@ -1,0 +1,21 @@
+END r1-on 1794396487 post=Thermal Status: 0 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+DONE r1-on dur=8s
+START r1-off 1794396493 pre=Thermal Status: 0 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+END r1-off 1794396597 post=Thermal Status: 1 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+DONE r1-off dur=104s
+START r1-on 1794396615 pre=Thermal Status: 0 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+END r1-on 1794396726 post=Thermal Status: 2 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+DONE r1-on dur=111s
+START r2-on 1794396744 pre=Thermal Status: 0 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+END r2-on 1794396858 post=Thermal Status: 2 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+DONE r2-on dur=114s
+START r2-off 1794396876 pre=Thermal Status: 1 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+END r2-off 1794396980 post=Thermal Status: 2 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+DONE r2-off dur=104s
+START r3-off 1794396998 pre=Thermal Status: 1 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+END r3-off 1794397107 post=Thermal Status: 3 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+DONE r3-off dur=109s
+START r3-on 1794397125 pre=Thermal Status: 2 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+END r3-on 1794397239 post=Thermal Status: 2 	Temperature{mValue=35.9, mType=0, mName=AP, mStatus=0} 
+DONE r3-on dur=114s
+ALL_RUNS_COMPLETE 1794397249

@@ -60,6 +60,28 @@ cold capture에 encode 비용이 더해져 TTFT가 약 +22% 늘었다. warm rest
 아니라 host FP16 prefix 보관 메모리 절감 장치다.** 반복·thermal 통제 측정은
 별도 과제로 남는다.
 
+## 반복·thermal 통제 성능 (n=3 교차, 2026-11-11 추가)
+
+3라운드 × (OFF,ON) 교차(순서 로테이션), 8초 무부한 게이트, 실행 전후
+thermal status 기록, TRACE/VERIFY off, 2초 주기 RSS 샘플링. 장치는 USB
+연결 상태에서 연속 실행이라 thermal status가 0→1→2→3으로 상승했고 교차
+순서로 상쇄했다.
+
+| 항목 | baseline (OFF) | codec (ON) |
+| --- | --- | --- |
+| TTFT cold capture 중앙값 (2079 tok / 4607 tok) | 3,889 / 9,286 ms | 4,954 / 11,541 ms (+24~27%) |
+| TTFT warm restore 중앙값 | 779–838 ms | 753–843 ms (동등) |
+| TPOT 중앙값 | 1.79–1.98 ms | 1.79–1.98 ms (동등) |
+| load+teardown 중앙값 | 78.6 s | 82.7 s (+4.1 s) |
+| RSS peak | 966 MiB | 993 MiB (+27 MiB) |
+
+- RSS peak이 codec에서 27 MiB 높다: capture 시 encode scratch와 compressed
+  payload가 live cache와 공존하기 때문. 저장 바이트 절감(-104 MiB/스냅샷)이
+  실행 중 peak RSS 감소로 이어지지 않는 것은 인계서 경고대로다. 장기
+  상주(prefix를 여러 턴에 걸쳐 유지) 실험은 별도로 필요하다.
+- 결론: warm restore 성능은 동등, cold capture에만 비용. 이득은 host FP16
+  prefix 보관 바이트(스냅샷 세트당 109.3 MB)다.
+
 ## 아직 입증하지 못한 것
 
 - full scope(`compare_device_evidence.py`)는 **INCOMPLETE**가 맞다. 이 변경에는

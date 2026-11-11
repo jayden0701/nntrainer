@@ -98,6 +98,20 @@
     "tool_output": "compare-evidence.json (exit 2, expected)",
     "reason": "DSP seed INT8 bytes/scales/state and logits readback hooks are not implemented in this change; FNV checkpoint/seed-trace hashes are diagnostic observations only"
   },
+  "repeat_performance": {
+    "protocol": "3 interleaved rounds x (OFF,ON) with order alternation (off,on / on,off / off,on), 8s idle gate, thermal status recorded pre/post, no TRACE/VERIFY, RSS sampled every 2s from the host",
+    "thermal_note": "device thermal status escalated 0->1->2->3 across rounds (USB connected, back-to-back runs); interleaving balances but does not eliminate this",
+    "ttft_ms_median": {"baseline": [3889, 9286, 795, 838, 779, 831], "codec": [4954, 11541, 753, 843, 787, 831]},
+    "ttft_cold_capture_range": {"baseline": [[3861, 8713], [3936, 9435]], "codec": [[4714, 11080], [5283, 11614]]},
+    "tpot_ms_median": {"baseline": [1.97, 1.98, 1.8, 1.89, 1.79, 1.87], "codec": [1.98, 1.84, 1.8, 1.89, 1.79, 1.86]},
+    "load_overhead_s": {"baseline": [78.6, 76.2, 81.0], "codec": [81.5, 82.7, 83.1]},
+    "rss": {
+      "baseline": {"rss_peak_mib": 966, "mem_avail_min_mib": 608, "samples": 51},
+      "codec": {"rss_peak_mib": 993, "mem_avail_min_mib": 1032, "samples": 52},
+      "interpretation": "codec peak RSS is +27 MiB (encode scratch + compressed payload coexist with live cache during capture). The single-run MemAvailable minimum is ambient-noisy and is NOT attributable to the codec; per-handoff, pinned RPC slab views mean stored-byte savings do not map 1:1 to system memory. A dedicated long-residency memory experiment is still required."
+    },
+    "conclusion": "Warm restore TPOT/TTFT are equal within noise; the codec costs +24~27% TTFT on cold capture and ~4s extra load/teardown. The benefit remains host FP16 prefix retention bytes (109.3 MB per full snapshot set), with no TTFT/TPS improvement."
+  },
   "device_config_note": "The pack's pre-existing nntr_config.json (12387 bytes, 2026-11-09) was overwritten by the checkpoint config before a backup copy could be taken; it was restored from nntr_config.gemma4_pf2k.json (12387 bytes, byte-size match) after the runs. The exact original content is not byte-proven; the pf2k/f2k variants remain in the pack directory and nntr_config.kv16_checkpoint.json preserves the validation config.",
   "artifacts": "docs/validation/kv16-npu-device-20261111/"
 }
