@@ -1,0 +1,5 @@
+golden.cpp
+__pycache__/
+result.json
+result-asan.json
+result*.stderr.txt
