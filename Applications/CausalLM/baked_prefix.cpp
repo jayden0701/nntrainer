@@ -283,17 +283,10 @@ BakedPrefix::Asset BakedPrefix::load(const std::string &directory,
       throw std::invalid_argument("Invalid baked payload filename");
     f->payload = (root / name).string();
     f->layout = layout;
-    size_t bytes = 48;
-    for (const auto &l : layout->layers)
-      bytes = nntrainer::kv::checkedAdd(
-        bytes,
-        nntrainer::kv::checkedMultiply(
-          nntrainer::kv::checkedMultiply(layout->position - l.base, l.width),
-          4));
     if (std::filesystem::is_symlink(f->payload) ||
-        !std::filesystem::is_regular_file(f->payload) ||
-        std::filesystem::file_size(f->payload) != bytes)
+        !std::filesystem::is_regular_file(f->payload))
       throw std::invalid_argument("Missing/truncated baked payload");
+    PrefixFlashStore::validateSnapshotFile(f->payload, *layout);
     if (!a.frames.emplace(layout->position, f).second)
       throw std::invalid_argument("Duplicate baked position");
   }

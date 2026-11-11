@@ -19,15 +19,27 @@ namespace causallm {
 namespace {
 using Clock = std::chrono::steady_clock;
 constexpr uint64_t magic = 0x31464b5652544e4eULL;
+constexpr uint64_t compressed_magic = 0x32464b5652544e4eULL;
 constexpr size_t overhead = 6 * sizeof(uint64_t);
+bool compressedSnapshot(const PrefixFlashStore::Snapshot &s) {
+  for (const auto &l : s.layers)
+    for (const auto &p : l.pages)
+      if (p && p->compressed())
+        return true;
+  return false;
+}
 size_t bytesOf(const PrefixFlashStore::Snapshot &s, bool owned = true) {
   size_t n = 0;
+  const bool compressed = compressedSnapshot(s);
   for (const auto &l : s.layers)
     for (const auto &p : l.pages) {
       if (!p || (owned && (p->key_view || p->value_view)) ||
-          p->keySize() != p->valueSize() || p->keySize() > (SIZE_MAX - n) / 2)
+          p->keySize() != p->valueSize() ||
+          (p->compressed() && s.element_bytes != 2u))
         throw std::invalid_argument("Flash staging requires owned KV pages");
-      n += p->keySize() * 2;
+      n = nntrainer::kv::checkedAdd(n, p->storedBytes());
+      if (compressed)
+        n = nntrainer::kv::checkedAdd(n, 3u * sizeof(uint64_t));
     }
   return n;
 }
@@ -40,18 +52,37 @@ void hashBytes(uint64_t &hash, const unsigned char *p, size_t n) {
 void writeSnapshot(const std::string &path, const PrefixFlashStore::Snapshot &s,
                    size_t bytes) {
   std::ofstream f(path + ".tmp", std::ios::binary | std::ios::trunc);
-  const uint64_t header[] = {magic, s.position, s.element_bytes,
-                             s.layers.size(), bytes};
+  const bool compressed = compressedSnapshot(s);
+  const uint64_t header[] = {compressed ? compressed_magic : magic, s.position,
+                             s.element_bytes, s.layers.size(), bytes};
   f.write(reinterpret_cast<const char *>(header), sizeof(header));
   uint64_t hash = 14695981039346656037ULL;
   for (const auto &l : s.layers)
-    for (const auto &p : l.pages)
+    for (const auto &p : l.pages) {
+      if (compressed) {
+        const uint64_t record[] = {p->compressed() ? 1u : 0u, p->storedBytes(),
+                                   p->keySize()};
+        hashBytes(hash, reinterpret_cast<const unsigned char *>(record),
+                  sizeof(record));
+        f.write(reinterpret_cast<const char *>(record), sizeof(record));
+        if (p->compressed()) {
+          // Validate before serializing even when an owned entry was supplied
+          // by a caller rather than capturePrefix().
+          const auto decoded = p->decodeCopy();
+          (void)decoded;
+          hashBytes(hash, p->encoded.data(), p->encoded.size());
+          f.write(reinterpret_cast<const char *>(p->encoded.data()),
+                  p->encoded.size());
+          continue;
+        }
+      }
       for (bool key : {true, false}) {
         const auto *data = key ? p->keyData() : p->valueData();
         const size_t size = key ? p->keySize() : p->valueSize();
         hashBytes(hash, data, size);
         f.write(reinterpret_cast<const char *>(data), size);
       }
+    }
   f.write(reinterpret_cast<const char *>(&hash), sizeof(hash));
   f.close();
   if (!f)
@@ -78,9 +109,9 @@ readSnapshot(const std::string &path, const PrefixFlashStore::Snapshot &layout,
   std::ifstream f(path, std::ios::binary);
   uint64_t header[5]{};
   f.read(reinterpret_cast<char *>(header), sizeof(header));
-  if (!f || header[0] != magic || header[1] != layout.position ||
-      header[2] != layout.element_bytes || header[3] != layout.layers.size() ||
-      header[4] != bytes)
+  if (!f || (header[0] != magic && header[0] != compressed_magic) ||
+      header[1] != layout.position || header[2] != layout.element_bytes ||
+      header[3] != layout.layers.size() || header[4] != bytes)
     throw std::runtime_error("Invalid prefix Flash header");
   auto s = std::make_shared<PrefixFlashStore::Snapshot>(layout);
   size_t total = 0;
@@ -89,9 +120,41 @@ readSnapshot(const std::string &path, const PrefixFlashStore::Snapshot &layout,
     for (unsigned r = l.base; r < s->position; r += 64u) {
       const size_t n =
         size_t(std::min(64u, s->position - r)) * l.width * s->element_bytes;
-      if (n > (bytes - total) / 2)
+      if (total > bytes || (header[0] == magic && n > (bytes - total) / 2))
         throw std::runtime_error("Invalid prefix Flash size");
       auto page = std::make_shared<PrefixFlashStore::Snapshot::Page>();
+      if (header[0] == compressed_magic) {
+        uint64_t record[3]{};
+        f.read(reinterpret_cast<char *>(record), sizeof(record));
+        if (!f || total > bytes || bytes - total < sizeof(record) ||
+            record[0] > 1u || record[2] != n ||
+            record[1] > bytes - total - sizeof(record) ||
+            (record[0] == 0u && record[1] != n * 2u) ||
+            (record[0] == 1u &&
+             (layout.element_bytes != 2u || record[1] >= n * 2u)))
+          throw std::runtime_error("Invalid compressed prefix Flash record");
+        hashBytes(hash, reinterpret_cast<const unsigned char *>(record),
+                  sizeof(record));
+        total += sizeof(record);
+        if (record[0] == 1u) {
+          page->encoded.resize(static_cast<size_t>(record[1]));
+          page->logical_plane_bytes = n;
+          f.read(reinterpret_cast<char *>(page->encoded.data()),
+                 page->encoded.size());
+          if (!f)
+            throw std::runtime_error("Truncated compressed prefix Flash page");
+          hashBytes(hash, page->encoded.data(), page->encoded.size());
+          const auto geometry =
+            kv16::inspect(page->encoded.data(), page->encoded.size());
+          if (geometry.tokens != std::min(64u, s->position - r) ||
+              uint64_t(geometry.heads) * geometry.dimensions != l.width)
+            throw std::runtime_error(
+              "Invalid compressed prefix Flash geometry");
+          total += page->encoded.size();
+          l.pages.push_back(std::move(page));
+          continue;
+        }
+      }
       for (auto *v : {&page->key, &page->value}) {
         v->resize(n);
         f.read(reinterpret_cast<char *>(v->data()), n);
@@ -418,6 +481,16 @@ void PrefixFlashStore::saveSnapshot(const std::string &path,
 std::shared_ptr<const PrefixFlashStore::Snapshot>
 PrefixFlashStore::loadSnapshot(const std::string &path,
                                const Snapshot &layout) {
+  validateSnapshotFile(path, layout);
+  std::ifstream file(path, std::ios::binary);
+  uint64_t header[5]{};
+  file.read(reinterpret_cast<char *>(header), sizeof(header));
+  if (!file)
+    throw std::runtime_error("Truncated baked prefix header");
+  return readSnapshot(path, layout, static_cast<size_t>(header[4]));
+}
+void PrefixFlashStore::validateSnapshotFile(const std::string &path,
+                                            const Snapshot &layout) {
   if (!layout.position || layout.layers.empty() ||
       (layout.element_bytes != 2 && layout.element_bytes != 4))
     throw std::invalid_argument("Invalid baked KV layout");
@@ -431,7 +504,32 @@ PrefixFlashStore::loadSnapshot(const std::string &path,
       layout.element_bytes * 2u);
     bytes = nntrainer::kv::checkedAdd(bytes, n);
   }
-  return readSnapshot(path, layout, bytes);
+  // Baked metadata describes logical geometry, while v2 payload bytes depend
+  // on each page's compression. Bound the on-disk size by raw plus framing.
+  std::ifstream file(path, std::ios::binary);
+  uint64_t header[5]{};
+  file.read(reinterpret_cast<char *>(header), sizeof(header));
+  if (!file)
+    throw std::runtime_error("Truncated baked prefix header");
+  if ((header[0] != magic && header[0] != compressed_magic) ||
+      header[1] != layout.position || header[2] != layout.element_bytes ||
+      header[3] != layout.layers.size() ||
+      (header[0] == magic && header[4] != bytes))
+    throw std::runtime_error("Incompatible baked prefix header");
+  if (header[0] == compressed_magic) {
+    size_t maximum = bytes;
+    for (const auto &layer : layout.layers)
+      maximum = nntrainer::kv::checkedAdd(
+        maximum, nntrainer::kv::checkedMultiply(
+                   (size_t(layout.position - layer.base) + 63u) / 64u,
+                   3u * sizeof(uint64_t)));
+    if (header[4] > maximum)
+      throw std::runtime_error("Invalid baked compressed prefix extent");
+  }
+  if (header[4] > SIZE_MAX ||
+      std::filesystem::file_size(path) !=
+        nntrainer::kv::checkedAdd(static_cast<size_t>(header[4]), overhead))
+    throw std::runtime_error("Invalid baked prefix extent");
 }
 PrefixFlashStore::Stats PrefixFlashStore::stats() const {
   std::lock_guard<std::mutex> lock(state_->mutex);

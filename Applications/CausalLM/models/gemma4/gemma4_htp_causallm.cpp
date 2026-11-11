@@ -15,12 +15,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 
 #include <app_context.h>
 #include <dense_ffn_layer.h>
 #include <engine.h>
 #include <htp_cache_inputs.h>
 #include <htp_mha_core.h>
+#include <htp_model_binding.h>
 #include <htp_model_config.h>
 #include <htp_qkv_layer.h>
 #include <htp_tie_word_embedding.h>
@@ -1017,6 +1019,85 @@ std::pair<Tensor, Tensor> Gemma4HtpCausalLM::constructModel() {
   return {x, y};
 }
 
+kv16::Geometry
+Gemma4HtpCausalLM::prefixCodecGeometry(unsigned layer,
+                                       const HtpModelBinding &binding) const {
+  kv16::Geometry geometry;
+  geometry.heads = getKVHeadCount(static_cast<int>(layer));
+  geometry.dimensions = getAttentionHeadDim(static_cast<int>(layer));
+  uint32_t partial_bits = 0;
+  std::memcpy(&partial_bits, &FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR,
+              sizeof(partial_bits));
+  if (!geometry.dimensions || geometry.dimensions % 2u ||
+      (FULL_ATTENTION_ROPE_TYPE != "default" &&
+       FULL_ATTENTION_ROPE_TYPE != "proportional") ||
+      (partial_bits & 0x7f800000u) == 0x7f800000u ||
+      FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR < 0.0f ||
+      FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR > 1.0f)
+    throw std::invalid_argument("Unsupported KV16 global RoPE geometry");
+  const auto half = geometry.dimensions / 2u;
+  const auto pairs =
+    FULL_ATTENTION_ROPE_TYPE == "default"
+      ? half
+      : static_cast<unsigned>(
+          (FULL_ATTENTION_ROPE_PARTIAL_ROTARY_FACTOR * geometry.dimensions) /
+          2.0f);
+  for (unsigned d = 0; d < pairs; ++d)
+    geometry.rotary_dims.push_back(d);
+  for (unsigned d = 0; d < pairs; ++d)
+    geometry.rotary_dims.push_back(d + half);
+  const auto *gamma = binding.f32(
+    "layer" + std::to_string(layer) + "_qkv:k_norm_gamma", geometry.dimensions);
+  geometry.gamma_bits.resize(geometry.dimensions);
+  std::memcpy(geometry.gamma_bits.data(), gamma,
+              geometry.gamma_bits.size() * sizeof(uint32_t));
+  return geometry;
+}
+
+void Gemma4HtpCausalLM::validateDevicePrefixCodec(
+  const KVCacheManager::PrefixSnapshot &snapshot) const {
+  if (!snapshot.position ||
+      snapshot.position > static_cast<unsigned>(MAX_SEQ_LEN) ||
+      snapshot.element_bytes != 2u ||
+      snapshot.layers.size() != size_t(NUM_LAYERS))
+    throw std::invalid_argument("Incompatible Gemma4 prefix geometry");
+  bool compressed = false;
+  for (unsigned i = 0; i < snapshot.layers.size(); ++i) {
+    const auto &layer = snapshot.layers[i];
+    if (layer.base > snapshot.position || layer.width != getKVCacheWidth(i) ||
+        snapshot.position - layer.base > getKVCacheRows(i) ||
+        (!isSlidingAttentionLayer(i) && layer.base))
+      throw std::invalid_argument("Incompatible Gemma4 prefix layer geometry");
+    for (const auto &page : layer.pages)
+      compressed |= page && page->compressed();
+  }
+  if (!compressed)
+    return;
+  if (ATTENTION_ENGINE != "htp" || !ATTENTION_K_EQ_V ||
+      snapshot.element_bytes != 2u ||
+      snapshot.layers.size() != size_t(NUM_LAYERS))
+    throw std::invalid_argument("Incompatible Gemma4 prefix codec model");
+  const HtpModelBinding binding(*model);
+  for (unsigned i = 0; i < snapshot.layers.size(); ++i) {
+    for (const auto &page : snapshot.layers[i].pages) {
+      if (!page || !page->compressed())
+        continue;
+      if (isSlidingAttentionLayer(static_cast<int>(i)) ||
+          isKVSharedLayer(static_cast<int>(i)))
+        throw std::invalid_argument("Ineligible compressed prefix layer");
+      const auto actual =
+        kv16::inspect(page->encoded.data(), page->encoded.size());
+      const auto expected = prefixCodecGeometry(i, binding);
+      if (actual.heads != expected.heads ||
+          actual.dimensions != expected.dimensions ||
+          actual.gamma_bits != expected.gamma_bits ||
+          actual.rotary_dims != expected.rotary_dims)
+        throw std::invalid_argument(
+          "Gemma4 prefix codec runtime binding mismatch");
+    }
+  }
+}
+
 void Gemma4HtpCausalLM::allocateAndBindKVCache() {
   if (!kv_cache.isAllocated()) {
 #ifdef ENABLE_FP16
@@ -1046,6 +1127,21 @@ void Gemma4HtpCausalLM::allocateAndBindKVCache() {
                       static_cast<unsigned int>(MAX_SEQ_LEN), kv_widths,
                       cache_dtype, ml::train::TensorDim::Format::NCHW, rows,
                       keep);
+#ifdef ENABLE_HEXKL
+    const char *codec = std::getenv("NNTR_HTP_PREFIX_KV16");
+    if (ATTENTION_ENGINE == "htp" && codec && std::string(codec) == "1" &&
+        ATTENTION_K_EQ_V) {
+      const char *check = std::getenv("NNTR_HTP_PREFIX_KV16_VERIFY");
+      const bool verify = check && std::string(check) == "1";
+      const HtpModelBinding binding(*model);
+      for (int i = 0; i < NUM_LAYERS; ++i) {
+        if (isSlidingAttentionLayer(i) || isKVSharedLayer(i))
+          continue;
+        kv_cache.configurePrefixCodec(static_cast<unsigned>(i),
+                                      prefixCodecGeometry(i, binding), verify);
+      }
+    }
+#endif
     kv_cache_bound = false;
   }
 

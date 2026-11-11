@@ -10,6 +10,8 @@
 #include <htp_backend/htp_attention_state.h>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
+#include <kv16_lossless.h>
 #include <sstream>
 #include <stdexcept>
 using Bake = causallm::BakedPrefix;
@@ -37,6 +39,132 @@ static std::string digest(const std::string &s) {
   out << std::hex << std::setw(16) << std::setfill('0') << h;
   return out.str();
 }
+
+static void compressedBakedChecks(
+  const std::filesystem::path &root, const json &identity,
+  const std::shared_ptr<nntrainer::HtpPrefixCalibration> &calibration) {
+  using Store = causallm::PrefixFlashStore;
+  Store::Snapshot snapshot;
+  snapshot.position = 128;
+  snapshot.element_bytes = 2;
+  snapshot.layers.resize(2);
+  size_t raw_file_bytes = 48;
+  for (unsigned layer = 0; layer < snapshot.layers.size(); ++layer) {
+    auto &current = snapshot.layers[layer];
+    current.base = layer ? 64 : 0;
+    current.width = layer ? 8 : 64;
+    current.dropped_k = {0.0f, 1.25f};
+    current.dropped_v = {0.5f, 2.0f};
+    for (unsigned row = current.base; row < snapshot.position; row += 64) {
+      auto page = std::make_shared<Store::Snapshot::Page>();
+      page->key.resize(64 * current.width * 2);
+      page->value.resize(page->key.size());
+      for (size_t i = 0; i < page->key.size() / 2; ++i) {
+        const uint16_t special[] = {0, 0x8000, 0x7d11, 0x7fff, 0x7c00};
+        const uint16_t value =
+          i < 5 ? special[i] : uint16_t(i * 71u + row * 13u + layer);
+        // These are FP16 bit patterns, including NaN payloads and signed zero.
+        page->key[i * 2] = page->value[i * 2] = uint8_t(value);
+        page->key[i * 2 + 1] = page->value[i * 2 + 1] = uint8_t(value >> 8);
+      }
+      raw_file_bytes += page->key.size() * 2;
+      if (!layer && !row) {
+        causallm::kv16::Geometry geometry;
+        geometry.tokens = 64;
+        geometry.heads = 2;
+        geometry.dimensions = 32;
+        geometry.gamma_bits.assign(32, 0x3f800000u);
+        geometry.rotary_dims = {0, 1, 16, 17};
+        page->encoded = causallm::kv16::encode(
+          page->key.data(), page->value.data(), page->key.size(), geometry);
+        require(page->encoded.size() < page->key.size() * 2);
+        page->logical_plane_bytes = page->key.size();
+        page->key.clear();
+        page->value.clear();
+      }
+      current.pages.push_back(std::move(page));
+    }
+  }
+  const auto directory = root / "compressed-asset";
+  {
+    Bake::Writer writer(directory.string(), identity,
+                        std::vector<unsigned>(128, 9), 140);
+    writer.add(0, 128, 128, snapshot, {calibration, calibration});
+    const auto info = writer.finish();
+    require(info["baked_tokens"] == 128 &&
+            info["remaining_system_tokens"] == 12);
+  }
+  auto asset = Bake::load(directory.string(), identity, 256, 2);
+  const auto frame = asset.frames.at(128);
+  // This regression must exercise a genuinely smaller v2 payload: the old
+  // raw-file-size equality in BakedPrefix::load rejected this valid asset.
+  require(std::filesystem::file_size(frame->payload) < raw_file_bytes);
+  auto restored = Store::loadSnapshot(frame->payload, *frame->layout);
+  require(restored->layers[0].pages[0]->compressed() &&
+          !restored->layers[0].pages[1]->compressed() &&
+          !restored->layers[1].pages[0]->compressed());
+  require(restored->layers[0].pages[0]->encoded ==
+          snapshot.layers[0].pages[0]->encoded);
+  for (size_t layer = 0; layer < snapshot.layers.size(); ++layer) {
+    const auto &expected = snapshot.layers[layer];
+    const auto &actual = restored->layers[layer];
+    require(expected.base == actual.base && expected.width == actual.width &&
+            expected.dropped_k == actual.dropped_k &&
+            expected.dropped_v == actual.dropped_v &&
+            expected.pages.size() == actual.pages.size());
+    for (size_t page = 0; page < expected.pages.size(); ++page) {
+      const auto a = expected.pages[page]->decodeCopy();
+      const auto b = actual.pages[page]->decodeCopy();
+      require(a->key == b->key && a->value == b->value);
+    }
+    const auto &saved = *frame->calibration[layer];
+    require(saved.q_enc.size() == calibration->q_enc.size() &&
+            std::memcmp(saved.q_enc.data(), calibration->q_enc.data(),
+                        saved.q_enc.size() * sizeof(float)) == 0);
+  }
+  rejects([&] {
+    Bake::load(directory.string(), json{{"runtime", "changed"}}, 256, 2);
+  });
+  std::ifstream source(frame->payload, std::ios::binary);
+  const std::vector<unsigned char> original{
+    std::istreambuf_iterator<char>(source), std::istreambuf_iterator<char>()};
+  source.close();
+  auto write = [&](const std::vector<unsigned char> &bytes) {
+    std::ofstream file(frame->payload, std::ios::binary | std::ios::trunc);
+    file.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    require(bool(file));
+  };
+  auto bad = original;
+  const uint64_t huge_extent = UINT64_MAX;
+  std::memcpy(bad.data() + 32, &huge_extent, sizeof(huge_extent));
+  write(bad);
+  rejects([&] { Bake::load(directory.string(), identity, 256, 2); });
+  write(original);
+  std::filesystem::resize_file(frame->payload, original.size() - 1);
+  rejects([&] { Bake::load(directory.string(), identity, 256, 2); });
+  bad = original;
+  bad.push_back(0);
+  write(bad);
+  rejects([&] { Bake::load(directory.string(), identity, 256, 2); });
+  // Same-size corruption remains a lazy payload-integrity failure rather
+  // than loading damaged K/V. Metadata load should still be bounded and safe.
+  bad = original;
+  bad.back() ^= 1;
+  write(bad);
+  auto corrupt = Bake::load(directory.string(), identity, 256, 2);
+  rejects([&] {
+    Store::loadSnapshot(corrupt.frames.at(128)->payload,
+                        *corrupt.frames.at(128)->layout);
+  });
+  write(original);
+  asset = Bake::load(directory.string(), identity, 256, 2);
+  require(Store::loadSnapshot(asset.frames.at(128)->payload,
+                              *asset.frames.at(128)->layout)
+            ->layers[0]
+            .pages[0]
+            ->encoded == snapshot.layers[0].pages[0]->encoded);
+}
+
 int main() {
   const auto root =
     std::filesystem::temp_directory_path() /
@@ -93,6 +221,7 @@ int main() {
             saved.q_enc.size() == cal->q_enc.size() &&
             std::memcmp(saved.q_enc.data(), cal->q_enc.data(),
                         cal->q_enc.size() * sizeof(float)) == 0);
+    compressedBakedChecks(root, identity, cal);
     rejects([&] {
       Bake::Writer writer(asset_dir.string(), identity,
                           std::vector<unsigned>(64, 7), 70);
@@ -160,8 +289,8 @@ int main() {
     require(
       std::filesystem::exists(manifest)); // asset ownership survives readers.
     std::filesystem::remove_all(root);
-    std::cout << "Persistent prefix: exact calibration, content identity, "
-                 "checksum, lazy corruption, rollback PASS\n";
+    std::cout << "Persistent prefix: raw/v2 mixed codec, exact calibration, "
+                 "content identity, extents, lazy corruption, rollback PASS\n";
   } catch (...) {
     std::filesystem::remove_all(root);
     throw;

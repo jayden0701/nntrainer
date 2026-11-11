@@ -51,6 +51,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -136,6 +137,14 @@ protected:
   bool device_prefill_restored_ = false;
   bool device_decode_prefix_enabled_ = false;
   DecodePrefixRestoreStats decode_prefix_restore_stats_;
+  /** Validate compressed payload identity before allocating or selecting KV. */
+  virtual void validateDevicePrefixCodec(
+    const KVCacheManager::PrefixSnapshot &snapshot) const {
+    for (const auto &layer : snapshot.layers)
+      for (const auto &page : layer.pages)
+        if (page && page->compressed())
+          throw std::invalid_argument("Model has no prefix codec binding");
+  }
   std::unique_ptr<DeviceKVManager> device_kv_manager_;
   bool htp_session_enabled_ = false;
   bool htp_session_failed_ = false;
@@ -146,6 +155,9 @@ protected:
   void captureDevicePrefill(unsigned from, unsigned position,
                             unsigned earliest);
   void restoreDevicePrefill(uint32_t handle, unsigned position);
+  /** Opt-in checkpoint evidence; diagnostic failure never changes inference. */
+  void traceDevicePrefill(const char *event, const DevicePrefillFrame &frame,
+                          const KVCacheManager::PrefixSnapshot &snapshot) const;
   /** Start an independent request; continuation steps must not call this. */
   void beginIndependentHtpPrompt(
     bool repeated,

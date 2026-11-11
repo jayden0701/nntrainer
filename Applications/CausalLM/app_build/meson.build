@@ -228,6 +228,7 @@ causallm_src = [
   causallm_root / 'huggingface_tokenizer.cpp',
   causallm_root / 'tokenizer_cache.cpp',
   causallm_root / 'kv_cache_manager.cpp',
+  causallm_root / 'kv16_lossless.cpp',
   causallm_root / 'prefix_flash_store.cpp',
   causallm_root / 'baked_prefix.cpp',
   causallm_root / 'llm_util.cpp',
@@ -458,6 +459,9 @@ if get_option('enable-htp-device-check')
     'htp_prefix_flash_check': 'test/htp/host/prefix_flash_check.cpp',
     'htp_prefill_check': 'test/htp/host/prefill_prefix_check.cpp',
     'htp_calibration_check': 'test/htp/host/attention_calibration_check.cpp',
+    'htp_kv16_codec_check': 'test/htp/host/kv16_codec_check.cpp',
+    'htp_kv16_prefix_check': 'test/htp/host/kv16_prefix_check.cpp',
+    'htp_kv16_flash_check': 'test/htp/host/kv16_flash_check.cpp',
     'htp_prefix_grid_bench': 'tools/kv_cache/benchmark_htp_prefix_grid.cpp',
     'htp_prefix_cold_bench': 'tools/kv_cache/benchmark_htp_prefix_cold.cpp',
   }

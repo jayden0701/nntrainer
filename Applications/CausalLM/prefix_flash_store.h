@@ -59,6 +59,9 @@ public:
   static void saveSnapshot(const std::string &path, const Snapshot &snapshot);
   static std::shared_ptr<const Snapshot> loadSnapshot(const std::string &path,
                                                       const Snapshot &layout);
+  /** Check version, framing and bounded extent without reading KV payload. */
+  static void validateSnapshotFile(const std::string &path,
+                                   const Snapshot &layout);
   Stats stats() const;
   /** Explicit diagnostic/request-boundary drain; inference never calls it. */
   void drain();

@@ -1,0 +1,92 @@
+{
+  "base_revision": "5e97254e764aa30db4223c33d0dc3b0fded091b8",
+  "branch": "codex/kv16-npu-integration",
+  "hardware_validated": false,
+  "model_inference_validated": false,
+  "android_hexagon_build_validated": false,
+  "codec": {
+    "status": "PASS",
+    "sanitizers": true,
+    "predictor_pairs": 871968,
+    "wire_fixture_count": 41,
+    "rejected_malformed_cases": 745,
+    "source_sha256": {
+      "tools/kv16/codec_reference.py": "dcd63fd10c20f190fc259c0bace2aece4e4f90539f2ff19b6bf9a4792f9d58ed",
+      "Applications/CausalLM/kv16_lossless.cpp": "0ef2835695461a4f01dab4812965d4b4e11eb90e7439ae26857b7fc3beb6b333",
+      "Applications/CausalLM/kv16_lossless.h": "b60897480fbea324b9ac8157ce327d0d7edf2f5cc3004d07ff7a2dd7f330f2d2",
+      "test/htp/host/kv16_codec_check.cpp": "7288710a6dc008c95723d72aef3d666879ea58e2a9eaa617be54fc8f4847993a"
+    },
+    "report": "build/kv16-codec-sanitize/report.json",
+    "report_sha256": "92abc9f9ac45f80d59415b838eb7a91e1e5b92c30746014ece7d2aee488109f7"
+  },
+  "storage": {
+    "status": "PASS",
+    "sanitizers": true,
+    "engine_instrumented": false,
+    "checks": [
+      {
+        "name": "kv16_prefix_check",
+        "status": "PASS"
+      },
+      {
+        "name": "prefill_prefix_check",
+        "status": "PASS"
+      },
+      {
+        "name": "prefix_flash_check",
+        "status": "PASS"
+      },
+      {
+        "name": "kv16_flash_check",
+        "status": "PASS"
+      },
+      {
+        "name": "baked_prefix_check",
+        "status": "PASS"
+      }
+    ],
+    "source_sha256": {
+      "Applications/CausalLM/kv_cache_manager.cpp": "8adbae3a0931eb6028fdb82c3a43510d126df5201a556953ad75c105c6a0d758",
+      "Applications/CausalLM/kv16_lossless.cpp": "0ef2835695461a4f01dab4812965d4b4e11eb90e7439ae26857b7fc3beb6b333",
+      "Applications/CausalLM/prefix_flash_store.cpp": "d1ac8cf48a51e04b64865dd319e271ef68d27685453564aa580c5bacb3ccd351",
+      "Applications/CausalLM/baked_prefix.cpp": "59406ebd7051780bd69ded2f6f1599cad982dd71ca6c274e7c5fdf89277a64cc",
+      "Applications/CausalLM/kv16_lossless.h": "b60897480fbea324b9ac8157ce327d0d7edf2f5cc3004d07ff7a2dd7f330f2d2",
+      "Applications/CausalLM/kv_cache_manager.h": "c23d9d101e8f8ff03b1bb34635e0ffc0905521186c808d1d29e44b9973f978ea",
+      "Applications/CausalLM/prefix_flash_store.h": "8bb3fc0045695eb4010fbb9b5c062ef916da54d40b8f2344b730425c20f88017",
+      "test/htp/host/run_kv16_integration_checks.py": "ccbeaa81c17effd8c8cf907abec2726dc0104145ca3cad20975543d30233f46a",
+      "test/htp/host/kv16_prefix_check.cpp": "791f7abd8c798040d05ea4f08312c6db3a7fce9206fa52180c77c4e3e44fc22d",
+      "test/htp/host/prefill_prefix_check.cpp": "7449bf0eac495cee36ccbea423598ed4f557c158e1b61cdea5d8d647feb1877f",
+      "test/htp/host/prefix_flash_check.cpp": "90ee7ab1454e655460990d1d8950a58ef6271f19102d57eac60b35a931cdd4c5",
+      "test/htp/host/kv16_flash_check.cpp": "be20709b05ede754abb66071d11a9a936369759b6e4395076e5c183dd8f3bbd8",
+      "test/htp/host/baked_prefix_check.cpp": "5a696afd14cdb0222664d3495a53117f6f6dcc0afa8c9aabc0e51b7d139a9d2c"
+    },
+    "engine_revision": "5e97254e764aa30db4223c33d0dc3b0fded091b8",
+    "engine_library_sha256": "add1f0ebb7cd86bce08c94c4162205b3f54cbb4274e7269f1264d114b9d6b048",
+    "report": "build/kv16-integration-verified/report.json",
+    "report_sha256": "ab8e672c706b7c3db7cf59d10358292747ae0ca88fdecf01ccc2c6134206f86f"
+  },
+  "tools": {
+    "status": "PASS",
+    "tests": 15,
+    "log": "build/kv16-tools-tests.log"
+  },
+  "native_syntax": {
+    "status": "PASS",
+    "enable_hexkl": true,
+    "android_build": false,
+    "results": [
+      {
+        "source": "Applications/CausalLM/models/causal_lm.cpp",
+        "returncode": 0
+      },
+      {
+        "source": "Applications/CausalLM/models/gemma4/gemma4_htp_causallm.cpp",
+        "returncode": 0
+      },
+      {
+        "source": "nntrainer/tensor/htp_backend/htp_attention_state.cpp",
+        "returncode": 0
+      }
+    ]
+  }
+}

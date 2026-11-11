@@ -18,6 +18,7 @@
 #include <set>
 
 namespace causallm {
+class HtpModelBinding;
 
 /**
  * @brief Gemma4HtpTransformer class
@@ -225,6 +226,10 @@ public:
 
 protected:
   void allocateAndBindKVCache() override;
+  kv16::Geometry prefixCodecGeometry(unsigned layer,
+                                     const HtpModelBinding &binding) const;
+  void validateDevicePrefixCodec(
+    const KVCacheManager::PrefixSnapshot &snapshot) const override;
 };
 } // namespace causallm
 

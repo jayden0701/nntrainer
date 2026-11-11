@@ -19,10 +19,12 @@
 #include <functional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <memory>
 
+#include <kv16_lossless.h>
 #include <kv_cache/kv_cache_manager.h>
 
 #include <memory_pool.h>
@@ -181,18 +183,64 @@ public:
   struct PrefixSnapshot {
     struct Page {
       std::vector<unsigned char> key, value;
+      /** Self-contained KV16 backing; raw fields are empty when compressed. */
+      std::vector<unsigned char> encoded;
+      size_t logical_plane_bytes = 0;
+      /** Shared in-memory hint for a RAW page already tried with this codec.
+       * Not part of the serialized format or the logical K/V payload. */
+      std::shared_ptr<const kv16::Geometry> codec_attempt;
       const unsigned char *key_view = nullptr, *value_view = nullptr;
       size_t view_bytes = 0, slab_bytes = 0;
       std::shared_ptr<void> key_owner, value_owner;
+      bool compressed() const { return !encoded.empty(); }
       const unsigned char *keyData() const {
+        if (compressed())
+          throw std::logic_error(
+            "Materialize compressed prefix before reading K");
         return key_view ? key_view : key.data();
       }
       const unsigned char *valueData() const {
+        if (compressed())
+          throw std::logic_error(
+            "Materialize compressed prefix before reading V");
         return value_view ? value_view : value.data();
       }
-      size_t keySize() const { return key_view ? view_bytes : key.size(); }
+      size_t keySize() const {
+        return compressed() ? logical_plane_bytes
+                            : (key_view ? view_bytes : key.size());
+      }
       size_t valueSize() const {
-        return value_view ? view_bytes : value.size();
+        return compressed() ? logical_plane_bytes
+                            : (value_view ? view_bytes : value.size());
+      }
+      /** Stored payload bytes, excluding pinned-slab and container overhead. */
+      size_t storedBytes() const {
+        return compressed() ? encoded.size() : keySize() + valueSize();
+      }
+      /** Validate/decode to newly owned raw planes, without changing this page.
+       */
+      std::shared_ptr<Page> decodeCopy() const {
+        auto page = std::make_shared<Page>();
+        if (compressed()) {
+          if (!logical_plane_bytes || !key.empty() || !value.empty() ||
+              key_view || value_view || key_owner || value_owner ||
+              view_bytes || slab_bytes)
+            throw std::invalid_argument(
+              "Ambiguous compressed prefill page backing");
+          auto decoded = kv16::decode(encoded.data(), encoded.size());
+          if (decoded.key.size() != logical_plane_bytes ||
+              decoded.value.size() != logical_plane_bytes)
+            throw std::invalid_argument(
+              "Compressed prefill page logical size mismatch");
+          page->key = std::move(decoded.key);
+          page->value = std::move(decoded.value);
+        } else {
+          if (keySize())
+            page->key.assign(keyData(), keyData() + keySize());
+          if (valueSize())
+            page->value.assign(valueData(), valueData() + valueSize());
+        }
+        return page;
       }
       void freeze() {
         if (!key_view)
@@ -216,7 +264,20 @@ public:
   std::shared_ptr<const PrefixSnapshot>
   capturePrefix(unsigned position, const PrefixSnapshot *previous = nullptr,
                 bool owned = false) const;
+  /** Enable lossless host-prefix storage on an allocated full FP16 layer.
+   * The caller establishes shared-projection eligibility and supplies actual
+   * runtime gamma bits and rotary indices. No active KV cache is changed.
+   * Re-allocation clears these configurations; default is disabled.
+   */
+  void configurePrefixCodec(unsigned layer, const kv16::Geometry &geometry,
+                            bool verify = false);
+  void clearPrefixCodecs();
   size_t prefixPayloadBytes(unsigned position) const;
+  /** Validate all pages/bindings and return a raw snapshot before publication.
+   * Compressed pages decode into owned scratch; live cache/state stay intact.
+   */
+  std::shared_ptr<const PrefixSnapshot>
+  materializePrefix(const PrefixSnapshot &snapshot) const;
   void restorePrefix(const PrefixSnapshot &snapshot);
   unsigned prefixMinPosition() const {
     unsigned first = 0;
@@ -610,6 +671,8 @@ private:
   SharedRetain shared_retain_;
   mutable std::vector<std::vector<std::weak_ptr<PrefixSnapshot::Page>>>
     prefix_views_;
+  std::vector<std::shared_ptr<const kv16::Geometry>> prefix_codecs_;
+  std::vector<bool> prefix_codec_verify_;
   SharedAlloc shared_alloc_;          /**< see setSharedAllocator */
   SharedFree shared_free_;            /**< see setSharedAllocator */
   std::vector<void *> shared_blocks_; /**< blocks owned via shared_alloc_ */

@@ -34,14 +34,17 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 #ifdef ENABLE_HEXKL
+#include <htp_backend/htp_attention_state.h>
 #include <htp_backend/htp_backend.h>
 #endif
 
@@ -1162,7 +1165,8 @@ size_t CausalLM::getDeviceKVPrefixBytes() const {
                   if (slabs.insert(owner.get()).second)
                     bytes += page->slab_bytes;
               } else {
-                bytes += page->keySize() + page->valueSize();
+                bytes += page->compressed() ? page->encoded.capacity()
+                                            : page->storedBytes();
               }
             }
   };
@@ -1829,6 +1833,90 @@ void CausalLM::registerCustomLayers() {
 }
 
 #ifdef ENABLE_HEXKL
+void CausalLM::traceDevicePrefill(
+  const char *event, const DevicePrefillFrame &frame,
+  const KVCacheManager::PrefixSnapshot &snapshot) const {
+  const char *path = std::getenv("NNTR_HTP_PREFIX_KV16_TRACE");
+  if (!path || !*path)
+    return;
+  try {
+    auto bits = [](const std::vector<float> &values) {
+      std::vector<uint32_t> words(values.size());
+      if (!words.empty())
+        std::memcpy(words.data(), values.data(), words.size() * sizeof(float));
+      return words;
+    };
+    auto hash = [](uint64_t &value, const unsigned char *bytes, size_t count) {
+      for (size_t i = 0; i < count; ++i) {
+        value ^= bytes[i];
+        value *= 1099511628211ULL;
+      }
+    };
+    auto hex = [](uint64_t value) {
+      std::ostringstream text;
+      text << std::hex << std::setw(16) << std::setfill('0') << value;
+      return text.str();
+    };
+    json layers = json::array(), calibration = json::array();
+    size_t compressed = 0, raw = 0, raw_bytes = 0, stored = 0, capacity = 0;
+    for (const auto &layer : snapshot.layers) {
+      uint64_t kh = 14695981039346656037ULL, vh = kh;
+      for (const auto &page : layer.pages) {
+        const auto owned = page->decodeCopy();
+        hash(kh, owned->keyData(), owned->keySize());
+        hash(vh, owned->valueData(), owned->valueSize());
+        compressed += page->compressed();
+        raw += !page->compressed();
+        raw_bytes += page->keySize() + page->valueSize();
+        stored += page->storedBytes();
+        capacity += page->encoded.capacity();
+      }
+      layers.push_back({{"base", layer.base},
+                        {"width", layer.width},
+                        {"k_fnv1a64", hex(kh)},
+                        {"v_fnv1a64", hex(vh)},
+                        {"dropped_k_bits", bits(layer.dropped_k)},
+                        {"dropped_v_bits", bits(layer.dropped_v)}});
+    }
+    for (const auto &state : frame.calibration) {
+      if (!state)
+        throw std::invalid_argument("Missing KV16 trace calibration");
+      calibration.push_back({{"calibrated", state->calibrated},
+                             {"scale_k", bits(state->scale_k)},
+                             {"scale_v", bits(state->scale_v)},
+                             {"q_enc", bits(state->q_enc)},
+                             {"out_enc", bits(state->out_enc)},
+                             {"kmax", bits(state->kmax)},
+                             {"vmax", bits(state->vmax)},
+                             {"floor_k", bits(state->floor_k)},
+                             {"floor_v", bits(state->floor_v)}});
+    }
+    json record = {{"schema", "nntrainer.kv16.checkpoint-trace.v1"},
+                   {"event", event},
+                   {"position", snapshot.position},
+                   {"from", frame.from},
+                   {"plane", frame.plane},
+                   {"chunk", frame.chunk},
+                   {"element_bytes", snapshot.element_bytes},
+                   {"model_tag", kvCacheModelTag()},
+                   {"layers", layers},
+                   {"calibration", calibration},
+                   {"codec",
+                    {{"compressed_pages", compressed},
+                     {"raw_pages", raw},
+                     {"raw_bytes", raw_bytes},
+                     {"stored_bytes", stored},
+                     {"encoded_capacity_bytes", capacity}}}};
+    std::ofstream output(path, std::ios::app);
+    output << record.dump() << '\n';
+    output.close();
+    if (!output)
+      throw std::runtime_error("Cannot write KV16 checkpoint trace");
+  } catch (const std::exception &error) {
+    std::cerr << "[KV16 trace] " << error.what() << '\n';
+  }
+}
+
 void CausalLM::captureDevicePrefill(unsigned from, unsigned position,
                                     unsigned earliest) {
   if (!device_prefill_capture_ || decode_prefix_restore_stats_.prefix_tokens ||
@@ -1871,6 +1959,7 @@ void CausalLM::captureDevicePrefill(unsigned from, unsigned position,
                            ? nullptr
                            : device_prefill_history_->rbegin()->second.kv.get();
   auto snapshot = kv_cache.capturePrefix(position, previous, archive);
+  traceDevicePrefill("capture", frame, *snapshot);
   if (system_prefix_writer_) {
     frame.baked = system_prefix_writer_->add(from, frame.plane, frame.chunk,
                                              *snapshot, frame.calibration);
@@ -1893,6 +1982,7 @@ void CausalLM::restoreDevicePrefill(uint32_t handle, unsigned position) {
     throw std::invalid_argument("Unavailable original-call prefix");
   // Load before modifying any live session state. Failed backing safely misses.
   auto payload = saved->at(position).kv;
+  bool baked_loaded = false;
   if (!payload && saved->at(position).flash)
     payload = saved->at(position).flash->load();
   if (!payload && saved->at(position).baked) {
@@ -1900,8 +1990,7 @@ void CausalLM::restoreDevicePrefill(uint32_t handle, unsigned position) {
     try {
       const auto &baked = *saved->at(position).baked;
       payload = PrefixFlashStore::loadSnapshot(baked.payload, *baked.layout);
-      ++system_prefix_stats_.hits;
-      system_prefix_stats_.reused_tokens += position;
+      baked_loaded = true;
     } catch (const std::exception &) {
       ++system_prefix_stats_.errors;
     }
@@ -1912,11 +2001,68 @@ void CausalLM::restoreDevicePrefill(uint32_t handle, unsigned position) {
   }
   if (!payload)
     throw DeviceKVManager::PrefixUnavailable("Unavailable Flash boundary");
+  try {
+    if (payload->position != position || payload->element_bytes != 2u ||
+        saved->at(position).calibration.size() != payload->layers.size())
+      throw std::invalid_argument("Incompatible prefix checkpoint state");
+    for (const auto &calibration : saved->at(position).calibration)
+      if (!calibration)
+        throw std::invalid_argument("Incomplete prefix calibration state");
+    validateDevicePrefixCodec(*payload);
+    // Prefix selection can precede host-cache allocation. Validate every
+    // encoded page before publishing session metadata, retaining its binding
+    // for restorePrefix() to compare with runtime gamma after allocation.
+    for (const auto &layer : payload->layers) {
+      if (layer.base > position || !layer.width ||
+          layer.pages.size() != (size_t(position - layer.base) + 63u) / 64u)
+        throw std::invalid_argument("Incompatible prefix checkpoint layout");
+      unsigned row = layer.base;
+      for (const auto &page : layer.pages) {
+        const unsigned rows = std::min(64u, position - row);
+        const size_t expected =
+          nntrainer::kv::checkedMultiply(size_t(rows) * layer.width, 2u);
+        if (!page || page->keySize() != expected ||
+            page->valueSize() != expected)
+          throw std::invalid_argument("Incomplete prefix checkpoint page");
+        if (page->compressed()) {
+          const auto geometry =
+            kv16::inspect(page->encoded.data(), page->encoded.size());
+          if (geometry.tokens != rows ||
+              uint64_t(geometry.heads) * geometry.dimensions != layer.width)
+            throw std::invalid_argument("Incompatible prefix codec geometry");
+          (void)page->decodeCopy();
+        }
+        row += rows;
+      }
+    }
+    // A baked v2 asset remains readable with compression disabled. Its model
+    // binding was checked above; retain raw pages in that baseline process.
+    const char *enabled = std::getenv("NNTR_HTP_PREFIX_KV16");
+    if (!enabled || std::string(enabled) != "1") {
+      auto raw = std::make_shared<KVCacheManager::PrefixSnapshot>(*payload);
+      for (auto &layer : raw->layers)
+        for (auto &page : layer.pages)
+          if (page->compressed())
+            page = page->decodeCopy();
+      payload = std::move(raw);
+    }
+    if (kv_cache.isAllocated())
+      (void)kv_cache.materializePrefix(*payload);
+  } catch (const std::exception &) {
+    if (baked_loaded)
+      ++system_prefix_stats_.errors;
+    throw DeviceKVManager::PrefixUnavailable("Invalid KV16 prefix checkpoint");
+  }
+  traceDevicePrefill("restore", saved->at(position), *payload);
   // Fork metadata and shared immutable pages. No source state is shortened.
   auto history = std::make_shared<DevicePrefillHistory>(
     saved->begin(), saved->upper_bound(position));
   history->at(position).kv = std::move(payload);
   device_prefill_history_ = std::move(history);
+  if (baked_loaded) {
+    ++system_prefix_stats_.hits;
+    system_prefix_stats_.reused_tokens += position;
+  }
   global_token_len = position;
   SYS_PROMP_LEN = 0;
   device_prefill_restored_ = true;

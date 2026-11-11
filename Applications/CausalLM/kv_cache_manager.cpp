@@ -63,6 +63,11 @@ private:
   KVCacheManager::SharedAlloc allocate_;
   KVCacheManager::SharedFree release_;
 };
+
+bool samePrefixCodec(const kv16::Geometry &a, const kv16::Geometry &b) {
+  return a.heads == b.heads && a.dimensions == b.dimensions &&
+         a.gamma_bits == b.gamma_bits && a.rotary_dims == b.rotary_dims;
+}
 } // namespace
 
 KVCacheManager::~KVCacheManager() { releaseShared(); }
@@ -95,6 +100,8 @@ KVCacheManager &KVCacheManager::operator=(KVCacheManager &&other) noexcept {
     format_ = other.format_;
     shared_retain_ = std::move(other.shared_retain_);
     prefix_views_ = std::move(other.prefix_views_);
+    prefix_codecs_ = std::move(other.prefix_codecs_);
+    prefix_codec_verify_ = std::move(other.prefix_codec_verify_);
     decode_offsets_ = std::move(other.decode_offsets_);
     shared_alloc_ = std::move(other.shared_alloc_);
     shared_free_ = std::move(other.shared_free_);
@@ -225,6 +232,7 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
 
   // Re-allocation: drop the old tensors before their blocks go back.
   layer_caches_.clear();
+  clearPrefixCodecs();
   core_shared_.reset();
   releaseShared();
   layer_caches_.resize(num_layers);
@@ -731,6 +739,34 @@ void KVCacheManager::validateSaveRange(unsigned int seq_len) const {
   validateRange(seq_len, false);
 }
 
+void KVCacheManager::configurePrefixCodec(unsigned layer,
+                                          const kv16::Geometry &geometry,
+                                          bool verify) {
+  using DataType = ml::train::TensorDim::DataType;
+  if (!isAllocated() || batch_size_ != 1 || layer >= layer_caches_.size() ||
+      !isLayerActive(layer) || isLayerKVAliased(layer) || windowed(layer) ||
+      getLayerCap(layer) != max_seq_len_ ||
+      (dtype_ != DataType::FP16 && dtype_ != DataType::UINT16) ||
+      uint64_t(geometry.heads) * geometry.dimensions != kv_widths_[layer])
+    throw std::invalid_argument(
+      "Prefix codec requires an owning full FP16 layer");
+  auto configuration = geometry;
+  configuration.tokens = 0;
+  // Reuse the codec's strict geometry validation before publishing any option.
+  (void)kv16::encode(nullptr, nullptr, 0, configuration);
+  auto configured =
+    std::make_shared<const kv16::Geometry>(std::move(configuration));
+  prefix_codecs_.resize(layer_caches_.size());
+  prefix_codec_verify_.resize(layer_caches_.size(), false);
+  prefix_codecs_[layer] = std::move(configured);
+  prefix_codec_verify_[layer] = verify;
+}
+
+void KVCacheManager::clearPrefixCodecs() {
+  prefix_codecs_.clear();
+  prefix_codec_verify_.clear();
+}
+
 std::shared_ptr<const KVCacheManager::PrefixSnapshot>
 KVCacheManager::capturePrefix(unsigned position, const PrefixSnapshot *previous,
                               bool owned) const {
@@ -761,16 +797,40 @@ KVCacheManager::capturePrefix(unsigned position, const PrefixSnapshot *previous,
       !owned && shared_retain_ ? shared_retain_(k) : nullptr;
     const auto value_owner =
       !owned && shared_retain_ ? shared_retain_(v) : nullptr;
+    const auto codec = l < prefix_codecs_.size() ? prefix_codecs_[l] : nullptr;
     for (unsigned p = dst.base; p < position; p += 64u) {
+      const PrefixSnapshot::Page *old = nullptr;
       if (previous && l < previous->layers.size() &&
           previous->element_bytes == state->element_bytes &&
           previous->layers[l].width == dst.width &&
           p >= previous->layers[l].base &&
           (p - previous->layers[l].base) % 64u == 0 &&
-          p + 64u <= previous->position &&
-          (!owned || !previous->layers[l]
-                        .pages.at((p - previous->layers[l].base) / 64u)
-                        ->key_view)) {
+          p + 64u <= previous->position) {
+        const auto index = (p - previous->layers[l].base) / 64u;
+        if (index < previous->layers[l].pages.size())
+          old = previous->layers[l].pages[index].get();
+      }
+      bool reuse = old && (!owned || (!old->key_view && !old->value_view));
+      if (reuse && old->compressed() && !codec)
+        reuse = false;
+      // Reuse a RAW fallback after an unsuccessful attempt with this binding;
+      // otherwise an incompressible prefix is re-encoded at every extension.
+      // Newly enabled/changed bindings can still try existing raw pages once.
+      if (reuse && codec) {
+        if (!old->compressed()) {
+          reuse =
+            old->codec_attempt && samePrefixCodec(*old->codec_attempt, *codec);
+        } else {
+          try {
+            const auto encoded =
+              kv16::inspect(old->encoded.data(), old->encoded.size());
+            reuse = encoded.tokens == 64u && samePrefixCodec(encoded, *codec);
+          } catch (const std::invalid_argument &) {
+            reuse = false;
+          }
+        }
+      }
+      if (reuse) {
         dst.pages.push_back(
           previous->layers[l].pages.at((p - previous->layers[l].base) / 64u));
       } else {
@@ -792,6 +852,33 @@ KVCacheManager::capturePrefix(unsigned position, const PrefixSnapshot *previous,
           page->key.assign(k + off, k + off + page_bytes);
           page->value.assign(v + off, v + off + page_bytes);
         }
+        if (codec && state->element_bytes == 2u) {
+          auto geometry = *codec;
+          geometry.tokens = std::min(64u, position - p);
+          auto encoded = kv16::encode(page->keyData(), page->valueData(),
+                                      page_bytes, geometry);
+          page->codec_attempt = codec;
+          if (encoded.size() < page_bytes * 2u) {
+            if (prefix_codec_verify_[l]) {
+              const auto check = kv16::decode(encoded.data(), encoded.size());
+              if (check.key.size() != page_bytes ||
+                  check.value.size() != page_bytes ||
+                  std::memcmp(check.key.data(), page->keyData(), page_bytes) ||
+                  std::memcmp(check.value.data(), page->valueData(),
+                              page_bytes))
+                throw std::runtime_error("Prefix codec verification mismatch");
+            }
+            page->encoded = std::move(encoded);
+            page->logical_plane_bytes = page_bytes;
+            page->codec_attempt.reset();
+            std::vector<unsigned char>().swap(page->key);
+            std::vector<unsigned char>().swap(page->value);
+            page->key_view = page->value_view = nullptr;
+            page->view_bytes = page->slab_bytes = 0;
+            page->key_owner.reset();
+            page->value_owner.reset();
+          }
+        }
         dst.pages.push_back(std::move(page));
       }
     }
@@ -812,16 +899,15 @@ size_t KVCacheManager::prefixPayloadBytes(unsigned position) const {
   return bytes;
 }
 
-void KVCacheManager::restorePrefix(const PrefixSnapshot &state) {
+std::shared_ptr<const KVCacheManager::PrefixSnapshot>
+KVCacheManager::materializePrefix(const PrefixSnapshot &state) const {
   if (!isAllocated() || batch_size_ != 1 || !state.position ||
       state.position > max_seq_len_ ||
       state.layers.size() != layer_caches_.size() ||
       state.element_bytes !=
         layer_caches_.front().key_cache.getDim().getDataTypeSize())
     throw std::invalid_argument("Incompatible prefill prefix geometry");
-  // Validate and allocate metadata before changing any live payload.
-  auto bases = bases_;
-  auto dropped_k = dropped_amax_k_, dropped_v = dropped_amax_v_;
+  auto materialized = std::make_shared<PrefixSnapshot>(state);
   for (unsigned l = 0; l < state.layers.size(); ++l) {
     const auto &src = state.layers[l];
     if (src.base > state.position ||
@@ -830,23 +916,48 @@ void KVCacheManager::restorePrefix(const PrefixSnapshot &state) {
         src.pages.size() != (state.position - src.base + 63u) / 64u)
       throw std::invalid_argument("Incompatible prefill prefix layer");
     unsigned row = src.base;
-    for (const auto &page : src.pages) {
+    for (size_t i = 0; i < src.pages.size(); ++i) {
+      const auto &page = src.pages[i];
       const size_t bytes =
         std::min(64u, state.position - row) * src.width * state.element_bytes;
       if (!page || page->keySize() != bytes || page->valueSize() != bytes)
         throw std::invalid_argument("Incomplete prefill prefix page");
+      if (page->compressed()) {
+        if (state.element_bytes != 2u || l >= prefix_codecs_.size() ||
+            !prefix_codecs_[l])
+          throw std::invalid_argument(
+            "Compressed prefill layer has no codec binding");
+        const auto geometry =
+          kv16::inspect(page->encoded.data(), page->encoded.size());
+        if (geometry.tokens != std::min(64u, state.position - row) ||
+            !samePrefixCodec(geometry, *prefix_codecs_[l]))
+          throw std::invalid_argument(
+            "Compressed prefill codec binding mismatch");
+        materialized->layers[l].pages[i] = page->decodeCopy();
+      }
       row += std::min(64u, state.position - row);
     }
-    bases[l] = src.base;
-    dropped_k[l] = src.dropped_k;
-    dropped_v[l] = src.dropped_v;
+  }
+  return materialized;
+}
+
+void KVCacheManager::restorePrefix(const PrefixSnapshot &state) {
+  const auto materialized = materializePrefix(state);
+  // Allocate every metadata replacement before changing any live payload.
+  auto bases = bases_;
+  auto dropped_k = dropped_amax_k_, dropped_v = dropped_amax_v_;
+  std::vector<unsigned> decode_offsets(bases_.size(), 0u);
+  for (unsigned l = 0; l < materialized->layers.size(); ++l) {
+    bases[l] = materialized->layers[l].base;
+    dropped_k[l] = materialized->layers[l].dropped_k;
+    dropped_v[l] = materialized->layers[l].dropped_v;
   }
   for (unsigned l = 0; l < state.layers.size(); ++l)
     freezePrefixViews(l);
   for (unsigned l = 0; l < state.layers.size(); ++l) {
     auto *k = layer_caches_[l].key_cache.getData<unsigned char>();
     auto *v = layer_caches_[l].value_cache.getData<unsigned char>();
-    for (const auto &page : state.layers[l].pages) {
+    for (const auto &page : materialized->layers[l].pages) {
       std::memcpy(k, page->keyData(), page->keySize());
       std::memcpy(v, page->valueData(), page->valueSize());
       k += page->keySize();
@@ -857,7 +968,7 @@ void KVCacheManager::restorePrefix(const PrefixSnapshot &state) {
   dropped_amax_k_.swap(dropped_k);
   dropped_amax_v_.swap(dropped_v);
   cache_pos_ = state.position;
-  decode_offsets_.assign(bases_.size(), 0u);
+  decode_offsets_.swap(decode_offsets);
 }
 
 void KVCacheManager::freezePrefixViews(unsigned layer) {

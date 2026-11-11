@@ -16,12 +16,14 @@
 #include <cstring>
 #include <fstream>
 #include <htp_backend/htp_runtime_config.h>
+#include <iomanip>
 #include <istream>
 #include <memory>
 #include <nntr_htp_decode_hook.h>
 #include <nntrainer_error.h>
 #include <nntrainer_log.h>
 #include <ostream>
+#include <sstream>
 #include <thread_manager.h>
 namespace nntrainer {
 std::vector<uint16_t> HtpAttentionState::q2_q_u16,
@@ -262,6 +264,42 @@ bool HtpAttentionState::htpDecodeAttention(
       << config_.cache_base;
     const unsigned int seed_rows = pos - config_.cache_base;
     const size_t n = static_cast<size_t>(seed_rows) * wk;
+    if (const char *path = std::getenv("NNTR_HTP_PREFIX_KV16_SEED_TRACE")) {
+      if (*path) {
+        // Full seed input, unlike NNTR_HTP_PREFIX_HASH's first 768 rows.
+        // This hashes host bytes before RPC; it is not DSP INT8 readback.
+        auto hash = [](const void *data, size_t bytes) {
+          const auto *p = static_cast<const unsigned char *>(data);
+          uint64_t value = 14695981039346656037ULL;
+          for (size_t i = 0; i < bytes; ++i)
+            value = (value ^ p[i]) * 1099511628211ULL;
+          std::ostringstream text;
+          text << std::hex << std::setw(16) << std::setfill('0') << value;
+          return text.str();
+        };
+        const bool k32 =
+          ck.getDataType() == ml::train::TensorDim::DataType::FP32;
+        const bool v32 =
+          cv.getDataType() == ml::train::TensorDim::DataType::FP32;
+        std::ofstream file(path, std::ios::app);
+        file << "{\"schema\":\"nntrainer.kv16.seed-input-trace.v1\",\"layer\":"
+             << std::quoted(q2_name_) << ",\"position\":" << pos
+             << ",\"base\":" << config_.cache_base << ",\"rows\":" << seed_rows
+             << ",\"width\":" << wk << ",\"k_element_bytes\":" << (k32 ? 4 : 2)
+             << ",\"v_element_bytes\":" << (v32 ? 4 : 2) << ",\"k_fnv1a64\":\""
+             << hash(ck.getData<unsigned char>(), n * (k32 ? 4u : 2u))
+             << "\",\"v_fnv1a64\":\""
+             << hash(cv.getData<unsigned char>(), n * (v32 ? 4u : 2u))
+             << "\",\"floor_k_fnv1a64\":\""
+             << hash(kv_floor_k_.data(), kv_floor_k_.size() * sizeof(float))
+             << "\",\"floor_v_fnv1a64\":\""
+             << hash(kv_floor_v_.data(), kv_floor_v_.size() * sizeof(float))
+             << "\"}\n";
+        file.close();
+        if (!file)
+          ml_logw("Cannot write KV16 seed input trace");
+      }
+    }
     if (const char *trace = std::getenv("NNTR_HTP_PREFIX_HASH")) {
       auto hash = [](const void *data, size_t bytes) {
         const auto *p = static_cast<const unsigned char *>(data);
