@@ -1,0 +1,103 @@
+{
+  "schema": "nntrainer.kv16.device-validation.v1",
+  "date": "2026-11-11",
+  "base_revision": "5e97254e764aa30db4223c33d0dc3b0fded091b8",
+  "change": "kv16-npu-integration.patch (codex/kv16-npu-integration, applied uncommitted on branch pr/4481)",
+  "patch_sha256": "a5682dd03ae22de3dcfab4762e7b3520b5f326bd94603dd4793f22f5875c0919",
+  "device": {
+    "model": "SM-S948U",
+    "soc": "SM8850",
+    "android": "16",
+    "serial": "R3CY70LV96T",
+    "dsp_arch": "v81"
+  },
+  "toolchain": {
+    "android_ndk": "/opt/android-ndk-r28c",
+    "hexagon_sdk": "6.4.0.2",
+    "hexagon_tools": "HEXAGON_Tools/19.0.04",
+    "hexkl": "6.4.0.2 (armv8_android26)",
+    "meson": "1.5.2"
+  },
+  "binary_sha256": {
+    "libnntrainer.so": "4f22a388541390036fa0049e067515e0dd5c30dbec339ddd48ff585075b6e097",
+    "libcausallm.so": "221e9142b3f561558205001047449a6cb77fac7e2eda2b499aebe050686c670e",
+    "libnntr_hvx_skel.so": "52707ad6c69ac347fa497c70c117322ef0b8e49498b0efc9b291d316c23e03b5",
+    "libsdkl.so": "d6ec50fd0b8557ffa006763e383b3337fc7bc43187fbe217269c747e843f57c1",
+    "htp_sessions_check": "da67dd1118e6752c3d7e23db95e32eb7182cf090c1148b59c31f54ca4a1e6a5f",
+    "kv16_lossless.cpp": "0ef2835695461a4f01dab4812965d4b4e11eb90e7439ae26857b7fc3beb6b333",
+    "kv16_lossless.h": "b60897480fbea324b9ac8157ce327d0d7edf2f5cc3004d07ff7a2dd7f330f2d2"
+  },
+  "model_pack": {
+    "path": "/sdcard/Download/aistudio-mobile/models/gemma4-26b-a4b-htp-w4a32",
+    "files_sha256": {
+      "nntr_gemma4_26b_a4b_tl2_rotated.bin": "d119366443812958d5c380b8c6b0e2ba0a0f65b93d4621e1e0484116919b30e7",
+      "tokenizer.json": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f",
+      "tokenizer.json.ntkc": "32728e06b847d978a6e705b3d8d73652f4d8bd91ea74b690d210527061eab7f2",
+      "tokenizer_config.json": "ae79d5349f543e549ca2721755b030dbba92614e25585f4c7e9aaa3734dfa6ae",
+      "config.json": "99c67148f92c505064f5b660e4c68442f0ad33b8c66ab8747ef83c7e713b0e2e",
+      "generation_config.json": "b8db40d79b281b9de6ff96049daae1ff7eddda71dee6169c9b527454f955e1ff",
+      "chat_template.jinja": "ae53464bf3be25802b3a5b37def7fd89667067d7577049b3b2d74c4d8de4c6d4",
+      "rotation_signs.json": "845749034f217dd77f3e5020e8e9038e236f119a8dc6cd83b04f2c3e2f0a09af",
+      "act_scales.json": "0a307825127f6891dc3ae113be65415df551011a3cc877e932a9e3e3a6e574af",
+      "nntr_config.kv16_checkpoint.json": "fc4e8c51fd44ff8cf3facf9d3702bf0139cb9b881896407d9f2e48d24555a1e5"
+    },
+    "checkpoint_config": "docs/validation/decode-prefix-batch-20261105/nntr_config.json with model paths retargeted to this pack (q8, skip_prefill=true, init_seq_len=4096, max_seq_len=12288, htp.kv_session/kv_paged/kv_prefix_cache=true, kv_seed_q=false)"
+  },
+  "native_checkers": {
+    "htp_calibration_check": "PASS",
+    "htp_prefill_check": "PASS",
+    "htp_prefix_flash_check": "PASS",
+    "htp_decode_kv_convert_check": "PASS",
+    "htp_kv16_codec_check": "PASS",
+    "htp_kv16_prefix_check": "PASS",
+    "htp_kv16_flash_check": "PASS"
+  },
+  "sessions_check": {
+    "fixture": "docs/validation/gemma4-htp-native-radix-20261105.json cold_same_model_raw prompts (2 seeds, 10192/22625 chars) + 'Say READY.' query",
+    "baseline": {
+      "env": "NNTR_HTP_PREFIX_KV16=0 NNTR_HTP_PREFIX_KV16_VERIFY=0, TRACE+SEED_TRACE on",
+      "checkpoint_scope": "PASS (tools/kv16/compare_checkpoint_traces.py, compare-checkpoint.json)",
+      "seed_trace_sha256": "7371e9910b47236c655b06508375dec7ec7456c8cf0a9c046dac170b5525387b"
+    },
+    "candidate": {
+      "env": "NNTR_HTP_PREFIX_KV16=1 NNTR_HTP_PREFIX_KV16_VERIFY=1, TRACE+SEED_TRACE on",
+      "checkpoint_scope": "PASS (same tool, same events/positions/calibration/storage checks)",
+      "seed_trace_sha256": "7371e9910b47236c655b06508375dec7ec7456c8cf0a9c046dac170b5525387b"
+    },
+    "seed_traces_byte_equal": true,
+    "switched_token_ids_equal": true,
+    "switched_positions_and_kv_bytes_equal": true,
+    "stats": {
+      "baseline": {"hits": 1, "prefixes": 4, "radix_nodes": 6, "reused_tokens": 4096, "sessions": 5},
+      "candidate": {"hits": 1, "prefixes": 4, "radix_nodes": 6, "reused_tokens": 4096, "sessions": 5}
+    }
+  },
+  "codec_compression": {
+    "checkpoint_events": 6,
+    "compressed_pages": 1700,
+    "raw_bytes": 1701683200,
+    "stored_bytes": 1592384318,
+    "saved_bytes": 109298882,
+    "saved_ratio": "6.42% of raw checkpoint payload (104.2 MiB per full snapshot set)"
+  },
+  "performance_no_trace": {
+    "note": "Single runs, VERIFY/TRACE off; thermal state not recorded; cold-capture and warm-restore steps are separated",
+    "rows": [
+      {"kind": "switch", "session": 0, "turn": 0, "prefill_tokens": 2079, "ttft_ms": [3940.8, 4819.9], "wall_ms": [5972.3, 6922.5], "tpot_ms": [1.86, 1.99]},
+      {"kind": "switch", "session": 1, "turn": 0, "prefill_tokens": 4607, "ttft_ms": [9121.8, 11144.3], "wall_ms": [10929.2, 12921.7], "tpot_ms": [1.82, 1.78]},
+      {"kind": "switch", "session": 0, "turn": 1, "prefill_tokens": 11, "ttft_ms": [751.8, 737.6], "wall_ms": [2341.3, 2334.9], "tpot_ms": [1.60, 1.65]},
+      {"kind": "switch", "session": 1, "turn": 1, "prefill_tokens": 11, "ttft_ms": [793.1, 808.1], "wall_ms": [2444.3, 2529.1], "tpot_ms": [1.66, 1.76]},
+      {"kind": "switch", "session": 0, "turn": 2, "prefill_tokens": 11, "ttft_ms": [735.6, 790.1], "wall_ms": [2312.5, 2544.6], "tpot_ms": [1.59, 1.79]},
+      {"kind": "switch", "session": 1, "turn": 2, "prefill_tokens": 11, "ttft_ms": [779.7, 833.6], "wall_ms": [2410.2, 2688.7], "tpot_ms": [1.57, 1.86]}
+    ],
+    "ttft_ms_meaning": "[baseline, codec]",
+    "interpretation": "Codec ON adds encode cost to the cold capture call (TTFT +22.3% on the 2079-token and +22.2% on the 4607-token capture); warm restore steps are within single-run variance to slightly slower. No TTFT/TPS improvement is claimed; the benefit is host FP16 prefix retention memory."
+  },
+  "full_scope": {
+    "status": "INCOMPLETE",
+    "tool_output": "compare-evidence.json (exit 2, expected)",
+    "reason": "DSP seed INT8 bytes/scales/state and logits readback hooks are not implemented in this change; FNV checkpoint/seed-trace hashes are diagnostic observations only"
+  },
+  "device_config_note": "The pack's pre-existing nntr_config.json (12387 bytes, 2026-11-09) was overwritten by the checkpoint config before a backup copy could be taken; it was restored from nntr_config.gemma4_pf2k.json (12387 bytes, byte-size match) after the runs. The exact original content is not byte-proven; the pf2k/f2k variants remain in the pack directory and nntr_config.kv16_checkpoint.json preserves the validation config.",
+  "artifacts": "docs/validation/kv16-npu-device-20261111/"
+}

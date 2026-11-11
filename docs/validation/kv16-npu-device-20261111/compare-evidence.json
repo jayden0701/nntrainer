@@ -1,0 +1,6 @@
+{
+  "schema": "nntrainer.kv16.device-evidence.v1",
+  "scope": "checkpoint",
+  "status": "INCOMPLETE",
+  "error": "Extra data: line 2 column 1 (char 3524392)"
+}

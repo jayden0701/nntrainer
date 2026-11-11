@@ -1,0 +1,349 @@
+{
+  "schema": "nntrainer.kv16.trace-comparison.v1",
+  "scope": "checkpoint",
+  "status": "PASS",
+  "checkpoint_status": "PASS",
+  "checks": [
+    {
+      "name": "event_count",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].event",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].position",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].from",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].plane",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].chunk",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].element_bytes",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].model_tag",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].layers",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].calibration",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[0].storage",
+      "status": "PASS",
+      "detail": "complete stored bytes must not exceed raw"
+    },
+    {
+      "name": "event[1].event",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].position",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].from",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].plane",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].chunk",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].element_bytes",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].model_tag",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].layers",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].calibration",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[1].storage",
+      "status": "PASS",
+      "detail": "complete stored bytes must not exceed raw"
+    },
+    {
+      "name": "event[2].event",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].position",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].from",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].plane",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].chunk",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].element_bytes",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].model_tag",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].layers",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].calibration",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[2].storage",
+      "status": "PASS",
+      "detail": "complete stored bytes must not exceed raw"
+    },
+    {
+      "name": "event[3].event",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].position",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].from",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].plane",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].chunk",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].element_bytes",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].model_tag",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].layers",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].calibration",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[3].storage",
+      "status": "PASS",
+      "detail": "complete stored bytes must not exceed raw"
+    },
+    {
+      "name": "event[4].event",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].position",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].from",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].plane",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].chunk",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].element_bytes",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].model_tag",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].layers",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].calibration",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[4].storage",
+      "status": "PASS",
+      "detail": "complete stored bytes must not exceed raw"
+    },
+    {
+      "name": "event[5].event",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].position",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].from",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].plane",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].chunk",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].element_bytes",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].model_tag",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].layers",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].calibration",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event[5].storage",
+      "status": "PASS",
+      "detail": "complete stored bytes must not exceed raw"
+    },
+    {
+      "name": "capture_exercised",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "restore_exercised",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "compressed_page_exercised",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "tokens_positions",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "seed_inputs_before_rpc",
+      "status": "PASS",
+      "detail": "input diagnostic; not DSP INT8 state readback"
+    }
+  ],
+  "hash_algorithm": "FNV1a64 diagnostic",
+  "byte_comparison_proven": false,
+  "hardware_validated": false,
+  "performance_verified": false,
+  "unobserved": [
+    "seed INT8 bytes",
+    "seed scales",
+    "DSP decode state",
+    "raw logits",
+    "hardware execution provenance"
+  ]
+}
