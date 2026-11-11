@@ -76,6 +76,9 @@ void roundTripAndFailureIsolation() {
 
   cache.configurePrefixCodec(0, geometry(), true);
   const auto compressed = cache.capturePrefix(129, disabled.get());
+  // Encoding now happens on background workers; settle them before reading
+  // the final page backing.
+  cache.drainPrefixCodec();
   const auto &pages = compressed->layers[0].pages;
   require(pages.size() == 3 && pages[0]->compressed() && pages[1]->compressed(),
           "Full pages were not compressed");
@@ -97,6 +100,7 @@ void roundTripAndFailureIsolation() {
             pages[0]->compressed(),
           "Materialization modified immutable backing");
   const auto longer = cache.capturePrefix(129, compressed.get());
+  cache.drainPrefixCodec();
   require(longer->layers[0].pages[0] == pages[0],
           "Full page sharing regressed");
   require(longer->layers[0].pages.back() != pages.back(),
@@ -144,6 +148,7 @@ void roundTripAndFailureIsolation() {
   cache.clearPrefixCodecs();
   rejects([&] { cache.restorePrefix(*compressed); });
   const auto raw_again = cache.capturePrefix(129, compressed.get());
+  cache.drainPrefixCodec();
   require(!raw_again->layers[0].pages[0]->compressed(),
           "Disabled codec reused compressed prior backing");
 }
@@ -172,6 +177,7 @@ void ownerReleaseAndEligibility() {
     cache.setPosition(128);
     cache.configurePrefixCodec(0, geometry());
     snapshot = cache.capturePrefix(128);
+    cache.drainPrefixCodec();
     require(snapshot->layers[0].pages[0]->compressed(),
             "Borrowed source was not compressed");
   }

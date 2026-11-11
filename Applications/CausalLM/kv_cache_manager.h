@@ -272,6 +272,13 @@ public:
   void configurePrefixCodec(unsigned layer, const kv16::Geometry &geometry,
                             bool verify = false);
   void clearPrefixCodecs();
+  /** Queue a staged RAW page (owned bytes, binding hint set) for background
+   *  kv16::encode so the prefill thread pays no compression latency. */
+  void stagePrefixCodec(const std::shared_ptr<PrefixSnapshot::Page> &page,
+                        const kv16::Geometry &geometry, bool verify) const;
+  /** Block until every staged page reached its final RAW/compressed form.
+   *  Anything that reads page backings outside capture must drain first. */
+  void drainPrefixCodec() const noexcept;
   size_t prefixPayloadBytes(unsigned position) const;
   /** Validate all pages/bindings and return a raw snapshot before publication.
    * Compressed pages decode into owned scratch; live cache/state stay intact.
@@ -673,6 +680,9 @@ private:
     prefix_views_;
   std::vector<std::shared_ptr<const kv16::Geometry>> prefix_codecs_;
   std::vector<bool> prefix_codec_verify_;
+  /** Background encoder for staged pages; shared so moves keep the pool. */
+  class PrefixCodecPool;
+  std::shared_ptr<PrefixCodecPool> prefix_codec_pool_;
   SharedAlloc shared_alloc_;          /**< see setSharedAllocator */
   SharedFree shared_free_;            /**< see setSharedAllocator */
   std::vector<void *> shared_blocks_; /**< blocks owned via shared_alloc_ */

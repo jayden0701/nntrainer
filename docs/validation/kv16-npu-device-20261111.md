@@ -102,6 +102,35 @@ thermal status 기록, TRACE/VERIFY off, 2초 주기 RSS 샘플링. 장치는 US
   (evidence.json, trace.jsonl.gz, run.log ×2, compare-evidence-full.json).
   덤프(.bin)와 logits(.f32)는 용량 문제로 해시만 기록했다.
 
+## 비동기 encode (2026-11-11 추가)
+
+동기 encode는 prefill 임계 경로에 토큰당 ~0.5 ms의 압축 비용을 얹어 cold
+capture TTFT를 +22~27% 늘렸다. `capturePrefix`가 이제 페이지를 **스테이징만**
+한다(RPC slab 뷰를 소유 RAW 바이트로 freeze, 바인딩 힌트 기록) — 실제
+`kv16::encode`·VERIFY 왕복·RAW 해제는 백그라운드 `PrefixCodecPool`(최대 4
+worker, nice 19)이 prefill 바깥에서 수행한다.
+
+- drain 지점: `capturePrefix`(재사용 검사 전), `materializePrefix`, 체크포인트
+  trace 기록, Flash/writer 제출, footprint 통계 — 페이지 backing을 읽는 모든
+  경로가 워커 완료를 먼저 기다린다.
+- 실패·이득 없음(no-gain)·검증 불일치 시 페이지는 소유 RAW로 남는다: codec
+  문제가 추론 결과를 바꿀 수 없다(무손실 전제 유지).
+- 재검증: prefix/flash/codec/calibration 체커 PASS, 세션 리플레이(VERIFY=1)는
+  기록된 codec 결과와 동일(4 prefixes / 4096 reused / 5 sessions), full-scope
+  evidence 비교 **PASS (exit 0)** — baseline·codec 증거를 async 빌드로 재캡처.
+
+단일 실행 페어(OFF/ON, 기존 프로토콜과 동일한 주의사항):
+
+| 구간 | async OFF | async ON (nice 19) | Δ |
+| --- | ---: | ---: | --- |
+| cold capture TTFT (2,079 tok) | 3,683 ms | 3,757 ms | **+2.0%** |
+| cold capture TTFT (4,607 tok) | 8,996 ms | 9,175 ms | **+2.0%** |
+| warm restore TTFT | 705–778 ms | 719–778 ms | 동등 |
+
+동기 encode 대비 cold capture 비용이 +22~27% → **+2%** 로 줄었다. 압축 CPU
+작업은 사라진 게 아니라 nice 19 워커가 prefill의 유휴 사이클에서 처리하는
+것이다. 시간은 스테이징 시점의 소유 복사로 잠시 늘어난다(capture 시 RAW 유지).
+
 ## 아직 입증하지 못한 것
 
 - RSS/RPC slab/system peak의 실제 절감, Flash v2 저장 경로의 장치 실측.

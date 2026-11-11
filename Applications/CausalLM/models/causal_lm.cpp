@@ -1149,6 +1149,9 @@ size_t CausalLM::getDeviceKVCacheBytes() const {
 }
 
 size_t CausalLM::getDeviceKVPrefixBytes() const {
+  // Staged pages count as their RAW bytes until the workers settle them;
+  // drain so the reported footprint is the final one.
+  kv_cache.drainPrefixCodec();
   std::unordered_set<const KVCacheManager::PrefixSnapshot::Page *> pages;
   size_t bytes = 0;
   std::unordered_set<const void *> slabs;
@@ -1839,6 +1842,9 @@ void CausalLM::traceDevicePrefill(
   const char *path = std::getenv("NNTR_HTP_PREFIX_KV16_TRACE");
   if (!path || !*path)
     return;
+  // The trace records per-page compressed/raw accounting, which is only
+  // meaningful once the background encoder has settled.
+  kv_cache.drainPrefixCodec();
   try {
     auto bits = [](const std::vector<float> &values) {
       std::vector<uint32_t> words(values.size());
@@ -1959,6 +1965,11 @@ void CausalLM::captureDevicePrefill(unsigned from, unsigned position,
                            ? nullptr
                            : device_prefill_history_->rbegin()->second.kv.get();
   auto snapshot = kv_cache.capturePrefix(position, previous, archive);
+  // Archivers read the final page backing, so settle the background encodes
+  // before handing the snapshot over. Plain in-memory retention keeps pages
+  // staged and lets the workers compress them during decode.
+  if (system_prefix_writer_ || archive)
+    kv_cache.drainPrefixCodec();
   traceDevicePrefill("capture", frame, *snapshot);
   if (system_prefix_writer_) {
     frame.baked = system_prefix_writer_->add(from, frame.plane, frame.chunk,
@@ -2001,6 +2012,9 @@ void CausalLM::restoreDevicePrefill(uint32_t handle, unsigned position) {
   }
   if (!payload)
     throw DeviceKVManager::PrefixUnavailable("Unavailable Flash boundary");
+  // Restored payloads may come from just-captured staged pages; settle the
+  // background encoder before any page backing is validated or decoded.
+  kv_cache.drainPrefixCodec();
   try {
     if (payload->position != position || payload->element_bytes != 2u ||
         saved->at(position).calibration.size() != payload->layers.size())

@@ -13,12 +13,22 @@
 #include "kv_cache_manager.h"
 
 #include <algorithm>
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
+#ifdef __linux__
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 #include <fp16.h>
@@ -102,6 +112,7 @@ KVCacheManager &KVCacheManager::operator=(KVCacheManager &&other) noexcept {
     prefix_views_ = std::move(other.prefix_views_);
     prefix_codecs_ = std::move(other.prefix_codecs_);
     prefix_codec_verify_ = std::move(other.prefix_codec_verify_);
+    prefix_codec_pool_ = std::move(other.prefix_codec_pool_);
     decode_offsets_ = std::move(other.decode_offsets_);
     shared_alloc_ = std::move(other.shared_alloc_);
     shared_free_ = std::move(other.shared_free_);
@@ -739,6 +750,149 @@ void KVCacheManager::validateSaveRange(unsigned int seq_len) const {
   validateRange(seq_len, false);
 }
 
+/** Background encoder for staged prefix pages. Capture only guarantees owned
+ *  RAW bytes; this pool moves them through kv16::encode so the prefill thread
+ *  pays no compression latency. Every accessor of a staged page outside
+ *  capturePrefix must drainPrefixCodec() first: worker finalization is the
+ *  only writer of `encoded` and the raw-byte release. */
+class KVCacheManager::PrefixCodecPool {
+public:
+  ~PrefixCodecPool() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    stop_ = true;
+    cv_.notify_all();
+    auto threads = std::move(threads_);
+    lock.unlock();
+    // Workers finish the remaining queue before observing stop_, so this
+    // join doubles as the shutdown drain for pages that are still staged.
+    for (auto &thread : threads)
+      thread.join();
+  }
+
+  void ensureThreads(unsigned count) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    while (threads_.size() < count)
+      threads_.emplace_back([this] {
+        lowerPriority();
+        workerLoop();
+      });
+  }
+
+  void stage(std::shared_ptr<PrefixSnapshot::Page> page,
+             kv16::Geometry geometry, bool verify) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      queue_.push_back({std::move(page), std::move(geometry), verify});
+    }
+    cv_.notify_one();
+  }
+
+  void drain() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    cv_.wait(lock, [this] { return queue_.empty() && !busy_; });
+  }
+
+private:
+  /** Encode competes with the prefill threads for CPU. Drop the workers to
+   *  the lowest priority so they only absorb idle cycles; on platforms
+   *  without nice they run at the caller's priority. */
+  static void lowerPriority() {
+#ifdef __linux__
+    if (setpriority(PRIO_PROCESS, static_cast<id_t>(syscall(SYS_gettid)), 19))
+      std::fprintf(stderr, "[KV16 codec] worker renice failed\n");
+#endif
+  }
+
+  struct Task {
+    std::shared_ptr<PrefixSnapshot::Page> page;
+    kv16::Geometry geometry;
+    bool verify;
+  };
+
+  void workerLoop() {
+    for (;;) {
+      Task task;
+      {
+        std::unique_lock<std::mutex> lock(mutex_);
+        cv_.wait(lock, [this] { return stop_ || !queue_.empty(); });
+        if (queue_.empty())
+          return; // stop_ observed and the queue is fully drained
+        task = std::move(queue_.front());
+        queue_.pop_front();
+        ++busy_;
+      }
+      const bool published = runTask(task);
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        --busy_;
+        if (!published)
+          ++failures_;
+      }
+      cv_.notify_all();
+    }
+  }
+
+  /** Returns whether the page reached its compressed backing. On any failure
+   *  or no-gain the page keeps its owned RAW bytes, which is always valid
+   *  data; the codec is an optional storage optimization. */
+  static bool runTask(const Task &task) {
+    auto &page = *task.page;
+    const size_t page_bytes = page.keySize();
+    if (!page_bytes || page_bytes != page.valueSize())
+      return false;
+    try {
+      auto encoded = kv16::encode(page.keyData(), page.valueData(), page_bytes,
+                                  task.geometry);
+      if (encoded.size() >= page_bytes * 2u)
+        return false; // no gain: keep RAW, exactly like the synchronous path
+      if (task.verify) {
+        const auto check = kv16::decode(encoded.data(), encoded.size());
+        if (check.key.size() != page_bytes ||
+            check.value.size() != page_bytes ||
+            std::memcmp(check.key.data(), page.key.data(), page_bytes) ||
+            std::memcmp(check.value.data(), page.value.data(), page_bytes)) {
+          std::fprintf(stderr, "[KV16 codec] background verification mismatch; "
+                               "keeping RAW\n");
+          return false;
+        }
+      }
+      page.encoded = std::move(encoded);
+      page.logical_plane_bytes = page_bytes;
+      page.key_view = page.value_view = nullptr;
+      page.view_bytes = page.slab_bytes = 0;
+      page.key_owner.reset();
+      page.value_owner.reset();
+      std::vector<unsigned char>().swap(page.key);
+      std::vector<unsigned char>().swap(page.value);
+      return true;
+    } catch (const std::exception &error) {
+      std::fprintf(stderr, "[KV16 codec] background encode failed: %s\n",
+                   error.what());
+      return false;
+    }
+  }
+
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  std::deque<Task> queue_;
+  std::vector<std::thread> threads_;
+  unsigned busy_ = 0;
+  bool stop_ = false;
+  std::atomic<size_t> failures_{0};
+};
+
+void KVCacheManager::stagePrefixCodec(
+  const std::shared_ptr<PrefixSnapshot::Page> &page,
+  const kv16::Geometry &geometry, bool verify) const {
+  if (prefix_codec_pool_)
+    prefix_codec_pool_->stage(page, geometry, verify);
+}
+
+void KVCacheManager::drainPrefixCodec() const noexcept {
+  if (prefix_codec_pool_)
+    prefix_codec_pool_->drain();
+}
+
 void KVCacheManager::configurePrefixCodec(unsigned layer,
                                           const kv16::Geometry &geometry,
                                           bool verify) {
@@ -760,9 +914,17 @@ void KVCacheManager::configurePrefixCodec(unsigned layer,
   prefix_codec_verify_.resize(layer_caches_.size(), false);
   prefix_codecs_[layer] = std::move(configured);
   prefix_codec_verify_[layer] = verify;
+  if (!prefix_codec_pool_)
+    prefix_codec_pool_ = std::make_shared<PrefixCodecPool>();
+  // Half the reported cores, clamped to [1, 4]: encode competes with the
+  // decode threads only between requests, so four workers outpace capture.
+  const unsigned hardware = std::thread::hardware_concurrency();
+  prefix_codec_pool_->ensureThreads(
+    std::max(1u, std::min(4u, hardware ? hardware / 2u : 2u)));
 }
 
 void KVCacheManager::clearPrefixCodecs() {
+  drainPrefixCodec();
   prefix_codecs_.clear();
   prefix_codec_verify_.clear();
 }
@@ -774,6 +936,10 @@ KVCacheManager::capturePrefix(unsigned position, const PrefixSnapshot *previous,
       position > max_seq_len_ || position > cache_pos_)
     throw std::invalid_argument(
       "Prefill prefix requires an available original-call endpoint");
+  // Reuse inspects the previous snapshot's page backing; staged encodes must
+  // have settled so no worker finalization races these reads. Prior captures
+  // usually finished long ago on the workers, making this wait ~zero.
+  drainPrefixCodec();
   auto state = std::make_shared<PrefixSnapshot>();
   state->position = position;
   state->element_bytes =
@@ -855,29 +1021,12 @@ KVCacheManager::capturePrefix(unsigned position, const PrefixSnapshot *previous,
         if (codec && state->element_bytes == 2u) {
           auto geometry = *codec;
           geometry.tokens = std::min(64u, position - p);
-          auto encoded = kv16::encode(page->keyData(), page->valueData(),
-                                      page_bytes, geometry);
+          // The background encoder reads the raw planes later, so the page
+          // must own its bytes instead of viewing shared slabs that a later
+          // request may rewrite before the worker runs.
+          page->freeze();
           page->codec_attempt = codec;
-          if (encoded.size() < page_bytes * 2u) {
-            if (prefix_codec_verify_[l]) {
-              const auto check = kv16::decode(encoded.data(), encoded.size());
-              if (check.key.size() != page_bytes ||
-                  check.value.size() != page_bytes ||
-                  std::memcmp(check.key.data(), page->keyData(), page_bytes) ||
-                  std::memcmp(check.value.data(), page->valueData(),
-                              page_bytes))
-                throw std::runtime_error("Prefix codec verification mismatch");
-            }
-            page->encoded = std::move(encoded);
-            page->logical_plane_bytes = page_bytes;
-            page->codec_attempt.reset();
-            std::vector<unsigned char>().swap(page->key);
-            std::vector<unsigned char>().swap(page->value);
-            page->key_view = page->value_view = nullptr;
-            page->view_bytes = page->slab_bytes = 0;
-            page->key_owner.reset();
-            page->value_owner.reset();
-          }
+          stagePrefixCodec(page, geometry, prefix_codec_verify_[l]);
         }
         dst.pages.push_back(std::move(page));
       }
@@ -907,6 +1056,8 @@ KVCacheManager::materializePrefix(const PrefixSnapshot &state) const {
       state.element_bytes !=
         layer_caches_.front().key_cache.getDim().getDataTypeSize())
     throw std::invalid_argument("Incompatible prefill prefix geometry");
+  // Page backings may still be pending in the background encoder.
+  drainPrefixCodec();
   auto materialized = std::make_shared<PrefixSnapshot>(state);
   for (unsigned l = 0; l < state.layers.size(); ++l) {
     const auto &src = state.layers[l];

@@ -20,7 +20,7 @@
   },
   "binary_sha256": {
     "libnntrainer.so": "4f22a388541390036fa0049e067515e0dd5c30dbec339ddd48ff585075b6e097",
-    "libcausallm.so": "221e9142b3f561558205001047449a6cb77fac7e2eda2b499aebe050686c670e",
+    "libcausallm.so": "694dbdeb9700acc0f53963d83301db0102f77f7ae8db43f8697b4ddfa28c7171",
     "libnntr_hvx_skel.so": "52707ad6c69ac347fa497c70c117322ef0b8e49498b0efc9b291d316c23e03b5",
     "libsdkl.so": "d6ec50fd0b8557ffa006763e383b3337fc7bc43187fbe217269c747e843f57c1",
     "htp_sessions_check": "da67dd1118e6752c3d7e23db95e32eb7182cf090c1148b59c31f54ca4a1e6a5f",
@@ -113,7 +113,16 @@
       "codec": {"rss_peak_mib": 993, "mem_avail_min_mib": 1032, "samples": 52},
       "interpretation": "codec peak RSS is +27 MiB (encode scratch + compressed payload coexist with live cache during capture). The single-run MemAvailable minimum is ambient-noisy and is NOT attributable to the codec; per-handoff, pinned RPC slab views mean stored-byte savings do not map 1:1 to system memory. A dedicated long-residency memory experiment is still required."
     },
-    "conclusion": "Warm restore TPOT/TTFT are equal within noise; the codec costs +24~27% TTFT on cold capture and ~4s extra load/teardown. The benefit remains host FP16 prefix retention bytes (109.3 MB per full snapshot set), with no TTFT/TPS improvement."
+    "conclusion": "Warm restore TPOT/TTFT are equal within noise; with the synchronous codec the cold capture cost +24~27% TTFT and ~4s extra load/teardown. The benefit remains host FP16 prefix retention bytes (109.3 MB per full snapshot set), with no TTFT/TPS improvement."
+  },
+  "async_encode": {
+    "motivation": "The synchronous encode put ~0.5 ms/token of compression on the prefill critical path (cold-capture TTFT +22~27%).",
+    "design": "capturePrefix now only stages pages: it freezes shared-slab views into owned RAW bytes, sets the codec binding hint and queues the page for a background PrefixCodecPool (up to 4 workers at lowest Linux priority, nice 19). Workers run kv16::encode, the optional VERIFY round-trip and the RAW release off the critical path. capturePrefix, materializePrefix, the checkpoint trace, the archive (Flash/writer) submission and the footprint statistics all drain the pool before touching page backings; a failed or no-gain encode keeps the owned RAW page, so a codec problem can never change inference.",
+    "native_checkers": "htp_kv16_prefix_check / htp_kv16_flash_check / htp_kv16_codec_check / htp_calibration_check all PASS",
+    "sessions_check": "codec sessions replay (NNTR_HTP_PREFIX_KV16=1, VERIFY=1) matches the recorded codec run exactly: 4 prefixes / 4096 reused tokens / 5 sessions, identical token ids and positions",
+    "full_scope": "PASS (exit 0) re-verified with the async build (baseline and codec evidence both re-captured on device)",
+    "ttft_ms": {"off": [3683.3, 8995.6, 722.4, 771.9, 705.3, 777.5], "on_async": [3756.7, 9174.9, 718.7, 777.5, 726.6, 767.8]},
+    "conclusion": "Cold-capture TTFT overhead drops from +22~27% (synchronous encode) to +2.0% (async nice-19 workers); warm restores stay equal within noise. Single-run pairs, same protocol caveat as repeat_performance."
   },
   "device_config_note": "The pack's pre-existing nntr_config.json (12387 bytes, 2026-11-09) was overwritten by the checkpoint config before a backup copy could be taken; it was restored from nntr_config.gemma4_pf2k.json (12387 bytes, byte-size match) after the runs. The exact original content is not byte-proven; the pf2k/f2k variants remain in the pack directory and nntr_config.kv16_checkpoint.json preserves the validation config.",
   "artifacts": "docs/validation/kv16-npu-device-20261111/ (incl. evidence-full/: per-mode evidence.json, trace.jsonl.gz, run.log, compare-evidence-full.json, kv16-dump-sha256.txt)"
