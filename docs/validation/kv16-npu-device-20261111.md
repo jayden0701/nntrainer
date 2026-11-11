@@ -82,12 +82,31 @@ thermal status 기록, TRACE/VERIFY off, 2초 주기 RSS 샘플링. 장치는 US
 - 결론: warm restore 성능은 동등, cold capture에만 비용. 이득은 host FP16
   prefix 보관 바이트(스냅샷 세트당 109.3 MB)다.
 
+## full-scope 증거 비교 (PASS, 2026-11-11 추가)
+
+`test/htp/host/kv16_evidence_check.cpp`(신규, 엔진 수정 없음)를 baseline/codec
+두 모드로 실기 실행해 `tools/kv16/compare_device_evidence.py --scope full`로
+비교했다 — **PASS (exit 0)**.
+
+- 플로우: warm-up + 시드 캡처 2회 + query 연속. `enableDeviceKVManager(8,8)`로
+  device prefix capture를 켜고, 캡처가 일어난 런마다 `saveDeviceKVCache`로
+  상주 DSP INT8 체크포인트를 덤프했다.
+- 관측값: token IDs, position, call-plan, calibration(trace u32 bit words 해시),
+  전체 logits(LogitsProcessor, 첫 decode step), k/v/seed_kv/seed_scales/
+  decode_state(설계상 동일 덤프 바이트).
+- 덤프 프레이밍의 두 필드는 실행마다 달라진다(snapshot cookie = 헤더 [8,16)과
+  그를 덮는 마지막 FNV trailer 8바이트). 체커는 이 두 범위를 제외하고 해시했다.
+  원본 덤프 파일의 SHA는 `evidence-full/kv16-dump-sha256.txt`에 남긴다.
+- 결과: baseline/codec 양쪽 모든 관측값 동일, codec 모드 compressed pages > 0.
+- 산출물: `docs/validation/kv16-npu-device-20261111/evidence-full/`
+  (evidence.json, trace.jsonl.gz, run.log ×2, compare-evidence-full.json).
+  덤프(.bin)와 logits(.f32)는 용량 문제로 해시만 기록했다.
+
 ## 아직 입증하지 못한 것
 
-- full scope(`compare_device_evidence.py`)는 **INCOMPLETE**가 맞다. 이 변경에는
-  DSP seed INT8 readback/scales/state와 logits 수집 hook이 없다.
-- RSS/RPC slab/system peak의 실제 절감, Flash v2 저장 경로의 장치 실측,
-  반복 측정과 thermal 상태 기록.
+- RSS/RPC slab/system peak의 실제 절감, Flash v2 저장 경로의 장치 실측.
+- handoff 시나리오 1(suffix 분리), 3(Prefix Flash), 4(손상 fallback)의
+  명시적 검증.
 - 장치 팩의 원래 `nntr_config.json`은 백업 전에 덮어써져 있었다(12387 bytes).
   `nntr_config.gemma4_pf2k.json`(동일 12387 bytes)으로 복원했고, 검증 config는
   `nntr_config.kv16_checkpoint.json`으로 보존했다. 원본이 pf2k와 같은

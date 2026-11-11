@@ -1,0 +1,12 @@
+# Raw resident-session KV checkpoint dumps (246 MB each) stay on the host at /tmp/kv16-build/evidence; the framing cookie/trailer differ per run by design.
+bacb7c5e12cabf4fb4ce8c02932289691c3cfa55d67a844dc05ff5a421385224   baseline/kv-run-1.bin
+be3707c0a8f8d3db4bbfba58d65d3f5a3fc458df0833dc82bed5509661b0e50d   baseline/kv-run-2.bin
+2023043e56f4008ac612a2f31097c23edff4350886e295baef8721836e2a041d   codec/kv-run-1.bin
+6d92f453d0a7b6f0b1ad140418ec4ccc5169b308322c29d26b97a041e0ef51b4   codec/kv-run-2.bin
+3ba9f894bf09f16908d8e851549337544e66b59534e100e8c1a3cd02cfd68ab6  evidence-full/baseline/evidence.json
+4f9faca4c91e65735157d7a63506b18eb1c60595c2725f305df37dd04dcfe841  evidence-full/codec/evidence.json
+72640b8aa0fb9fab0e8f673ef40d002673498cc4508dcb0e1c54921e51f702b3  evidence-full/baseline/trace.jsonl.gz
+8a34acc1e43ff40703890e59a2d0675cfbf5f476aadf783f2b8ebd4cde7ce1d5  evidence-full/codec/trace.jsonl.gz
+4b3b20f7948570267a2508ff832b0b2f87356b880960be55f0dc5d6aecdc5927  evidence-full/baseline/run.log
+4087b32c2cb2f7bbcd07699356bf2eef76977ba036389fb3c30e3cd867bfb94d  evidence-full/codec/run.log
+6bef033986e031abf82fa568738a888657c219185b55978638e8ee6a59daa5ae  evidence-full/compare-evidence-full.json

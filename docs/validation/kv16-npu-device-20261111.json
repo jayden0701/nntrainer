@@ -24,6 +24,7 @@
     "libnntr_hvx_skel.so": "52707ad6c69ac347fa497c70c117322ef0b8e49498b0efc9b291d316c23e03b5",
     "libsdkl.so": "d6ec50fd0b8557ffa006763e383b3337fc7bc43187fbe217269c747e843f57c1",
     "htp_sessions_check": "da67dd1118e6752c3d7e23db95e32eb7182cf090c1148b59c31f54ca4a1e6a5f",
+    "htp_kv16_evidence_check": "f4895ee0141315e8e726612745cf78b4b01ba8d25703e0e25443ea408ce5089c",
     "kv16_lossless.cpp": "0ef2835695461a4f01dab4812965d4b4e11eb90e7439ae26857b7fc3beb6b333",
     "kv16_lossless.h": "b60897480fbea324b9ac8157ce327d0d7edf2f5cc3004d07ff7a2dd7f330f2d2"
   },
@@ -94,9 +95,11 @@
     "interpretation": "Codec ON adds encode cost to the cold capture call (TTFT +22.3% on the 2079-token and +22.2% on the 4607-token capture); warm restore steps are within single-run variance to slightly slower. No TTFT/TPS improvement is claimed; the benefit is host FP16 prefix retention memory."
   },
   "full_scope": {
-    "status": "INCOMPLETE",
-    "tool_output": "compare-evidence.json (exit 2, expected)",
-    "reason": "DSP seed INT8 bytes/scales/state and logits readback hooks are not implemented in this change; FNV checkpoint/seed-trace hashes are diagnostic observations only"
+    "status": "PASS",
+    "tool_output": "evidence-full/compare-evidence-full.json (tools/kv16/compare_device_evidence.py --scope full, exit 0)",
+    "method": "test/htp/host/kv16_evidence_check.cpp ran on device in baseline and codec modes (NNTR_HTP_PREFIX_KV16=0/1, VERIFY=1 for codec): 4 fresh-prompt runs (warm-up + 2 seed captures + query continuation), device prefix capture enabled via enableDeviceKVManager(8,8); each capturing run dumped the resident DSP INT8 checkpoint via saveDeviceKVCache and hashed it after skipping the two run-unique framing fields (snapshot cookie at bytes [8,16) and the trailing FNV trailer that covers it); full logits were captured per run through a LogitsProcessor (first decode step), calibration observations hash the checkpoint-trace u32 bit words; raw dumps themselves differ between modes only in the cookie/trailer fields (kv16-dump-sha256.txt)",
+    "events": "2 capture events per mode (run-1, run-2): token_ids, position, call-plan, calibration, logits, k/v/seed_kv/seed_scales/decode_state (all five = the byte-exact checkpoint dump)",
+    "result": "PASS (full): all checks PASS in both baseline and codec modes; codec.used confirmed non-zero compressed pages"
   },
   "repeat_performance": {
     "protocol": "3 interleaved rounds x (OFF,ON) with order alternation (off,on / on,off / off,on), 8s idle gate, thermal status recorded pre/post, no TRACE/VERIFY, RSS sampled every 2s from the host",
@@ -113,5 +116,5 @@
     "conclusion": "Warm restore TPOT/TTFT are equal within noise; the codec costs +24~27% TTFT on cold capture and ~4s extra load/teardown. The benefit remains host FP16 prefix retention bytes (109.3 MB per full snapshot set), with no TTFT/TPS improvement."
   },
   "device_config_note": "The pack's pre-existing nntr_config.json (12387 bytes, 2026-11-09) was overwritten by the checkpoint config before a backup copy could be taken; it was restored from nntr_config.gemma4_pf2k.json (12387 bytes, byte-size match) after the runs. The exact original content is not byte-proven; the pf2k/f2k variants remain in the pack directory and nntr_config.kv16_checkpoint.json preserves the validation config.",
-  "artifacts": "docs/validation/kv16-npu-device-20261111/"
+  "artifacts": "docs/validation/kv16-npu-device-20261111/ (incl. evidence-full/: per-mode evidence.json, trace.jsonl.gz, run.log, compare-evidence-full.json, kv16-dump-sha256.txt)"
 }

@@ -1,0 +1,61 @@
+[HTP] ppl levers=0x0 L1=exact
+[HTP] graph: description n_ops=542 resident=RMSNORM|FC|QK_NORM|ROPE|ATTN_M1|ADD|ROUTER_TOPK|MOE|DENSE_FFN|LM_HEAD moe_ops=30
+[HTP] gemma: list n_ops=542 layers=30 params=60 by name
+[MoE] preload_experts=128 cache_slots=480
+[HTP] moe m1 gemv: on (applied=0xccf03e1) lead=192KB rows1=1 feed=vtcm dma_bypass=1 dma_q=4 source=config
+[HTP] online Hadamard=both scope=all applied=0xc000000; matching offline weight rotation required for valid outputs
+[HTP] Hadamard signs: in=2816 down=704
+[HTP] lm_head on the NPU: 262144 x 2816 QS4CX as 64 WH slices of 4096 (prefill row and decode), 352.0 MiB, placed in 47 ms
+[HTP] graph: q4m1 weights=206 handles=0 feed=vtcm wh_handles=634
+[HTP] e2e: fc arena weights=206 handles=0 attach_mib=0.0 chunks=0 mapped_mib=0 feed=vtcm load_ms=46.8 lanes=6,3 s1_arena_mib=1408 s1_heap_kib=164409
+[HTP] CPU prefill scratch discarded: 350 MiB of virtual pages
+[HTP-MEM] released_prefill_scratch_bytes=114221056
+[HTP] mem t1 before graph init (= prefill end): s1_heap_mib=176 staging_pools_mib=0 rss_mib=694 mem_available_mib=4062
+[HTP] mem t1 after graph init: s1_heap_mib=201 staging_pools_mib=0 rss_mib=694 mem_available_mib=4076
+[HTP] graph: init n_ops=542 resident=RMSNORM|FC|QK_NORM|ROPE|ATTN_M1|ADD|ROUTER_TOPK|MOE|DENSE_FFN|LM_HEAD moe_ops=30
+[HTP] e2e: freed 0 quantized KV caches
+[HTP] attn_m1: registered layers=25 kv=8 gqa=2 head_dim=256 max_seq=64 cache=6400 KiB int8
+[HTP] attn_m1: registered layers=5 kv=2 gqa=8 head_dim=512 max_seq=64 cache=640 KiB int8
+[HTP] dspq: on queue=0x98400000000 dsp_spin_us=0 arm_spin_us=5000 buffers=65536+1048576 ion=y domain=3
+[HTP] token driver: on mbox=65536 spin_us=0 moe_ops=30 logits_buf=1048576 fadvise=0
+[HTP] t1: graph_init_ms=50.4
+[HTP-PREFETCH] direct slots=32 bytes=41287680 readers=2 pair_read=0
+[HTP] t1: pool_sync_ms=2.3 (drop_host_fc+pin 0.4) kv_seed_rpc_ms=16.9 seeds=30 (dsp 0, kvq freed late 0) rss_mib=806.9 mem_available_mib=5157.7
+[HTP] demand read pool: readers=4
+[HTP] token driver: first token pos=11 id=100 us=169830 logits=1
+[HTP] CPU prefill scratch discarded: 350 MiB of virtual pages
+[HTP-MEM] released_prefill_scratch_bytes=220389376
+[HTP] e2e: freed 0 quantized KV caches
+[HTP] attn_m1: registered layers=25 kv=8 gqa=2 head_dim=256 max_seq=1088 cache=108800 KiB int8
+[HTP] attn_m1: registered layers=5 kv=2 gqa=8 head_dim=512 max_seq=2112 cache=21120 KiB int8
+[HTP] t1: pool_sync_ms=2.1 (drop_host_fc+pin 0.0) kv_seed_rpc_ms=104.8 seeds=30 (dsp 0, kvq freed late 0) rss_mib=775.8 mem_available_mib=4042.7
+[HTP] CPU prefill scratch discarded: 350 MiB of virtual pages
+[HTP-MEM] released_prefill_scratch_bytes=640376832
+[HTP] e2e: freed 0 quantized KV caches
+[HTP] attn_m1: registered layers=25 kv=8 gqa=2 head_dim=256 max_seq=1088 cache=108800 KiB int8
+[HTP] attn_m1: registered layers=5 kv=2 gqa=8 head_dim=512 max_seq=4672 cache=46720 KiB int8
+[HTP] t1: pool_sync_ms=2.2 (drop_host_fc+pin 0.0) kv_seed_rpc_ms=141.6 seeds=30 (dsp 0, kvq freed late 0) rss_mib=856.3 mem_available_mib=2922.5
+[HTP-KV] reserve cache=0 rows=1152 base=3583 dropped=0 us=3967
+[HTP-KV] reserve cache=1 rows=4736 base=0 dropped=0 us=2320
+[HTP-KV] reuse prefix=4639 reserved_end=4683 payload_bytes=159252480
+[HTP] CPU prefill scratch discarded: 350 MiB of virtual pages
+EVIDENCE written: "/data/local/tmp/Quick.AI/kv16-evidence/codec/evidence.json"
+[HTP] dspq: close calls=139 served=139 bad=0 empty_polls=0 dsp_spin_us=0 stop_err=0x0
+[HTP] graph: tokens=139 pcyc/token=0 wait_us/token=0.0
+[HTP] graph per-kind pcyc/token: | wall_ms/token=55.851 mhz=1965 spin_us=0
+[HTP] graph per-kind us/token: | ops/wall=0.0000 compute_mhz=2112
+[HTP] token driver: L0 wake us/token disp=38.0 pkt=7.7 ret=1218.6 clk_resid=-0.1
+[HTP] token driver: L0 us/token rt=57115.1 dsp_wall=55850.8 wake=1264.3 hop_us=0.0 arm_fwd=59063.0 arm_us=154740.5 arm_n=138
+[HTP] token driver: pool finish us/token idle=37.8 predictor=0.4 prefetch=0.1
+[HTP] token driver: pool misses=5195 misses/token=37.37 miss_wait_us/token=9859.7 rounds=2211 arm_ms/round=0.963 pgpgin_mib=28684.2 rss_mib=296.0 mem_available_mib=5486.9
+[HTP] token driver: round us: notice=2 pre=18 read=945 answer=963 (arm total) | dsp overlap=457 wait=620 anslat=111 rebind=20
+[HTP] token driver: expert_pair_reads=2429
+[HTP] token driver: prefetch hints/token=29.00 issued/token=0.00 done=0 useful/token=0.00
+[HTP] token driver: moe calls/token=45.27 (one-at-a-time 116.16)
+[HTP] token driver: close tokens=139 hops/token=0.00 served=139 timeouts=0 stale=0 id_checked=129 id_mismatch=0 stop_err=0x0
+[HTP] e2e: close mapped_mib=1.12 unmap_fail=0 detach_fail=0 heap_used_kib=455956 (info rc 0x0)
+[HTP-PREDICT] arm submitted=4031 completed=4031 failed=0 full=0
+[HTP-PREFETCH] submitted=6897 completed=5802 used=2766 late=1303 discarded=4131 failed=0 full=0 joined=1303 cancelled=546 handed_off=0 registration_rpc=0
+[HTP] arena: chunks unmapped 8/8 mib=1792 (release rc=0x0 put=8)
+[HTP] graph: forward calls=139 tokens=139 calls/token=1.00
+[HTP] graph: cpu fc skipped=20880
