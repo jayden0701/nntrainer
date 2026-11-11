@@ -913,6 +913,10 @@ KVCacheManager::gatherSparsePrefix(
     }
     dst.base = length > retained ? static_cast<unsigned>(length - retained) : 0;
     const size_t row_bytes = checkedMultiply(dst.width, result->element_bytes);
+    // Every retained row lands in exactly one destination page, so the final
+    // page count is known up front. Reserving it keeps the page list from
+    // growing through repeated reallocation and copies.
+    dst.pages.reserve(checkedAdd(length - dst.base, 63) / 64);
     std::vector<float> key(dim);
     std::shared_ptr<PrefixSnapshot::Page> page;
     for (const auto &run : runs) {
@@ -922,14 +926,23 @@ KVCacheManager::gatherSparsePrefix(
         run.source != run.destination && !rope[l].frequencies.empty()
           ? rope[l].rotation(run.source, run.destination)
           : std::vector<float>{};
-      for (size_t t = 0; t < run.count; ++t) {
+      // Rows the retained window already dropped are never visited: the run
+      // simply starts at the first row the destination keeps.
+      const size_t discarded =
+        dst.base > run.destination ? dst.base - run.destination : 0;
+      // Only the leading 2 * frequencies.size() dimensions rotate. Split and
+      // interleaved pair layouts both keep rotary pairs inside that prefix,
+      // so the remaining tail keeps its source bits behind the same finite
+      // guard the full-row rotation loop applied before.
+      const size_t rotary_dims = 2 * rope[l].frequencies.size();
+      for (size_t t = discarded; t < run.count; ++t) {
         const size_t src = run.source + t, pos = run.destination + t;
-        if (pos < dst.base)
-          continue;
         const PrefixSnapshot::Layer *found = nullptr;
+        size_t found_end = 0;
         for (const auto &snapshot : history)
           if (snapshot->layers[l].base <= src && src < snapshot->position) {
             found = &snapshot->layers[l];
+            found_end = snapshot->position;
             break;
           }
         if (!found)
@@ -942,6 +955,20 @@ KVCacheManager::gatherSparsePrefix(
           throw std::invalid_argument("Incomplete sparse source page");
         const size_t output_row = pos - dst.base;
         if (output_row % 64 == 0) {
+          const size_t full = checkedMultiply(64, row_bytes);
+          // A complete, page-aligned, unrotated block can share the immutable
+          // source page instead of copying it. Only owned pages qualify: a
+          // view-backed page pins its whole shared slab, which per-page
+          // ownership exists to avoid.
+          if (run.count - t >= 64 &&
+              (run.source == run.destination || rope[l].frequencies.empty()) &&
+              row % 64 == 0 && src + 64 <= found_end && !input->key_view &&
+              input->keySize() >= full && input->valueSize() >= full) {
+            dst.pages.push_back(input);
+            page.reset();
+            t += 63;
+            continue;
+          }
           page = std::make_shared<PrefixSnapshot::Page>();
           const size_t bytes =
             checkedMultiply(std::min<size_t>(64, length - pos), row_bytes);
@@ -950,15 +977,22 @@ KVCacheManager::gatherSparsePrefix(
           dst.pages.push_back(page);
         }
         auto *out = page->key.data() + output_row % 64 * row_bytes;
-        std::memcpy(out, input->keyData() + offset, row_bytes);
         std::memcpy(page->value.data() + output_row % 64 * row_bytes,
                     input->valueData() + offset, row_bytes);
-        if (src == pos || rope[l].frequencies.empty())
+        if (src == pos || rope[l].frequencies.empty()) {
+          std::memcpy(out, input->keyData() + offset, row_bytes);
           continue;
+        }
+        // The source is immutable, so K rotates from it directly. The previous
+        // pre-copy into out was fully overwritten by the rotation below and
+        // only added a read-back of the same bytes.
+        const auto *src_key = input->keyData() + offset;
+        const size_t element_bytes = result->element_bytes;
         for (size_t h = 0; h < dst.width / dim; ++h) {
-          auto *head = out + h * dim * result->element_bytes;
-          for (size_t d = 0; d < dim; ++d) {
-            if (result->element_bytes == 4)
+          const auto *head = src_key + h * dim * element_bytes;
+          auto *out_head = out + h * dim * element_bytes;
+          for (size_t d = 0; d < rotary_dims; ++d) {
+            if (element_bytes == 4)
               std::memcpy(&key[d], head + d * 4, 4);
             else {
               uint16_t bits;
@@ -967,17 +1001,31 @@ KVCacheManager::gatherSparsePrefix(
             }
           }
           rope[l].reposition(key.data(), rotation);
-          for (size_t d = 0; d < dim; ++d) {
+          for (size_t d = 0; d < rotary_dims; ++d) {
             if (!sparseFinite(key[d]))
               throw std::invalid_argument("Nonfinite sparse prefix key");
-            if (result->element_bytes == 4)
-              std::memcpy(head + d * 4, &key[d], 4);
+            if (element_bytes == 4)
+              std::memcpy(out_head + d * 4, &key[d], 4);
             else {
               const uint16_t bits = nntrainer::compute_fp32_to_fp16(key[d]);
               if (!sparseFinite(nntrainer::compute_fp16_to_fp32(bits)))
                 throw std::invalid_argument("Sparse prefix FP16 overflow");
-              std::memcpy(head + d * 2, &bits, 2);
+              std::memcpy(out_head + d * 2, &bits, 2);
             }
+          }
+          for (size_t d = rotary_dims; d < dim; ++d) {
+            float value;
+            if (element_bytes == 4)
+              std::memcpy(&value, head + d * 4, 4);
+            else {
+              uint16_t bits;
+              std::memcpy(&bits, head + d * 2, 2);
+              value = nntrainer::compute_fp16_to_fp32(bits);
+            }
+            if (!sparseFinite(value))
+              throw std::invalid_argument("Nonfinite sparse prefix key");
+            std::memcpy(out_head + d * element_bytes, head + d * element_bytes,
+                        element_bytes);
           }
         }
       }

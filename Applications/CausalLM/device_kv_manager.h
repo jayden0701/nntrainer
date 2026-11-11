@@ -245,11 +245,17 @@ public:
             !runs.empty() && (runs.size() > 1 || runs.front().source != 0))
           sparse.push_back({entry.first, std::move(runs)});
       }
-      std::stable_sort(sparse.begin(), sparse.end(),
-                       [](const auto &a, const auto &b) {
-                         return nntrainer::kv::sparsePrefixLength(a.runs) >
-                                nntrainer::kv::sparsePrefixLength(b.runs);
-                       });
+      std::stable_sort(
+        sparse.begin(), sparse.end(), [](const auto &a, const auto &b) {
+          const size_t left = nntrainer::kv::sparsePrefixLength(a.runs);
+          const size_t right = nntrainer::kv::sparsePrefixLength(b.runs);
+          if (left != right)
+            return left > right;
+          // Equal reuse lengths: a plan with fewer runs pays
+          // fewer snapshots, gathers and restores than a
+          // fragmented one of the same length.
+          return a.runs.size() < b.runs.size();
+        });
       for (const auto &candidate : sparse) {
         const size_t length = nntrainer::kv::sparsePrefixLength(candidate.runs);
         Tokens adopted(tokens.begin(), tokens.begin() + length);
@@ -318,15 +324,22 @@ public:
                                             : capture_;
     Prefix p{tokens, capture(position, pending),          ++clock_,
              0,      static_cast<bool>(capture_override), {}};
+    const uint32_t handle = p.handle;
     try {
       if (sparse_restore_)
         prepareSparse(p);
       p.first = prefix_min_ ? prefix_min_(p.handle) : 0;
-      prefixes_.emplace(p.handle, p);
+      // prepareSparse keeps the vocabulary capacity at the token count even
+      // after unique IDs shrink it. Shrink before moving so the long-lived
+      // map entry does not retain spare token slots.
+      p.vocabulary.shrink_to_fit();
+      // Move into the map: the owned token copy is needed exactly once and
+      // a second deep copy would double the retained token storage.
+      prefixes_.emplace(handle, std::move(p));
       rebuild();
     } catch (...) {
-      prefixes_.erase(p.handle);
-      releasePrefixNoThrow(p.handle);
+      prefixes_.erase(handle);
+      releasePrefixNoThrow(handle);
       // Tree publication is rebuilt atomically, so an older index cannot
       // contain this unpublished handle.
       throw;

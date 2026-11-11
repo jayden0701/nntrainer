@@ -1969,6 +1969,7 @@ void CausalLM::restoreSparseDevicePrefill(
   frame.from = static_cast<unsigned>(length);
   frame.plane = INIT_SEQ_LEN;
   frame.chunk = prefillDriveChunk();
+  frame.approximate = true;
   try {
     frame.kv = KVCacheManager::gatherSparsePrefix(snapshots, runs, dims, rope);
   } catch (const std::invalid_argument &) {
@@ -2266,6 +2267,14 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
       std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - bind_start)
         .count();
+    // The gathered approximate prefix has been copied into the live host
+    // cache above. Unlike exact checkpoints it never becomes a radix or
+    // exact-restore source, so keep the frame identity but drop the payload
+    // instead of retaining it alongside the cache. Later checkpoint captures
+    // recapture these rows from the live cache, and exact restores of this
+    // boundary fail safely into the existing recompute fallback.
+    if (device_prefill_history_->at(global_token_len).approximate)
+      device_prefill_history_->at(global_token_len).kv.reset();
   }
 #endif
 

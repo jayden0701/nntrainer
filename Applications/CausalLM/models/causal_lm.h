@@ -106,6 +106,8 @@ protected:
   bool htp_execution_profile_ = false;
   struct DevicePrefillFrame {
     unsigned from = 0, plane = 0, chunk = 0;
+    /** Gathered sparse prefix. Never becomes a radix/exact restore source. */
+    bool approximate = false;
     std::shared_ptr<const KVCacheManager::PrefixSnapshot> kv;
     std::shared_ptr<PrefixFlashStore::Entry> flash;
     std::shared_ptr<const BakedPrefix::Frame> baked;
