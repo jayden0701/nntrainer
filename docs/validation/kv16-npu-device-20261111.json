@@ -25,7 +25,7 @@
     "libsdkl.so": "d6ec50fd0b8557ffa006763e383b3337fc7bc43187fbe217269c747e843f57c1",
     "htp_sessions_check": "da67dd1118e6752c3d7e23db95e32eb7182cf090c1148b59c31f54ca4a1e6a5f",
     "htp_kv16_evidence_check": "f4895ee0141315e8e726612745cf78b4b01ba8d25703e0e25443ea408ce5089c",
-    "kv16_lossless.cpp": "2db1db231ff19aac2915c8eed3bcb5e193a6eb1a3f011362007faa6b3accca4a",
+        "kv16_lossless.cpp": "6bd259bf53b0aacb78df8b10ddc406848c4c62aee69906e2337c040edcbb790f",
     "kv16_lossless.h": "b60897480fbea324b9ac8157ce327d0d7edf2f5cc3004d07ff7a2dd7f330f2d2"
   },
   "model_pack": {
@@ -126,12 +126,22 @@
   },
   "encode_optimization": {
     "motivation": "Profile the remaining +2% cold-capture cost: kv16::encode built all three block candidates (raw, fixed, sparse) per 16-row block and kept the smallest, and bits() counted bit length with a shift loop called twice per predict() word.",
-    "host_ab": "HEAD (materialize-all) vs optimized encode compared byte-for-byte over 2,048 randomized geometry/data-pattern cases covering all three block modes (27,983 raw / 56,077 fixed / 5,780 sparse blocks) plus decode round-trips: identical bytes, 0 failures. The first cut picked winners by closed-form sizes but left the mode byte at 0 for fixed/sparse; the A/B harness caught it before any device run.",
-    "host_speedup": "Encode of a 2,154-token plane (17.6 MB K+V): 65.7 ms -> 42.4 ms per encode (1.55x). The dominant win is bits() via __builtin_clzll (the shift loop ran up to ~70 iterations per word inside the double-rounding emulation); winner-only materialization and hoisted gamma decompositions contribute the rest. Output is byte-identical, so format v1 and decode are unchanged.",
-    "device_recheck": "htp_kv16_codec_check / htp_kv16_prefix_check / htp_kv16_flash_check / htp_calibration_check all PASS; full-scope evidence re-captured on device with the optimized build (kv16-evidence/base3, codec3) and compare_device_evidence.py --scope full exit 0.",
+    "host_ab": "HEAD (materialize-all) vs optimized encode compared byte-for-byte over 2,048 randomized geometry/data-pattern cases covering all three block modes (27,983 raw / 56,077 fixed / 5,780 sparse blocks) plus decode round-trips: identical bytes, 0 failures. The first cut picked winners by closed-form sizes but left the mode byte at 0 for fixed/sparse; the A/B harness caught it before any device run. Re-verified byte-exact after every follow-up stage (predict fast path, pointer packing, slice-by-8 CRC), plus an exhaustive predict() A/B over all 65,536 FP16 inputs x 4,096 gammas (268M comparisons, 0 mismatches).",
+    "host_speedup": "Encode of a 2,154-token plane (17.6 MB K+V): 65.7 ms -> 42.4 ms per encode (1.55x), and with the follow-up pass below 42.4 ms -> ~25 ms (cumulative ~2.6x). The dominant first win is bits() via __builtin_clzll (the shift loop ran up to ~70 iterations per word inside the double-rounding emulation); winner-only materialization and hoisted gamma decompositions contribute the rest. Output is byte-identical, so format v1 and decode are unchanged.",
+    "device_recheck": "htp_kv16_codec_check / htp_kv16_prefix_check / htp_kv16_flash_check / htp_calibration_check all PASS; full-scope evidence re-captured on device with the optimized build (kv16-evidence/base3, codec3) and again with the follow-up build (base4, codec4); compare_device_evidence.py --scope full exit 0 both times.",
+    "follow_up_20261113": {
+      "changes": [
+        "predict_with_gamma fast path: for finite-normal x finite-normal inputs the two rounding stages collapse to two known-width RNE shifts (product mantissa 34~35 bits, FP32 stage rounds to 24 bits, FP16 stage to 11); subnormal/inf/nan results fall back to the generic path. Benefits decode too, which calls the same predictor per word on warm restore.",
+        "Pass-2 packing and the rotary copy write through reserved-capacity pointers instead of per-byte push_back; width==16 fixed blocks memcpy the residual array directly.",
+        "Container CRC32 replaced by slice-by-8 (same 0xedb88320 reflected value); the [48,52) CRC-field skip became two loop ranges instead of a per-byte branch."
+      ],
+      "host_bench_ms": {"mix": 25.3, "zero": 21.1, "noise": 22.9, "previous_mix": 40.5, "original": 65.7},
+      "device": "codec/prefix/flash/calibration checkers PASS on the follow-up build (binary SHAs matched before running); full-scope evidence base4/codec4 re-captured, compare --scope full PASS (exit 0, 37 checks).",
+      "note": "Device perf pair not re-run: encode is off the critical path and thermal variance dominates single-run TTFT deltas; the recorded +2.5%/+3.8% remains the binding measurement."
+    },
     "ttft_ms": {"off": [4677.5, 9918.7, 809.7, 847.2, 791.0, 838.1], "on": [4794.8, 10294.6, 809.6, 851.0, 793.4, 844.0]},
-    "conclusion": "Cold-capture TTFT overhead stays at +2.5%/+3.8% (2,079/4,607 tokens; the prior async build measured +2.0%); warm restores and TPOT stay equal within noise. The encode cost is off the critical path, so the 1.55x host-side speedup trims worker occupancy rather than the measured critical path. Single-run pairs; device thermal state dominates run-to-run variance (an unbalanced pair measured +10~17% with warm TPOT also shifted, indicating throttling rather than codec cost)."
+    "conclusion": "Cold-capture TTFT overhead stays at +2.5%/+3.8% (2,079/4,607 tokens; the prior async build measured +2.0%); warm restores and TPOT stay equal within noise. The encode cost is off the critical path, so the cumulative ~2.6x host-side encode speedup trims worker occupancy rather than the measured critical path. Single-run pairs; device thermal state dominates run-to-run variance (an unbalanced pair measured +10~17% with warm TPOT also shifted, indicating throttling rather than codec cost)."
   },
   "device_config_note":  "The pack's pre-existing nntr_config.json (12387 bytes, 2026-11-09) was overwritten by the checkpoint config before a backup copy could be taken; it was restored from nntr_config.gemma4_pf2k.json (12387 bytes, byte-size match) after the runs. The exact original content is not byte-proven; the pf2k/f2k variants remain in the pack directory and nntr_config.kv16_checkpoint.json preserves the validation config.",
-  "artifacts": "docs/validation/kv16-npu-device-20261111/ (incl. evidence-full/: per-mode evidence.json, trace.jsonl.gz, run.log, compare-evidence-full.json, kv16-dump-sha256.txt) plus encode-opt/ (baseline/codec evidence.json, trace.jsonl.gz, compare-evidence-full.json, perf pairs incl. an unbalanced pair kept as a thermal-variance example)."
+  "artifacts": "docs/validation/kv16-npu-device-20261111/ (incl. evidence-full/: per-mode evidence.json, trace.jsonl.gz, run.log, compare-evidence-full.json, kv16-dump-sha256.txt) plus encode-opt/ (baseline/codec evidence.json, trace.jsonl.gz, compare-evidence-full.json, perf pairs incl. an unbalanced pair kept as a thermal-variance example, and the follow-up build's base4/codec4 evidence with compare-evidence-full-clz3.json)."
 }

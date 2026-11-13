@@ -112,20 +112,37 @@ void append(std::vector<uint8_t> &out, const uint8_t *data, size_t size) {
 }
 
 uint32_t checksum(const uint8_t *data, size_t size) {
+  // Slice-by-8 CRC32 (reflected, polynomial 0xedb88320) -- same value as the
+  // byte-at-a-time table, ~4x faster on multi-megabyte containers.
   static const auto table = [] {
-    std::array<uint32_t, 256> result{};
-    for (unsigned i = 0; i < result.size(); ++i) {
+    std::array<std::array<uint32_t, 256>, 8> result{};
+    for (unsigned i = 0; i < 256; ++i) {
       uint32_t c = i;
       for (unsigned bit = 0; bit < 8; ++bit)
         c = (c >> 1) ^ ((c & 1) ? 0xedb88320u : 0u);
-      result[i] = c;
+      result[0][i] = c;
     }
+    for (unsigned i = 0; i < 256; ++i)
+      for (unsigned j = 1; j < 8; ++j)
+        result[j][i] =
+          (result[j - 1][i] >> 8) ^ result[0][result[j - 1][i] & 255];
     return result;
   }();
   uint32_t c = 0xffffffffu;
-  for (size_t i = 0; i < size; ++i)
-    if (i < 48 || i >= header_size)
-      c = table[(c ^ data[i]) & 255] ^ (c >> 8);
+  const auto range = [&](const uint8_t *p, size_t n) {
+    for (; n >= 8; n -= 8, p += 8) {
+      const uint32_t lo = c ^ (uint32_t(p[0]) | uint32_t(p[1]) << 8 |
+                               uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24);
+      c = table[7][lo & 255] ^ table[6][(lo >> 8) & 255] ^
+          table[5][(lo >> 16) & 255] ^ table[4][(lo >> 24) & 255] ^
+          table[3][p[4]] ^ table[2][p[5]] ^ table[1][p[6]] ^ table[0][p[7]];
+    }
+    for (; n; --n, ++p)
+      c = table[0][(c ^ *p) & 255] ^ (c >> 8);
+  };
+  range(data, size < 48 ? size : 48); // the CRC field itself is skipped
+  if (size > header_size)
+    range(data + header_size, size - header_size);
   return c ^ 0xffffffffu;
 }
 
@@ -157,10 +174,14 @@ struct Parsed {
 };
 
 unsigned popcount(uint8_t value) {
+#if defined(__GNUC__) || defined(__clang__)
+  return unsigned(__builtin_popcount(value));
+#else
   unsigned count = 0;
   for (; value; value &= uint8_t(value - 1))
     ++count;
   return count;
+#endif
 }
 
 Parsed parse(const uint8_t *data, size_t size) {
@@ -282,17 +303,56 @@ std::vector<uint32_t> nonrotary(const Geometry &g) {
 /** Same as the public predict, with the gamma word decomposition hoisted out
  *  of per-word loops: parts() of the gamma word is loop-invariant across rows
  *  and blocks for a fixed (head, dimension). */
+/** Double rounding for the common normal-normal case: both inputs are
+ *  finite normals and the result stays a normal FP16, so the two rounding
+ *  shifts are known-width (the product mantissa is 34~35 bits, the FP32
+ *  stage rounds it to 24, the FP16 stage to 11) and the whole emulation
+ *  is a handful of integer ops. Anything else falls back to the generic
+ *  path; results are bit-identical either way. */
 uint16_t predict_with_gamma(const Parts &v, const Parts &g) {
   const unsigned sign = v.sign ^ g.sign;
+  if (!v.nan && !g.nan && !v.inf && !g.inf && v.mantissa >= (1u << 10) &&
+      g.mantissa >= (1u << 23)) {
+    const uint64_t product = v.mantissa * g.mantissa; // 34~35 bits
+    // FP32 RNE round of the product to 24 significant bits.
+    const unsigned shift1 = unsigned(bits(product)) - 24;
+    const uint64_t rem1 = product & ((1ull << shift1) - 1);
+    uint64_t r1 = product >> shift1;
+    r1 += rem1 > (1ull << (shift1 - 1)) ||
+          (rem1 == (1ull << (shift1 - 1)) && (r1 & 1));
+    // FP32 actual exponent of the rounded significand.
+    int exponent = int(bits(product)) - 1 + v.exponent + g.exponent;
+    if (r1 == (1ull << 24)) {
+      r1 = 1ull << 23;
+      ++exponent;
+    }
+    if (exponent > 127) // FP32 overflow: generic yields inf
+      return uint16_t(sign << 15 | 0x7c00);
+    if (exponent < -14) // FP16-subnormal (or FP32-subnormal) result: generic
+      goto generic;
+    // FP16 RNE round to 11 significant bits: r1 is in [2^23, 2^24).
+    const uint64_t rem2 = r1 & ((1ull << 13) - 1);
+    uint32_t r2 = uint32_t(r1 >> 13);
+    r2 += rem2 > (1ull << 12) || (rem2 == (1ull << 12) && (r2 & 1));
+    exponent += r2 == (1u << 11);
+    if (r2 == (1u << 11))
+      r2 = 1u << 10;
+    if (exponent > 15) // FP16 overflow: generic yields inf
+      return uint16_t(sign << 15 | 0x7c00);
+    return uint16_t(sign << 15 | uint32_t(exponent + 15) << 10 |
+                    (r2 - (1u << 10)));
+  }
+generic:
+  const unsigned sign2 = v.sign ^ g.sign;
   if (v.nan || g.nan)
     return 0x7e00;
   if (v.inf || g.inf) {
     if ((!v.inf && !v.mantissa) || (!g.inf && !g.mantissa))
       return 0x7e00;
-    return uint16_t((sign << 15) | 0x7c00);
+    return uint16_t(sign2 << 15 | 0x7c00);
   }
   const uint32_t product =
-    roundBinary(sign, v.mantissa * g.mantissa, v.exponent + g.exponent, 8, 23);
+    roundBinary(sign2, v.mantissa * g.mantissa, v.exponent + g.exponent, 8, 23);
   const auto p = parts(product, 8, 23);
   if (p.inf)
     return uint16_t((p.sign << 15) | 0x7c00);
@@ -333,8 +393,8 @@ std::vector<uint8_t> encode(const uint8_t *key, const uint8_t *value,
     const size_t word_count = count * g.dimensions;
     // Pass 1: residuals, max width and nonzero count -- the only per-block
     // state the three block sizes depend on. No candidate is built yet.
-    std::vector<uint16_t> residuals;
-    residuals.reserve(count * plain.size());
+    std::vector<uint16_t> residuals(count * plain.size());
+    auto *residual_out = residuals.data();
     unsigned width = 0;
     size_t nonzero = 0;
     for (size_t row = start; row < start + count; ++row) {
@@ -347,7 +407,7 @@ std::vector<uint8_t> encode(const uint8_t *key, const uint8_t *value,
           uint16_t(get16(key + offset) ^
                    predict_with_gamma(parts(get16(value + offset), 5, 10),
                                       gammas[gamma_offset + d]));
-        residuals.push_back(residual);
+        *residual_out++ = residual;
         width = std::max(width, bits(residual));
         nonzero += residual != 0;
       }
@@ -388,24 +448,40 @@ std::vector<uint8_t> encode(const uint8_t *key, const uint8_t *value,
       auto &data = chosen.data;
       chosen.mode = uint8_t(pick); // Fixed=1, Sparse=2 match the wire values
       append(data, value + word_start * 2, word_count * 2);
-      for (size_t row = start; row < start + count; ++row)
-        for (auto d : g.rotary_dims)
-          put(data, get16(key + (row * g.dimensions + d) * 2), 2);
+      {
+        // Extend first (value-init zero-fills), then overwrite through a
+        // pointer: per-byte push_back was dominating the packing cost.
+        data.resize(data.size() + count * g.rotary_dims.size() * 2);
+        auto *cursor =
+          data.data() + data.size() - count * g.rotary_dims.size() * 2;
+        for (size_t row = start; row < start + count; ++row)
+          for (auto d : g.rotary_dims) {
+            store16(cursor, get16(key + (row * g.dimensions + d) * 2));
+            cursor += 2;
+          }
+      }
       if (pick == PickFixed) {
         chosen.width = uint8_t(width);
-        uint32_t accumulator = 0;
-        unsigned available = 0;
-        for (auto residual : residuals) {
-          accumulator |= uint32_t(residual) << available;
-          available += width;
-          while (available >= 8) {
-            data.push_back(uint8_t(accumulator));
-            accumulator >>= 8;
-            available -= 8;
+        data.resize(data.size() + (width * residuals.size() + 7u) / 8u);
+        auto *cursor =
+          data.data() + data.size() - (width * residuals.size() + 7u) / 8u;
+        if (width == 16) {
+          std::memcpy(cursor, residuals.data(), residuals.size() * 2);
+        } else if (width) {
+          uint32_t accumulator = 0;
+          unsigned available = 0;
+          for (auto residual : residuals) {
+            accumulator |= uint32_t(residual) << available;
+            available += width;
+            while (available >= 8) {
+              *cursor++ = uint8_t(accumulator);
+              accumulator >>= 8;
+              available -= 8;
+            }
           }
+          if (available)
+            *cursor++ = uint8_t(accumulator);
         }
-        if (available)
-          data.push_back(uint8_t(accumulator));
       } else {
         const size_t bitmap_start = data.size();
         data.resize(bitmap_start + (residuals.size() + 7u) / 8u, 0);

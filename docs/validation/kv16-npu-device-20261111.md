@@ -155,6 +155,28 @@ worker, nice 19)이 prefill 바깥에서 수행한다.
 - **기기 재검증**: codec/prefix/flash/calibration 체커 PASS, full-scope
   evidence를 최적화 빌드로 재캡처하여 **PASS (exit 0)**.
 
+### 후속 최적화 (2026-11-13 추가)
+
+같은 날 추가로 세 가지를 고쳤고, 누적 **~2.6x** (65.7ms → ~25ms):
+
+- **predict 고속 경로**: finite-normal × finite-normal 입력(실데이터의 압도적
+  다수)에서 이중 반올림의 두 단계가 폭이 고정된 RNE 시프트 두 번(곱 가수
+  34~35비트 → FP32 단계 24비트, FP16 단계 11비트)으로 줄어든다.
+  subnormal/inf/nan 결과는 generic 경로로 폴백한다. warm restore의 디코드도
+  같은 예측기를 워드마다 호출하므로 함께 이득을 본다.
+- **포인터 직접 기록**: pass-2 패킹과 rotary 복사가 바이트당 push_back 대신
+  예약된 용량에 포인터로 쓴다. width==16 fixed 블록은 residual 배열을
+  memcpy한다.
+- **slice-by-8 CRC32**: 같은 0xedb88320 reflected 값을 내는 slice-by-8 테이블로
+  교체하고, [48,52) CRC 필드 스킵을 바이트당 분기 대신 두 구간 순회로 분리.
+
+검증: 2,048 케이스 A/B가 각 단계마다 바이트 동일을 재확인했고, predict는
+전체 65,536 FP16 값 × 4,096 gamma(2.68억 비교)에서 0 불일치였다. 기기에서는
+체커 4종이 전부 PASS(푸시 전 SHA 대조 포함)했고 base4/codec4 full-scope
+evidence 재캡처 후 compare --scope full **PASS (exit 0, 37 항목)**. 장치 perf
+페어는 재측정하지 않았다 — encode는 이미 임계 경로 밖이고 단일 페어 TTFT는
+열 상태 편차가 지배하므로, 기록된 +2.5%/+3.8%가 유효 측정값이다.
+
 단일 실행 페어(ON을 먼저 실행, 양쪽 모두 thermal 상승 상태):
 
 | 구간 | OFF | ON | Δ |
