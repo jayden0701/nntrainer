@@ -4,11 +4,10 @@
   "base_revision": "5e97254e764aa30db4223c33d0dc3b0fded091b8",
   "change": "kv16-npu-integration.patch (codex/kv16-npu-integration, applied uncommitted on branch pr/4481)",
   "patch_sha256": "a5682dd03ae22de3dcfab4762e7b3520b5f326bd94603dd4793f22f5875c0919",
-  "device": {
+    "device": {
     "model": "SM-S948U",
     "soc": "SM8850",
     "android": "16",
-    "serial": "R3CY70LV96T",
     "dsp_arch": "v81"
   },
   "toolchain": {
