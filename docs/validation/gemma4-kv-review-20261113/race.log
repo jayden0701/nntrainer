@@ -1,0 +1,41 @@
+==================
+WARNING: ThreadSanitizer: data race (pid=3180)
+  Write of size 8 at 0x722c00000ee0 by thread T20:
+    #0 causallm::KVCacheManager::PrefixCodecPool::runTask(causallm::KVCacheManager::PrefixCodecPool::Task const&) /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:861 (race+0x2c7f2) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+    #1 causallm::KVCacheManager::PrefixCodecPool::workerLoop() /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:824 (race+0x2f95f) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+    #2 causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}::operator()() const /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:777 (race+0x2faf2) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+    #3 void std::__invoke_impl<void, causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}>(std::__invoke_other, causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}&&) /usr/include/c++/15/bits/invoke.h:63 (race+0x2faf2)
+    #4 std::__invoke_result<causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}>::type std::__invoke<causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}>(causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}&&) /usr/include/c++/15/bits/invoke.h:98 (race+0x2faf2)
+    #5 void std::thread::_Invoker<std::tuple<causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) /usr/include/c++/15/bits/std_thread.h:303 (race+0x2faf2)
+    #6 std::thread::_Invoker<std::tuple<causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}> >::operator()() /usr/include/c++/15/bits/std_thread.h:310 (race+0x2faf2)
+    #7 std::thread::_State_impl<std::thread::_Invoker<std::tuple<causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}> > >::_M_run() /usr/include/c++/15/bits/std_thread.h:255 (race+0x2faf2)
+    #8 <null> <null> (libstdc++.so.6+0xf5ef8) (BuildId: 3a7a8c6bd922e6314edb7a710fdc0293265c2c42)
+
+  Previous read of size 8 at 0x722c00000ee0 by main thread:
+    #0 causallm::KVCacheManager::PrefixSnapshot::Page::freeze() /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.h:246 (race+0x13724) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+    #1 causallm::KVCacheManager::freezePrefixViews(unsigned int) /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:1130 (race+0x13724)
+    #2 causallm::KVCacheManager::reset() /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:685 (race+0x1e34d) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+    #3 main /mnt/c/nntrainer/build/gemma4-kv-review/race.cpp:20 (race+0x606fd) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+
+  Location is heap block of size 176 at 0x722c00000e70 allocated by main thread:
+    #0 operator new(unsigned long) ../../../../src/libsanitizer/tsan/tsan_new_delete.cpp:64 (libtsan.so.2+0xaba12) (BuildId: 66d37dc704b813df6c813b77217284deb43a0042)
+    #1 std::__new_allocator<std::_Sp_counted_ptr_inplace<causallm::KVCacheManager::PrefixSnapshot::Page, std::allocator<void>, (__gnu_cxx::_Lock_policy)2> >::allocate(unsigned long, void const*) /usr/include/c++/15/bits/new_allocator.h:151 (race+0x260bc) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+    #2 std::allocator_traits<std::allocator<std::_Sp_counted_ptr_inplace<causallm::KVCacheManager::PrefixSnapshot::Page, std::allocator<void>, (__gnu_cxx::_Lock_policy)2> > >::allocate(std::allocator<std::_Sp_counted_ptr_inplace<causallm::KVCacheManager::PrefixSnapshot::Page, std::allocator<void>, (__gnu_cxx::_Lock_policy)2> >&, unsigned long) /usr/include/c++/15/bits/alloc_traits.h:614 (race+0x260bc)
+    #3 std::__allocated_ptr<std::allocator<std::_Sp_counted_ptr_inplace<causallm::KVCacheManager::PrefixSnapshot::Page, std::allocator<void>, (__gnu_cxx::_Lock_policy)2> > > std::__allocate_guarded<std::allocator<std::_Sp_counted_ptr_inplace<causallm::KVCacheManager::PrefixSnapshot::Page, std::allocator<void>, (__gnu_cxx::_Lock_policy)2> > >(std::allocator<std::_Sp_counted_ptr_inplace<causallm::KVCacheManager::PrefixSnapshot::Page, std::allocator<void>, (__gnu_cxx::_Lock_policy)2> >&) /usr/include/c++/15/bits/allocated_ptr.h:102 (race+0x260bc)
+    #4 std::__shared_count<(__gnu_cxx::_Lock_policy)2>::__shared_count<causallm::KVCacheManager::PrefixSnapshot::Page, std::allocator<void>>(causallm::KVCacheManager::PrefixSnapshot::Page*&, std::_Sp_alloc_shared_tag<std::allocator<void> >) /usr/include/c++/15/bits/shared_ptr_base.h:967 (race+0x260bc)
+    #5 std::__shared_ptr<causallm::KVCacheManager::PrefixSnapshot::Page, (__gnu_cxx::_Lock_policy)2>::__shared_ptr<std::allocator<void>>(std::_Sp_alloc_shared_tag<std::allocator<void> >) /usr/include/c++/15/bits/shared_ptr_base.h:1719 (race+0x260bc)
+    #6 std::shared_ptr<causallm::KVCacheManager::PrefixSnapshot::Page>::shared_ptr<std::allocator<void>>(std::_Sp_alloc_shared_tag<std::allocator<void> >) /usr/include/c++/15/bits/shared_ptr.h:463 (race+0x260bc)
+    #7 std::shared_ptr<std::enable_if<!std::is_array<causallm::KVCacheManager::PrefixSnapshot::Page>::value, causallm::KVCacheManager::PrefixSnapshot::Page>::type> std::make_shared<causallm::KVCacheManager::PrefixSnapshot::Page>() /usr/include/c++/15/bits/shared_ptr.h:1008 (race+0x260bc)
+    #8 causallm::KVCacheManager::capturePrefix(unsigned int, causallm::KVCacheManager::PrefixSnapshot const*, bool) const /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:1003 (race+0x260bc)
+    #9 main /mnt/c/nntrainer/build/gemma4-kv-review/race.cpp:19 (race+0x606f1) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+
+  Thread T20 (tid=3201, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:1078 (libtsan.so.2+0x5cb02) (BuildId: 66d37dc704b813df6c813b77217284deb43a0042)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xf5ff0) (BuildId: 3a7a8c6bd922e6314edb7a710fdc0293265c2c42)
+    #2 std::thread& std::vector<std::thread, std::allocator<std::thread> >::emplace_back<causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}>(causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int)::{lambda()#1}&&) /usr/include/c++/15/bits/vector.tcc:123 (race+0x243ea) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+    #3 causallm::KVCacheManager::PrefixCodecPool::ensureThreads(unsigned int) /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:775 (race+0x243ea)
+    #4 causallm::KVCacheManager::configurePrefixCodec(unsigned int, causallm::kv16::Geometry const&, bool) /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:922 (race+0x243ea)
+    #5 main /mnt/c/nntrainer/build/gemma4-kv-review/race.cpp:16 (race+0x606a4) (BuildId: 8530fb481983084ce68d050f48470c06fadd8439)
+
+SUMMARY: ThreadSanitizer: data race /mnt/c/nntrainer/Applications/CausalLM/kv_cache_manager.cpp:861 in causallm::KVCacheManager::PrefixCodecPool::runTask(causallm::KVCacheManager::PrefixCodecPool::Task const&)
+==================

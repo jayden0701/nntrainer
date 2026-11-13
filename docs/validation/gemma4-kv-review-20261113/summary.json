@@ -1,0 +1,83 @@
+{
+  "source_revision": "a185c0b69b242e7510c1d807a473510e585090b2",
+  "remote": "https://github.com/jayden0701/nntrainer.git",
+  "remote_branch": "pr/4481",
+  "local_branch": "codex/gemma4-kv-review",
+  "reviewed_on": "2026-11-13",
+  "outcome": "REVIEWED_WITH_FINDINGS",
+  "production_source_changed": false,
+  "hardware_validated_by_this_review": false,
+  "model_inference_run": false,
+  "codec_oracle": {
+    "status": "PASS",
+    "rejected_malformed": 745,
+    "sanitizers": "ASan, UBSan",
+    "predictor_pairs": 871968,
+    "compiler": "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+    "wire_cases": 41
+  },
+  "encode_ab": {
+    "cases": 2048,
+    "baseline": "5ededcb00",
+    "predictor_failures": 0,
+    "failures": 0,
+    "predictor_pairs": 268435456
+  },
+  "integration": {
+    "status": "PASS",
+    "engine_instrumented": false,
+    "engine_library_sha256": "add1f0ebb7cd86bce08c94c4162205b3f54cbb4274e7269f1264d114b9d6b048",
+    "checks": [
+      {
+        "name": "kv16_prefix_check",
+        "status": "PASS"
+      },
+      {
+        "name": "prefill_prefix_check",
+        "status": "PASS"
+      },
+      {
+        "name": "prefix_flash_check",
+        "status": "PASS"
+      },
+      {
+        "name": "kv16_flash_check",
+        "status": "PASS"
+      },
+      {
+        "name": "baked_prefix_check",
+        "status": "PASS"
+      }
+    ]
+  },
+  "python_tests": {
+    "passed": 15
+  },
+  "device_kv_host": {
+    "sanitizers": "ASan, UBSan",
+    "hardware_emulation_only": true,
+    "first_attempt": "CRLF shell parsing failed; LF build-folder copy ran successfully",
+    "warnings": "Existing hvx_worker_pool.c snprintf format-truncation warnings",
+    "exit_code": 0,
+    "executables_passed": 4
+  },
+  "tsan": {
+    "windows_wsl_wrapper_exit": 1,
+    "original_read": "kv_cache_manager.h:246",
+    "original_exit_code": 66,
+    "original_write": "kv_cache_manager.cpp:861",
+    "control_exit_code": 0,
+    "control_is_isolated_copy": true,
+    "public_reproducer_retested": true
+  },
+  "evidence_audit": {
+    "recorded_source_revision": "unknown",
+    "recorded_restore_events": 0,
+    "mutated_final_query_result": "PASS (false negative)"
+  },
+  "original_microbenchmark_ms": {
+    "new": 35.09,
+    "timing_is_not_a_performance_gate": true,
+    "old": 43.64
+  }
+}

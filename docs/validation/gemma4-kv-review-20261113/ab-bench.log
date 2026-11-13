@@ -1,0 +1,2 @@
+old pat=mix: 43.64 ms/encode, 0.0203 ms/token, sink=42049060
+new pat=mix: 35.09 ms/encode, 0.0163 ms/token, sink=84098120

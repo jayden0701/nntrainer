@@ -1,0 +1,42 @@
+Device sessions, compressed radix, LRU, failure isolation: PASS
+Decode KV to prefill: tile/head/row tails and FP16 bits PASS
+nntrainer/tensor/htp_backend/hvx/hvx_worker_pool.c: In function ‘hvx_worker_pool_create’:
+nntrainer/tensor/htp_backend/hvx/hvx_worker_pool.c:265:43: warning: ‘%u’ directive output may be truncated writing between 1 and 10 bytes into a region of size 8 [-Wformat-truncation=]
+  265 |     snprintf(name, sizeof(name), "hvxpool:%u", (unsigned)i);
+      |                                           ^~
+nntrainer/tensor/htp_backend/hvx/hvx_worker_pool.c:265:34: note: directive argument in the range [0, 4294967294]
+  265 |     snprintf(name, sizeof(name), "hvxpool:%u", (unsigned)i);
+      |                                  ^~~~~~~~~~~~
+In file included from /usr/include/stdio.h:974,
+                 from /usr/include/malloc.h:25,
+                 from <command-line>:
+In function ‘snprintf’,
+    inlined from ‘hvx_worker_pool_create’ at nntrainer/tensor/htp_backend/hvx/hvx_worker_pool.c:265:5:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:68:10: note: ‘__builtin___snprintf_chk’ output between 10 and 19 bytes into a destination of size 16
+   68 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   69 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   70 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~
+INT8 snapshot round trips, corruption rejection, park and exact decode: PASS
+nntrainer/tensor/htp_backend/hvx/hvx_worker_pool.c: In function ‘hvx_worker_pool_create’:
+nntrainer/tensor/htp_backend/hvx/hvx_worker_pool.c:265:43: warning: ‘%u’ directive output may be truncated writing between 1 and 10 bytes into a region of size 8 [-Wformat-truncation=]
+  265 |     snprintf(name, sizeof(name), "hvxpool:%u", (unsigned)i);
+      |                                           ^~
+nntrainer/tensor/htp_backend/hvx/hvx_worker_pool.c:265:34: note: directive argument in the range [0, 4294967294]
+  265 |     snprintf(name, sizeof(name), "hvxpool:%u", (unsigned)i);
+      |                                  ^~~~~~~~~~~~
+In file included from /usr/include/stdio.h:974,
+                 from /usr/include/malloc.h:25,
+                 from <command-line>:
+In function ‘snprintf’,
+    inlined from ‘hvx_worker_pool_create’ at nntrainer/tensor/htp_backend/hvx/hvx_worker_pool.c:265:5:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:68:10: note: ‘__builtin___snprintf_chk’ output between 10 and 19 bytes into a destination of size 16
+   68 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   69 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   70 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~
+DSP paged/linear exact attention, COW, window, snapshot: PASS

@@ -1,0 +1,307 @@
+{
+  "status": "PASS",
+  "hardware_validated": false,
+  "model_inference": false,
+  "sanitize": true,
+  "python": "3.14.4",
+  "source_sha256": {
+    "tools/kv16/codec_reference.py": "4e3b6984491ee54c3ec03737ec2669116181991af425e916b1a8df741dfb8fed",
+    "Applications/CausalLM/kv16_lossless.cpp": "bc639f36a950e7a750e14b590fcb17539819925aed8a4e14f6326de8c9631a10",
+    "Applications/CausalLM/kv16_lossless.h": "c29100e6da7711ad1024ad55ed133a856a759d9d75d1f28ae3d280c77270b560",
+    "test/htp/host/kv16_codec_check.cpp": "88536c5dfd670ab0bf7fa22cc0980180e2f7f4eaec5d2a1973fd97b1a69efd01"
+  },
+  "compiler": "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+  "selfcheck": "KV16 empty geometry, resource bounds and special patterns PASS",
+  "predictor_pairs": 871968,
+  "wire_cases": [
+    {
+      "name": "empty",
+      "bytes": 76,
+      "raw_blocks": 0,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "three-modes",
+      "bytes": 326,
+      "raw_blocks": 1,
+      "fixed_blocks": 1,
+      "sparse_blocks": 1
+    },
+    {
+      "name": "all-fp16-original",
+      "bytes": 142498,
+      "raw_blocks": 4,
+      "fixed_blocks": 252,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "all-fp16-sparse",
+      "bytes": 705586,
+      "raw_blocks": 0,
+      "fixed_blocks": 0,
+      "sparse_blocks": 64
+    },
+    {
+      "name": "per-head-tail",
+      "bytes": 1034,
+      "raw_blocks": 0,
+      "fixed_blocks": 4,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-0",
+      "bytes": 154,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-1",
+      "bytes": 159,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-2",
+      "bytes": 161,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-3",
+      "bytes": 164,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-4",
+      "bytes": 166,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-5",
+      "bytes": 168,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-6",
+      "bytes": 171,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-7",
+      "bytes": 173,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-8",
+      "bytes": 175,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-9",
+      "bytes": 180,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-10",
+      "bytes": 182,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-11",
+      "bytes": 185,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-12",
+      "bytes": 187,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-13",
+      "bytes": 189,
+      "raw_blocks": 0,
+      "fixed_blocks": 3,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-14",
+      "bytes": 192,
+      "raw_blocks": 1,
+      "fixed_blocks": 2,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "width-15",
+      "bytes": 194,
+      "raw_blocks": 1,
+      "fixed_blocks": 2,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-0",
+      "bytes": 904,
+      "raw_blocks": 11,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-1",
+      "bytes": 432,
+      "raw_blocks": 1,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-2",
+      "bytes": 1260,
+      "raw_blocks": 5,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-3",
+      "bytes": 1324,
+      "raw_blocks": 3,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-4",
+      "bytes": 1032,
+      "raw_blocks": 1,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-5",
+      "bytes": 1004,
+      "raw_blocks": 2,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-6",
+      "bytes": 500,
+      "raw_blocks": 3,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-7",
+      "bytes": 356,
+      "raw_blocks": 10,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-8",
+      "bytes": 2888,
+      "raw_blocks": 7,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-9",
+      "bytes": 724,
+      "raw_blocks": 12,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-10",
+      "bytes": 3244,
+      "raw_blocks": 10,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-11",
+      "bytes": 384,
+      "raw_blocks": 1,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-12",
+      "bytes": 3340,
+      "raw_blocks": 10,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-13",
+      "bytes": 692,
+      "raw_blocks": 2,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-14",
+      "bytes": 1332,
+      "raw_blocks": 4,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-15",
+      "bytes": 3704,
+      "raw_blocks": 30,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-16",
+      "bytes": 1444,
+      "raw_blocks": 12,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-17",
+      "bytes": 1604,
+      "raw_blocks": 3,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-18",
+      "bytes": 2288,
+      "raw_blocks": 3,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    },
+    {
+      "name": "random-19",
+      "bytes": 428,
+      "raw_blocks": 3,
+      "fixed_blocks": 0,
+      "sparse_blocks": 0
+    }
+  ],
+  "rejected_malformed_cases": 745,
+  "seconds": 52.91441702499999
+}

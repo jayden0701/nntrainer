@@ -1,0 +1,83 @@
+{
+  "source_revision": "a185c0b69b242e7510c1d807a473510e585090b2",
+  "recorded_identity": {
+    "arm_sha256": "4f22a388541390036fa0049e067515e0dd5c30dbec339ddd48ff585075b6e097",
+    "code_revision": "unknown",
+    "device_fingerprint": "SM-S948U/SM8850/android16",
+    "dsp_sha256": "fd838dcfa6d76f6254e80f634b2dbea742f63c49564bbc470a5a68af6d512314",
+    "model_sha256": "d119366443812958d5c380b8c6b0e2ba0a0f65b93d4621e1e0484116919b30e7",
+    "numerical_config_sha256": "fc4e8c51fd44ff8cf3facf9d3702bf0139cb9b881896407d9f2e48d24555a1e5",
+    "tokenizer_sha256": "cc8d3a0ce36466ccc1278bf987df5f71db1719b9ca6b4118264f45cb627bfe0f"
+  },
+  "original_status": "PASS",
+  "events": [
+    {
+      "id": "run-1",
+      "name": "seed",
+      "position": 2111
+    },
+    {
+      "id": "run-2",
+      "name": "seed",
+      "position": 4639
+    }
+  ],
+  "mutated_final_run_status": "PASS",
+  "both_revision_unknown_status": "PASS",
+  "baseline_trace": {
+    "events": {
+      "capture": 3
+    },
+    "calls": [
+      {
+        "event": "capture",
+        "from": 0,
+        "position": 2079,
+        "plane": 4096,
+        "chunk": 4096
+      },
+      {
+        "event": "capture",
+        "from": 0,
+        "position": 4096,
+        "plane": 4096,
+        "chunk": 4096
+      },
+      {
+        "event": "capture",
+        "from": 4096,
+        "position": 4607,
+        "plane": 4096,
+        "chunk": 4096
+      }
+    ]
+  },
+  "codec_trace": {
+    "events": {
+      "capture": 3
+    },
+    "calls": [
+      {
+        "event": "capture",
+        "from": 0,
+        "position": 2079,
+        "plane": 4096,
+        "chunk": 4096
+      },
+      {
+        "event": "capture",
+        "from": 0,
+        "position": 4096,
+        "plane": 4096,
+        "chunk": 4096
+      },
+      {
+        "event": "capture",
+        "from": 4096,
+        "position": 4607,
+        "plane": 4096,
+        "chunk": 4096
+      }
+    ]
+  }
+}

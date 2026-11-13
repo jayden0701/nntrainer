@@ -1,0 +1,20 @@
+test_cli_defaults_to_incomplete_full_and_rejects_truncated_jsonl (test_checkpoint_traces.TraceTests.test_cli_defaults_to_incomplete_full_and_rejects_truncated_jsonl) ... ok
+test_existing_sessions_outputs_compare_tokens_and_positions_only (test_checkpoint_traces.TraceTests.test_existing_sessions_outputs_compare_tokens_and_positions_only) ... ok
+test_fp32_bits_are_compared_without_numeric_tolerance (test_checkpoint_traces.TraceTests.test_fp32_bits_are_compared_without_numeric_tolerance) ... ok
+test_geometry_calibration_callplan_hash_mismatch_fails (test_checkpoint_traces.TraceTests.test_geometry_calibration_callplan_hash_mismatch_fails) ... ok
+test_matching_checkpoint_diagnostics_pass_only_explicit_scope (test_checkpoint_traces.TraceTests.test_matching_checkpoint_diagnostics_pass_only_explicit_scope) ... ok
+test_missing_restore_compression_or_state_is_incomplete (test_checkpoint_traces.TraceTests.test_missing_restore_compression_or_state_is_incomplete) ... ok
+test_seed_inputs_require_both_nonempty_exact_streams_and_do_not_prove_dsp_output (test_checkpoint_traces.TraceTests.test_seed_inputs_require_both_nonempty_exact_streams_and_do_not_prove_dsp_output) ... ok
+test_checkpoint_scope_never_claims_seed_or_inference_validation (test_device_evidence.EvidenceTests.test_checkpoint_scope_never_claims_seed_or_inference_validation) ... ok
+test_duplicate_event_ids_and_malformed_values_are_not_passes (test_device_evidence.EvidenceTests.test_duplicate_event_ids_and_malformed_values_are_not_passes) ... ok
+test_empty_artifacts_cannot_establish_seed_or_logits_equality (test_device_evidence.EvidenceTests.test_empty_artifacts_cannot_establish_seed_or_logits_equality) ... ok
+test_explicit_binary_artifacts_and_wrong_lengths (test_device_evidence.EvidenceTests.test_explicit_binary_artifacts_and_wrong_lengths) ... ok
+test_full_matching_evidence_passes (test_device_evidence.EvidenceTests.test_full_matching_evidence_passes) ... ok
+test_hardware_empty_events_and_no_codec_use_are_incomplete (test_device_evidence.EvidenceTests.test_hardware_empty_events_and_no_codec_use_are_incomplete) ... ok
+test_matching_tokens_do_not_replace_seed_or_logits_evidence (test_device_evidence.EvidenceTests.test_matching_tokens_do_not_replace_seed_or_logits_evidence) ... ok
+test_mismatches_and_nonbeneficial_claimed_compression_fail (test_device_evidence.EvidenceTests.test_mismatches_and_nonbeneficial_claimed_compression_fail) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.195s
+
+OK

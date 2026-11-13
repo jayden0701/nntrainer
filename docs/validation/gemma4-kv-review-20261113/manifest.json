@@ -1,0 +1,119 @@
+{
+  "source_revision": "a185c0b69b242e7510c1d807a473510e585090b2",
+  "reviewed_source_sha256_lf": {
+    "Applications/CausalLM/kv16_lossless.cpp": "6bd259bf53b0aacb78df8b10ddc406848c4c62aee69906e2337c040edcbb790f",
+    "Applications/CausalLM/kv_cache_manager.cpp": "1528167dde0c97e609bc87662e4d761ad76864a6f39d58f37bf8e23a1ec0a726",
+    "Applications/CausalLM/kv_cache_manager.h": "2a449e2b3a4109e5687451d6c940b7f370c3046ec49ba796d9bfec75b7443152",
+    "Applications/CausalLM/models/causal_lm.cpp": "d1f2531d0d92026d457b3390b64a2ec6c35a5c4982de64434088f7165c5cc603",
+    "Applications/CausalLM/models/gemma4/gemma4_htp_causallm.cpp": "0e414eba065a3dfb6b70a5dea78b2e7981d6afb442c2dabc4303671d17c2117b",
+    "Applications/CausalLM/prefix_flash_store.cpp": "709c535157569bea9fc4bbc41a94381584b5d890be0c22ac16127f0e128898db",
+    "test/htp/host/kv16_evidence_check.cpp": "e37f4979ebdb9f3434ce5d0dc4800691bbe0962e29ec7e47fffdc49d6d264cc8",
+    "tools/kv16/compare_device_evidence.py": "71fa270dae7aadd502d815add09ca8521f273698ea8bbb954fccba04bdeb033a",
+    "Applications/CausalLM/models/gemma4/gemma4_htp_moe_causallm.cpp": "435ccbb860f22e5c4b5f0451564c379a3ba3b14bad0c1e02896e461da5daa057",
+    "nntrainer/htp_context.cpp": "e677bddfa34b3b5cbd33c3d7a1b80b3f3211cf623b127a7f13cd8a5a5769acde",
+    "nntrainer/tensor/htp_backend/htp_compute_ops.cpp": "8675e365d0ced40dd99b9d2f1c631cf0f59a36d844899e43e19404095364bdec",
+    "nntrainer/tensor/htp_backend/dsp/nntr_hvx_dspq.c": "d5273a2bf0e5e90cb6c6f8e311f1bac86093c1f5ca1e9f6b3f0163a4be53cabd",
+    "nntrainer/tensor/htp_backend/hmx/hexkl_token.c": "ee344aa42cd220f9270e27930fe36d0088011f7001e71771b4a4e937d06036ea",
+    "nntrainer/tensor/htp_backend/hmx/hexkl_graph.c": "a42c4ed9a14a8eff0836893326b1cd84a420593d522bc85d0426c4a4917905f7",
+    "nntrainer/layers/llm/htp_tie_word_embedding.cpp": "5055dad174b6733c039e199e32705126a3257a4450de9da3971e10f3f620f7f2",
+    "test/htp/host/token_host_check.c": "6ced8ffd9788f03c5f30915aff8a938d9bd49ec654f8c3beb085e4d15e9d3a72"
+  },
+  "artifacts": {
+    "docs/gemma4_kv_cache_review_and_plan.ko.md": {
+      "bytes": 31227,
+      "sha256": "08335d360e0d26c341950937d455038970b2c377b98506cba7b9f9479e3bc3ba"
+    },
+    "docs/gemma4_htp_latency_review.ko.md": {
+      "bytes": 22764,
+      "sha256": "7e7a375227d0fcecc9878926bde926bc2af2cb880c54b928fc1f8c2b84858fc5"
+    },
+    "docs/validation/gemma4-kv-review-20261113/ab-bench.log": {
+      "bytes": 122,
+      "sha256": "f580298efbeea6af6ee275d2a9e94d5aa6aa5b8582d6686ec2a0c1d7065d7799"
+    },
+    "docs/validation/gemma4-kv-review-20261113/ab-predict.log": {
+      "bytes": 37,
+      "sha256": "f987290db3bef7767f93562e0cfe3a087f060beaf99a2deaba87a2539815d1b3"
+    },
+    "docs/validation/gemma4-kv-review-20261113/ab.log": {
+      "bytes": 75,
+      "sha256": "7d78fdb303106806b66547303b9abe2abc157ec38afc6f91c27be5c12f750971"
+    },
+    "docs/validation/gemma4-kv-review-20261113/audit_evidence.py": {
+      "bytes": 2109,
+      "sha256": "c9fff4cf2cbfddd6eacc5333209c70ed57989c5e8d2dedfd4e36dad7ea4eec5f"
+    },
+    "docs/validation/gemma4-kv-review-20261113/codec-report.json": {
+      "bytes": 6306,
+      "sha256": "eb51e6155a990004c4d653a70d9413cbadf85285a9bf850ded0671c5747da6cd"
+    },
+    "docs/validation/gemma4-kv-review-20261113/device-kv-host-initial-crlf.log": {
+      "bytes": 65,
+      "sha256": "7180c1485ee0c79503317ae2f21a9edb7d3bb6947f7b1ba6cd01718b03e13ce2"
+    },
+    "docs/validation/gemma4-kv-review-20261113/device-kv-host-lf.log": {
+      "bytes": 3232,
+      "sha256": "caa7e0002f9ec7d382e44fe3fc309958bea0af518aee6fb2c9f144e93ecb552e"
+    },
+    "docs/validation/gemma4-kv-review-20261113/evidence-audit.json": {
+      "bytes": 1911,
+      "sha256": "f3a6cefb9d0f9e4d97b7b3809ac1c85a677330a66eb0628b0d9da94546de09d3"
+    },
+    "docs/validation/gemma4-kv-review-20261113/integration-report.json": {
+      "bytes": 71062,
+      "sha256": "9c9658225584466392ed311e8045cf34d8bdd2e40c3effa0067b4bb5c329b7e7"
+    },
+    "docs/validation/gemma4-kv-review-20261113/python-tests.log": {
+      "bytes": 2526,
+      "sha256": "230fac61c0521b920ff95843761de1825f919ae7b637ce014cd0691c05c3ee83"
+    },
+    "docs/validation/gemma4-kv-review-20261113/race-control.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/validation/gemma4-kv-review-20261113/race-portable.log": {
+      "bytes": 6564,
+      "sha256": "bd7f5af1e8269193d1635d756ac4bc41a3b739ac5cecb052bc782e835d68b47d"
+    },
+    "docs/validation/gemma4-kv-review-20261113/race.log": {
+      "bytes": 7304,
+      "sha256": "558566084dacc44d41c16af002fd799847c6d0e4604a23797958efa95b9b9bb8"
+    },
+    "docs/validation/gemma4-kv-review-20261113/reproduce.py": {
+      "bytes": 4327,
+      "sha256": "0d6f0b93c714775bab4d9ef0cb8f72899096b2a0bd22be45b25ce1e34eb16c54"
+    },
+    "docs/validation/gemma4-kv-review-20261113/run-baked_prefix_check.log": {
+      "bytes": 116,
+      "sha256": "bb8f971a94d5d254d4dce6de7c4ef81480e12d081ff0e5e2baa44df597ff2bb5"
+    },
+    "docs/validation/gemma4-kv-review-20261113/run-kv16_flash_check.log": {
+      "bytes": 71,
+      "sha256": "db5524713453507a7db1a61aa0c911c5e5f214df1a1e8df2df0cbaedf829b06b"
+    },
+    "docs/validation/gemma4-kv-review-20261113/run-kv16_prefix_check.log": {
+      "bytes": 225,
+      "sha256": "38ec01a755a7ae27f2db7a57fa2498bdf99ca67cfe4f4463459c77452bc477e1"
+    },
+    "docs/validation/gemma4-kv-review-20261113/run-prefill_prefix_check.log": {
+      "bytes": 59,
+      "sha256": "ceadd789485a75a8bc1b3e7c0be93fdd7eb919a562a907baaf26cd9de5f36986"
+    },
+    "docs/validation/gemma4-kv-review-20261113/run-prefix_flash_check.log": {
+      "bytes": 70,
+      "sha256": "6e94b3cd0feee276847cf5dc6df1f4ca9d96fb79f3ef8b68ba6ebfb57fe85209"
+    },
+    "docs/validation/gemma4-kv-review-20261113/summary.json": {
+      "bytes": 2360,
+      "sha256": "185c41fb82d05834253dd907a3e0c48f1393910a2edacec91b6acf43255939e5"
+    },
+    "docs/validation/gemma4-latency-review-20261113/metrics-audit.json": {
+      "bytes": 8757,
+      "sha256": "8a446a4dafa565d498de409455d9cda4c53d2287223ec09aaf54be5c934f83c7"
+    },
+    "docs/validation/gemma4-latency-review-20261113/recompute_metrics.py": {
+      "bytes": 4578,
+      "sha256": "21446d4a9a8cb52c44d36df341cd11d9bf789bcde79cbec01f3982e42d5afc3b"
+    }
+  }
+}
