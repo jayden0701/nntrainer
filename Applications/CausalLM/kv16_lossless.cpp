@@ -21,10 +21,16 @@ enum Mode : uint8_t { Raw = 0, Fixed = 1, Sparse = 2 };
 }
 
 unsigned bits(uint64_t value) {
+#if defined(__GNUC__) || defined(__clang__)
+  // Count leading zeros is a single instruction on all supported targets;
+  // this helper sits on the per-word encode path (twice per predict).
+  return value ? unsigned(64 - __builtin_clzll(value)) : 0;
+#else
   unsigned n = 0;
   for (; value; value >>= 1)
     ++n;
   return n;
+#endif
 }
 
 uint64_t roundShift(uint64_t value, int shift) {
@@ -273,10 +279,10 @@ std::vector<uint32_t> nonrotary(const Geometry &g) {
       result.push_back(d);
   return result;
 }
-} // namespace
-
-uint16_t predict(uint16_t value_bits, uint32_t gamma_bits) {
-  const auto v = parts(value_bits, 5, 10), g = parts(gamma_bits, 8, 23);
+/** Same as the public predict, with the gamma word decomposition hoisted out
+ *  of per-word loops: parts() of the gamma word is loop-invariant across rows
+ *  and blocks for a fixed (head, dimension). */
+uint16_t predict_with_gamma(const Parts &v, const Parts &g) {
   const unsigned sign = v.sign ^ g.sign;
   if (v.nan || g.nan)
     return 0x7e00;
@@ -293,12 +299,29 @@ uint16_t predict(uint16_t value_bits, uint32_t gamma_bits) {
   return uint16_t(roundBinary(p.sign, p.mantissa, p.exponent, 5, 10));
 }
 
+} // namespace
+
+uint16_t predict(uint16_t value_bits, uint32_t gamma_bits) {
+  return predict_with_gamma(parts(value_bits, 5, 10), parts(gamma_bits, 8, 23));
+}
+
 std::vector<uint8_t> encode(const uint8_t *key, const uint8_t *value,
                             size_t plane_bytes, const Geometry &g) {
   if (planeSize(g) != plane_bytes || (plane_bytes && (!key || !value)))
     invalid("KV16 input length/pointer mismatch");
   const size_t rows = size_t(g.tokens * g.heads);
   const auto plain = nonrotary(g);
+  // Gamma word decompositions, hoisted out of the per-word loop: the gamma
+  // for a (head, dimension) pair is constant across rows and blocks.
+  std::vector<Parts> gammas;
+  if (rows) {
+    const size_t gamma_count = g.gamma_bits.size() == g.dimensions
+                                 ? g.dimensions
+                                 : size_t(g.heads) * g.dimensions;
+    gammas.reserve(gamma_count);
+    for (size_t i = 0; i < gamma_count; ++i)
+      gammas.push_back(parts(g.gamma_bits[i], 8, 23));
+  }
   struct Block {
     uint8_t mode, width;
     std::vector<uint8_t> data;
@@ -308,59 +331,97 @@ std::vector<uint8_t> encode(const uint8_t *key, const uint8_t *value,
     const size_t count = std::min<size_t>(g.block_rows, rows - start);
     const size_t word_start = start * g.dimensions;
     const size_t word_count = count * g.dimensions;
+    // Pass 1: residuals, max width and nonzero count -- the only per-block
+    // state the three block sizes depend on. No candidate is built yet.
     std::vector<uint16_t> residuals;
     residuals.reserve(count * plain.size());
-    std::vector<uint8_t> base;
-    append(base, value + word_start * 2, word_count * 2);
     unsigned width = 0;
+    size_t nonzero = 0;
     for (size_t row = start; row < start + count; ++row) {
-      for (auto d : g.rotary_dims)
-        put(base, get16(key + (row * g.dimensions + d) * 2), 2);
       const size_t gamma_offset = g.gamma_bits.size() == g.dimensions
                                     ? 0
                                     : (row % g.heads) * g.dimensions;
       for (auto d : plain) {
         const size_t offset = (row * g.dimensions + d) * 2;
-        const auto residual = uint16_t(
-          get16(key + offset) ^
-          predict(get16(value + offset), g.gamma_bits[gamma_offset + d]));
+        const auto residual =
+          uint16_t(get16(key + offset) ^
+                   predict_with_gamma(parts(get16(value + offset), 5, 10),
+                                      gammas[gamma_offset + d]));
         residuals.push_back(residual);
         width = std::max(width, bits(residual));
+        nonzero += residual != 0;
       }
     }
-    std::vector<uint8_t> fixed = base;
-    uint32_t accumulator = 0;
-    unsigned available = 0;
-    for (auto residual : residuals) {
-      accumulator |= uint32_t(residual) << available;
-      available += width;
-      while (available >= 8) {
-        fixed.push_back(uint8_t(accumulator));
-        accumulator >>= 8;
-        available -= 8;
-      }
+    // Pass 2: closed-form sizes. base (the value plane plus the rotary dims
+    // copied out of the key) is shared by fixed and sparse and unused by raw,
+    // so the winner can be materialized directly without building the two
+    // losers. Sizes match the built form byte for byte:
+    //   raw   = key plane + value plane
+    //   fixed = base + ceil(n * width / 8) packed bits
+    //   sparse= base + bitmap(n) + 2 bytes per nonzero
+    const size_t base_size = word_count * 2 + count * g.rotary_dims.size() * 2;
+    const size_t raw_size = word_count * 4;
+    const size_t fixed_size = base_size + (width * residuals.size() + 7u) / 8u;
+    const size_t sparse_size =
+      base_size + (residuals.size() + 7u) / 8u + nonzero * 2u;
+    // Identical tie-breaking to comparing fully built blocks: fixed beats
+    // raw first, then sparse must beat the current winner.
+    enum Pick { PickRaw, PickFixed, PickSparse };
+    Pick pick = PickRaw;
+    size_t best = raw_size;
+    if (fixed_size < best) {
+      pick = PickFixed;
+      best = fixed_size;
     }
-    if (available)
-      fixed.push_back(uint8_t(accumulator));
-    std::vector<uint8_t> sparse = base;
-    const size_t bitmap_start = sparse.size(),
-                 bitmap_size = (residuals.size() + 7) / 8;
-    sparse.resize(bitmap_start + bitmap_size, 0);
-    for (size_t i = 0; i < residuals.size(); ++i)
-      if (residuals[i]) {
-        sparse[bitmap_start + i / 8] |= uint8_t(1u << (i % 8));
-        put(sparse, residuals[i], 2);
-      }
+    if (sparse_size < best) {
+      pick = PickSparse;
+      best = sparse_size;
+    }
     Block chosen{Raw, 0, {}};
-    append(chosen.data, key + word_start * 2, word_count * 2);
-    append(chosen.data, value + word_start * 2, word_count * 2);
-    if (fixed.size() < chosen.data.size())
-      chosen = {Fixed, uint8_t(width), std::move(fixed)};
-    if (sparse.size() < chosen.data.size())
-      chosen = {Sparse, 0, std::move(sparse)};
+    chosen.data.reserve(best);
+    switch (pick) {
+    case PickRaw:
+      append(chosen.data, key + word_start * 2, word_count * 2);
+      append(chosen.data, value + word_start * 2, word_count * 2);
+      break;
+    default: {
+      auto &data = chosen.data;
+      chosen.mode = uint8_t(pick); // Fixed=1, Sparse=2 match the wire values
+      append(data, value + word_start * 2, word_count * 2);
+      for (size_t row = start; row < start + count; ++row)
+        for (auto d : g.rotary_dims)
+          put(data, get16(key + (row * g.dimensions + d) * 2), 2);
+      if (pick == PickFixed) {
+        chosen.width = uint8_t(width);
+        uint32_t accumulator = 0;
+        unsigned available = 0;
+        for (auto residual : residuals) {
+          accumulator |= uint32_t(residual) << available;
+          available += width;
+          while (available >= 8) {
+            data.push_back(uint8_t(accumulator));
+            accumulator >>= 8;
+            available -= 8;
+          }
+        }
+        if (available)
+          data.push_back(uint8_t(accumulator));
+      } else {
+        const size_t bitmap_start = data.size();
+        data.resize(bitmap_start + (residuals.size() + 7u) / 8u, 0);
+        for (size_t i = 0; i < residuals.size(); ++i)
+          if (residuals[i]) {
+            data[bitmap_start + i / 8] |= uint8_t(1u << (i % 8));
+            put(data, residuals[i], 2);
+          }
+      }
+      break;
+    }
+    }
     blocks.push_back(std::move(chosen));
     start += count;
   }
+
   size_t offset = header_size +
                   (g.gamma_bits.size() + g.rotary_dims.size()) * 4 +
                   blocks.size() * index_size;

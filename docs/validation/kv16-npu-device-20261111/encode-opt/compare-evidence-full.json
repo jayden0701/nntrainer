@@ -1,0 +1,194 @@
+{
+  "schema": "nntrainer.kv16.device-evidence.v1",
+  "scope": "full",
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "baseline.schema",
+      "status": "PASS",
+      "detail": "expected nntrainer.kv16.device-evidence.v1"
+    },
+    {
+      "name": "baseline.mode",
+      "status": "PASS",
+      "detail": "expected baseline"
+    },
+    {
+      "name": "baseline.hardware",
+      "status": "PASS",
+      "detail": "requires actual device capture"
+    },
+    {
+      "name": "candidate.schema",
+      "status": "PASS",
+      "detail": "expected nntrainer.kv16.device-evidence.v1"
+    },
+    {
+      "name": "candidate.mode",
+      "status": "PASS",
+      "detail": "expected codec"
+    },
+    {
+      "name": "candidate.hardware",
+      "status": "PASS",
+      "detail": "requires actual device capture"
+    },
+    {
+      "name": "identity.model_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "identity.tokenizer_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "identity.numerical_config_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "identity.arm_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "identity.dsp_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "identity.code_revision",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "identity.device_fingerprint",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "event_count",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].id",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].position",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].call_plan_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].calibration_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].k_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].v_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].seed_kv_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].seed_scales_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].decode_state_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].logits_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[0].token_ids",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].id",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].position",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].call_plan_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].calibration_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].k_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].v_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].seed_kv_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].seed_scales_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].decode_state_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].logits_sha256",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "events[1].token_ids",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "codec.used",
+      "status": "PASS",
+      "detail": ""
+    }
+  ],
+  "unverified_by_this_scope": [],
+  "performance_verified": false
+}

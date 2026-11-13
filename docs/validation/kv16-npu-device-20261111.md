@@ -131,6 +131,44 @@ worker, nice 19)이 prefill 바깥에서 수행한다.
 작업은 사라진 게 아니라 nice 19 워커가 prefill의 유휴 사이클에서 처리하는
 것이다. 시간은 스테이징 시점의 소유 복사로 잠시 늘어난다(capture 시 RAW 유지).
 
+## encode 최적화 (2026-11-13 추가)
+
+`kv16::encode`는 블록마다 후보 3개(raw, fixed, sparse)를 전부 만들어 가장
+작은 것을 골랐고, `bits()`는 시프트 루프로 비트폭을 세었다(이중 반올림
+에뮬레이션 안에서 워드당 최대 2회 호출). 두 가지를 고쳤다:
+
+- **후보 선제 추정**: residual 순회 1회로 세 후보의 크기가 닫힌 공식으로
+  계산되므로 승자만 materialize한다. 타이브레이크(fixed가 raw를 먼저 이기고
+  sparse가 현재 승자를 이겨야 함)를 정확히 보존한다.
+- **`bits()` → `__builtin_clzll`**: 이중 반올림 에뮬레이션의 실제 병목이었다.
+  gamma 분해도 (head, dim)별로 루프 불변이므로 인코딩당 1회 선행 계산.
+
+검증:
+
+- **호스트 A/B 바이트 동일**: HEAD(전체 materialize) 구현을 git에서 추출해
+  2,048개 무작위 지오메트리/데이터 패턴(세 모드 모두: raw 27,983 / fixed
+  56,077 / sparse 5,780 블록)에서 비교 — 출력 바이트 완전 동일, 디코드 왕복
+  0 실패. 1차 구현이 fixed/sparse의 mode 바이트를 0(Raw)으로 남긴 버그를
+  기기 실행 전에 이 A/B가 잡았다.
+- **호스트 속도**: 2,154토큰 플레인(K+V 17.6MB) encode 65.7ms → **42.4ms
+  (1.55x)**. 출력이 바이트 동일하므로 포맷 v1·디코더는 무변경.
+- **기기 재검증**: codec/prefix/flash/calibration 체커 PASS, full-scope
+  evidence를 최적화 빌드로 재캡처하여 **PASS (exit 0)**.
+
+단일 실행 페어(ON을 먼저 실행, 양쪽 모두 thermal 상승 상태):
+
+| 구간 | OFF | ON | Δ |
+| --- | ---: | ---: | --- |
+| cold capture TTFT (2,079 tok) | 4,678 ms | 4,795 ms | **+2.5%** |
+| cold capture TTFT (4,607 tok) | 9,919 ms | 10,295 ms | **+3.8%** |
+| warm restore TTFT | 791–847 ms | 793–851 ms | 동등 |
+| TPOT | 1.81–2.03 ms | 1.81–2.09 ms | 동등 |
+
+encode 비용은 이미 임계 경로 밖이므로 1.55x는 측정된 TTFT를 바꾸지 않고
+워커 점유 시간을 줄일 뿐이다. 순서를 고정한 비대칭 페어(OFF 먼저, 기기
+냉각 상태)는 +10~17%를 보였는데 warm TPOT까지 같이 밀렸다 — codec 비용이
+아니라 열 상태 스로틀링이다. thermal 상태가 런 간 편차를 지배한다.
+
 ## 아직 입증하지 못한 것
 
 - RSS/RPC slab/system peak의 실제 절감, Flash v2 저장 경로의 장치 실측.
