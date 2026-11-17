@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "all_coefficients_bitwise_equal": true,
+  "source_layers_preserved": true,
+  "weights_sha256": "0d96ba8645a56326e531b8e8763db84e598a24b1464074f465670ad4f7955d34",
+  "bias_sha256": "e57688d97875b62a4a6fd43f1316fa2c86b5de9c2d9b530b64851efee360adff",
+  "independent_full_pipeline_max_abs_error": {
+    "keys": 9.1552734375e-05,
+    "values": 0
+  },
+  "reference_positions": [
+    997,
+    1003
+  ],
+  "reference_method": "complex128 RoPE with FP32 GEMM; native trig rounds to FP32 before multiply",
+  "reference_atol": 0.0001,
+  "reference_rtol": 1e-05,
+  "upstream_lfs_sha256_verified": "6db1051f8a47e931b95ab315729c569b483e34fab64ebfdd593005f4884808d2",
+  "reversed_checkpoint_pair_rejected": true
+}

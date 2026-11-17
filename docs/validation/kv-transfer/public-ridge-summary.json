@@ -1,0 +1,170 @@
+{
+  "arc_challenge": {
+    "planned": 128,
+    "scored": 128,
+    "scored_by_mode": {
+      "cold": 128,
+      "exact": 2,
+      "transfer": 128
+    },
+    "metric": "acc_norm",
+    "accuracy": {
+      "cold": 0.4609375,
+      "exact": 1.0,
+      "transfer": 0.34375
+    },
+    "correct": {
+      "cold": 59,
+      "exact": 2,
+      "transfer": 44
+    },
+    "chance_floor": 0.25,
+    "cold_exact_prediction_disagreements": 0,
+    "cold_transfer_paired_counts": {
+      "both_correct": 36,
+      "cold_only_correct": 23,
+      "transfer_only_correct": 8,
+      "both_incorrect": 61
+    },
+    "paired_cold_accuracy": 0.4609375,
+    "transfer_minus_cold_pp": -11.71875,
+    "paired_bootstrap_95_ci_pp": [
+      -20.3125,
+      -3.90625
+    ],
+    "transfer_retention_pct": 74.57627118644068,
+    "transfer_floor_normalized_retention_pct": 44.44444444444444,
+    "small_choice_margins": {
+      "cold": [
+        {
+          "id": "arc_challenge-745",
+          "margin_nat_per_char": 0.001053674148333017
+        },
+        {
+          "id": "arc_challenge-487",
+          "margin_nat_per_char": 0.000888618459560786
+        },
+        {
+          "id": "arc_challenge-375",
+          "margin_nat_per_char": 0.0005773667695289086
+        },
+        {
+          "id": "arc_challenge-855",
+          "margin_nat_per_char": 0.0003529616909359601
+        }
+      ],
+      "transfer": [
+        {
+          "id": "arc_challenge-208",
+          "margin_nat_per_char": 0.0009593857259334593
+        }
+      ]
+    },
+    "small_choice_margin_threshold_nat_per_char": 0.002,
+    "exact_controls_scored": 2,
+    "exact_max_token_logprob_error": 0.0,
+    "exact_error_tolerance": 0.01,
+    "exact_import_check_passed": true
+  },
+  "hellaswag": {
+    "planned": 128,
+    "scored": 128,
+    "scored_by_mode": {
+      "cold": 128,
+      "exact": 2,
+      "transfer": 128
+    },
+    "metric": "acc_norm",
+    "accuracy": {
+      "cold": 0.5546875,
+      "exact": 0.0,
+      "transfer": 0.4765625
+    },
+    "correct": {
+      "cold": 71,
+      "exact": 0,
+      "transfer": 61
+    },
+    "chance_floor": 0.25,
+    "cold_exact_prediction_disagreements": 0,
+    "cold_transfer_paired_counts": {
+      "both_correct": 56,
+      "cold_only_correct": 15,
+      "transfer_only_correct": 5,
+      "both_incorrect": 52
+    },
+    "paired_cold_accuracy": 0.5546875,
+    "transfer_minus_cold_pp": -7.8125,
+    "paired_bootstrap_95_ci_pp": [
+      -14.84375,
+      -1.5625
+    ],
+    "transfer_retention_pct": 85.91549295774648,
+    "transfer_floor_normalized_retention_pct": 74.35897435897436,
+    "small_choice_margins": {
+      "transfer": [
+        {
+          "id": "hellaswag-2876",
+          "margin_nat_per_char": 0.00041322367088769685
+        },
+        {
+          "id": "hellaswag-3603",
+          "margin_nat_per_char": 0.0009415204167401159
+        },
+        {
+          "id": "hellaswag-8781",
+          "margin_nat_per_char": 0.0007520064132707782
+        },
+        {
+          "id": "hellaswag-7941",
+          "margin_nat_per_char": 0.0010620158047288664
+        }
+      ],
+      "cold": [
+        {
+          "id": "hellaswag-3639",
+          "margin_nat_per_char": 0.0015526922192458104
+        },
+        {
+          "id": "hellaswag-8666",
+          "margin_nat_per_char": 0.00026857000278524
+        }
+      ]
+    },
+    "small_choice_margin_threshold_nat_per_char": 0.002,
+    "exact_controls_scored": 2,
+    "exact_max_token_logprob_error": 0.0,
+    "exact_error_tolerance": 0.01,
+    "exact_import_check_passed": true
+  },
+  "wikitext2": {
+    "planned": 4,
+    "scored": 4,
+    "scored_by_mode": {
+      "cold": 4,
+      "exact": 2,
+      "transfer": 4
+    },
+    "metric": "perplexity",
+    "scored_tokens": {
+      "cold": 4096,
+      "exact": 2048,
+      "transfer": 4096
+    },
+    "mean_nll": {
+      "cold": 2.5677458921754543,
+      "exact": 2.485484511812679,
+      "transfer": 2.645154141979198
+    },
+    "perplexity": {
+      "cold": 13.03640583264201,
+      "exact": 12.00693634822924,
+      "transfer": 14.085616100541612
+    },
+    "transfer_minus_cold_nll": 0.07740824980374361,
+    "exact_controls_scored": 2,
+    "exact_max_token_logprob_error": 0.0,
+    "exact_error_tolerance": 0.01,
+    "exact_import_check_passed": true
+  }
+}

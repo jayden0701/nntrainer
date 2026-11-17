@@ -1,0 +1,22 @@
+{
+  "arc_challenge": {
+    "normalization": "candidate token count; diagnostic only",
+    "n": 128,
+    "correct": {
+      "cold": 55,
+      "local": 44,
+      "public": 48
+    },
+    "public_retention_pct": 87.27272727272727
+  },
+  "hellaswag": {
+    "normalization": "candidate token count; diagnostic only",
+    "n": 128,
+    "correct": {
+      "cold": 73,
+      "local": 55,
+      "public": 54
+    },
+    "public_retention_pct": 73.97260273972603
+  }
+}

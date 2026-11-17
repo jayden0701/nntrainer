@@ -1,0 +1,100 @@
+{
+  "arc_challenge": {
+    "n": 128,
+    "correct": {
+      "cold": 59,
+      "local": 42,
+      "public": 44
+    },
+    "accuracy_pct": {
+      "cold": 46.09375,
+      "local": 32.8125,
+      "public": 34.375
+    },
+    "public_minus_cold": {
+      "delta_pp": -11.71875,
+      "paired_bootstrap_95_ci_pp": [
+        -20.3125,
+        -3.125
+      ],
+      "gained": 8,
+      "lost": 23
+    },
+    "public_minus_local": {
+      "delta_pp": 1.5625,
+      "paired_bootstrap_95_ci_pp": [
+        -4.6875,
+        7.8125
+      ],
+      "gained": 10,
+      "lost": 8
+    },
+    "public_retention_pct": 74.57627118644068,
+    "public_floor_normalized_retention_pct": 44.44444444444444
+  },
+  "hellaswag": {
+    "n": 128,
+    "correct": {
+      "cold": 71,
+      "local": 54,
+      "public": 61
+    },
+    "accuracy_pct": {
+      "cold": 55.46875,
+      "local": 42.1875,
+      "public": 47.65625
+    },
+    "public_minus_cold": {
+      "delta_pp": -7.8125,
+      "paired_bootstrap_95_ci_pp": [
+        -14.84375,
+        -1.5625
+      ],
+      "gained": 5,
+      "lost": 15
+    },
+    "public_minus_local": {
+      "delta_pp": 5.46875,
+      "paired_bootstrap_95_ci_pp": [
+        -1.5625,
+        12.5
+      ],
+      "gained": 14,
+      "lost": 7
+    },
+    "public_retention_pct": 85.91549295774648,
+    "public_floor_normalized_retention_pct": 74.35897435897436
+  },
+  "wikitext2": {
+    "tokens": {
+      "cold": 4096,
+      "local": 4096,
+      "public": 4096
+    },
+    "mean_nll": {
+      "cold": 2.5677458921754543,
+      "local": 2.694325550732871,
+      "public": 2.645154141979198
+    },
+    "ppl": {
+      "cold": 13.03640583264201,
+      "local": 14.795536548638804,
+      "public": 14.085616100541612
+    }
+  },
+  "validation": {
+    "cases": 260,
+    "exact_bitwise_controls": 6,
+    "public_small_margin_cases": [
+      "arc_challenge-208",
+      "hellaswag-2876",
+      "hellaswag-3603",
+      "hellaswag-8781",
+      "hellaswag-7941"
+    ],
+    "cold_scores_match_previous": true,
+    "scalar_audit_modes": 11,
+    "scalar_winner_changes": 0,
+    "python_tests_passed": 17
+  }
+}
