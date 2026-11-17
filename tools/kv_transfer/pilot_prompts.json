@@ -1,0 +1,44 @@
+{
+  "prompts": [
+    {
+      "id": "observatory",
+      "prefix": "<|im_start|>user\nThe observatory stood just above the salt flats. As the storm rolled past, Marta opened the maintenance log and wrote down the color of the sky before touching the telescope. She had found that the bearings warmed up two minutes after the lights came on. There was no point adjusting the focus before the movement settled. The crew sent a truck every week with fuel, clean rags, and spare dust covers. On Tuesday the driver also brought peaches in a cardboard box. They ate them outside while the backup generator finished its test and the radio resumed its steady ticking. At dusk, they checked the mirror again and drew a pencil mark beside the loose collar. They would do the same in another hour. An ordinary photograph might have missed the thin line of ice on the far horizon, so they asked a visitor to take three exposures at different times.\n\n",
+      "continuation": "Summarize the passage in one sentence.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "id": "contour-map",
+      "prefix": "<|im_start|>user\nA traditional map can record elevation with contour lines. Each line connects places of equal height, and neighboring lines give a rough sense of how steep the land is. Where the lines stand farther apart, a change of height is spread over a bigger distance. Close lines can show a cliff, a hillside, or the bank of a river. A map legend gives the elevation interval and units. Some maps label every fifth line and draw it more heavily so that readers can find their place without counting from the bottom of the sheet. When choosing a route for a morning hike, it helps to look for the point where a path crosses the ridge and to compare the climb with a route that follows the valley. A stream is usually easiest to identify in the opposite direction. The steep section often comes immediately after the bridge.\n\n",
+      "continuation": "Summarize the passage in one sentence.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "id": "barley-soup",
+      "prefix": "<|im_start|>user\nMushroom barley soup starts with a small amount of oil and a hot pan. Cook onions, celery and a carrot until the onions look translucent. Lift the vegetables into a bowl. Add a little more oil and brown the mushrooms over relatively high heat. The mushrooms release water before they brown, so wait until that water cooks off before returning the vegetables. Pour in stock and add pearl barley. Simmer until the grains are tender. Add a spoon of tomato paste for deeper flavor or finish with lemon and parsley. A handful of frozen peas can go in at the end because they need very little cooking. Taste the broth before adding salt, since commercial stock can already be salty. The soup thickens overnight as the barley absorbs more liquid. Add hot water when heating leftovers to bring it back to the original consistency.\n\n",
+      "continuation": "Summarize the passage in one sentence.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "id": "library-bus",
+      "prefix": "<|im_start|>user\nTwo libraries across town have decided to share a single bus for outreach events. On Wednesday it stops outside a grocery market, while by Saturday morning it has usually reached the community center near the canal. The staff keep a whiteboard with the next three dates under the driver's window. They also carry folding stools, pencils and a small bin for returns. Volunteers help readers find books in several languages, but they ask each reader to confirm the title at the desk before leaving. During the summer months, a portable awning protects the line from rain and strong sunshine. When the streets were closed for a parade, staff carried the smallest boxes to the park with a hand cart. They set up a temporary desk, recorded every loan on paper and entered the records into the catalog when they got back.\n\n",
+      "continuation": "Summarize the passage in one sentence.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "id": "luthier",
+      "prefix": "<|im_start|>user\nInside a repair shop, a luthier is restoring an old cello for a local orchestra. She loosened all four strings before removing a cracked bridge. The location of the old bridge left a faint outline on the varnish, but the replacement needs a slightly wider base. The instrument's owner also brought an old photograph showing the musician who played the same cello in a quartet. The restoration diary includes notes on the humidity, the shape of the fingerboard and the previous bridge's height. After the new bridge is fitted, she plans to record a scale and compare it to the recording she made when the instrument arrived.\n\n",
+      "continuation": "Summarize the passage in one sentence.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "id": "snowpack",
+      "prefix": "<|im_start|>user\nA hydrology team checks mountain snowpack along a fixed route before spring. One volunteer carries a hollow tube that measures the combined depth and water content of each sample. The first measurement is taken at a clearing below the valley road. The route then climbs through tall pines where sheltered drifts remain after warmer days of weather. They sample two sites above the tree line and look for places where wind has packed the snow unevenly. After the last stop the team checks the totals against handwritten survey sheets from older years. The figures help estimate how much water could reach a downstream reservoir as the snow melts.\n\n",
+      "continuation": "Summarize the passage in one sentence.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "id": "glassblower",
+      "prefix": "<|im_start|>user\nA glassblower makes small bowls with a clear rim and a deep blue base. The apprentice keeps a narrow steel rod ready beside the bench and uses an infrared thermometer to check the oven between batches. When the maker takes the glass out of the furnace, the apprentice counts a few seconds before handing over a wet shaping block. A second worker opens the door of the cooling oven at exactly the right moment. If the bowl cools too quickly, small cracks can appear along the edge. They label each finished piece with a number before putting it aside to cool at a controlled rate overnight.\n\n",
+      "continuation": "Summarize the passage in one sentence.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "id": "rail-calendar",
+      "prefix": "<|im_start|>user\nThe workers on a narrow-gauge railway renew the track on a rotating calendar. A crew replaces sleepers where the ground has moved after rain, and a second team checks the bolts on the bridges. Each crew reports an approximate finish time so the train can be scheduled to make a short test run in the afternoon. A gate beside the road has to stay locked until the driver radios that the track is clear. At the end of the day, the station clerk sets out the following week's timetable and files any handwritten notices about changes before closing the office.\n\n",
+      "continuation": "Summarize the passage in one sentence.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    }
+  ]
+}
