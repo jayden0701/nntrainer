@@ -6,6 +6,10 @@ this repository. Read it before building, testing, committing, or opening a PR.
 Detailed rules live in `docs/` — this file links to them rather than copying, so
 the source of truth stays in one place.
 
+For delegated work on nntrainer, register each attempt before dispatch when
+possible, then record retries, review, usage, and independent validation in the
+[local delegation ledger](docs/agent-cost-tracking.md).
+
 ## ⚡ Non-negotiable rules (do these before every commit / PR)
 
 - **Sign off every commit:** `git commit -s` (DCO). A `Signed-off-by:` line is
