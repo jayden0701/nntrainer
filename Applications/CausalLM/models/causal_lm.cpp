@@ -1657,11 +1657,14 @@ void CausalLM::load_kvcache(std::string path, int to_) {
     if (!core || to_ < 0)
       throw std::logic_error(
         "KV transfer import requires CPU core and valid length");
-    if (system_prefix_config_.value("model_type", std::string()) != "qwen3" ||
+    if ((system_prefix_config_.value("model_type", std::string()) != "qwen3" &&
+         system_prefix_config_.value("model_type", std::string()) != "llama") ||
+        system_prefix_config_.value("rope_interleaved", false) ||
+        system_prefix_config_.value("partial_rotary_factor", 1.0) != 1.0 ||
         (!system_prefix_config_["rope_scaling"].is_null()) ||
         transferContract().theta != static_cast<double>(ROPE_THETA))
-      throw std::invalid_argument(
-        "KV transfer requires unscaled Qwen3 RoPE matching model theta");
+      throw std::invalid_argument("KV transfer requires unscaled split-half "
+                                  "Qwen3/Llama RoPE matching model theta");
     importTransfer(*core, directory, static_cast<unsigned int>(to_), NUM_LAYERS,
                    NUM_KEY_VALUE_HEADS, HEAD_DIM);
     loaded = static_cast<unsigned int>(to_);
@@ -2600,11 +2603,16 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
       auto *core = kv_cache.coreCPU();
       if (!core)
         throw std::logic_error("KV transfer export requires CPU core");
-      if (system_prefix_config_.value("model_type", std::string()) != "qwen3" ||
+      if ((system_prefix_config_.value("model_type", std::string()) !=
+             "qwen3" &&
+           system_prefix_config_.value("model_type", std::string()) !=
+             "llama") ||
+          system_prefix_config_.value("rope_interleaved", false) ||
+          system_prefix_config_.value("partial_rotary_factor", 1.0) != 1.0 ||
           (!system_prefix_config_["rope_scaling"].is_null()) ||
           transferContract().theta != static_cast<double>(ROPE_THETA))
-        throw std::invalid_argument(
-          "KV transfer requires unscaled Qwen3 RoPE matching model theta");
+        throw std::invalid_argument("KV transfer requires unscaled split-half "
+                                    "Qwen3/Llama RoPE matching model theta");
       exportTransfer(*core, directory, init_input, NUM_LAYERS,
                      NUM_KEY_VALUE_HEADS, HEAD_DIM);
     }

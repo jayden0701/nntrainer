@@ -1,0 +1,13 @@
+{
+  "note": "Reviewed code and binary/input fingerprints; two sources prefilled natively, offline fuser; original data provenance in HF report.",
+  "sha256": {
+    "Applications/CausalLM/models/causal_lm.cpp": "04cb0c706185acfb8a570e7d677f9d653e97d242f3abc418db75a3efd191b3c5",
+    "tools/kv_transfer/convert_llama_fp32.py": "07dc87b4fc51d52c024503cb251b97c98d1ba03d59f85a934b0f12e81abdbe5e",
+    "tools/kv_transfer/cross_family_native.py": "6f8453ea12f9390eaa3747b2c81bb4322e612ce45b1ae9092d8812cfcb2d83ff",
+    "build-cpu/Applications/CausalLM/nntr_causallm": "e750534e4b4e6e5fc3a7944a7692c84e4d411f2dd672820363c7874e385656b9",
+    "build-cpu/Applications/CausalLM/libcausallm.so": "c5249d14a9757e2223d33e15a72cef5f29953528bcc65c40909e930b3ef2a04c",
+    "artifacts/models/smollm2-135m-fp32/smollm2-135m-fp32.bin": "3f1c4affd719ceac3289c7b314d7cd06eace2b65508aa360c85b80103024a757",
+    "artifacts/models/qwen3-0.6b-fp32/qwen3-0.6b_fp32_layergraph.bin": "88ffa34cf3c2d5900b62730416aac3f1912df9e8015c6c749f3fd37814bf70ef",
+    "artifacts/cross-family-c2c/fuser.pt": "7d9b8c6704fdf97527111ab397e7b8ecfe38ee76a53ef88d543efbc0892b00b8"
+  }
+}

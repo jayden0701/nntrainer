@@ -103,3 +103,57 @@ for task, rows in json.loads((root / "results.json").read_text())["examples"].it
         print(task, mode, nll, (correct if task == "hellaswag" else None))
 PY
 ~~~
+
+## nntrainer KV manager에서의 실행
+
+PR #4481 기반 CPU 경로에서 같은 평가 문항을 추가로 실행했다. SmolLM2의 FP32 가중치를 변환하고, 기존 snapshot 입출력 검증이 unscaled, full-dimension, split-half RoPE의 Llama 구조도 허용하도록 확장했다. Qwen3와 SmolLM2 모두 **nntrainer가 실제 계산한** KV를 내보내어 학습된 융합기를 적용한 뒤, 결과를 SmolLM2의 core KV manager에 다시 넣었다. 융합기 자체는 외부 PyTorch CPU에서 실행한다.
+
+| 실행기 / 조건 | WikiText-2 평균 NLL | HellaSwag 정답 보기 평균 NLL | HellaSwag 정답 수 |
+| --- | ---: | ---: | ---: |
+| nntrainer 자체 KV | 2.981197 | 2.502140 | 15/32 |
+| nntrainer 양쪽 KV → 융합 → 재주입 | 2.980820 | 2.502680 | 15/32 |
+
+32개 WikiText 문단에서 융합-기준선 차이는 −0.000377, 쌍체 bootstrap 95% 구간은 [−0.001047, +0.000276]이었다. HF와 같이 품질 향상을 입증하지 못했다. 두 실행기의 보기별 평균 NLL 차이는 자체 KV에서 최대 0.000898, 융합에서 최대 0.001018이었다. 모델 가중치와 활성값은 FP32이고 nntrainer의 물리적 KV 저장은 FP16이다.
+
+- 양쪽 토크나이저와 정렬된 송신 ID를 HF 실험과 64개 문항 모두 대조하여 일치함을 확인했다.
+- WikiText와 HellaSwag 각 3개 문항의 정확한 자체 KV 재주입은 모든 보기에서 cold 점수와 비트 단위로 일치했다.
+- 첫 문단의 같은 FP16 반올림 융합 KV를 HF와 nntrainer에 넣었을 때 정답 토큰 로그확률 차이는 최대 0.000857이었다. HF에서 생성한 융합 KV를 넣은 대조군은 최대 0.000777이었다.
+- CPU 실행 파일 빌드, core KV 테스트 64개, 기존 Python KV/벤치 테스트 17개가 통과했다. C++ 변경은 clang-format 14.0.6을 적용했다. scaled, interleaved, partial-rotary 설정을 별도로 주입한 export 거부 검사 3개도 통과했다.
+
+64개 문항에서 프로세스 시작을 포함한 source KV export는 56.53초, receiver export는 17.27초, snapshot 파일 I/O를 포함한 융합은 2.28초였다. cold·fused 및 6개 exact 대조군 전체 채점은 174.46초였다. 공개 Ridge 벤치와 병행한 측정이므로 순수 모델 속도나 가속비로 해석하지 않는다.
+
+[HF 평가 원시 점수](validation/kv-transfer/cross-family-hf-results.json), [nntrainer 평가 원시 점수](validation/kv-transfer/cross-family-native-results.json), [동일 캐시 런타임 대조](validation/kv-transfer/cross-family-runtime-bridge.json)에 수치와 대조군을 보관했다.
+
+SmolLM2 native 모델 디렉터리는 다음과 같이 준비할 수 있다. 원본 HF 디렉터리의 config/tokenizer 파일은 수정하지 않는다.
+
+~~~bash
+mkdir -p artifacts/models/smollm2-135m-fp32
+.venv/bin/python tools/kv_transfer/convert_llama_fp32.py \
+  --source artifacts/models/hf-smollm2-135m \
+  --output artifacts/models/smollm2-135m-fp32/smollm2-135m-fp32.bin
+.venv/bin/python - <<'PY'
+import json, shutil
+from pathlib import Path
+src = Path('artifacts/models/hf-smollm2-135m')
+dst = Path('artifacts/models/smollm2-135m-fp32')
+for name in ('config.json', 'generation_config.json', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json'):
+    shutil.copyfile(src / name, dst / name)
+config = dict(model_type='CausalLM', model_tensor_type='FP32-FP32',
+              model_file_name='smollm2-135m-fp32.bin', fc_layer_dtype='FP32',
+              embedding_dtype='FP32', lmhead_dtype='FP32', lora_rank=0,
+              lora_alpha=0, lora_target=[], bad_word_ids=[], fsu=False,
+              num_to_generate=1, init_seq_len=128, max_seq_len=2048,
+              batch_size=1, tokenizer_file='tokenizer.json', skip_prefill=False)
+(dst / 'nntr_config.json').write_text(json.dumps(config, indent=2))
+PY
+.venv-reference/bin/python -m tools.kv_transfer.cross_family_native \
+  --executable build-cpu/Applications/CausalLM/nntr_causallm \
+  --source artifacts/models/qwen3-0.6b-fp32 \
+  --receiver artifacts/models/smollm2-135m-fp32 \
+  --checkpoint artifacts/cross-family-c2c/fuser.pt \
+  --data artifacts/ridge-paper-data \
+  --hf-results artifacts/cross-family-c2c/results.json \
+  --output artifacts/cross-family-native-benchmark
+~~~
+
+출력 경로는 새 디렉터리여야 한다. snapshot 및 모델 파일은 크기 때문에 Git에 넣지 않으며, 위 명령과 고정 revision으로 다시 만들 수 있다.
