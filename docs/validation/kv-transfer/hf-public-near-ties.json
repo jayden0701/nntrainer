@@ -1,0 +1,623 @@
+{
+  "margin_threshold": 0.016,
+  "minimum_per_arm": 4,
+  "candidate_passes": 164,
+  "batch_choice_changes": 2,
+  "checks": [
+    {
+      "index": 1232,
+      "arm": "standalone",
+      "batch_margin": 0.00016035911227962885,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 3,
+      "serial_logprobs": [
+        -36.521315813064575,
+        -36.4823904633522,
+        -18.432933911681175,
+        -16.12769465893507
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 9250,
+      "arm": "standalone",
+      "batch_margin": 0.00040167678345115476,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 2,
+      "serial_logprobs": [
+        -139.76304493413772,
+        -104.34818312781863,
+        -94.84993435814977,
+        -203.56293248478323
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 4750,
+      "arm": "standalone",
+      "batch_margin": 0.000817992819031943,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 0,
+      "serial_logprobs": [
+        -77.25599475001673,
+        -64.26154672211851,
+        -153.33335001394153,
+        -43.514837672235444
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 6142,
+      "arm": "standalone",
+      "batch_margin": 0.0008629752058975093,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 0,
+      "serial_logprobs": [
+        -157.74269964784617,
+        -157.6835090527311,
+        -104.15057967975736,
+        -166.68235029749485
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 978,
+      "arm": "standalone",
+      "batch_margin": 0.0009912592310379331,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 2,
+      "serial_logprobs": [
+        -31.26533633848885,
+        -90.31998777762055,
+        -113.98361080139875,
+        -31.277231449261308
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 5927,
+      "arm": "standalone",
+      "batch_margin": 0.002338607935234993,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 0,
+      "serial_logprobs": [
+        -124.38340494758427,
+        -172.66769161401317,
+        -92.81147586554289,
+        -90.31523059145547
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 2560,
+      "arm": "standalone",
+      "batch_margin": 0.0034907087683677673,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 0,
+      "serial_logprobs": [
+        -68.22162875486538,
+        -26.451335847377777,
+        -55.04565888643265,
+        -26.423410177230835
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 3541,
+      "arm": "standalone",
+      "batch_margin": 0.0045851751729246715,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 3,
+      "serial_logprobs": [
+        -91.58408886636607,
+        -66.93086645845324,
+        -81.95570311881602,
+        -75.60343049280345
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 7212,
+      "arm": "standalone",
+      "batch_margin": 0.005761083997443794,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 0,
+      "serial_logprobs": [
+        -72.08785717535648,
+        -156.49132204591297,
+        -110.92228637076914,
+        -95.50478176493198
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 6761,
+      "arm": "standalone",
+      "batch_margin": 0.008884448192911787,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 0,
+      "serial_logprobs": [
+        -66.71049764147028,
+        -78.07244321703911,
+        -112.252329777868,
+        -117.34095488651656
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 5951,
+      "arm": "standalone",
+      "batch_margin": 0.009444739429361082,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 0,
+      "serial_logprobs": [
+        -145.77417790703475,
+        -94.52395078144036,
+        -232.06366253772285,
+        -123.4570947753673
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 7976,
+      "arm": "standalone",
+      "batch_margin": 0.01024046891615571,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 3,
+      "serial_logprobs": [
+        -79.86306097496708,
+        -81.85732159661711,
+        -137.88018192129675,
+        -74.69794265599921
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 6779,
+      "arm": "standalone",
+      "batch_margin": 0.011728708841837854,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 3,
+      "serial_logprobs": [
+        -81.42842752067372,
+        -154.3878641575575,
+        -102.47945287053017,
+        -54.52019252395257
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 8597,
+      "arm": "standalone",
+      "batch_margin": 0.01573007881104127,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 3,
+      "serial_logprobs": [
+        -179.1124228751287,
+        -126.31000312417746,
+        -94.52968901023269,
+        -52.1062730550766
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 308,
+      "arm": "standalone",
+      "batch_margin": 0.01576006381462003,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 0,
+      "serial_logprobs": [
+        -50.659911329858005,
+        -35.949058175086975,
+        -44.69514036178589,
+        -34.054228991270065
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 3454,
+      "arm": "mapped",
+      "batch_margin": 8.318934786566423e-05,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 2,
+      "serial_logprobs": [
+        -99.13548982946668,
+        -57.00917475192546,
+        -41.27886196306645,
+        -54.410632823863125
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 348,
+      "arm": "mapped",
+      "batch_margin": 0.0024741398448351326,
+      "batch_choice": 3,
+      "serial_choice": 0,
+      "label": 3,
+      "serial_logprobs": [
+        -60.27840435388498,
+        -37.488957807872794,
+        -103.55468803141412,
+        -38.60210278630257
+      ],
+      "max_mean_logprob_error": 0.04442598174015681
+    },
+    {
+      "index": 7212,
+      "arm": "mapped",
+      "batch_margin": 0.002792480680173348,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 0,
+      "serial_logprobs": [
+        -75.07239334343467,
+        -152.73436779994518,
+        -109.40317244501784,
+        -91.64715658794739
+      ],
+      "max_mean_logprob_error": 0.006056848855223507
+    },
+    {
+      "index": 7979,
+      "arm": "mapped",
+      "batch_margin": 0.0027940164860127403,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 0,
+      "serial_logprobs": [
+        -138.41449763467244,
+        -122.64058329095133,
+        -92.83769790851511,
+        -150.2655128580518
+      ],
+      "max_mean_logprob_error": 0.016152939822122053
+    },
+    {
+      "index": 5444,
+      "arm": "mapped",
+      "batch_margin": 0.0029132648805880734,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 3,
+      "serial_logprobs": [
+        -113.28480816911906,
+        -68.92171106301248,
+        -91.006069265306,
+        -130.3970238401089
+      ],
+      "max_mean_logprob_error": 0.009042981373412268
+    },
+    {
+      "index": 8592,
+      "arm": "mapped",
+      "batch_margin": 0.0030045877426165823,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 3,
+      "serial_logprobs": [
+        -65.83366372328601,
+        -155.51457277638838,
+        -51.96506722040067,
+        -78.8727278407896
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 7982,
+      "arm": "mapped",
+      "batch_margin": 0.0032349910319795505,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 0,
+      "serial_logprobs": [
+        -161.49784524098504,
+        -84.06567367888056,
+        -77.73144687525928,
+        -129.25411957550386
+      ],
+      "max_mean_logprob_error": 0.01843666688314286
+    },
+    {
+      "index": 9003,
+      "arm": "mapped",
+      "batch_margin": 0.0034832707147476327,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 0,
+      "serial_logprobs": [
+        -81.93767725187354,
+        -118.24068122729659,
+        -76.19143932103543,
+        -78.34117529727519
+      ],
+      "max_mean_logprob_error": 0.0038538857932305997
+    },
+    {
+      "index": 2325,
+      "arm": "mapped",
+      "batch_margin": 0.004446857670942883,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 2,
+      "serial_logprobs": [
+        -27.227432554587722,
+        -35.54074515774846,
+        -28.52966044843197,
+        -41.594596058130264
+      ],
+      "max_mean_logprob_error": 0.010605669021606446
+    },
+    {
+      "index": 2971,
+      "arm": "mapped",
+      "batch_margin": 0.0048578892072494995,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 2,
+      "serial_logprobs": [
+        -34.32600755896419,
+        -24.430444495752454,
+        -26.91699772933498,
+        -35.28987270593643
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 6415,
+      "arm": "mapped",
+      "batch_margin": 0.006221005409375202,
+      "batch_choice": 3,
+      "serial_choice": 1,
+      "label": 1,
+      "serial_logprobs": [
+        -135.88533252826892,
+        -137.70594931797677,
+        -179.9924283772707,
+        -161.24440617277287
+      ],
+      "max_mean_logprob_error": 0.00919847277044836
+    },
+    {
+      "index": 123,
+      "arm": "mapped",
+      "batch_margin": 0.007230684429294421,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 0,
+      "serial_logprobs": [
+        -28.471162989386357,
+        -25.78394600597676,
+        -27.9284723023884,
+        -22.91564440727234
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 3802,
+      "arm": "mapped",
+      "batch_margin": 0.008587914267660146,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 3,
+      "serial_logprobs": [
+        -156.76060806796886,
+        -164.0886682685814,
+        -150.14045062769947,
+        -209.34903331648093
+      ],
+      "max_mean_logprob_error": 0.026785259042517284
+    },
+    {
+      "index": 7455,
+      "arm": "mapped",
+      "batch_margin": 0.00995003280607909,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 3,
+      "serial_logprobs": [
+        -114.68479663587641,
+        -88.91752911778167,
+        -98.17506416887045,
+        -92.35241864807904
+      ],
+      "max_mean_logprob_error": 0.009322537340208768
+    },
+    {
+      "index": 8336,
+      "arm": "mapped",
+      "batch_margin": 0.012194177311874999,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 0,
+      "serial_logprobs": [
+        -88.33204333856702,
+        -140.20180238767352,
+        -139.5452175453795,
+        -98.43924049608177
+      ],
+      "max_mean_logprob_error": 0.00738432829331776
+    },
+    {
+      "index": 4347,
+      "arm": "mapped",
+      "batch_margin": 0.013029697956246533,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 2,
+      "serial_logprobs": [
+        -135.6156821345212,
+        -102.46904049627483,
+        -101.75991883693496,
+        -185.198181391228
+      ],
+      "max_mean_logprob_error": 0.013876593268443165
+    },
+    {
+      "index": 10036,
+      "arm": "mapped",
+      "batch_margin": 0.013169110500431458,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 1,
+      "serial_logprobs": [
+        -109.20158032514155,
+        -151.26299408543855,
+        -161.91577205155045,
+        -140.70975875854492
+      ],
+      "max_mean_logprob_error": 0.024073060764389677
+    },
+    {
+      "index": 6948,
+      "arm": "mapped",
+      "batch_margin": 0.01367695867659835,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 1,
+      "serial_logprobs": [
+        -121.07116329891142,
+        -77.10292967251735,
+        -101.30497524136445,
+        -168.09544869152887
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 8669,
+      "arm": "mapped",
+      "batch_margin": 0.014294938602480656,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 0,
+      "serial_logprobs": [
+        -95.29152702015926,
+        -95.51285227760673,
+        -118.76232558814809,
+        -135.32032294600504
+      ],
+      "max_mean_logprob_error": 0.014431816096683698
+    },
+    {
+      "index": 5550,
+      "arm": "mapped",
+      "batch_margin": 0.014718268407666546,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 3,
+      "serial_logprobs": [
+        -127.82053724303842,
+        -105.21359288878739,
+        -118.09620883281423,
+        -82.63215071184095
+      ],
+      "max_mean_logprob_error": 0.021718925030062418
+    },
+    {
+      "index": 1899,
+      "arm": "mapped",
+      "batch_margin": 0.014775875981690056,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 1,
+      "serial_logprobs": [
+        -87.82388662605081,
+        -41.12138593196869,
+        -30.833136290311813,
+        -46.41162571706809
+      ],
+      "max_mean_logprob_error": 0.027071995491331272
+    },
+    {
+      "index": 9024,
+      "arm": "mapped",
+      "batch_margin": 0.014935023318380924,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 0,
+      "serial_logprobs": [
+        -82.48105546226725,
+        -89.30218290432822,
+        -79.09769732487621,
+        -121.26413367207715
+      ],
+      "max_mean_logprob_error": 0.012650318569578831
+    },
+    {
+      "index": 5080,
+      "arm": "mapped",
+      "batch_margin": 0.015087704504011867,
+      "batch_choice": 0,
+      "serial_choice": 0,
+      "label": 3,
+      "serial_logprobs": [
+        -95.08226812258363,
+        -106.91228489018977,
+        -133.74885896078558,
+        -81.31535501895996
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 9080,
+      "arm": "mapped",
+      "batch_margin": 0.015239913144261763,
+      "batch_choice": 2,
+      "serial_choice": 2,
+      "label": 2,
+      "serial_logprobs": [
+        -180.76010409742594,
+        -107.70592841506004,
+        -152.55099683173466,
+        -125.50024804472923
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 6549,
+      "arm": "mapped",
+      "batch_margin": 0.015420940890908064,
+      "batch_choice": 3,
+      "serial_choice": 3,
+      "label": 3,
+      "serial_logprobs": [
+        -176.81738724932075,
+        -94.70448955055326,
+        -147.0437758564949,
+        -117.91798371146433
+      ],
+      "max_mean_logprob_error": 0.0
+    },
+    {
+      "index": 4782,
+      "arm": "mapped",
+      "batch_margin": 0.01551228058583165,
+      "batch_choice": 1,
+      "serial_choice": 1,
+      "label": 2,
+      "serial_logprobs": [
+        -133.1717013347661,
+        -69.84340512612835,
+        -99.32479606005654,
+        -88.97276286568376
+      ],
+      "max_mean_logprob_error": 0.012210917146876454
+    }
+  ]
+}

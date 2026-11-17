@@ -1,0 +1,53 @@
+{
+  "all_cases": {
+    "acc": {
+      "n": 1000,
+      "counts": {
+        "standalone": 468,
+        "mapped": 433
+      },
+      "retention": 0.9252136752136753
+    },
+    "acc_norm": {
+      "n": 1000,
+      "counts": {
+        "standalone": 582,
+        "mapped": 555
+      },
+      "retention": 0.9536082474226805
+    }
+  },
+  "actual_transfer_only": {
+    "acc": {
+      "n": 968,
+      "counts": {
+        "standalone": 452,
+        "mapped": 417
+      },
+      "retention": 0.922566371681416
+    },
+    "acc_norm": {
+      "n": 968,
+      "counts": {
+        "standalone": 567,
+        "mapped": 540
+      },
+      "retention": 0.9523809523809523
+    }
+  },
+  "checks": {
+    "ordered_unique_cases": 1000,
+    "short_fallback": 32,
+    "actual_transfer": 968,
+    "serial_arm_case_checks": 41,
+    "serial_flips": [
+      348,
+      6415
+    ],
+    "serial_net_correct_delta": {
+      "standalone": 0,
+      "mapped": 0
+    },
+    "near_tie_selection_verified": true
+  }
+}

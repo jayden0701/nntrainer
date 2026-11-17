@@ -1,0 +1,50 @@
+[
+  {
+    "test": "cold_batch_vs_serial",
+    "index": 232,
+    "context_tokens": 26,
+    "imported_tokens": 16,
+    "max_mean_logprob_error": 0.0,
+    "same_acc_norm_prediction": true
+  },
+  {
+    "test": "exact_cache_vs_cold_serial",
+    "index": 232,
+    "context_tokens": 26,
+    "imported_tokens": 16,
+    "max_mean_logprob_error": 0.0,
+    "same_acc_norm_prediction": true
+  },
+  {
+    "test": "mapped_batch_vs_serial",
+    "index": 232,
+    "context_tokens": 26,
+    "imported_tokens": 16,
+    "max_mean_logprob_error": 0.0,
+    "same_acc_norm_prediction": true
+  },
+  {
+    "test": "cold_batch_vs_serial",
+    "index": 9707,
+    "context_tokens": 83,
+    "imported_tokens": 80,
+    "max_mean_logprob_error": 0.0,
+    "same_acc_norm_prediction": true
+  },
+  {
+    "test": "exact_cache_vs_cold_serial",
+    "index": 9707,
+    "context_tokens": 83,
+    "imported_tokens": 80,
+    "max_mean_logprob_error": 0.007681187509593589,
+    "same_acc_norm_prediction": true
+  },
+  {
+    "test": "mapped_batch_vs_serial",
+    "index": 9707,
+    "context_tokens": 83,
+    "imported_tokens": 80,
+    "max_mean_logprob_error": 0.007140130149545493,
+    "same_acc_norm_prediction": true
+  }
+]

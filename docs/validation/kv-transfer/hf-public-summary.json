@@ -1,0 +1,94 @@
+{
+  "complete": true,
+  "public_sample_complete": true,
+  "n_requested": 1000,
+  "n_completed": 1000,
+  "n_short_cold": 32,
+  "all_cases": {
+    "n": 1000,
+    "acc": {
+      "standalone_correct": 468,
+      "mapped_correct": 433,
+      "standalone": 0.468,
+      "mapped": 0.433,
+      "retention": 0.9252136752136753,
+      "paired_delta": -0.035,
+      "paired_delta_ci95": [
+        -0.05,
+        -0.02
+      ],
+      "paired_retention_ci95": [
+        0.8942710713437036,
+        0.9559471365638766
+      ],
+      "wrong_to_correct": 12,
+      "correct_to_wrong": 47,
+      "changed_prediction": 88
+    },
+    "acc_norm": {
+      "standalone_correct": 582,
+      "mapped_correct": 555,
+      "standalone": 0.582,
+      "mapped": 0.555,
+      "retention": 0.9536082474226805,
+      "paired_delta": -0.027,
+      "paired_delta_ci95": [
+        -0.046,
+        -0.008
+      ],
+      "paired_retention_ci95": [
+        0.9218743061722913,
+        0.9855602172569682
+      ],
+      "wrong_to_correct": 34,
+      "correct_to_wrong": 61,
+      "changed_prediction": 127
+    }
+  },
+  "actual_transfer_only": {
+    "n": 968,
+    "acc": {
+      "standalone_correct": 452,
+      "mapped_correct": 417,
+      "standalone": 0.4669421487603306,
+      "mapped": 0.43078512396694213,
+      "retention": 0.922566371681416,
+      "paired_delta": -0.03615702479338843,
+      "paired_delta_ci95": [
+        -0.05165289256198347,
+        -0.02066115702479339
+      ],
+      "paired_retention_ci95": [
+        0.8911111111111111,
+        0.9545454545454546
+      ],
+      "wrong_to_correct": 12,
+      "correct_to_wrong": 47,
+      "changed_prediction": 88
+    },
+    "acc_norm": {
+      "standalone_correct": 567,
+      "mapped_correct": 540,
+      "standalone": 0.5857438016528925,
+      "mapped": 0.5578512396694215,
+      "retention": 0.9523809523809523,
+      "paired_delta": -0.027892561983471075,
+      "paired_delta_ci95": [
+        -0.047520661157024795,
+        -0.008264462809917356
+      ],
+      "paired_retention_ci95": [
+        0.9197067814586063,
+        0.9854545454545455
+      ],
+      "wrong_to_correct": 34,
+      "correct_to_wrong": 61,
+      "changed_prediction": 127
+    }
+  },
+  "bootstrap": {
+    "draws": 10000,
+    "seed": 0,
+    "paired": true
+  }
+}
