@@ -6,7 +6,7 @@
 ## @brief  HF Qwen3 -> nntrainer layer-graph .bin converter (int4-quantize source).
 ## @author Jijoong Moon <jijoong.moon@samsung.com>
 ##
-## numpy-only converter: HF Qwen3 (model.safetensors) -> nntrainer layer-graph
+## numpy-only converter: HF Qwen3 (single or sharded Safetensors) -> nntrainer layer-graph
 ## FP32 positional .bin, matching the weight order of the torch
 ## weight_converter.py in this directory (and res/qwen3/qwen3-4b/).
 ##
@@ -14,7 +14,7 @@
 ## the FP32-weight / FP16-norm source that nntr_quantize quantizes to the
 ## 1K-benchmark recipe (embedding Q6_K, FC QS4CX, lm_head Q6_K, QS4CX-FP16).
 ## Use --data_type float32 --norm_fp16 for that source. No torch/transformers
-## lib needed (reads model.safetensors directly; bf16 -> fp32 is an exact widen).
+## lib needed (reads Safetensors directly; bf16 -> fp32 is an exact widen).
 ##
 ## Qwen3 graph order (whole model):
 ##   embed_tokens            (as-is, [vocab, hidden], no transpose)
@@ -35,6 +35,7 @@
 import argparse
 import json
 import struct
+from pathlib import Path
 
 import numpy as np
 
@@ -74,10 +75,63 @@ def make_reader(path, hdr, data_offset):
     return read
 
 
+def model_reader(model_path):
+    model_path = Path(model_path)
+    single = model_path / "model.safetensors"
+    if single.is_file():
+        header, offset = load_safetensors_header(single)
+        reader = make_reader(single, header, offset)
+        return header.keys(), reader
+
+    index = model_path / "model.safetensors.index.json"
+    with index.open() as stream:
+        tensor_shards = json.load(stream)["weight_map"]
+
+    readers = {}
+    shard_keys = {}
+    for filename in sorted(set(tensor_shards.values())):
+        shard = model_path / filename
+        header, offset = load_safetensors_header(shard)
+        readers[filename] = make_reader(shard, header, offset)
+        shard_keys[filename] = header.keys()
+    for tensor, filename in tensor_shards.items():
+        if tensor not in shard_keys[filename]:
+            raise ValueError(f"{tensor} is missing from indexed shard {filename}")
+
+    def read(name):
+        return readers[tensor_shards[name]](name)
+
+    return tensor_shards.keys(), read
+
+
+def weight_order(layers, tied):
+    yield "model.embed_tokens.weight", False, False
+    for layer in range(layers):
+        prefix = f"model.layers.{layer}."
+        # Attention q/k norms follow their projections in layer-graph order.
+        for name, norm, transpose in (
+            ("input_layernorm", True, False),
+            ("self_attn.q_proj", False, True),
+            ("self_attn.q_norm", True, False),
+            ("self_attn.k_proj", False, True),
+            ("self_attn.k_norm", True, False),
+            ("self_attn.v_proj", False, True),
+            ("self_attn.o_proj", False, True),
+            ("post_attention_layernorm", True, False),
+            ("mlp.gate_proj", False, True),
+            ("mlp.up_proj", False, True),
+            ("mlp.down_proj", False, True),
+        ):
+            yield prefix + name + ".weight", norm, transpose
+    yield "model.norm.weight", True, False
+    if not tied:
+        yield "lm_head.weight", False, True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model_path", required=True,
-                    help="HF model dir containing model.safetensors + config.json")
+                    help="HF model dir containing Safetensors weights and config.json")
     ap.add_argument("--output_name", required=True)
     ap.add_argument("--data_type", choices=["float32", "float16"],
                     default="float32")
@@ -89,58 +143,30 @@ def main():
     out_dtype = np.float32 if args.data_type == "float32" else np.float16
     norm_fp16 = args.norm_fp16
 
-    cfg = json.load(open(f"{args.model_path}/config.json"))
+    with (Path(args.model_path) / "config.json").open() as stream:
+        cfg = json.load(stream)
     n_layers = cfg["num_hidden_layers"]
     tied = bool(cfg.get("tie_word_embeddings", False))
 
-    st = f"{args.model_path}/model.safetensors"
-    hdr, off = load_safetensors_header(st)
-    read = make_reader(st, hdr, off)
+    tensors, read = model_reader(args.model_path)
+    order = list(weight_order(n_layers, tied))
+    for name, _, _ in order:
+        if name not in tensors:
+            raise ValueError(f"required tensor {name} is missing from {args.model_path}")
 
-    total = [0]
-    f = open(args.output_name, "wb")
+    total = 0
+    with open(args.output_name, "wb") as stream:
+        for name, is_rms, transpose in order:
+            array = read(name)
+            if transpose:
+                array = array.T
+            dtype = np.float16 if is_rms and norm_fp16 else out_dtype
+            array = np.ascontiguousarray(array, dtype=dtype)
+            array.tofile(stream)
+            total += array.nbytes
 
-    def w(arr, is_rms=False, transpose=False):
-        a = arr
-        if transpose:
-            a = a.T
-        dt = np.float16 if (is_rms and norm_fp16) else out_dtype
-        a = np.ascontiguousarray(a, dtype=dt)
-        a.tofile(f)
-        total[0] += a.nbytes
-
-    def proj(layer, name):
-        return read(f"model.layers.{layer}.{name}.weight")
-
-    # embedding (as-is)
-    w(read("model.embed_tokens.weight"))
-
-    for i in range(n_layers):
-        lp = f"model.layers.{i}."
-        # attention (q/k_norm follows its projection, matching the torch
-        # converter's save order)
-        w(read(lp + "input_layernorm.weight"), is_rms=True)
-        w(proj(i, "self_attn.q_proj"), transpose=True)
-        w(read(lp + "self_attn.q_norm.weight"), is_rms=True)
-        w(proj(i, "self_attn.k_proj"), transpose=True)
-        w(read(lp + "self_attn.k_norm.weight"), is_rms=True)
-        w(proj(i, "self_attn.v_proj"), transpose=True)
-        w(proj(i, "self_attn.o_proj"), transpose=True)
-        # feed forward
-        w(read(lp + "post_attention_layernorm.weight"), is_rms=True)
-        w(proj(i, "mlp.gate_proj"), transpose=True)
-        w(proj(i, "mlp.up_proj"), transpose=True)
-        w(proj(i, "mlp.down_proj"), transpose=True)
-
-    # final norm
-    w(read("model.norm.weight"), is_rms=True)
-
-    if not tied:
-        w(read("lm_head.weight"), transpose=True)
-
-    f.close()
-    print(f"wrote {args.output_name}: {total[0]} bytes "
-          f"({total[0]/1e9:.2f} GB), {n_layers} layers, "
+    print(f"wrote {args.output_name}: {total} bytes "
+          f"({total/1e9:.2f} GB), {n_layers} layers, "
           f"dtype={args.data_type}, norm_fp16={norm_fp16}, tied={tied}")
 
 
