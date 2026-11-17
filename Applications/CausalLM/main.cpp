@@ -46,6 +46,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <env_compat.h>
 #include <filesystem>
 #include <map>
 #include <thread>
@@ -493,6 +494,30 @@ int main(int argc, char *argv[]) {
       if (!causal)
         throw std::invalid_argument(
           "Request sequences require a causal language model");
+      const bool score_requests = requests[0].contains("score");
+      for (const auto &request : requests) {
+        if (request.contains("score") != score_requests)
+          throw std::invalid_argument(
+            "Cannot mix scoring and ordinary requests");
+        if (!score_requests)
+          continue;
+        const auto &score = request.at("score");
+        if (!score.is_object() || !score.contains("input_ids") ||
+            !score.at("input_ids").is_string() ||
+            !score.contains("target_ids") ||
+            !score.at("target_ids").is_string() || !score.contains("output") ||
+            !score.at("output").is_string() ||
+            score.contains("transfer_import") !=
+              score.contains("prefix_tokens") ||
+            (score.contains("transfer_import") &&
+             (!score.at("transfer_import").is_string() ||
+              !score.at("prefix_tokens").is_number_unsigned() ||
+              score.at("prefix_tokens").get<unsigned int>() == 0)) ||
+            request.contains("device_session") ||
+            request.contains("device_kv_load") ||
+            request.contains("device_kv_save"))
+          throw std::invalid_argument("Invalid score request");
+      }
       const bool device_sessions =
         std::any_of(requests.begin(), requests.end(),
                     [](const auto &r) { return r.contains("device_session"); });
@@ -503,6 +528,26 @@ int main(int argc, char *argv[]) {
       }
       size_t index = 0;
       for (const auto &request : requests) {
+        if (score_requests) {
+          const auto &score = request.at("score");
+          auto set_path = [&](const char *name, const char *field) {
+            if (setenv(name, score.at(field).get<std::string>().c_str(), 1))
+              throw std::runtime_error("Cannot set scoring environment");
+          };
+          set_path("NNTR_SCORE_INPUT_IDS", "input_ids");
+          set_path("NNTR_SCORE_TARGET_IDS", "target_ids");
+          set_path("NNTR_SCORE_OUTPUT", "output");
+          causal->setSessionTokenPosition(0);
+          if (score.contains("transfer_import")) {
+            set_path("NNTR_KV_TRANSFER_IMPORT", "transfer_import");
+            causal->setPrecomputedKVCache(
+              score.at("transfer_import").get<std::string>(),
+              score.at("prefix_tokens").get<unsigned int>());
+          }
+          run_prompt(request["prompt"].get<std::string>());
+          std::cout << "[SCORE_REQUEST] " << index++ << std::endl;
+          continue;
+        }
         double switch_ms = 0;
         if (device_sessions) {
           const auto name =

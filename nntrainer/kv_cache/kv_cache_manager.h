@@ -221,6 +221,7 @@ public:
   /** One-row graph identity tensors, never used to hold cache history. */
   std::shared_ptr<MemoryData> graphKeyMemory(size_t layer);
   std::shared_ptr<MemoryData> graphValueMemory(size_t layer);
+  /** Export committed rows in batch/token/head/dimension order. */
   void savePlane(std::ostream &, size_t layer, bool key, size_t length) const;
   /** Restore layer-major K/V planes atomically, preserving graph identities.
    * Snapshots carry no token ids, so restored rows cannot be reused or

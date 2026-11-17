@@ -1059,6 +1059,31 @@ TEST(KvCacheCore, pagedSnapshotRestoreIsAtomicAndPreservesGraphIdentities) {
     EXPECT_FLOAT_EQ(value, 5);
 }
 
+TEST(KvCacheCore, contiguousSnapshotRestoresAtomicallyAndKeepsBindings) {
+  KvCacheManager source, target;
+  source.initialize(spec());
+  target.initialize(spec());
+  appendTokens(source, {1, 2, 3});
+  appendTokens(target, {7});
+  auto identity = target.keyMemory(0);
+  std::stringstream saved;
+  source.savePlane(saved, 0, true, 3);
+  source.savePlane(saved, 0, false, 3);
+  std::stringstream truncated(saved.str().substr(0, saved.str().size() - 1));
+  EXPECT_THROW(target.restorePlanes(truncated, 3), std::runtime_error);
+  EXPECT_EQ(target.committedLength(), 1u);
+  EXPECT_EQ(target.keyMemory(0), identity);
+  target.restorePlanes(saved, 3);
+  EXPECT_EQ(target.keyMemory(0), identity);
+  EXPECT_EQ(target.committedLength(), 3u);
+  EXPECT_EQ(target.knownTokenCount(), 0u);
+  std::stringstream actual;
+  target.savePlane(actual, 0, true, 3);
+  target.savePlane(actual, 0, false, 3);
+  EXPECT_EQ(actual.str(), saved.str());
+  EXPECT_EQ(appendAndReadKeys(target, 4), (std::vector<float>{1, 2, 3, 4}));
+}
+
 TEST(KvCacheCore, pagedSinkContributesOnlyToSoftmaxDenominator) {
   auto s = spec();
   s.page_tokens = 1;

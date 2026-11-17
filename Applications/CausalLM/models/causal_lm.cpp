@@ -32,11 +32,13 @@
 #include <cstring>
 #include <engine.h>
 #include <filesystem>
+#include <fp16.h>
 #include <fstream>
 #include <future>
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -475,6 +477,13 @@ void CausalLM::allocateKVCacheStorage(const KVCacheLayout &layout) {
 #else
   const auto cache_dtype = ml::train::TensorDim::DataType::UINT16;
 #endif
+  if (const char *enabled = std::getenv("NNTR_KV_CORE_CPU");
+      enabled && std::string(enabled) == "1") {
+    const char *engine = std::getenv("NNTR_ENGINE");
+    if (engine && std::string(engine) != "cpu")
+      throw std::invalid_argument("NNTR_KV_CORE_CPU requires CPU engine");
+    kv_cache.setCoreCPUStorage(NUM_KEY_VALUE_HEADS, HEAD_DIM);
+  }
   kv_cache.allocate(static_cast<unsigned int>(NUM_LAYERS), BATCH_SIZE,
                     layout.max_timestep, layout.widths, cache_dtype);
 }
@@ -704,8 +713,23 @@ std::vector<float *> CausalLM::incrementalInference(
     }
   }
 
-  nntrainer::sharedConstTensors output_tensors =
-    nn->incremental_inference(input_tensors, init_seq_len, from, to);
+  auto *core = kv_cache.coreCPU();
+  nntrainer::sharedConstTensors output_tensors;
+  if (core) {
+    if (from != core->committedLength() || to <= from)
+      throw std::logic_error(
+        "CPU core KV inference interval is not committed position");
+    auto step = core->beginStep(to - from);
+    {
+      auto scope = core->bindStep(step);
+      output_tensors =
+        nn->incremental_inference(input_tensors, init_seq_len, from, to);
+    }
+    core->commit(std::move(step));
+  } else {
+    output_tensors =
+      nn->incremental_inference(input_tensors, init_seq_len, from, to);
+  }
 
   // Output conversion identical to the float* overload in neuralnet.cpp.
   std::vector<float *> output;
@@ -1073,6 +1097,154 @@ void CausalLM::compactKVCache(unsigned int pos, bool force, bool decode_view) {
     };
   model->forEachLayer(fn, nullptr);
 }
+
+namespace {
+struct TransferContract {
+  std::string model;
+  double theta;
+};
+
+TransferContract transferContract() {
+  const char *model = std::getenv("NNTR_KV_TRANSFER_MODEL_ID");
+  const char *theta = std::getenv("NNTR_KV_TRANSFER_ROPE_THETA");
+  if (!model || !*model || !theta || !*theta)
+    throw std::invalid_argument("KV transfer requires model ID and RoPE theta");
+  size_t end = 0;
+  const std::string value(theta);
+  const double t = std::stod(value, &end);
+  if (end != value.size() || !std::isfinite(t) || t <= 0)
+    throw std::invalid_argument("Invalid KV transfer RoPE theta");
+  return {model, t};
+}
+
+void transferWriteFloat(std::ostream &out, float value) {
+  uint32_t bits;
+  std::memcpy(&bits, &value, sizeof(bits));
+  char bytes[4];
+  for (unsigned i = 0; i < 4; ++i)
+    bytes[i] = static_cast<char>((bits >> (8 * i)) & 255);
+  out.write(bytes, 4);
+  if (!out)
+    throw std::runtime_error("KV transfer write failed");
+}
+float transferReadFloat(std::istream &in) {
+  unsigned char bytes[4];
+  in.read(reinterpret_cast<char *>(bytes), 4);
+  if (!in)
+    throw std::runtime_error("Truncated KV transfer plane");
+  uint32_t bits = 0;
+  for (unsigned i = 0; i < 4; ++i)
+    bits |= static_cast<uint32_t>(bytes[i]) << (8 * i);
+  float value;
+  std::memcpy(&value, &bits, sizeof(value));
+  if (!std::isfinite(value))
+    throw std::runtime_error("Non-finite KV transfer element");
+  return value;
+}
+
+void exportTransfer(nntrainer::kv::KvCacheManager &core,
+                    const std::string &directory,
+                    const std::vector<int64_t> &tokens, size_t layers,
+                    size_t heads, size_t dim) {
+  const auto contract = transferContract();
+  if (tokens.size() != core.committedLength())
+    throw std::logic_error("KV transfer tokens do not cover committed cache");
+  if (std::filesystem::exists(directory) &&
+      (!std::filesystem::is_directory(directory) ||
+       !std::filesystem::is_empty(directory)))
+    throw std::invalid_argument("KV transfer export directory must be empty");
+  std::filesystem::create_directories(directory);
+  json meta = {{"version", 1},
+               {"model_id", contract.model},
+               {"layers", layers},
+               {"tokens", tokens.size()},
+               {"kv_heads", heads},
+               {"head_dim", dim},
+               {"key_space", "post_rope"},
+               {"rope",
+                {{"layout", "split_half"},
+                 {"theta", contract.theta},
+                 {"rotary_dim", dim}}},
+               {"token_ids", tokens}};
+  meta["positions"] = json::array();
+  for (size_t i = 0; i < tokens.size(); ++i)
+    meta["positions"].push_back(i);
+  std::ofstream key(std::filesystem::path(directory) / "keys.f32",
+                    std::ios::binary);
+  std::ofstream value(std::filesystem::path(directory) / "values.f32",
+                      std::ios::binary);
+  if (!key || !value)
+    throw std::runtime_error("Cannot open KV transfer planes");
+  for (size_t i = 0; i < layers; ++i) {
+    for (bool is_key : {true, false}) {
+      std::ostringstream plane(std::ios::binary);
+      core.savePlane(plane, i, is_key, tokens.size());
+      const std::string bytes = plane.str();
+      if (bytes.size() != tokens.size() * heads * dim * sizeof(uint16_t))
+        throw std::logic_error("Unexpected KV transfer plane geometry");
+      auto &out = is_key ? key : value;
+      for (size_t pos = 0; pos < bytes.size(); pos += sizeof(uint16_t)) {
+        uint16_t h;
+        std::memcpy(&h, bytes.data() + pos, sizeof(h));
+        transferWriteFloat(out, nntrainer::compute_fp16_to_fp32(h));
+      }
+    }
+  }
+  std::ofstream metadata(std::filesystem::path(directory) / "metadata.json");
+  metadata << meta.dump(2) << std::endl;
+  if (!metadata)
+    throw std::runtime_error("KV transfer metadata write failed");
+}
+void importTransfer(nntrainer::kv::KvCacheManager &core,
+                    const std::string &directory, size_t length, size_t layers,
+                    size_t heads, size_t dim) {
+  const auto contract = transferContract();
+  std::ifstream metadata(std::filesystem::path(directory) / "metadata.json");
+  if (!metadata)
+    throw std::runtime_error("Cannot open KV transfer metadata");
+  json meta;
+  metadata >> meta;
+  if (meta.at("version") != 1 || meta.at("model_id") != contract.model ||
+      meta.at("layers") != layers || meta.at("tokens") != length ||
+      meta.at("kv_heads") != heads || meta.at("head_dim") != dim ||
+      meta.at("key_space") != "post_rope" ||
+      meta.at("rope").at("layout") != "split_half" ||
+      meta.at("rope").at("theta") != contract.theta ||
+      meta.at("rope").at("rotary_dim") != dim ||
+      !meta.at("token_ids").is_array() ||
+      meta.at("token_ids").size() != length ||
+      !meta.at("positions").is_array() || meta.at("positions").size() != length)
+    throw std::invalid_argument(
+      "KV transfer metadata does not match target contract");
+  for (size_t i = 0; i < length; ++i)
+    if (meta.at("positions").at(i) != i ||
+        !meta.at("token_ids").at(i).is_number_integer())
+      throw std::invalid_argument("KV transfer token or position is invalid");
+  std::ifstream key(std::filesystem::path(directory) / "keys.f32",
+                    std::ios::binary);
+  std::ifstream value(std::filesystem::path(directory) / "values.f32",
+                      std::ios::binary);
+  if (!key || !value)
+    throw std::runtime_error("Cannot open KV transfer planes");
+  std::ostringstream planes(std::ios::binary);
+  for (size_t i = 0; i < layers; ++i)
+    for (bool is_key : {true, false}) {
+      auto &in = is_key ? key : value;
+      for (size_t j = 0; j < length * heads * dim; ++j) {
+        const uint16_t h =
+          nntrainer::compute_fp32_to_fp16(transferReadFloat(in));
+        if (!std::isfinite(nntrainer::compute_fp16_to_fp32(h)))
+          throw std::invalid_argument("KV transfer element exceeds FP16 range");
+        planes.write(reinterpret_cast<const char *>(&h), sizeof(h));
+      }
+    }
+  if (key.peek() != std::char_traits<char>::eof() ||
+      value.peek() != std::char_traits<char>::eof())
+    throw std::invalid_argument("KV transfer plane has trailing data");
+  std::istringstream in(planes.str(), std::ios::binary);
+  core.restorePlanes(in, length);
+}
+} // namespace
 
 void CausalLM::save_kvcache(std::string path, int to_) {
   if (htp_session_enabled_)
@@ -1479,8 +1651,24 @@ void CausalLM::load_kvcache(std::string path, int to_) {
   if (!kv_cache.isAllocated()) {
     allocateAndBindKVCache();
   }
-  const unsigned int loaded =
-    kv_cache.load(path, static_cast<unsigned int>(to_), kvCacheModelTag());
+  unsigned int loaded;
+  if (const char *directory = std::getenv("NNTR_KV_TRANSFER_IMPORT")) {
+    auto *core = kv_cache.coreCPU();
+    if (!core || to_ < 0)
+      throw std::logic_error(
+        "KV transfer import requires CPU core and valid length");
+    if (system_prefix_config_.value("model_type", std::string()) != "qwen3" ||
+        (!system_prefix_config_["rope_scaling"].is_null()) ||
+        transferContract().theta != static_cast<double>(ROPE_THETA))
+      throw std::invalid_argument(
+        "KV transfer requires unscaled Qwen3 RoPE matching model theta");
+    importTransfer(*core, directory, static_cast<unsigned int>(to_), NUM_LAYERS,
+                   NUM_KEY_VALUE_HEADS, HEAD_DIM);
+    loaded = static_cast<unsigned int>(to_);
+  } else {
+    loaded =
+      kv_cache.load(path, static_cast<unsigned int>(to_), kvCacheModelTag());
+  }
   // absent (a dump of an older build, a CPU run): the layers calibrate on
   // their first step as before
   if (std::ifstream q2(path + ".q2", std::ios::binary); q2)
@@ -2095,6 +2283,46 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
   auto _input = tokenizer->Encode(
     prompt_, /*add_special_tokens=*/!(USE_KVCACHE && !SAVE_KVCACHE) &&
                !(htp_session_enabled_ && global_token_len != 0));
+  const char *score_input_path = std::getenv("NNTR_SCORE_INPUT_IDS");
+  const char *score_target_path = std::getenv("NNTR_SCORE_TARGET_IDS");
+  const char *score_output_path = std::getenv("NNTR_SCORE_OUTPUT");
+  const char *export_input_path =
+    std::getenv("NNTR_KV_TRANSFER_EXPORT_INPUT_IDS");
+  const bool scoring =
+    score_input_path || score_target_path || score_output_path;
+  std::vector<unsigned int> score_targets;
+  auto read_exact_ids = [&](const char *path) {
+    std::ifstream file(path);
+    std::vector<unsigned int> ids;
+    long long id;
+    while (file >> id) {
+      NNTR_THROW_IF(id < 0 || static_cast<unsigned long long>(id) >= NUM_VOCAB,
+                    std::invalid_argument)
+        << "Token is outside the vocabulary";
+      ids.push_back(static_cast<unsigned int>(id));
+    }
+    NNTR_THROW_IF(!file.eof() || ids.empty(), std::invalid_argument)
+      << "Cannot read nonempty token file: " << path;
+    return ids;
+  };
+  if (export_input_path) {
+    NNTR_THROW_IF(!SAVE_KVCACHE || !std::getenv("NNTR_KV_TRANSFER_EXPORT"),
+                  std::invalid_argument)
+      << "Raw export tokens require KV transfer save mode";
+    auto ids = read_exact_ids(export_input_path);
+    _input.assign(ids.begin(), ids.end());
+  }
+  if (scoring) {
+    NNTR_THROW_IF(!score_input_path || !score_target_path ||
+                    !score_output_path || causallm_engine() != "cpu" ||
+                    BATCH_SIZE != 1 || SAVE_KVCACHE || global_token_len != 0,
+                  std::invalid_argument)
+      << "Scoring requires all score paths, batch-one CPU inference, "
+         "and a fresh or imported cache";
+    auto ids = read_exact_ids(score_input_path);
+    _input.assign(ids.begin(), ids.end());
+    score_targets = read_exact_ids(score_target_path);
+  }
   // Settle the original full-request plane BEFORE matching cached call shapes.
   if (!kv_cache.isAllocated())
     growPrefillPlane(static_cast<unsigned int>(_input.size()));
@@ -2247,6 +2475,10 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
       _prefill_chunking ? "max_seq_len" : "init_seq_len");
   }
 
+  NNTR_THROW_IF((scoring || export_input_path) && text_len != _len,
+                std::invalid_argument)
+    << "Exact token input exceeds the configured prefill window";
+
   // feed only available length
   // if _input is allowed, it feeds all of the _input
   // otherwise, feeds only a part of _input
@@ -2364,6 +2596,18 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     }
 
     SYS_PROMP_LEN = input_len;
+    if (const char *directory = std::getenv("NNTR_KV_TRANSFER_EXPORT")) {
+      auto *core = kv_cache.coreCPU();
+      if (!core)
+        throw std::logic_error("KV transfer export requires CPU core");
+      if (system_prefix_config_.value("model_type", std::string()) != "qwen3" ||
+          (!system_prefix_config_["rope_scaling"].is_null()) ||
+          transferContract().theta != static_cast<double>(ROPE_THETA))
+        throw std::invalid_argument(
+          "KV transfer requires unscaled Qwen3 RoPE matching model theta");
+      exportTransfer(*core, directory, init_input, NUM_LAYERS,
+                     NUM_KEY_VALUE_HEADS, HEAD_DIM);
+    }
     save_kvcache(PRE_COMPUTED_CACHE_PATH, SYS_PROMP_LEN);
 
     if (log_output) {
@@ -2740,6 +2984,127 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
    *  constructed (epoch) means "not yet", i.e. the first token comes out of the
    *  decode loop. See ttft_ms in performance_metrics.h. */
   std::chrono::high_resolution_clock::time_point perf_split_first_out{};
+
+  if (scoring) {
+    NNTR_THROW_IF(text_len != _len || static_cast<uint64_t>(prefill_from) +
+                                          init_len + score_targets.size() - 1 >
+                                        MAX_SEQ_LEN,
+                  std::invalid_argument)
+      << "Scoring tokens exceed the configured context window";
+    setKVCachePosition(prefill_from);
+    // A skip-prefill head produces no logits for multi-token blocks.
+    if (init_len > 1) {
+      auto prefix_output = do_prefill(init_len - 1, prefill_from);
+      for (auto *p : prefix_output)
+        releaseLogitsBuf(p);
+    }
+    unsigned int pos = prefill_from + init_len - 1;
+    std::vector<double> logprobs;
+    double sum = 0.0;
+
+    // The ordinary tied head only materializes the final logit row. In this
+    // opt-in CPU/Qwen path project its retained final-norm input rows using the
+    // same tied FP32 weight after each causal block forward.
+    unsigned int score_block = 1;
+    nntrainer::RunLayerContext *head_context = nullptr;
+    if (const char *requested = std::getenv("NNTR_SCORE_BLOCK_ROWS")) {
+      const unsigned long parsed = std::stoul(requested);
+      NNTR_THROW_IF(parsed == 0 || parsed > 64, std::invalid_argument)
+        << "NNTR_SCORE_BLOCK_ROWS must be between 1 and 64";
+      if (parsed > 1 && !SKIP_PREFILL && TIE_WORD_EMBEDDINGS && !LMHEAD_UNTIE &&
+          system_prefix_config_.value("model_type", std::string()) == "qwen3") {
+        model->forEachLayer(
+          [&](ml::train::Layer &layer, nntrainer::RunLayerContext &ctx,
+              void *) {
+            if (layer.getName() == "output_of_causallm" &&
+                layer.getType() == "tie_word_embeddings" &&
+                ctx.getNumInputs() == 1 && ctx.getNumWeights() >= 1)
+              head_context = &ctx;
+          },
+          nullptr);
+        if (head_context) {
+          auto &hidden = head_context->getInput(0);
+          auto &weight = head_context->getWeight(0);
+          if (hidden.getDataType() == ml::train::TensorDim::DataType::FP32 &&
+              weight.getDataType() == ml::train::TensorDim::DataType::FP32 &&
+              hidden.batch() == 1 && hidden.channel() == 1 &&
+              weight.height() == NUM_VOCAB &&
+              weight.width() == hidden.width()) {
+            score_block = std::min<unsigned int>(
+              static_cast<unsigned int>(parsed), hidden.height());
+            if (prefillDriveChunk())
+              score_block = std::min(score_block, prefillDriveChunk());
+          }
+        }
+      }
+    }
+
+    for (size_t i = 0; i < score_targets.size();) {
+      unsigned int count =
+        std::min<size_t>(score_block, score_targets.size() - i);
+      // Windowed cache blocks cannot cross a prefill-grid boundary.
+      if (ring_grid)
+        count = std::min(count, ring_grid - (pos % ring_grid));
+      for (unsigned int j = 0; j < count; ++j)
+        input_sample[j] = static_cast<float>(
+          i + j == 0 ? init_input.back() : score_targets[i + j - 1]);
+      compactKVCache(pos);
+      beforePrefillBlock(pos, pos + count);
+      auto logits = incrementalInference(1, input, count, pos, pos + count);
+      NNTR_THROW_IF(logits.empty(), std::runtime_error)
+        << "Missing score logits";
+
+      std::vector<float> projected;
+      const float *rows = logits[0];
+      if (count > 1) {
+        auto &hidden = head_context->getInput(0);
+        auto &weight = head_context->getWeight(0);
+        auto hidden_dim = hidden.getDim();
+        hidden_dim.height(count);
+        auto hidden_rows = hidden.getSharedDataTensor(hidden_dim, 0, true);
+        auto output_dim = hidden_dim;
+        output_dim.width(NUM_VOCAB);
+        projected.resize(static_cast<size_t>(count) * NUM_VOCAB);
+        auto output_rows = nntrainer::Tensor::Map(
+          projected.data(), projected.size() * sizeof(float), output_dim, 0);
+        hidden_rows.dot(weight, output_rows, false, true);
+        rows = projected.data();
+      }
+      for (unsigned int k = 0; k < count; ++k) {
+        const float *row = rows + static_cast<size_t>(k) * NUM_VOCAB;
+        double maximum = -std::numeric_limits<double>::infinity();
+        for (unsigned int j = 0; j < NUM_VOCAB; ++j) {
+          NNTR_THROW_IF(!std::isfinite(row[j]), std::runtime_error)
+            << "Non-finite score logit";
+          maximum = std::max(maximum, static_cast<double>(row[j]));
+        }
+        double denominator = 0.0;
+        for (unsigned int j = 0; j < NUM_VOCAB; ++j)
+          denominator += std::exp(static_cast<double>(row[j]) - maximum);
+        const double lp = static_cast<double>(row[score_targets[i + k]]) -
+                          maximum - std::log(denominator);
+        NNTR_THROW_IF(!std::isfinite(lp), std::runtime_error)
+          << "Non-finite score log probability";
+        logprobs.push_back(lp);
+        sum += lp;
+      }
+      for (auto *p : logits)
+        releaseLogitsBuf(p);
+      pos += count;
+      i += count;
+    }
+    std::ofstream file(score_output_path);
+    NNTR_THROW_IF(!file, std::runtime_error) << "Cannot open score output";
+    nlohmann::json result = {{"token_logprobs", logprobs},
+                             {"sum_logprob", sum},
+                             {"count", logprobs.size()},
+                             {"score_block_rows", score_block},
+                             {"perplexity", std::exp(-sum / logprobs.size())}};
+    file << result.dump(2) << std::endl;
+    NNTR_THROW_IF(!file, std::runtime_error) << "Cannot write score output";
+    free(input_sample);
+    return;
+  }
 
   const bool skipped_prefill_token =
     SKIP_PREFILL && (init_len > 1 || device_prefix_hit != 0);

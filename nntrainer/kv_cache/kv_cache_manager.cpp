@@ -898,13 +898,24 @@ std::vector<KvView> KvLayerAccess::readValueViews(size_t batch) const {
 
 void KvCacheManager::savePlane(std::ostream &out, size_t layer, bool key,
                                size_t length) const {
-  if (!paged() || hasActiveStep() || !valid() || length > committedLength())
-    throw std::logic_error(
-      "Paged KV snapshot requires an idle committed range");
+  if (hasActiveStep() || !valid() || length > committedLength())
+    throw std::logic_error("KV snapshot requires an idle committed range");
   const auto &s = layerSpec(layer);
+  if (!paged() && s.capacity != s.max_tokens)
+    throw std::logic_error("KV snapshots require full contiguous history");
   size_t owner = layer;
   while (state_->spec.layers[owner].source >= 0)
     owner = state_->spec.layers[owner].source;
+  if (!paged()) {
+    const auto &storage = key ? state_->keys[owner] : state_->values[owner];
+    for (size_t b = 0; b < s.batch; ++b) {
+      const auto *base = static_cast<const char *>(storage->data());
+      out.write(base + b * s.capacity * s.rowBytes(), length * s.rowBytes());
+      if (!out)
+        throw std::runtime_error("Failed to write KV snapshot");
+    }
+    return;
+  }
   const auto &pages =
     key ? state_->key_pages[owner] : state_->value_pages[owner];
   const size_t stride = 1 + (s.max_tokens - 1) / state_->spec.page_tokens;
@@ -920,12 +931,16 @@ void KvCacheManager::savePlane(std::ostream &out, size_t layer, bool key,
 }
 
 void KvCacheManager::restorePlanes(std::istream &in, size_t length) {
-  if (!paged() || hasActiveStep() || !valid())
-    throw std::logic_error("Paged KV restore requires an idle session");
+  if (hasActiveStep() || !valid())
+    throw std::logic_error("KV restore requires an idle session");
   if (!length) {
     reset();
     return;
   }
+  if (!paged())
+    for (const auto &s : state_->spec.layers)
+      if (s.capacity != s.max_tokens)
+        throw std::logic_error("KV snapshots require full contiguous history");
   KvCacheManager next;
   next.initialize(state_->spec, std::make_shared<MemAllocator>(), state_->pool);
   auto step = next.beginStep(length);
@@ -958,9 +973,30 @@ void KvCacheManager::restorePlanes(std::istream &in, size_t length) {
       next.markReady(step, i);
   }
   next.commit(std::move(step));
-  state_->key_pages.swap(next.state_->key_pages);
-  state_->value_pages.swap(next.state_->value_pages);
-  state_->stats = next.state_->stats;
+  if (paged()) {
+    state_->key_pages.swap(next.state_->key_pages);
+    state_->value_pages.swap(next.state_->value_pages);
+    state_->stats = next.state_->stats;
+  } else {
+    // Preserve graph-bound MemoryData identities; all reads have succeeded.
+    for (size_t i = 0; i < state_->spec.layers.size(); ++i) {
+      const auto &s = state_->spec.layers[i];
+      if (s.source >= 0 || !s.has_producer)
+        continue;
+      for (size_t b = 0; b < s.batch; ++b) {
+        const size_t offset = b * s.capacity * s.rowBytes();
+        const size_t bytes = length * s.rowBytes();
+        std::memcpy(static_cast<char *>(state_->keys[i]->data()) + offset,
+                    static_cast<const char *>(next.state_->keys[i]->data()) +
+                      offset,
+                    bytes);
+        std::memcpy(static_cast<char *>(state_->values[i]->data()) + offset,
+                    static_cast<const char *>(next.state_->values[i]->data()) +
+                      offset,
+                    bytes);
+      }
+    }
+  }
   state_->position = length;
   state_->forgetPrefix(); // Snapshots carry no ids; the new pages are private.
   ++state_->epoch->generation;

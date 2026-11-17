@@ -74,6 +74,8 @@ KVCacheManager &KVCacheManager::operator=(KVCacheManager &&other) noexcept {
     layer_caches_.clear();
     core_shared_ = std::move(other.core_shared_);
     core_shared_requested_ = other.core_shared_requested_;
+    core_cpu_heads_ = other.core_cpu_heads_;
+    core_cpu_head_dim_ = other.core_cpu_head_dim_;
     releaseShared();
     layer_caches_ = std::move(other.layer_caches_);
     active_layers_ = std::move(other.active_layers_);
@@ -233,10 +235,11 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
   // a source that is not strictly earlier, or whose geometry differs, would
   // produce a cache that reads the wrong plane without ever crashing.
   validateKVSources(num_layers);
-  if (core_shared_requested_) {
+  if (core_shared_requested_ || core_cpu_heads_) {
     using namespace nntrainer::kv;
     using DataType = ml::train::TensorDim::DataType;
-    if (!shared_alloc_ || !shared_free_ ||
+    if ((core_shared_requested_ && (!shared_alloc_ || !shared_free_)) ||
+        (core_cpu_heads_ && (batch_size != 1 || shared_alloc_)) ||
         (dtype != DataType::FP32 && dtype != DataType::FP16 &&
          dtype != DataType::UINT16) ||
         (!active_layers_.empty() &&
@@ -248,7 +251,13 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
     for (unsigned int i = 0; i < num_layers; ++i) {
       LayerSpec layer;
       layer.batch = batch_size;
-      layer.head_dim = kv_widths[i];
+      if (core_cpu_heads_ &&
+          (kv_widths[i] != core_cpu_heads_ * core_cpu_head_dim_ ||
+           getLayerCap(i) != max_seq_len || getLayerKVSource(i) >= 0))
+        throw std::invalid_argument(
+          "CPU core KV requires uniform, unshared linear geometry");
+      layer.num_kv_heads = core_cpu_heads_ ? core_cpu_heads_ : 1;
+      layer.head_dim = core_cpu_heads_ ? core_cpu_head_dim_ : kv_widths[i];
       layer.max_tokens = max_seq_len;
       layer.capacity = getLayerCap(i);
       layer.source = getLayerKVSource(i);
@@ -260,8 +269,11 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
       spec.layers.push_back(layer);
     }
     auto core = std::make_unique<nntrainer::kv::KvCacheManager>();
-    core->initialize(
-      spec, std::make_shared<SharedSlabAllocator>(shared_alloc_, shared_free_));
+    if (core_cpu_heads_)
+      core->initialize(spec);
+    else
+      core->initialize(spec, std::make_shared<SharedSlabAllocator>(
+                               shared_alloc_, shared_free_));
     for (unsigned int i = 0; i < num_layers; ++i) {
       ml::train::TensorDim dim({batch_size, 1, getLayerCap(i), kv_widths[i]},
                                {format, dtype});
@@ -272,10 +284,10 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
     }
     const auto stats = core->stats();
     core_shared_ = std::move(core);
-    std::fprintf(stderr,
-                 "[kv-htp-core] owners=%zu bytes=%zu shared=1 paged=0\n",
+    std::fprintf(stderr, "[kv-core] owners=%zu bytes=%zu paged=0\n",
                  stats.owner_layers, stats.backing_bytes);
-    reportKVShare(num_layers, batch_size, dtype, "core-htp-shared");
+    reportKVShare(num_layers, batch_size, dtype,
+                  core_cpu_heads_ ? "core-cpu" : "core-htp-shared");
     return;
   }
   // An all-convolution model needs only the tensor metadata. In particular,
