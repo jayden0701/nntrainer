@@ -2,6 +2,7 @@
 
 PR #4481의 KV manager 기반(`5e97254e764aa30db4223c33d0dc3b0fded091b8`)에서 WSL x86 CPU로 수행한 작업이다. NPU는 이번 실험 대상이 아니다.
 
+- [전체 실험 종합 분석 Word 문서](reports/kv-transfer-experiments.ko.docx)
 - [후보 조사와 PoC 계획](kv-transfer-poc.md)
 - [초기 native CPU 검증](kv-transfer-first-validation.ko.md)
 - [논문 방식 Ridge 평가](ridge-paper-evaluation.ko.md)
