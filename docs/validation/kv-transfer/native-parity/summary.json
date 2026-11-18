@@ -1,0 +1,84 @@
+{
+  "all": {
+    "n": 1000,
+    "acc": {
+      "standalone_correct": 464,
+      "mapped_correct": 431,
+      "standalone": 0.464,
+      "mapped": 0.431,
+      "retention": 0.9288793103448276,
+      "paired_delta": -0.033,
+      "paired_delta_ci95": [
+        -0.048,
+        -0.018
+      ],
+      "paired_retention_ci95": [
+        0.8975487162055897,
+        0.9599177215189874
+      ],
+      "wrong_to_correct": 13,
+      "correct_to_wrong": 46,
+      "changed_prediction": 88
+    },
+    "acc_norm": {
+      "standalone_correct": 582,
+      "mapped_correct": 551,
+      "standalone": 0.582,
+      "mapped": 0.551,
+      "retention": 0.9467353951890034,
+      "paired_delta": -0.031,
+      "paired_delta_ci95": [
+        -0.05,
+        -0.013
+      ],
+      "paired_retention_ci95": [
+        0.9154658760301403,
+        0.9779300166664071
+      ],
+      "wrong_to_correct": 30,
+      "correct_to_wrong": 61,
+      "changed_prediction": 120
+    }
+  },
+  "imported": {
+    "n": 968,
+    "acc": {
+      "standalone_correct": 448,
+      "mapped_correct": 415,
+      "standalone": 0.4628099173553719,
+      "mapped": 0.4287190082644628,
+      "retention": 0.9263392857142857,
+      "paired_delta": -0.03409090909090909,
+      "paired_delta_ci95": [
+        -0.049586776859504134,
+        -0.01859504132231405
+      ],
+      "paired_retention_ci95": [
+        0.894734012450481,
+        0.9582367864154406
+      ],
+      "wrong_to_correct": 13,
+      "correct_to_wrong": 46,
+      "changed_prediction": 88
+    },
+    "acc_norm": {
+      "standalone_correct": 567,
+      "mapped_correct": 536,
+      "standalone": 0.5857438016528925,
+      "mapped": 0.5537190082644629,
+      "retention": 0.9453262786596119,
+      "paired_delta": -0.03202479338842975,
+      "paired_delta_ci95": [
+        -0.05165289256198347,
+        -0.013429752066115703
+      ],
+      "paired_retention_ci95": [
+        0.9135802469135802,
+        0.9772296845974139
+      ],
+      "wrong_to_correct": 30,
+      "correct_to_wrong": 61,
+      "changed_prediction": 120
+    }
+  }
+}

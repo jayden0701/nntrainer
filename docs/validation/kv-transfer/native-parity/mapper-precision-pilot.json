@@ -1,0 +1,40 @@
+{
+  "first32": {
+    "n": 32,
+    "arms": [
+      "fp32_mapper",
+      "bf16_mapper"
+    ],
+    "mean_abs_score_error_nat_per_token": [
+      0.014156450456889005,
+      0.01351612111064562
+    ],
+    "matches_bf16_hf": [
+      31,
+      32
+    ],
+    "correct": [
+      16,
+      17
+    ]
+  },
+  "mapped_disagreements": {
+    "n": 15,
+    "arms": [
+      "fp32_mapper",
+      "bf16_mapper"
+    ],
+    "mean_abs_score_error_nat_per_token": [
+      0.01369279579658112,
+      0.01358899606075693
+    ],
+    "matches_bf16_hf": [
+      0,
+      5
+    ],
+    "correct": [
+      3,
+      5
+    ]
+  }
+}

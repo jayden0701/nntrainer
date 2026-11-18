@@ -1,0 +1,52 @@
+{
+  "n": 128,
+  "changed_items": 68,
+  "changed_endings": 155,
+  "all_changes": "single leading space token 220 removed",
+  "short_fallback": 2,
+  "same_nonempty_boundary": 10,
+  "exact_controls": 6,
+  "exact_max_token_error": 0.004826932297366859,
+  "legacy_text": {
+    "chars": {
+      "cold": 71,
+      "tail1": 61,
+      "block16": 64
+    },
+    "tokens": {
+      "cold": 73,
+      "tail1": 54,
+      "block16": 58
+    }
+  },
+  "public_text": {
+    "chars": {
+      "cold": 70,
+      "tail1": 63,
+      "block16": 68
+    },
+    "tokens": {
+      "cold": 72,
+      "tail1": 56,
+      "block16": 58
+    }
+  },
+  "correctness_changes_token_norm": {
+    "transition_tail_legacy_text": {
+      "gain": 6,
+      "loss": 2
+    },
+    "transition_text_block16": {
+      "gain": 0,
+      "loss": 0
+    },
+    "transition_text_tail1": {
+      "gain": 2,
+      "loss": 0
+    },
+    "transition_tail_public_text": {
+      "gain": 4,
+      "loss": 2
+    }
+  }
+}

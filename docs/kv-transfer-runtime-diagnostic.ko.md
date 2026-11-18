@@ -1,5 +1,7 @@
 # 작은 CPU cross-runtime 오차 진단
 
+후속 실험에서 공개 HellaSwag 1,000문항을 nntrainer와 Transformers의 같은 입력으로 대조했다. [nntrainer Ridge 정합성 결과](native-ridge-parity.ko.md)
+
 ## 결론
 
 제한된 입력에서 **nntrainer와 Transformers 사이의 큰 수치 불일치는 발견하지 못했다**. 기본 Qwen3 forward, KV export의 layer/head 배치, 공개 mapper cache의 target import를 의심할 뚜렷한 증거가 없었다. 이것이 모든 입력·긴 context·BF16 vLLM 경로의 정확성을 보증하지는 않는다.

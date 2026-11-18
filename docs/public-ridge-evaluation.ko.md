@@ -1,5 +1,7 @@
 # 공개 Qwen3 0.6B → 1.7B Ridge mapper의 nntrainer 평가
 
+후속 실험에서 공개 HellaSwag 1,000문항을 nntrainer와 Transformers의 같은 입력으로 대조했다. [nntrainer Ridge 정합성 결과](native-ridge-parity.ko.md)
+
 ## 목적과 고정 조건
 
 `alesha-pro/vllm-cross-model-kv`의 공개 `k4-n200` mapper를 재학습 없이 가져와, 기존 nntrainer 실험과 동일한 문항 및 채점 조건에서 비교한다. 이번 변경 요소는 mapper artifact이다. 공개 프로젝트의 vLLM 실행이나 headline 수치 자체를 재현하는 실험은 아니다.

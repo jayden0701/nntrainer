@@ -1,0 +1,14 @@
+{
+  "0.6b": {
+    "file": "qwen3-0.6b_fp32_layergraph.bin",
+    "tensors": 310,
+    "bytes": 2384199680,
+    "bitwise_equal": true
+  },
+  "1.7b": {
+    "file": "qwen3-1.7b_fp32.bin",
+    "tensors": 310,
+    "bytes": 6882299904,
+    "bitwise_equal": true
+  }
+}

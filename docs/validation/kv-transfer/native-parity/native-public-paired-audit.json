@@ -1,0 +1,468 @@
+{
+  "all": {
+    "standalone": {
+      "n": 1000,
+      "native_correct": 582,
+      "hf_correct": 582,
+      "native_only_correct": 4,
+      "hf_only_correct": 4,
+      "same_prediction": 989,
+      "changed_predictions": [
+        {
+          "index": 1232,
+          "native_choice": 2,
+          "hf_choice": 3,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.00016035911227962885
+        },
+        {
+          "index": 4554,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 1,
+          "hf_margin_nat_per_token": 0.017466714088753665
+        },
+        {
+          "index": 5927,
+          "native_choice": 3,
+          "hf_choice": 2,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.002338607935234993
+        },
+        {
+          "index": 9075,
+          "native_choice": 0,
+          "hf_choice": 2,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.026658126657232994
+        },
+        {
+          "index": 1877,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.017261240708952297
+        },
+        {
+          "index": 1091,
+          "native_choice": 3,
+          "hf_choice": 2,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.036459106224021376
+        },
+        {
+          "index": 6761,
+          "native_choice": 0,
+          "hf_choice": 1,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.008884448192911787
+        },
+        {
+          "index": 3541,
+          "native_choice": 2,
+          "hf_choice": 1,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.0045851751729246715
+        },
+        {
+          "index": 6779,
+          "native_choice": 3,
+          "hf_choice": 0,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.011728708841837854
+        },
+        {
+          "index": 7976,
+          "native_choice": 1,
+          "hf_choice": 3,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.01024046891615571
+        },
+        {
+          "index": 9250,
+          "native_choice": 1,
+          "hf_choice": 2,
+          "gold": 2,
+          "hf_margin_nat_per_token": 0.00040167678345115476
+        }
+      ],
+      "candidate_score_error_nat_per_token": {
+        "p50": 0.007394482556432935,
+        "p95": 0.029036019712434673,
+        "max": 0.1770572296420463
+      },
+      "native_minus_hf_pp": 0.0
+    },
+    "mapped": {
+      "n": 1000,
+      "native_correct": 551,
+      "hf_correct": 555,
+      "native_only_correct": 3,
+      "hf_only_correct": 7,
+      "same_prediction": 985,
+      "changed_predictions": [
+        {
+          "index": 9936,
+          "native_choice": 3,
+          "hf_choice": 0,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.017712300178527762
+        },
+        {
+          "index": 3802,
+          "native_choice": 1,
+          "hf_choice": 2,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.008587914267660146
+        },
+        {
+          "index": 9357,
+          "native_choice": 1,
+          "hf_choice": 2,
+          "gold": 2,
+          "hf_margin_nat_per_token": 0.026351618510186192
+        },
+        {
+          "index": 6549,
+          "native_choice": 1,
+          "hf_choice": 3,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.015420940890908064
+        },
+        {
+          "index": 9003,
+          "native_choice": 2,
+          "hf_choice": 3,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.0034832707147476327
+        },
+        {
+          "index": 7212,
+          "native_choice": 2,
+          "hf_choice": 3,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.002792480680173348
+        },
+        {
+          "index": 7845,
+          "native_choice": 2,
+          "hf_choice": 1,
+          "gold": 1,
+          "hf_margin_nat_per_token": 0.016470335231017597
+        },
+        {
+          "index": 1877,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.017261240708952297
+        },
+        {
+          "index": 5444,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.0029132648805880734
+        },
+        {
+          "index": 1583,
+          "native_choice": 0,
+          "hf_choice": 1,
+          "gold": 1,
+          "hf_margin_nat_per_token": 0.03787516885333586
+        },
+        {
+          "index": 8669,
+          "native_choice": 1,
+          "hf_choice": 0,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.014294938602480656
+        },
+        {
+          "index": 4782,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 2,
+          "hf_margin_nat_per_token": 0.01551228058583165
+        },
+        {
+          "index": 348,
+          "native_choice": 0,
+          "hf_choice": 3,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.0024741398448351326
+        },
+        {
+          "index": 6415,
+          "native_choice": 1,
+          "hf_choice": 3,
+          "gold": 1,
+          "hf_margin_nat_per_token": 0.006221005409375202
+        },
+        {
+          "index": 2933,
+          "native_choice": 3,
+          "hf_choice": 2,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.037001866879116996
+        }
+      ],
+      "candidate_score_error_nat_per_token": {
+        "p50": 0.01017334044999374,
+        "p95": 0.03825835839614737,
+        "max": 0.10608388501012911
+      },
+      "native_minus_hf_pp": -0.40000000000000036
+    }
+  },
+  "transferred": {
+    "standalone": {
+      "n": 968,
+      "native_correct": 567,
+      "hf_correct": 567,
+      "native_only_correct": 4,
+      "hf_only_correct": 4,
+      "same_prediction": 958,
+      "changed_predictions": [
+        {
+          "index": 1232,
+          "native_choice": 2,
+          "hf_choice": 3,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.00016035911227962885
+        },
+        {
+          "index": 4554,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 1,
+          "hf_margin_nat_per_token": 0.017466714088753665
+        },
+        {
+          "index": 5927,
+          "native_choice": 3,
+          "hf_choice": 2,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.002338607935234993
+        },
+        {
+          "index": 9075,
+          "native_choice": 0,
+          "hf_choice": 2,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.026658126657232994
+        },
+        {
+          "index": 1091,
+          "native_choice": 3,
+          "hf_choice": 2,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.036459106224021376
+        },
+        {
+          "index": 6761,
+          "native_choice": 0,
+          "hf_choice": 1,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.008884448192911787
+        },
+        {
+          "index": 3541,
+          "native_choice": 2,
+          "hf_choice": 1,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.0045851751729246715
+        },
+        {
+          "index": 6779,
+          "native_choice": 3,
+          "hf_choice": 0,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.011728708841837854
+        },
+        {
+          "index": 7976,
+          "native_choice": 1,
+          "hf_choice": 3,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.01024046891615571
+        },
+        {
+          "index": 9250,
+          "native_choice": 1,
+          "hf_choice": 2,
+          "gold": 2,
+          "hf_margin_nat_per_token": 0.00040167678345115476
+        }
+      ],
+      "candidate_score_error_nat_per_token": {
+        "p50": 0.007259107464975267,
+        "p95": 0.028061013289301082,
+        "max": 0.1770572296420463
+      },
+      "native_minus_hf_pp": 0.0
+    },
+    "mapped": {
+      "n": 968,
+      "native_correct": 536,
+      "hf_correct": 540,
+      "native_only_correct": 3,
+      "hf_only_correct": 7,
+      "same_prediction": 954,
+      "changed_predictions": [
+        {
+          "index": 9936,
+          "native_choice": 3,
+          "hf_choice": 0,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.017712300178527762
+        },
+        {
+          "index": 3802,
+          "native_choice": 1,
+          "hf_choice": 2,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.008587914267660146
+        },
+        {
+          "index": 9357,
+          "native_choice": 1,
+          "hf_choice": 2,
+          "gold": 2,
+          "hf_margin_nat_per_token": 0.026351618510186192
+        },
+        {
+          "index": 6549,
+          "native_choice": 1,
+          "hf_choice": 3,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.015420940890908064
+        },
+        {
+          "index": 9003,
+          "native_choice": 2,
+          "hf_choice": 3,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.0034832707147476327
+        },
+        {
+          "index": 7212,
+          "native_choice": 2,
+          "hf_choice": 3,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.002792480680173348
+        },
+        {
+          "index": 7845,
+          "native_choice": 2,
+          "hf_choice": 1,
+          "gold": 1,
+          "hf_margin_nat_per_token": 0.016470335231017597
+        },
+        {
+          "index": 5444,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.0029132648805880734
+        },
+        {
+          "index": 1583,
+          "native_choice": 0,
+          "hf_choice": 1,
+          "gold": 1,
+          "hf_margin_nat_per_token": 0.03787516885333586
+        },
+        {
+          "index": 8669,
+          "native_choice": 1,
+          "hf_choice": 0,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.014294938602480656
+        },
+        {
+          "index": 4782,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 2,
+          "hf_margin_nat_per_token": 0.01551228058583165
+        },
+        {
+          "index": 348,
+          "native_choice": 0,
+          "hf_choice": 3,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.0024741398448351326
+        },
+        {
+          "index": 6415,
+          "native_choice": 1,
+          "hf_choice": 3,
+          "gold": 1,
+          "hf_margin_nat_per_token": 0.006221005409375202
+        },
+        {
+          "index": 2933,
+          "native_choice": 3,
+          "hf_choice": 2,
+          "gold": 3,
+          "hf_margin_nat_per_token": 0.037001866879116996
+        }
+      ],
+      "candidate_score_error_nat_per_token": {
+        "p50": 0.01002522935978245,
+        "p95": 0.037737156804584226,
+        "max": 0.10608388501012911
+      },
+      "native_minus_hf_pp": -0.4132231404958664
+    }
+  },
+  "fallback": {
+    "standalone": {
+      "n": 32,
+      "native_correct": 15,
+      "hf_correct": 15,
+      "native_only_correct": 0,
+      "hf_only_correct": 0,
+      "same_prediction": 31,
+      "changed_predictions": [
+        {
+          "index": 1877,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.017261240708952297
+        }
+      ],
+      "candidate_score_error_nat_per_token": {
+        "p50": 0.014643079287542049,
+        "p95": 0.050389008062560296,
+        "max": 0.08643556592491741
+      },
+      "native_minus_hf_pp": 0.0
+    },
+    "mapped": {
+      "n": 32,
+      "native_correct": 15,
+      "hf_correct": 15,
+      "native_only_correct": 0,
+      "hf_only_correct": 0,
+      "same_prediction": 31,
+      "changed_predictions": [
+        {
+          "index": 1877,
+          "native_choice": 3,
+          "hf_choice": 1,
+          "gold": 0,
+          "hf_margin_nat_per_token": 0.017261240708952297
+        }
+      ],
+      "candidate_score_error_nat_per_token": {
+        "p50": 0.014643079287542049,
+        "p95": 0.050389008062560296,
+        "max": 0.08643556592491741
+      },
+      "native_minus_hf_pp": 0.0
+    }
+  }
+}

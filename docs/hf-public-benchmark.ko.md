@@ -1,5 +1,7 @@
 # 공개 k4/n200 매퍼의 Transformers HellaSwag 평가
 
+후속 실험에서 공개 HellaSwag 1,000문항을 nntrainer와 Transformers의 같은 입력으로 대조했다. [nntrainer Ridge 정합성 결과](native-ridge-parity.ko.md)
+
 공개 vLLM 평가에 기록된 Qwen3-0.6B → Qwen3-1.7B 매퍼를 Transformers에서 실행했다. 공개 보고서는 HellaSwag validation 1,000문항에서 길이 정규화 정확도 58.0% → 55.3%, 정확도 유지율 95.34%를 기록했다. 이번 평가는 해당 문항, 토큰화, prefix 경계, 매퍼와 채점 방식을 맞추고 CPU BF16 eager attention과 메모리 내 Transformers KV 캐시를 사용한다. [공개 보고서](https://github.com/alesha-pro/vllm-cross-model-kv/blob/2e27fb4bcadcbe07136a79480d50ef7d81a2e1dc/results/quality-report-n200.json)
 
 ## 평가 조건
