@@ -111,3 +111,8 @@ model or effort as a trial. Use a stronger model or additional review when a
 trial fails its acceptance checks, and charge that work to the original task.
 
 Run the tests with `python -m unittest discover -s tools/agent_cost -v`.
+
+The [nntrainer rework audit](validation/agent-cost-rework-20261118.md) records a
+verified retry, a mixed correction/replay interval, and a scope extension. Use
+these distinctions for future assignments. For long benchmarks, reuse verified
+inputs and collect checkpointed shell results before assigning another agent.
