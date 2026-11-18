@@ -96,6 +96,35 @@ class BenchmarkTest(unittest.TestCase):
             self.assertEqual([score["sum_logprob"] for score in results["a"]["cold"]], [-2, -4])
             self.assertEqual([score["sum_logprob"] for score in results["b"]["cold"]], [-6, -8])
 
+    def test_import_replays_complete_uncached_tail(self):
+        scorer = NativeScorer.__new__(NativeScorer)
+        scorer.max_seq_len, scorer.score_block_rows = 64, 1
+        scorer.spec = object()
+        with TemporaryDirectory() as directory:
+            work = Path(directory)
+            snapshot = SimpleNamespace(path=work / "snapshot", spec=scorer.spec,
+                                       tokens=2, token_ids=(10, 11), positions=(0, 1))
+            case = {"id": "a", "context_ids": [10, 11, 12, 13, 14],
+                    "candidates": [{"ids": [15]}]}
+            jobs = [(case, work, {"transfer": snapshot})]
+
+            def execute(_model, arguments, _log, _extra):
+                job = json.loads(Path(arguments[1]).read_text())[0]["score"]
+                self.assertEqual(job["prefix_tokens"], 2)
+                self.assertEqual(Path(job["input_ids"]).read_text().split(), ["12", "13", "14"])
+                Path(job["output"]).write_text(json.dumps(
+                    {"count": 1, "sum_logprob": -1, "token_logprobs": [-1]}))
+                return 0
+
+            with patch.object(scorer, "model_config"), patch.object(scorer, "execute", execute):
+                scorer.score(work, work / "log", jobs, persistent=True)
+                case["context_ids"] = [10, 11]
+                with self.assertRaisesRegex(ValueError, "uncached"):
+                    scorer.score(work, work / "log", jobs, persistent=True)
+                case["context_ids"] = [11, 10, 12]
+                with self.assertRaisesRegex(ValueError, "snapshot"):
+                    scorer.score(work, work / "log", jobs, persistent=True)
+
     def test_retention_and_paired_correctness(self):
         cases = [{"gold": 0, "predictions": {"cold": cold, "transfer": transfer}}
                  for cold, transfer in [(0, 0), (0, 1), (1, 0), (1, 1)]]

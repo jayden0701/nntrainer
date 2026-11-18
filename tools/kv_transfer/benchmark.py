@@ -217,7 +217,12 @@ class NativeScorer:
             for mode, snapshot in snapshots.items():
                 if snapshot is not None and snapshot.spec != self.spec:
                     raise ValueError("snapshot model spec disagrees with scorer model")
-                feed = context if snapshot is None else context[-1:]
+                feed = context
+                if snapshot is not None:
+                    verify_prefix(snapshot, context[:snapshot.tokens], self.spec)
+                    feed = context[snapshot.tokens:]
+                    if not feed:
+                        raise ValueError("scoring requires an uncached context token")
                 for index, candidate in enumerate(example["candidates"]):
                     targets = candidate["ids"]
                     requested = len(context) + len(targets) - 1
@@ -235,8 +240,8 @@ class NativeScorer:
                         job.update(transfer_import=str(snapshot.path), prefix_tokens=snapshot.tokens)
                     jobs.append((case_id, mode, index, job, len(targets)))
 
-        model = self.model_config(work, "score-model",
-                                  max(len(example["context_ids"]) for example, _, _ in cases))
+        max_context = max(len(example["context_ids"]) for example, _, _ in cases)
+        model = self.model_config(work, "score-model", max_context)
         if persistent:
             requests_path = work / "requests.json"
             requests_path.write_text(json.dumps(
@@ -259,7 +264,7 @@ class NativeScorer:
                     job_model = work / f"{case_id}-{mode}-score-model"
                     if not job_model.exists():
                         marker.touch()
-                        self.model_config(work, job_model.name, 1, marker=marker,
+                        self.model_config(work, job_model.name, max_context, marker=marker,
                                           prefix_len=job["prefix_tokens"])
                     extra["NNTR_KV_TRANSFER_IMPORT"] = job["transfer_import"]
                 job_log = log.with_name(f"{case_id}-{mode}-{index}.log")
