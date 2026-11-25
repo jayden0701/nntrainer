@@ -114,7 +114,7 @@ resident와 fsu0/1/3의 `output_ids`가 전부 일치했다. `[kv-fsu]`: `direct
 | fsu1 예산 없음 | 41.73 | 35.0–86.8 | 468 | 64.53 |
 | fsu1 예산 242 MB(전부 유지) | 29.05 | 16.5–29.5 | 551 | 0.00 |
 
-15회 전부 resident와 `output_ids`가 일치했다. 예산 매트릭스(fsus × 예산, 3회씩)에서는 예산 64 MB 이상이면 retained가 총 KV(~59 MB)를 전부 담아 `read_bytes=0`이 됐고, 8 MB에서는 retained 6.35 MB·read 57.62 MB/token으로 예산 없음과 같았다.
+15회 전부 resident와 `output_ids`가 일치했다. 예산 매트릭스(fsus × 예산, 3회씩)에서는 예산 64 MB 이상이면 retained가 총 KV(~59 MB)를 전부 담아 `read_bytes=0`이 됐고, 8 MB에서는 retained 6.35 MB·read 57.62 MB/token으로 예산 없음과 같았다. 단, 이 수치의 retained는 뒤에 드러난 회계 버그(7장)로 프리필 기준 미관측 값이었고, 읽기량과 성능 결론은 수정 후 재측정에서도 그대로 유효하다.
 
 ### 해석
 
@@ -158,3 +158,29 @@ resident와 fsu0/1/3의 `output_ids`가 전부 일치했다. `[kv-fsu]`: `direct
 - 예산 ≥ 작업 집합 + write-back 조합이 qwen3 0.6b CPU에서 resident보다 RSS −130 MB, decode p50 ~15 ms로 최적이며 출력은 전부 일치한다.
 - 문서 3단계(CPU)의 계측·읽기 억제·쓰기 억제가 모두 기기에서 검증됐다. 남은 문서 작업은 3.3(워커 `job_` 1칸 구조 개선)과 4단계(HTP, S26U 확보 후)다.
 - qwen3 1.7b는 nntr pack 변환이 필요해 미수행(HF 원본만 존재).
+## 7. 회계 버그 추적과 수정 — retained_bytes가 첫 스텝에 고정된 문제
+
+### 발견
+
+3.4 검증 중 `[kv-fsu]`의 `retained_bytes`가 매번 프리필 스텝 값에 고정되는 현상을 발견했다(decode 96에서 62,160,896 = 542행 상당, decode 512에서 1,146,880 = 10행 상당). 원인은 `evict()`의 유지 경로다: 같은 스텝의 `store()` 안에 있는 `account()`가 `buffer->resident`를 이미 늘려 놓는데, 그 현재값을 그대로 뺐다가 다시 같은 값을 더해줘서 순증가가 항상 0이 됐다. 그래서 예산 판정(`retained_bytes_ + 2×resident ≤ 예산`)이 프리필 시점 기준으로 고정되고, 예산이 부족한 구간에서는 디코드 중 유지 갱신이 제때 반영되지 못할 수 있다.
+
+### 수정 (커밋 `6bc1f3d12`)
+
+owner가 유지될 때 기여한 값을 `Layer::retained_resident`로 추적해 그 값만 빼게 했고 `reset()`에서 함께 초기화한다. 유닛테스트 2개의 `retained_bytes` 검증을 정확값 비교로 강화했다(링을 도는 owner와 선형으로 진행하는 owner의 페이지 정렬 크기 차이까지 포함) → 39/39 통과.
+
+### 기기 사후 재측정 — qwen3 0.6b (8 MiB는 교차 3회, 전체 예산은 1회씩)
+
+| 구성 | decode p50 | read MB/token | retained_bytes | 요청당 io_read / io_write |
+|---|---:|---:|---:|---|
+| 예산 8 MiB, write-through | 31.1–39.5 ms | 60.42 | 7.84 MB | 4.85–6.04 s / 0.51–1.40 s |
+| 예산 8 MiB, write-back | 30.4–39.1 ms | 60.42 | 7.84 MB | 4.23–6.04 s / 0.69–1.70 s |
+| 예산 242 MB, write-through | 16.8 ms | 0 | 73.17 MB | 0 / 0.36 s |
+| 예산 242 MB, write-back | 14.2 ms | 0 | 73.17 MB | 0 / 0 |
+
+1. **회계가 실측과 일치했다.** 8 MiB에서는 정확히 owner 3개(3 × 2 평면 × 1,306,624 B = 7,839,744 B)가 디코드 내내 유지되고, 242 MB에서는 28 owner 전체(28 × 2 × 638행 × 2048 B = 73,170,944 B)가 유지된 값이 보고된다. 수정 전에는 프리필 기준값(6.35–6.7 MB / 62.2 MB)에 고정된 채 보고됐다.
+2. **성능 결론은 그대로 유효.** 전체 예산 구간은 수정 전과 동일하게 나왔다(decode 14.2–16.8 ms, 읽기 0). 8 MiB 구간은 읽기 지배(io_read 4.2–6.0 s)라 write-back 이득이 없고, 읽기량은 유지되지 않는 owner 수가 결정한다(재읽기 25 owner ≈ 60.4 MB/token — 수정 전후 동일. 이 구성에서는 고정된 회계도 결과가 같았고, 차이는 보고값과 향후 예산 변동 동작에서 난다).
+3. **출력 정상.** 8회 전부 `output_ids` 일치(고가치 1개).
+
+### 산출물 노트
+
+체크인된 `lib/libtokenizers_c.a`(구 툴체인 산출물)로는 호스트 링크가 실패해(`std::ios_base_library_init()` 미정의) `tools/build_tokenizers_c.sh --update-prebuilt`로 재생성했다. 로컬 산출물이므로 커밋에 포함하지 않고 dirty로 남긴다.
