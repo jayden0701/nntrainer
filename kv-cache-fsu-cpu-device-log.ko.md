@@ -304,3 +304,64 @@ HEAD `2bd8c26a5` 기준 독립 리뷰가 세 가지를 지적했다. (1) write-t
 - 유닛테스트 40/40 (`unittest_kv_cache_manager`, 신규 1개 포함).
 - 새 바이너리로 resident 26.5 / FSU(write-back) 27.4 ms/tok — 수정 전 26.33 / 26.69 대비 무회귀.
 - 이번 라운드 buffered/direct 8회의 `output_ids` 해시가 전부 `17fb61…`로 resident와 일치.
+
+## 10. 호스트 3-way 분리 측정 — 쓰기 정책 기여 분리
+
+§9.1의 기기 3-way(24 MiB, buffered)는 run 간 편차가 ±30%라 "쓰기 모음"과 "sync 생략"을 정밀하게 분리하지 못했다(§9.1 분해 결과 5항). 같은 매트릭스를 호스트에서 **교차 반복**(4구성 × 5회, 매 반복 A→B→B2→C 순서)으로 돌려 분해 정밀도를 확보한다. 호스트는 NVMe ext4에서 direct I/O가 열린다는 점이 기기(UFS, buffered 강제)와 다르다. 즉 이번 측정은 "direct I/O 환경의 3-way"이고, §9.1의 buffered 3-way와 나란히 놓으면 어느 축이 환경 의존인지가 분리된다.
+
+### 측정 환경
+
+- 바이너리: `build-fsu/Applications/CausalLM/nntr_causallm`(kv-cache-fsu 브랜치, §9 이후 무변경).
+- pack: `~/TEST_MODELS/qwen3-1.7b-fsu` — `kv_flash_fsu` → `~/TEST_MODELS/qwen3-1.7b-fsu-work/kv`(lookahead 1), 가중치·토크나이저는 원본 pack 심링크. 요청은 원본 pack의 `~/TEST_MODELS/qwen3-1.7b/requests.json`(단일 요청, prefill 534 + decode 96, ctx 630).
+- 환경변수: `NNTR_ENGINE=cpu NNTR_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NNTR_KV_TIMING=1`.
+- 저장매체: 백킹 파일은 위 config 경로(ext4, `/dev/nvme0n1p2`)에 만들어지고 곧바로 unlink된다. **direct_io=1**(O_DIRECT 프로브 성공, 20/20 로그). 스크립트가 준비한 `/var/tmp/nntr-fsu-matrix`는 실제로는 쓰이지 않는다(같은 ext4).
+- 스크립트 `/tmp/run_fsu_matrix.sh`, 로그 `build-fsu/logs/{a0-budget0-wt,b24-wt,b24-wb-sync,c24-wb}-r{1..5}.log`.
+
+| 구성 | 예산 | 쓰기 정책 |
+|---|---|---|
+| A `a0-budget0-wt` | 0 | write-through(기존 FSU 동작) |
+| B `b24-wt` | 24 MiB | write-through(`NNTR_KV_WRITE_THROUGH=1`) |
+| B2 `b24-wb-sync` | 24 MiB | write-back + flush sync(`NNTR_KV_FLUSH_SYNC=1`) |
+| C `c24-wb` | 24 MiB | write-back(기본) |
+
+### 결과 — 반복 5회, p50(min–max)
+
+decode ms/token은 `[PERF-SPLIT]` steady 구간(첫 토큰 제외 95토큰)이며 `[REQUEST]`의 `decode_ms`와 같다. read/write/retained/deferred **바이트는 반복 5회 전부 1바이트 오차 없이 같았다**(정책이 결정적이라 변하는 것은 시간뿐) — 편차가 시간 축에만 있다는 뜻이다.
+
+| 구성 | decode (ms/tok) | CV | TTFT (s) | read MB/token | io_read (s) | io_write (s) | fdatasync (s) | retained (B) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| A 예산 0 + WT | 124.12 (121.77–126.65) | 1.5% | 10.82 | 66.75 | 8.81 | 4.56 | 0 | 0 |
+| B 24 MiB + WT | 104.48 (102.48–106.91) | 1.7% | 10.88 | 42.73 | 5.31 | 3.06 | 0 | 23,224,320 |
+| B2 24 MiB + WB+sync | 101.46 (98.20–105.11) | 2.9% | 10.74 | 42.73 | 5.31 | 2.67 | 0 | 23,224,320 |
+| C 24 MiB + WB | 103.03 (97.03–109.50) | 5.1% | 10.69 | 42.73 | 5.34 | 2.68 | 0 | 23,224,320 |
+
+I/O 회계(네 구성·모든 반복 공통 확인): read A 6,407,847,936 B, B·B2·C 4,101,619,712 B(A의 0.640×) · write 네 구성 모두 83,263,488 B(총 기록량은 정책과 무관) · deferred_writes는 B2·C만 2,716(= 28레이어 × 97 store) · retained 23,224,320 B = 소유자 9개 × 2,580,480 B로 예산 25,165,824 B 이내 · peak_kv A 5,160,960 B(lookahead 1의 2소유자), 24 MiB 구성 33,185,792 B(예산 풀 + 작업 버퍼). 전체 KV는 630행 × 114,688 B = 72,253,440 B라 24 MiB 예산은 그 35%로 실제 constrained 구간이다.
+
+### 분해 (median 기준)
+
+1. **쓰기 모음(batching) 기여 = B−B2 = +3.0 ms/tok(2.9%).** io_write 합계도 3.06 s → 2.67 s(−0.39 s ≈ 95토큰당 4.1 ms)로 같은 방향이라 교차 확인된다. write-through는 store마다 평면당 4 KB짜리 pwrite를, write-back은 퇴피 시 모아서 큰 pwrite를 한다 — 총 기록 바이트가 같으므로 차이는 전부 호출 크기·시점이다.
+2. **sync 생략 기여 = B2−C = 구조적으로 0.** flush sync는 `flushDirty()`에서 `flush_sync_ && !direct_`일 때만 걸리고, store()의 sync도 마찬가지다. 호스트는 direct I/O라 B2도 fdatasync를 한 번도 호출하지 않는다(fdatasync_us = 0.0) — B2와 C는 같은 코드를 돈다. 측정된 −1.6 ms/tok(B2가 빠른 방향)은 CV 2.9%·5.1% 노이즈 안이다.
+3. **기존 FSU 대비 전체 개선 = A−C = +21.1 ms/tok(−17.0%).** 읽기 6,407.8 → 4,101.6 MB(−36%), io_read 8.81 → 5.34 s. 이 매트릭스에서 유일하게 큰 축은 예산 상주다.
+
+### §9.1 기기 수치와의 정합성
+
+| 축 | 기기 24 MiB buffered(§9.1, UFS) | 호스트 24 MiB direct(이번) |
+|---|---|---|
+| 쓰기 모음 (WT → WB+sync) | −19.6 ms/tok(−14%) | −3.0 ms/tok(−2.9%) |
+| sync 생략 (WB+sync → WB) | −21.4 ms/tok(−18%) | 구조적 0(direct라 sync 경로 없음) |
+| decode ms/tok — WT / WB+sync / WB | 139.9 / 120.3 / 98.9(2회 평균) | 104.5 / 101.5 / 103.0(5회 중앙값) |
+| read MB/token — 예산 0 | 67.67 | 66.75 |
+| read MB/token — 예산 24 MiB | 43.72 | 42.73 |
+| 편차 | ±30%(2회) | CV 1.5–5.1%(5회 교차) |
+
+1. **read 증폭은 플랫폼 무관이다.** 예산 0에서 66.75 vs 67.67 MB/token, 24 MiB에서 42.73 vs 43.72 — 차이는 ctx(630 vs 638) 비례분이다. §8의 "읽기 증폭 계수는 규모와 무관"에 플랫폼 축이 추가된다.
+2. **§9.1의 큰 쓰기 정책 이득은 buffered 한정이다.** 기기에서는 WT의 store마다 fdatasync(58.5–61.0 ms/tok, 디코드의 43%)가 지배했고 sync를 맞춰도 모음 이득 −19.6 ms가 남았다. 호스트 direct에서는 애초 sync가 경로에 없어 모음 이득만 남는데, 그 값이 −3.0 ms(2.9%) — 호스트 NVMe는 소형 pwrite도 비싸지 않다. 즉 write-back의 우위 폭은 "sync 비용 × 소형 쓰기 비용"이 큰 저장매체에서 커지고, direct I/O가 열리는 환경에서는 크게 줄어든다. write-back 기본 유지(C) 결론은 어느 쪽에서도 뒤집히지 않는다.
+3. **분해의 우선순위가 뒤집힌다.** 기기(buffered)에서는 쓰기 정책 두 축이 합계 −41 ms였다면, 호스트(direct)에서는 예산 상주 −21.1 ms가 지배이고 쓰기 정책은 ±3 ms 수준이다. constrained-regime의 병목 축은 저장매체 특성(sync 비용, 소형 쓰기 비용)에 따라 달라지므로, 측정 없이 한 축의 이득을 다른 환경에 일반화하면 안 된다.
+
+### 유의점
+
+1. 절대 시간은 기기와 비교하지 않는다. 이 호스트는 단일 스레드가 기기보다 느려(같은 요청 prefill 49.8 tok/s vs 기기 142) 구성 간 델타와 I/O 바이트만 본다.
+2. `requests.json`의 프롬프트는 `sample_input`의 앞부분 절단본이라 prefill이 542가 아니라 **534 토큰**이다. read MB/token의 기기·호스트 차이 대부분이 이 ctx 차이다.
+3. 호스트 decode 쓰기(평면당 4 KB)는 64 KB 비동기 경로 미달이라 전부 동기 실행된다(async_writes = 0) — 쓰기 모음 이득이 과소 계산될 여지는 있으나 네 구성 모두 같은 조건이다.
+4. 첫 시도에서 스크립트가 FSU 설정이 없는 pack(`~/TEST_MODELS/qwen3-1.7b`)을 가리켜 FSU가 꺼진 채 돌았다. pack을 `~/TEST_MODELS/qwen3-1.7b-fsu`로 고쳐 재실행했고(요청 파일은 원본 pack 것을 사용), 위 20개 로그가 그 결과다. 코드 변경은 없다.
+5. `output_ids`는 20개 실행 모두 완전 일치한다(요청당 97 ids — `gen_tok` 96 표기와 1 차이 나는 보고 필드 특성은 §9.1 기기 로그와 같은 기존 현상이며 전 실행 동일하다).
