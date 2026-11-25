@@ -14,6 +14,7 @@
 | 3.4 쓰기 | 디코드 쓰기를 owner 퇴피까지 지연(write-back)·기기 검증 | 완료 |
 | 회계 수정 | `retained_bytes`가 프리필값에 고정한 버그 수정·재측정 | 완료 |
 | 규모 확장 | qwen3 1.7b를 HF 원본에서 변환해 같은 매트릭스 재검증 | 완료 |
+| 리뷰 반영 | sync 대칭 스위치, `compact()` 가드, dirty 장부 순서, 방어 코드·테스트 정리 | 완료 |
 
 ## 1. 작업 환경
 
@@ -252,3 +253,54 @@ owner가 유지될 때 기여한 값을 `Layer::retained_resident`로 추적해 
 5. **출력 정상.** 단일 요청 5구성, 3요청 4구성 모두 resident와 `output_ids`가 완전 일치한다(요청 27개).
 6. **3.3 워커 큐 심화는 우선순위 낮음 유지.** 예산 0(읽기 지배)에서도 요청당 io_read(8.18 s)가 디코드 총합(5.8 s)을 넘고, 예산을 준 구성은 읽기가 0이라 큐가 이득을 낼 구간이 없다.
 7. **pack 재배치 재검증.** 검증 후 pack을 `~/TEST_MODELS/qwen3-1.7b`(x86·ARM 가중치, 호스트·기기 설정, README)로 옮겨 같은 요청으로 다시 돌렸다. resident / FSU 64 MiB / FSU 72 MiB 3회의 `output_ids`가 일치했고, 64 MiB는 630행(=534+96 → 72,253,440 B)에 못 미쳐 읽기 170 MB가 남은 반면 72 MiB에서는 읽기 0, `retained_bytes` 72,253,440 B(행 수 × 114,688과 정확 일치), decode 32.37 ms(resident 32.43 ms)로 돌아왔다 — 4항 산식의 실측 확인이다.
+
+## 9. 코드 리뷰 반영 — sync 대칭, compact/FSU 정합성, 방어 코드
+
+HEAD `2bd8c26a5` 기준 독립 리뷰가 세 가지를 지적했다. (1) write-through/write-back A/B이 buffered 모드에서만 `fdatasync` 대칭이 맞아 "쓰기 모음 이득"과 "sync 생략 이득"이 섞일 수 있다, (2) `compact()`의 행 이동이 FSU의 물리 레이아웃과 어긋난다, (3) `flushDirty()`가 쓰기에 앞서 dirty 장부를 지운다. 아래는 이를 확인·분해하고 코드에 반영한 기록이다. 반영 후 유닛테스트는 40/40이고, 기기 실행을 위해 Android CPU 빌드를 다시 배포했다.
+
+### 9.1 sync 조건을 맞춘 재비교 — qwen3 1.7b, prefill 542 / decode 96
+
+먼저 비대칭의 위치를 특정했다. `store()`의 `fdatasync`는 `!direct_`일 때만 실행된다. 이 기기의 `/data`(UFS)는 direct I/O가 자연 선택되므로 **8장의 direct 모드 A/B(write-back 26.69 vs write-through 37.69 ms/token)에는 sync 비용이 들어 있지 않다** — 두 로그 모두 `fdatasync_us=0`이고 write-through 쪽 `io_write_us=549,800`만 잡힌다. 즉 그 +11.0 ms/token은 순수 쓰기 회수 감소다. buffered fallback으로 내려가면 비대칭이 실체가 된다.
+
+비교를 맞추는 스위치 두 개를 추가했다. `NNTR_KV_BUFFERED`(direct I/O 프로브를 건너뛰고 buffered 경로를 강제)와 `NNTR_KV_FLUSH_SYNC`(`flushDirty()` 마지막에 `fdatasync`)이다. 산출물은 `build-fsu/logs/17b-buf_*.log`, `build-fsu/logs/17b-b24_*.log` (기기 원본 `/data/local/tmp/nntr-cpu/`).
+
+| 예산 | I/O 경로 | write-through (store마다 sync) | write-back + flush sync | write-back (sync 없음) |
+|---|---|---|---|---|
+| 74 MiB (전부 유지) | direct | 37.7 ms/tok · sync 0 | flush 0회 → 좌항과 동일 | 26.7 ms/tok · sync 0 |
+| 74 MiB (전부 유지) | buffered | 37.9 / 132.2 ms/tok · sync 15.1 / 64.7 ms/tok (디코드의 40–49%) | flush 0회 → sync 0, 측정 33.4 / 34.6 | 26.6 / 32.5 ms/tok · sync 0 |
+| 24 MiB (퇴피 발생) | buffered | 142.7 / 137.1 ms/tok · sync 58.5–61.0 ms/tok (43%) | 126.4 / 114.2 ms/tok · sync 33.3–34.5 ms/tok (27–29%) | 132.1 / 65.7 ms/tok · sync 0 |
+
+분해 결과:
+
+1. **direct 모드는 애초에 대칭이었다.** sync 항이 0이므로 8장의 write-back 이득(+11.0 ms/tok, TTFT +1.03 s)은 전부 쓰기 회수 감소다. 결론은 그대로 유효하다.
+2. **buffered에서는 sync가 페널티의 대부분이다.** 읽기가 0인 예산 전량 구성에서 write-through의 `fdatasync` 합계가 1.45–6.21 s로 디코드의 40–49%를 차지하고, 같은 실행의 실제 전송 시간(`io_write_us`)은 0.05–0.22 s에 불과하다. 24 MiB에서도 비율은 같다(5.6–5.9 s, 43%; 전송 0.72–1.0 s).
+3. **sync를 맞춰도 쓰기 모음은 이득이다.** 24 MiB(buffered)에서 write-through 평균 139.9 ms/tok vs write-back+flush-sync 평균 120.3 ms/tok → **−19.6 ms/tok(−14%)**. 여기서 sync까지 생략하면 평균 98.9 ms/tok로 추가로 −21.4 ms(−18%). **buffered 구간에서 관측되는 합산 이득의 절반가량이 sync 생략 몫**이므로, buffered 기기에서 그 이득을 "쓰기 모음"의 효과로 라벨링하면 안 된다.
+4. **전부 유지 구성은 이 비교가 성립하지 않는다.** 요청 중 owner가 퇴피하지 않아 flush가 0회이므로 write-back+sync는 write-back과 같은 코드를 돈다(실측 33.4 / 34.6 vs 26.6 / 32.5의 차이는 이 라운드 실행 순서 편차다. 같은 배치의 TTFT가 2.78 → 4.64 s로 올라간 것과 함께 봐야 한다). 파일에 남는 기록은 프리필·스냅샷 경로뿐이다. 6장 해석 3의 "요청 내 데이터는 DRAM에만 있다"와 같은 뿌리다.
+5. **24 MiB 구간은 읽기가 지배한다**(요청당 read 4,002 MB). run 간 편차가 65.7–142.7 ms/tok라 위 비율도 ±30%로 봐야 하며, 정밀 분리에는 워밍업·주파수 고정 실행이 별도로 필요하다.
+
+### 9.2 compact() × FSU 정합성
+
+`compact()`는 windowed 레이어(= `allocate()`의 rows/keep으로 만든 레이어, `windowed()` ⇔ `keep_ > 0`)만 이동시키고, `allocate()`는 flash 저장소를 켠 캐시에서 rows/keep을 **이미 거부한다**(`KV FSU requires batch-one CPU attention with FP16 externally bound KV`). 따라서 flash 모드에서 `compact()`의 이동 대상은 존재하지 않으며, 4–8장 실행에 조용한 데이터 손실은 없었다. 리뷰가 남긴 위험은 조합이 열리는 미래(CPU ring 축소, HTP 이식)다 — `finishFlashLayer`의 `start = from % cap`이 base 이동을 따라가지 못하는 지점 그대로 남는다.
+
+방어 두 개를 넣었다.
+
+- `compact()`은 flash가 켜진 캐시에서 windowed 레이어의 이동을 만나면 `std::logic_error`로 거부한다(`allocate()` 가드가 있어 지금은 도달 불가지만, 레이아웃이 reconciled되기 전까지 조용한 memmove를 막는 belt).
+- 회귀 테스트 `flash_storage_and_windowed_rows_are_exclusive`: flash + rows/keep `allocate()`는 `std::invalid_argument`, flash 캐시의 `compact()`는 `false` 반환 + base 0 유지 + droppedAmax 비움.
+
+장기 과제는 `kv-cache-fsu-htp-handoff.ko.md` 4단계 0항으로 옮겼다.
+
+### 9.3 나머지 리뷰 항목
+
+| 항목 | 반영 |
+|---|---|
+| `flushDirty()`가 쓰기 전에 `dirty.clear()` | merged 범위를 전부 기록한 **뒤에** 지운다. 쓰기 예외 시 장부가 남아 "DRAM에만 있는 행"의 기록이 사라지지 않는다(세션 재시작 정책은 기존 유지) |
+| sync 경로 중복 | `syncBackingFile()`로 통합 — `store()`(buffered write-through)과 `flushDirty()`(옵션)가 같은 `fdatasync_us` 계측을 쓴다 |
+| 생성자 `layers_.size() - 1` | `layers_`가 비면 slack 0. 언더플로로 거대한 resize가 되는 경로를 차단 |
+| budget 테스트의 env 누수 | `ScopedEnv` RAII 헬퍼로 교체 — 실패한 `ASSERT_*`가 `NNTR_KV_RESIDENT_BYTES`를 후속 테스트에 남기지 않는다 |
+| 저장소 루트 `resident`(0 B) | 실행 부산물이라 삭제 |
+
+### 9.4 회귀 확인
+
+- 유닛테스트 40/40 (`unittest_kv_cache_manager`, 신규 1개 포함).
+- 새 바이너리로 resident 26.5 / FSU(write-back) 27.4 ms/tok — 수정 전 26.33 / 26.69 대비 무회귀.
+- 이번 라운드 buffered/direct 8회의 `output_ids` 해시가 전부 `17fb61…`로 resident와 일치.
