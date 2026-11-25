@@ -21,6 +21,7 @@
 #include <cstring>
 #include <engine.h>
 #include <env_compat.h>
+#include <kv_cache/kv_cache_manager.h>
 #include <kv_ring.h> // causallm::kvRingCap (shared with models/transformer.h)
 #include <mutex>
 #include <sstream>
@@ -2193,6 +2194,17 @@ void MHACoreLayer::one_batch_incremental_forwarding(
       cacheRow(cache_index) * cache_value_dim.width(),
     true);
 
+  auto core_access = nntrainer::kv::KvStepScope::access(
+    cache_key.getData(), cache_value.getData(), batch, cache_index,
+    cache_index + (to - from));
+  if (core_access) {
+    if (kv_ring_cap || core_access->alias())
+      throw std::logic_error("CPU core KV requires unshared linear cache");
+    core_access->validateWrite(b_cache_key_step.getData(),
+                               b_cache_value_step.getData(),
+                               (to - from) * core_access->spec().rowBytes());
+  }
+
   // [rq-scalar-off] The SAME address, expressed as (stable base, scalar row
   // offset) instead of an offset-baked pointer.
   //
@@ -3461,6 +3473,13 @@ void MHACoreLayer::one_batch_incremental_forwarding(
       b_cache_key_step.copyData(key_step);
     }
     b_cache_value_step.copyData(value_step);
+  }
+
+  if (core_access) {
+    core_access->producerReady();
+    core_access->validateRead(cache_key.getData(), cache_value.getData(),
+                              (cache_index + to - from) *
+                                core_access->spec().rowBytes());
   }
 
   /// @todo replace step_size into input height

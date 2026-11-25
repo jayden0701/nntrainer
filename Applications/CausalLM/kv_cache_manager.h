@@ -90,7 +90,8 @@ public:
    * @brief Whether at least one slab came from the shared allocator.
    */
   bool usesSharedMemory() const {
-    return core_shared_ != nullptr || !shared_blocks_.empty();
+    return (core_shared_requested_ && core_shared_ != nullptr) ||
+           !shared_blocks_.empty();
   }
 
   /** Use the core manager for shared host slabs. Call before allocate().
@@ -99,7 +100,20 @@ public:
    * This does not enable device prefix caching or session switching.
    */
   void setCoreSharedStorage(bool enabled);
-  bool usesCoreSharedStorage() const { return core_shared_ != nullptr; }
+  bool usesCoreSharedStorage() const {
+    return core_shared_requested_ && core_shared_ != nullptr;
+  }
+
+  /** Opt-in synchronous CPU cache, with actual per-head geometry. */
+  void setCoreCPUStorage(unsigned int heads, unsigned int head_dim) {
+    if (isAllocated() || !heads || !head_dim)
+      throw std::logic_error("Select CPU core geometry before allocation");
+    core_cpu_heads_ = heads;
+    core_cpu_head_dim_ = head_dim;
+  }
+  nntrainer::kv::KvCacheManager *coreCPU() {
+    return core_cpu_heads_ ? core_shared_.get() : nullptr;
+  }
 
   /**
    * @brief Whether setSharedAllocator installed an allocator (a backend
@@ -579,6 +593,7 @@ private:
     nntrainer::Tensor value_cache; /**< (batch, 1, getLayerCap(i), kv_width) */
   };
 
+  unsigned int core_cpu_heads_ = 0, core_cpu_head_dim_ = 0;
   bool core_shared_requested_ = false;
   std::unique_ptr<nntrainer::kv::KvCacheManager> core_shared_;
   std::vector<LayerCache> layer_caches_; /**< per-layer KV caches */
