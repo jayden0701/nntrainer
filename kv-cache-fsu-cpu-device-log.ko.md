@@ -11,6 +11,9 @@
 | 기기 기준값 | 연결된 Android 기기에서 qwen3 0.6b resident/FSU A/B | 완료 |
 | 기기 계측 | 3.1 계측을 켠 기기 실행으로 읽기·대기 비용 확보 | 완료 |
 | 3.2 예산 | owner 상주 예산(환경변수) 구현·기기 검증 | 완료 |
+| 3.4 쓰기 | 디코드 쓰기를 owner 퇴피까지 지연(write-back)·기기 검증 | 완료 |
+| 회계 수정 | `retained_bytes`가 프리필값에 고정한 버그 수정·재측정 | 완료 |
+| 규모 확장 | qwen3 1.7b를 HF 원본에서 변환해 같은 매트릭스 재검증 | 완료 |
 
 ## 1. 작업 환경
 
@@ -21,7 +24,7 @@
 | 빌드 설정 | `-Denable-transformer=true -Denable-fp16=true -Denable-test=true -Dwerror=false` |
 | 기기 | SM-S947N (serial `R3KYC06DR6R`), Android 16, erd9965, arm64-v8a, 페이지 4096 B, /data 여유 136 GB |
 | 기기용 모델 | `~/TEST_MODELS/qwen3-0.6b` (Q4_0/FP32, embdq6k, 375 MB). gemma4 26B CPU 기기 실행은 현 기기 예산을 넘으므로 제외 |
-| 비고 | `~/TEST_MODELS`에 qwen3 1.7b nntr pack은 없다. HF 원본(`/home/jayden/turboquant-exp/models/Qwen3-1.7B`)만 있어 0.6b의 A/B 결과로 KV 부하 추세를 먼저 확정하고, 필요해지면 변환을 추가한다 |
+| 비고 | qwen3 1.7b nntr pack은 원래 없어 0.6b로 추세를 먼저 확정했고, 이후 HF 원본(`~/turboquant-exp/models/Qwen3-1.7B`)에서 직접 변환해 8장에서 재검증했다. 검증된 pack(x86·ARM 가중치, 호스트/기기 설정, 사용법 README)은 `~/TEST_MODELS/qwen3-1.7b`와 `~/TEST_MODELS/qwen3-1.7b-fsu`에, 중간 산출물은 `~/NNTrainer_models/qwen3-1.7b*`에 둔다 — 둘 다 커밋하지 않는다 |
 
 ## 2. 호스트 기준 재현 (커밋 `13cbb99ea` 그대로)
 
@@ -184,3 +187,68 @@ owner가 유지될 때 기여한 값을 `Layer::retained_resident`로 추적해 
 ### 산출물 노트
 
 체크인된 `lib/libtokenizers_c.a`(구 툴체인 산출물)로는 호스트 링크가 실패해(`std::ios_base_library_init()` 미정의) `tools/build_tokenizers_c.sh --update-prebuilt`로 재생성했다. 로컬 산출물이므로 커밋에 포함하지 않고 dirty로 남긴다.
+
+## 8. qwen3 1.7b 검증 — 모델 규모 확장
+
+0.6b로 확정한 결론(읽기 증폭, 상주 예산으로 제거, write-back 이득)이 모델 규모가 커져도 유지되는지 확인한다. 1.7b는 hidden 2048 / 28레이어 / kv_head 8 × head_dim 128로 **KV 폭이 0.6b와 같다**(kv_dim 1024 → KV 114,688 B/token). 절대 KV 크기는 같은데 가중치가 375 MB → 1.0 GB로 늘어나 FSU의 상대 이점과 오버헤드 비중이 어떻게 바뀌는지가 관측 목표다.
+
+### 변환 파이프라인 (재현 절차)
+
+| 단계 | 내용 | 산출 |
+|---|---|---|
+| HF 샤드받기 | `HF_HUB_DISABLE_XET=1 hf download Qwen/Qwen3-1.7B model-00001-of-00002.safetensors model-00002-of-00002.safetensors` (+ `tokenizer.json`). xet 백엔드는 사내 프록시에서 `.incomplete` 0 B로 멈추므로 껐고, 파일명을 positional로 주면 `--include`는 무시된다 | bf16 2샤드 4.06 GB |
+| 샤드 병합 | `weight_converter_layergraph.py`는 단일 `model.safetensors`만 읽는다. `model.safetensors.index.json` 순서로 페이로드를 이어붙이고 병합 헤더를 앞에 붙여 한 파일로 작성 | 311 텐서 / 4,063,479,808 B |
+| FP32 bin | `python3 Applications/CausalLM/res/qwen3/qwen3-0.6b/weight_converter_layergraph.py --model_path <병합 dir> --output_name nntr_qwen3_1.7b_fp32.bin --data_type float32` (tied라 lm_head 미기록) | 6.88 GB |
+| 양자화 | `nntr_quantize <dir> --fc_dtype Q4_0 --embd_dtype Q6_K --lmhead_dtype Q6_K --isa ARM`(기기용) / `--isa X86`(호스트용). `--isa`를 주면 한 호스트에서 아치별로 재포장된다(README의 Q4_0 크로스플랫폼 금지는 `DEFAULT` 기준 설명). 임베딩은 bin 안에 유지되고 sidecar는 안 나온다 | 1.05 GB × 2 |
+
+함정 두 개를 확인했다.
+
+1. `nntr_config.json`의 `tokenizer_file`은 CWD 기준으로 해석되므로 절대 경로를 써야 한다.
+2. pack의 `config.json`은 **반드시 그 모델 것**이어야 한다. 0.6bpack처럼 shared `config.json` 심링크를 재사용하면(hidden 1024) 1.7b는 차원 불일치로 조용히 깨진다 — 에러 없이 로드되고 출력만 id 1–19 잡음 96개가 나온다. pack마다 자기 `config.json`/`generation_config.json`을 복사해 해결했다.
+
+### 호스트(x86) 결과 — prefill 512 + decode 32 (ctx 544)
+
+| 구성 | TTFT (s) | decode (ms/tok) | 피크 RSS (MB) | read (MB) | retained (B) |
+|---|---:|---:|---:|---:|---:|
+| resident | 2.79 | 32.06 | 1225 | – | – |
+| FSU, 예산 0 | 3.06 | 83.15 | 1184 | 1938 | 0 |
+| FSU, 예산 64 MiB | 2.81 | 32.04 | 1167 | 0 | 62,390,272 |
+| FSU, 예산 8 MiB | 2.95 | 74.99 | 1122 | 1728 | 6,684,672 |
+| FSU, 예산 64 MiB + write-through | 3.00 | 33.51 | 1171 | 0 | 62,390,272 |
+
+전체 예산(64 MiB ≥ 544행 × 114,688 B = 62,390,272 B)에서 resident와 동급(−0.1%)이고 읽기가 0이며, 회계값은 working set과 1바이트까지 일치한다.
+
+### 기기 결과 — prefill 542 + decode 96 (ctx 638)
+
+| 구성 | TTFT (s) | decode (ms/tok) | 피크 RSS (MB) | read (MB) | read MB/token | retained (B) | 요청당 io_read / io_write |
+|---|---:|---:|---:|---:|---:|---:|---|
+| resident | 2.58 | 26.33 | 1341 | – | – | – | – |
+| FSU, 예산 0 | 3.03 | 60.20 | 1119 | 6496 | 67.67 | 0 | 8.18 s / 0.53 s |
+| FSU, 예산 74 MiB | 2.65 | 26.69 | 1169 | 0 | 0 | 73,170,944 | 28 µs / 0 |
+| FSU, 예산 24 MiB | 3.07 | 33.77 | 1164 | 4197 | 43.72 | 23,519,232 | 3.43 s / 0.40 s |
+| FSU, 예산 74 MiB + write-through | 3.68 | 37.69 | 1193 | 0 | 0 | 73,170,944 | 0 / 0.55 s |
+
+`retained_bytes` 73,170,944 B는 638행 × 114,688 B와 정확히 같고, 24 MiB 구성은 예산(25,165,824 B) 아래로 유지된다 — 회계 수정이 1.7b에서도 의도대로 동작한다.
+
+### 기기 결과 — 요청 3개, 컨텍스트 성장 (ctx 638 → 1276 → 1914)
+
+`requests_x3.json`(같은 롱 프롬프트 3회, 2·3회차는 `reset: false`)으로 프리필 캐시가 앞 요청까지 포함해 자라게 했다. 요청별 값이고 read/retained는 누계/최종이다.
+
+| 구성 | decode 요청별 (ms/tok) | TTFT 요청별 (s) | 총 read | 최종 retained | 최종 RSS |
+|---|---|---|---:|---:|---:|
+| resident | 26.2 / 29.3 / 40.7 | 2.69 / 3.20 / 4.43 | – | – | 1342 MB |
+| FSU, 예산 74 MiB | 34.5 / 48.3 / 64.8 | 4.58 / 5.49 / 5.85 | 19.75 GB | 70,557,696 | 1285 MB |
+| FSU, 예산 24 MiB | 43.8 / 58.3 / 85.6 | 3.89 / 5.02 / 5.78 | 34.06 GB | 23,519,232 | 1182 MB |
+| FSU, 예산 250 MiB | 26.5 / 36.5 / 40.9 | 2.75 / 3.57 / 6.54 | 0 | 219,512,832 | 1313 MB |
+
+컨텍스트(1,914행 = 219,512,832 B)가 예산(74 MiB)을 넘으면 그 구간이 다시 읽혀 디코드가 요청 3에서 resident 40.7 ms → 64.8 ms로 나빠진다. 예산을 250 MiB(1,914행 전량)로 올리면 세 요청 모두 읽기 0, 디코드 26.5/36.5/40.9 ms로 resident에 붙고 회계값도 219,512,832 B(=1,914행)로 정확하다.
+
+### 확인한 것
+
+1. **읽기 증폭 계수는 규모와 무관하다.** KV/token이 같아 예산 0에서 기기 67.67 MB/token(0.6b 64.5 MB/token), 호스트 60.6 MB/token으로 같은 자리이고, 디코드 페널티도 resident 대비 +129%로 0.6b와 같다.
+2. **전체 예산이면 resident와 동급이다.** 기기 26.69 vs 26.33 ms(+1.4%), 읽기 0. RSS는 1341 → 1169 MB(−172 MB)로 줄지만 감소율은 0.6b(−28%)보다 작다(−13%) — 가중치가 커져 KV 비중이 낮아졌기 때문이다. KV 자체의 절감량(풀 235 MB − 상주 73 MB)은 0.6b와 같다.
+3. **write-through는 여전히 손해다.** 같은 예산에서 +11.0 ms/tok, TTFT +1.03 s → write-back 기본 유지가 타당하다.
+4. **예산은 보유할 최대 컨텍스트 기준으로 산정한다.** 요청이 이어져 컨텍스트가 자르면 그 시점 working set이 예산을 넘어 읽기가 재개된다. 산식은 `예산 ≈ 보유 최대 토큰 × 114,688 B`이고, `max_seq_len 2048` 전량을 상주시키려면 234,881,024 B(224 MiB)가 필요하다. 그렇게 하면 RSS가 resident에 근접해(1313 MB) 메모리 절감 목적이 퇴색하므로, 메모리가 급하면 예산을 의도적으로 줄이고 디코드 지연을 감수하는 절충이 된다.
+5. **출력 정상.** 단일 요청 5구성, 3요청 4구성 모두 resident와 `output_ids`가 완전 일치한다(요청 27개).
+6. **3.3 워커 큐 심화는 우선순위 낮음 유지.** 예산 0(읽기 지배)에서도 요청당 io_read(8.18 s)가 디코드 총합(5.8 s)을 넘고, 예산을 준 구성은 읽기가 0이라 큐가 이득을 낼 구간이 없다.
+7. **pack 재배치 재검증.** 검증 후 pack을 `~/TEST_MODELS/qwen3-1.7b`(x86·ARM 가중치, 호스트·기기 설정, README)로 옮겨 같은 요청으로 다시 돌렸다. resident / FSU 64 MiB / FSU 72 MiB 3회의 `output_ids`가 일치했고, 64 MiB는 630행(=534+96 → 72,253,440 B)에 못 미쳐 읽기 170 MB가 남은 반면 72 MiB에서는 읽기 0, `retained_bytes` 72,253,440 B(행 수 × 114,688과 정확 일치), decode 32.37 ms(resident 32.43 ms)로 돌아왔다 — 4항 산식의 실측 확인이다.
