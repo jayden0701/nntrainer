@@ -169,6 +169,11 @@ public:
           fail("disable unsupported direct I/O");
         if (madvise(entry.bindings[0]->address(), page_, MADV_DONTNEED))
           fail("release direct I/O probe");
+        // Retained owners make the pool buffer the working copy, so small
+        // writes can mark dirty ranges and flush when the owner leaves the
+        // pool. NNTR_KV_WRITE_THROUGH restores the write-at-every-store path.
+        write_back_ =
+          resident_budget_ != 0 && !std::getenv("NNTR_KV_WRITE_THROUGH");
         if (direct_ && lookahead_ != 0) {
           try {
             if (std::getenv("NNTR_KV_ASYNC_WRITE"))
@@ -227,6 +232,15 @@ public:
       throw std::out_of_range("KV FSU: write outside layer capacity");
     account(*entry.buffer, std::max(entry.buffer->resident, last));
     const size_t bytes = last - first;
+    if (write_back_ && !replace) {
+      // The retained buffer holds the live rows; persist when the owner
+      // leaves the pool. Snapshot restores still write through.
+      entry.dirty.push_back({first, last});
+      ++deferred_writes_;
+      entry.saved = std::max(entry.saved, last);
+      write_bytes_ += 2 * (last - first);
+      return;
+    }
     // Serialize dirty ranges even when a later write uses the sync path.
     waitWrite();
     // Small decode writes can contend with prefetch on mobile storage.
@@ -300,6 +314,7 @@ public:
       restore();
       return;
     }
+    flushDirty(entry);
     for (unsigned plane = 0; plane < 2; ++plane) {
       restore();
       if (!direct_ && entry.saved != 0) {
@@ -358,6 +373,7 @@ public:
     wait();
     waitWrite();
     for (auto &layer : layers_) {
+      layer.dirty.clear();
       if (!layer.buffer)
         continue;
       for (unsigned plane = 0; plane < 2; ++plane)
@@ -380,10 +396,10 @@ public:
                  "[kv-fsu] lookahead=%u direct_io=%d peak_kv_bytes=%zu "
                  "read_bytes=%zu write_bytes=%zu reused_buffers=%zu "
                  "parallel_reads=%zu async_writes=%zu staging_bytes=%zu "
-                 "retained_bytes=%zu\n",
+                 "retained_bytes=%zu deferred_writes=%zu\n",
                  lookahead_, direct_, peak_bytes_.load(), read_bytes_.load(),
                  write_bytes_, reuse_count_, parallel_reads_, async_writes_,
-                 2 * write_capacity_, retained_bytes_);
+                 2 * write_capacity_, retained_bytes_, deferred_writes_);
     if (!timing_)
       return;
     // Per-report deltas for one request, next to the totals since start.
@@ -487,7 +503,25 @@ private:
     size_t saved = 0;
     Buffer *buffer = nullptr;
     bool retained = false;
+    std::vector<std::pair<size_t, size_t>> dirty;
   };
+
+  void flushDirty(Layer &entry) {
+    if (entry.dirty.empty())
+      return;
+    std::sort(entry.dirty.begin(), entry.dirty.end());
+    std::vector<std::pair<size_t, size_t>> merged;
+    for (const auto &range : entry.dirty) {
+      if (!merged.empty() && range.first <= merged.back().second)
+        merged.back().second = std::max(merged.back().second, range.second);
+      else
+        merged.push_back(range);
+    }
+    entry.dirty.clear();
+    for (const auto &range : merged)
+      for (unsigned plane = 0; plane < 2; ++plane)
+        transfer(entry, plane, range.first, range.second - range.first, true);
+  }
 
   [[noreturn]] static void fail(const char *operation) {
     throw std::system_error(errno, std::generic_category(),
@@ -682,6 +716,8 @@ private:
   mutable Timing last_report_{};
   size_t resident_budget_ = 0;
   size_t retained_bytes_ = 0;
+  size_t deferred_writes_ = 0;
+  bool write_back_ = false;
 };
 #else
 class KVFlashStorage {

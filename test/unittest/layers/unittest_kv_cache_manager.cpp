@@ -1185,4 +1185,73 @@ TEST(KVCacheManagerFlash, resident_budget_keeps_owners_across_steps) {
   }
   unsetenv("NNTR_KV_RESIDENT_BYTES");
 }
+TEST(KVCacheManagerFlash, resident_budget_flushes_dirty_on_eviction) {
+  using DT = ml::train::TensorDim::DataType;
+  auto path =
+    (std::filesystem::temp_directory_path() / "nntr-kv-fsu-test-XXXXXX")
+      .string();
+  ASSERT_NE(mkdtemp(path.data()), nullptr);
+  struct Directory {
+    std::string path;
+    ~Directory() {
+      std::error_code error;
+      std::filesystem::remove_all(path, error);
+    }
+  } directory{path};
+
+  // The budget holds exactly one owner, so every step retains layer 0 and
+  // evicts layer 3; its deferred writes must reach the file before release.
+  ASSERT_EQ(0, setenv("NNTR_KV_RESIDENT_BYTES", "300000", 1));
+  causallm::KVCacheManager dram, flash;
+  flash.setFlashStorage(directory.path, 1);
+  constexpr unsigned width = 1024, ring_rows = 65, context = 128;
+  for (auto *cache : {&dram, &flash}) {
+    cache->setActiveLayers({true, false, true, true});
+    cache->setLayerCaps({ring_rows, 0, ring_rows, 0});
+    cache->setLayerKVSources({-1, -1, 0, -1});
+    cache->allocate(4, 1, context, 1, width, DT::FP16);
+  }
+
+  const auto compareLayer = [&](unsigned layer) {
+    const auto &k = dram.getKeyCache(layer);
+    const auto &v = dram.getValueCache(layer);
+    EXPECT_EQ(0, std::memcmp(k.getData<uint16_t>(),
+                             flash.getKeyCache(layer).getData<uint16_t>(),
+                             k.bytes()));
+    EXPECT_EQ(0, std::memcmp(v.getData<uint16_t>(),
+                             flash.getValueCache(layer).getData<uint16_t>(),
+                             v.bytes()));
+  };
+
+  unsigned from = 0;
+  for (unsigned to : {64u, 70u, 71u}) {
+    SCOPED_TRACE(to);
+    flash.beginFlashStep(from);
+    for (unsigned layer : {0u, 2u, 3u}) {
+      SCOPED_TRACE(layer);
+      flash.beginFlashLayer(layer);
+      compareLayer(layer);
+      if (layer != 2u) {
+        for (auto *cache : {&dram, &flash}) {
+          for (unsigned row = from; row < to; ++row) {
+            const auto offset = row % cache->getLayerCap(layer) * width;
+            for (unsigned col = 0; col < width; ++col) {
+              auto value = static_cast<uint16_t>(layer * 500 + row + col);
+              cache->getKeyCache(layer).getData<uint16_t>()[offset + col] =
+                value;
+              cache->getValueCache(layer).getData<uint16_t>()[offset + col] =
+                0xcd00u + (value & 0xffu);
+            }
+          }
+        }
+      }
+      flash.finishFlashLayer(layer, from, to);
+    }
+    flash.finishFlashStep();
+    dram.setPosition(to);
+    flash.setPosition(to);
+    from = to;
+  }
+  unsetenv("NNTR_KV_RESIDENT_BYTES");
+}
 #endif
