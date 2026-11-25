@@ -599,9 +599,13 @@ void CausalLM::allocateAndBindKVCache() {
   }
 
   if (kv_cache.usesFlashStorage()) {
+    // [kv-fsu mixed] only flash-owned layers get the streaming bracket; a
+    // windowed layer attends straight from its host DRAM tensor, so its
+    // MHA layer runs unbound (incremental_forwarding skips null hooks).
     std::unordered_map<std::string, unsigned> attention;
     for (int i = 0; i < NUM_LAYERS; ++i) {
-      if (kv_cache.isLayerActive(i))
+      if (kv_cache.isLayerActive(i) &&
+          kv_cache.isFlashOwned(static_cast<unsigned int>(i)))
         attention.emplace("layer" + std::to_string(i) + "_attention", i);
     }
     model->forEachLayer(

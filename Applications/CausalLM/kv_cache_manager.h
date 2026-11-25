@@ -72,6 +72,23 @@ public:
   /** Opt into per-layer Flash storage for batch-one CPU inference. */
   void setFlashStorage(std::string directory, unsigned lookahead);
   bool usesFlashStorage() const { return flash_ != nullptr; }
+  /**
+   * @brief [kv-fsu mixed] Whether the layer's K/V planes stream through the
+   *        flash storage: a non-windowed owner, or an alias onto one. A
+   *        windowed layer (allocate()'s rows / keep) keeps a host DRAM tensor
+   *        even when flash storage is on -- its sliding-window compaction
+   *        memmoves rows, which a flash owner's pool buffer cannot honor
+   *        (docs/kv-fsu-compaction-reconciliation-design.ko.md §2.5, D).
+   * @param[in] layer_idx attention layer index
+   */
+  bool isFlashOwned(unsigned int layer_idx) const {
+    if (flash_ == nullptr || layer_idx >= layer_caches_.size())
+      return false;
+    const int source = getLayerKVSource(layer_idx);
+    if (source >= 0)
+      return isFlashOwned(static_cast<unsigned int>(source));
+    return isLayerActive(layer_idx) && !windowed(layer_idx);
+  }
   void beginFlashLayer(unsigned layer);
   void finishFlashLayer(unsigned layer, unsigned from, unsigned to);
   void beginFlashStep(unsigned from);
