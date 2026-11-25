@@ -991,7 +991,8 @@ TEST(KVCacheManagerFlash, persists_ring_alias_and_existing_snapshot_format) {
                   auto value = static_cast<uint16_t>(layer * 500 + row + col);
                   cache->getKeyCache(layer).getData<uint16_t>()[offset + col] =
                     value;
-                  cache->getValueCache(layer).getData<uint16_t>()[offset + col] =
+                  cache->getValueCache(layer)
+                    .getData<uint16_t>()[offset + col] =
                     0xff00u + (value & 0xffu);
                 }
               }
@@ -1043,6 +1044,75 @@ TEST(KVCacheManagerFlash, persists_ring_alias_and_existing_snapshot_format) {
     }
   }
 }
+namespace {
+/**
+ * @brief Sets an environment variable for one test and restores the previous
+ *        state on scope exit, so a failed assertion cannot leak it into the
+ *        tests that run next in the same process.
+ */
+class ScopedEnv {
+public:
+  ScopedEnv(const char *name, const char *value) : name_(name) {
+    const char *previous = std::getenv(name);
+    had_previous_ = previous != nullptr;
+    if (had_previous_)
+      previous_ = previous;
+    setenv(name, value, 1);
+  }
+  ~ScopedEnv() {
+    if (had_previous_)
+      setenv(name_, previous_.c_str(), 1);
+    else
+      unsetenv(name_);
+  }
+
+private:
+  const char *name_;
+  bool had_previous_ = false;
+  std::string previous_;
+};
+} // namespace
+
+TEST(KVCacheManagerFlash, flash_storage_and_windowed_rows_are_exclusive) {
+  using DT = ml::train::TensorDim::DataType;
+  auto path =
+    (std::filesystem::temp_directory_path() / "nntr-kv-fsu-test-XXXXXX")
+      .string();
+  ASSERT_NE(mkdtemp(path.data()), nullptr);
+  struct Directory {
+    std::string path;
+    ~Directory() {
+      std::error_code error;
+      std::filesystem::remove_all(path, error);
+    }
+  } directory{path};
+
+#ifdef ENABLE_FP16
+  const auto dtype = DT::FP16;
+#else
+  const auto dtype = DT::UINT16;
+#endif
+  // compact() only moves rows of a windowed layer (allocate()'s rows/keep),
+  // and flash storage refuses that geometry: the live rows of an evicted
+  // owner live in a pool buffer whose layout the unshifted base produced, so
+  // moving rows would compact a pristine original mapping and leave the real
+  // data behind. Pin the mutual exclusion from both sides.
+  causallm::KVCacheManager windowed_flash;
+  windowed_flash.setFlashStorage(directory.path, 1);
+  EXPECT_THROW(
+    windowed_flash.allocate(1, 1, 8, std::vector<unsigned int>{2}, dtype,
+                            ml::train::TensorDim::Format::NCHW, {4}, {2}),
+    std::invalid_argument);
+
+  causallm::KVCacheManager flash;
+  flash.setFlashStorage(directory.path, 1);
+  flash.setActiveLayers({true, false, true, true});
+  flash.allocate(4, 1, 128, 1, 1024, dtype);
+  EXPECT_FALSE(flash.compact(64));
+  EXPECT_EQ(flash.getBase(0), 0u);
+  EXPECT_TRUE(flash.droppedAmaxK(0).empty());
+}
+
 TEST(KVCacheManagerFlash, resident_budget_keeps_owners_across_steps) {
   using DT = ml::train::TensorDim::DataType;
   auto path =
@@ -1058,7 +1128,7 @@ TEST(KVCacheManagerFlash, resident_budget_keeps_owners_across_steps) {
   } directory{path};
 
   // 16 MiB keeps every owner of this fixture in the pool across steps.
-  ASSERT_EQ(0, setenv("NNTR_KV_RESIDENT_BYTES", "16777216", 1));
+  ScopedEnv resident_budget("NNTR_KV_RESIDENT_BYTES", "16777216");
   causallm::KVCacheManager dram, flash;
   flash.setFlashStorage(directory.path, 1);
   constexpr unsigned width = 1024, ring_rows = 65, context = 128;
@@ -1191,7 +1261,6 @@ TEST(KVCacheManagerFlash, resident_budget_keeps_owners_across_steps) {
     compareRows(layer, 64);
     flash.finishFlashLayer(layer, 64, 64);
   }
-  unsetenv("NNTR_KV_RESIDENT_BYTES");
 }
 TEST(KVCacheManagerFlash, resident_budget_flushes_dirty_on_eviction) {
   using DT = ml::train::TensorDim::DataType;
@@ -1209,7 +1278,7 @@ TEST(KVCacheManagerFlash, resident_budget_flushes_dirty_on_eviction) {
 
   // The budget holds exactly one owner, so every step retains layer 0 and
   // evicts layer 3; its deferred writes must reach the file before release.
-  ASSERT_EQ(0, setenv("NNTR_KV_RESIDENT_BYTES", "300000", 1));
+  ScopedEnv resident_budget("NNTR_KV_RESIDENT_BYTES", "300000");
   causallm::KVCacheManager dram, flash;
   flash.setFlashStorage(directory.path, 1);
   constexpr unsigned width = 1024, ring_rows = 65, context = 128;
@@ -1263,6 +1332,5 @@ TEST(KVCacheManagerFlash, resident_budget_flushes_dirty_on_eviction) {
   // Only layer 0 stays in the pool; its accounting follows the grown rows.
   EXPECT_EQ(flash.flashRetainedBytes(),
             2u * ((65u * 1024u * 2u + 4095) / 4096 * 4096));
-  unsetenv("NNTR_KV_RESIDENT_BYTES");
 }
 #endif

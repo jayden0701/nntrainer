@@ -105,8 +105,13 @@ public:
       // Owner retention budget in DRAM bytes. Owners kept in the pool skip
       // the full-history read on the next step; the others still stream.
       resident_budget_ = std::strtoull(budget, nullptr, 10);
-      buffers_.resize(layers_.size() +
-                      std::min<size_t>(lookahead_, layers_.size() - 1) + 1);
+      // Pool buffers are the working copy now, so a flush can be given the
+      // durability a write-through store pays per write in buffered mode.
+      flush_sync_ = std::getenv("NNTR_KV_FLUSH_SYNC") != nullptr;
+      // layers_.size() - 1 would underflow for a manager with no layers.
+      const size_t slack =
+        layers_.empty() ? 0 : std::min<size_t>(lookahead_, layers_.size() - 1);
+      buffers_.resize(layers_.size() + slack + 1);
     }
 
     std::string path = directory + "/nntr-kv-XXXXXX";
@@ -158,30 +163,35 @@ public:
     // Try direct I/O before the first inference. Some filesystems accept the
     // flag but refuse direct writes to encrypted or compressed files.
     if (entry.offset == 0) {
-      const int flags = fcntl(fd_, F_GETFL);
-      if (flags >= 0 && fcntl(fd_, F_SETFL, flags | O_DIRECT) == 0) {
-        ssize_t n;
-        do {
-          n = pwrite(fd_, entry.bindings[0]->address(), page_, 0);
-        } while (n < 0 && errno == EINTR);
-        direct_ = n == static_cast<ssize_t>(page_);
-        if (!direct_ && fcntl(fd_, F_SETFL, flags) != 0)
-          fail("disable unsupported direct I/O");
-        if (madvise(entry.bindings[0]->address(), page_, MADV_DONTNEED))
-          fail("release direct I/O probe");
-        // Retained owners make the pool buffer the working copy, so small
-        // writes can mark dirty ranges and flush when the owner leaves the
-        // pool. NNTR_KV_WRITE_THROUGH restores the write-at-every-store path.
-        write_back_ =
-          resident_budget_ != 0 && !std::getenv("NNTR_KV_WRITE_THROUGH");
-        if (direct_ && lookahead_ != 0) {
-          try {
-            if (std::getenv("NNTR_KV_ASYNC_WRITE"))
-              write_worker_ = std::make_unique<IOWorker>();
-            value_worker_ = std::make_unique<IOWorker>();
-          } catch (const std::system_error &) {
-            // A process with no spare threads can still use serial reads.
-          }
+      // NNTR_KV_BUFFERED skips the probe so an experiment can compare I/O
+      // policies on the buffered path, where every write goes through the
+      // page cache and a sync is what makes them durable.
+      if (!std::getenv("NNTR_KV_BUFFERED")) {
+        const int flags = fcntl(fd_, F_GETFL);
+        if (flags >= 0 && fcntl(fd_, F_SETFL, flags | O_DIRECT) == 0) {
+          ssize_t n;
+          do {
+            n = pwrite(fd_, entry.bindings[0]->address(), page_, 0);
+          } while (n < 0 && errno == EINTR);
+          direct_ = n == static_cast<ssize_t>(page_);
+          if (!direct_ && fcntl(fd_, F_SETFL, flags) != 0)
+            fail("disable unsupported direct I/O");
+          if (madvise(entry.bindings[0]->address(), page_, MADV_DONTNEED))
+            fail("release direct I/O probe");
+        }
+      }
+      // Retained owners make the pool buffer the working copy, so small
+      // writes can mark dirty ranges and flush when the owner leaves the
+      // pool. NNTR_KV_WRITE_THROUGH restores the write-at-every-store path.
+      write_back_ =
+        resident_budget_ != 0 && !std::getenv("NNTR_KV_WRITE_THROUGH");
+      if (direct_ && lookahead_ != 0) {
+        try {
+          if (std::getenv("NNTR_KV_ASYNC_WRITE"))
+            write_worker_ = std::make_unique<IOWorker>();
+          value_worker_ = std::make_unique<IOWorker>();
+        } catch (const std::system_error &) {
+          // A process with no spare threads can still use serial reads.
         }
       }
     }
@@ -274,17 +284,8 @@ public:
       for (unsigned p = 0; p < 2; ++p)
         transfer(entry, p, first, bytes, true);
     }
-    if (!direct_ && last != first) {
-      int rc;
-      const uint64_t t0 = timing_ ? now_ns() : 0;
-      do {
-        rc = fdatasync(fd_);
-      } while (rc && errno == EINTR);
-      if (timing_)
-        fdatasync_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
-      if (rc)
-        fail("sync backing file");
-    }
+    if (!direct_ && last != first)
+      syncBackingFile();
     entry.saved = replace ? last : std::max(entry.saved, last);
     write_bytes_ += 2 * (last - first);
   }
@@ -522,10 +523,28 @@ private:
       else
         merged.push_back(range);
     }
-    entry.dirty.clear();
+    // Clear only after every range reached the file: if a write throws, the
+    // ledger still says which rows exist only in DRAM.
     for (const auto &range : merged)
       for (unsigned plane = 0; plane < 2; ++plane)
         transfer(entry, plane, range.first, range.second - range.first, true);
+    entry.dirty.clear();
+    // A write-through store syncs after each write when buffered; syncing
+    // here is what makes batching and durability comparable in an A/B.
+    if (flush_sync_ && !direct_)
+      syncBackingFile();
+  }
+
+  void syncBackingFile() {
+    const uint64_t t0 = timing_ ? now_ns() : 0;
+    int rc;
+    do {
+      rc = fdatasync(fd_);
+    } while (rc && errno == EINTR);
+    if (timing_)
+      fdatasync_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
+    if (rc)
+      fail("sync backing file");
   }
 
   [[noreturn]] static void fail(const char *operation) {
@@ -723,6 +742,7 @@ private:
   size_t retained_bytes_ = 0;
   size_t deferred_writes_ = 0;
   bool write_back_ = false;
+  bool flush_sync_ = false;
 };
 #else
 class KVFlashStorage {
@@ -1698,6 +1718,17 @@ bool KVCacheManager::compact(unsigned int pos) {
     const unsigned int from = liveFrom(l, pos);
     if (from <= bases_[l])
       continue;
+    // compact() moves rows of a windowed layer, and flash storage keeps the
+    // live rows of an evicted owner in a pool buffer whose layout
+    // finishFlashLayer() derived from the unshifted base: the memmove would
+    // hit the pristine original mapping and leave the real data behind.
+    // allocate() already refuses rows/keep together with flash storage, so
+    // this is unreachable today; it stays as the belt until a ring shrink or
+    // the HTP port reconciles the two layouts.
+    if (usesFlashStorage())
+      throw std::logic_error(
+        "KVCacheManager::compact: flash streaming cannot move rows of a "
+        "windowed layer; disable the sliding ring shrink or flash storage");
     // A later sliding compaction may overwrite an immutable borrowed prefix.
     // Materialize only that layer's live pinned pages before the original move.
     freezePrefixViews(l);
