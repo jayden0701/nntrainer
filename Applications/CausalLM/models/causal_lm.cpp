@@ -625,9 +625,11 @@ void CausalLM::releaseLogitsBuf(float *buf) {
   logits_pool_free_.emplace_back(it->second, buf);
 }
 
-std::vector<float *> CausalLM::incrementalInference(
-  unsigned int batch_size, const std::vector<float *> &input,
-  unsigned int init_seq_len, unsigned int from, unsigned int to) {
+std::vector<float *>
+CausalLM::incrementalInference(unsigned int batch_size,
+                               const std::vector<float *> &input,
+                               unsigned int init_seq_len, unsigned int from,
+                               unsigned int to, const uint32_t *kv_tokens) {
 #ifdef ENABLE_HEXKL
   // Shared CPU layers may also appear in an HTP model. Only this model's
   // inference may enter its resident DSP graph, even with other handles live.
@@ -719,7 +721,7 @@ std::vector<float *> CausalLM::incrementalInference(
     if (from != core->committedLength() || to <= from)
       throw std::logic_error(
         "CPU core KV inference interval is not committed position");
-    auto step = core->beginStep(to - from);
+    auto step = core->beginStep(to - from, kv_tokens);
     {
       auto scope = core->bindStep(step);
       output_tensors =
@@ -921,6 +923,30 @@ std::vector<float *> CausalLM::incrementalInference(
     kv_cache.setPosition(to);
 
   return output;
+}
+
+std::vector<float *> CausalLM::kvInferenceInputs(float *tokens) {
+  std::vector<std::pair<std::string, float *>> cache_inputs;
+  cache_inputs.reserve(static_cast<size_t>(NUM_LAYERS) * 2);
+  for (int i = 0; i < NUM_LAYERS; ++i) {
+    cache_inputs.emplace_back(
+      "cache_k_l" + std::to_string(i),
+      reinterpret_cast<float *>(kv_cache.getKeyCache(i).getData()));
+    cache_inputs.emplace_back(
+      "cache_v_l" + std::to_string(i),
+      reinterpret_cast<float *>(kv_cache.getValueCache(i).getData()));
+  }
+
+  std::sort(
+    cache_inputs.begin(), cache_inputs.end(),
+    [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
+
+  std::vector<float *> inference_inputs;
+  inference_inputs.reserve(1 + cache_inputs.size());
+  inference_inputs.push_back(tokens);
+  for (const auto &cache_input : cache_inputs)
+    inference_inputs.push_back(cache_input.second);
+  return inference_inputs;
 }
 
 void CausalLM::setKVCachePosition(unsigned int pos) {
@@ -2531,30 +2557,7 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
    */
   std::vector<int64_t> token_ids;
   input.push_back(input_sample);
-  auto build_inference_inputs = [&]() {
-    std::vector<std::pair<std::string, float *>> cache_inputs;
-    cache_inputs.reserve(static_cast<size_t>(NUM_LAYERS) * 2);
-    for (int i = 0; i < NUM_LAYERS; ++i) {
-      cache_inputs.emplace_back(
-        "cache_k_l" + std::to_string(i),
-        reinterpret_cast<float *>(kv_cache.getKeyCache(i).getData()));
-      cache_inputs.emplace_back(
-        "cache_v_l" + std::to_string(i),
-        reinterpret_cast<float *>(kv_cache.getValueCache(i).getData()));
-    }
-
-    std::sort(
-      cache_inputs.begin(), cache_inputs.end(),
-      [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
-
-    std::vector<float *> inference_inputs;
-    inference_inputs.reserve(1 + cache_inputs.size());
-    inference_inputs.push_back(input_sample);
-    for (const auto &cache_input : cache_inputs)
-      inference_inputs.push_back(cache_input.second);
-    return inference_inputs;
-  };
-  input = build_inference_inputs();
+  input = kvInferenceInputs(input_sample);
 
   ///@note contains possible bug
   // std::vector<ml::train::TensorDim> input_dims;

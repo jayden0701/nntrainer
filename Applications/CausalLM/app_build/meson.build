@@ -428,6 +428,7 @@ endif
 # registered here.
 executable('nntr_causallm',
     causallm_root / 'main.cpp',
+    causallm_root / 'cache_bridge.cpp',
     dependencies: [nntrainer_dep, causallm_dep, openmp_dep, thread_dep, log_dep],
     cpp_args: causallm_inc_args,
     install: false,

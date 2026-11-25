@@ -68,6 +68,7 @@ namespace causallm {
  * @brief CausalLM Class
  */
 WIN_EXPORT class CausalLM : virtual public Transformer {
+  friend class CacheBridge;
 
 public:
   /**
@@ -649,10 +650,14 @@ protected:
    *          the framework's Map wrapping, byte-identical to
    *          Model::incremental_inference(float* ...).
    */
-  std::vector<float *> incrementalInference(unsigned int batch_size,
-                                            const std::vector<float *> &input,
-                                            unsigned int init_seq_len,
-                                            unsigned int from, unsigned int to);
+  std::vector<float *>
+  incrementalInference(unsigned int batch_size,
+                       const std::vector<float *> &input,
+                       unsigned int init_seq_len, unsigned int from,
+                       unsigned int to, const uint32_t *kv_tokens = nullptr);
+
+  /** Build raw input pointers in name order. */
+  std::vector<float *> kvInferenceInputs(float *tokens);
 
   /**
    * @brief Reset all mha_core layers' cache_index to @p pos and the

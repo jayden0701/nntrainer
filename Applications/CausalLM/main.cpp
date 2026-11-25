@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -32,6 +33,7 @@
 #include <factory.h>
 #include <thread_manager.h>
 
+#include "cache_bridge.h"
 #include "causal_lm.h"
 #include "chat_template.h"
 #include "lfm2_runtime_defaults.h"
@@ -250,6 +252,7 @@ int main(int argc, char *argv[]) {
                  "chat_input if omitted)\n"
               << "  --requests FILE : JSON array of {prompt, reset?}; one "
                  "loaded model\n"
+              << "  --cachebridge FILE : run CPU model handoffs from JSON\n"
               << "  --bake-system-prefix TEXT_FILE NEW_DIRECTORY : bake "
                  "compatible native system-prefix boundaries\n";
     return EXIT_FAILURE;
@@ -272,6 +275,11 @@ int main(int argc, char *argv[]) {
     }
     json nntr_cfg = causallm::LoadJsonFile(model_path + "/nntr_config.json");
     json requests;
+    const bool bridge_mode =
+      argc >= 3 && std::string(argv[2]) == "--cachebridge";
+    if (bridge_mode && (argc != 4 || setenv("NNTR_KV_CORE_CPU", "1", 1)))
+      throw std::invalid_argument(
+        "--cachebridge requires one JSON file and CPU KV");
     const bool request_mode = argc >= 3 && std::string(argv[2]) == "--requests";
     const bool bake_mode =
       argc >= 3 && std::string(argv[2]) == "--bake-system-prefix";
@@ -422,6 +430,51 @@ int main(int argc, char *argv[]) {
     _ilap("model->repack_weight");
 
     auto *device_causal = dynamic_cast<causallm::CausalLM *>(model.get());
+    if (bridge_mode) {
+      if (!device_causal || cfg.value("model_type", std::string()) != "qwen3")
+        throw std::invalid_argument(
+          "CacheBridge target must be a Qwen3 causal model");
+      const auto spec = causallm::LoadJsonFile(argv[3]);
+      if (spec.at("mappers").is_object() && spec.at("mappers").empty()) {
+        causallm::runCacheBridge(*device_causal, *device_causal, spec);
+        return EXIT_SUCCESS;
+      }
+      const auto source_path = spec.at("source_model").get<std::string>();
+      auto source_cfg = causallm::LoadJsonFile(source_path + "/config.json");
+      auto source_nntr =
+        causallm::LoadJsonFile(source_path + "/nntr_config.json");
+      const auto source_generate =
+        std::filesystem::path(source_path) / "generation_config.json";
+      auto source_generation =
+        std::filesystem::exists(source_generate)
+          ? causallm::LoadJsonFile(source_generate.string())
+          : json::object();
+      if (source_cfg.value("model_type", std::string()) != "qwen3")
+        throw std::invalid_argument(
+          "CacheBridge source must be a Qwen3 causal model");
+      resolveNntrConfigPath(source_nntr, "tokenizer_file", source_path);
+      resolveNntrConfigPath(source_nntr, "model_file_name", source_path);
+      std::ifstream source_tokenizer(
+        source_nntr.at("tokenizer_file").get<std::string>(), std::ios::binary);
+      std::ifstream target_tokenizer(
+        nntr_cfg.at("tokenizer_file").get<std::string>(), std::ios::binary);
+      using TokenizerFile = std::istreambuf_iterator<char>;
+      if (!source_tokenizer || !target_tokenizer ||
+          !std::equal(TokenizerFile(source_tokenizer), TokenizerFile(),
+                      TokenizerFile(target_tokenizer), TokenizerFile()))
+        throw std::invalid_argument(
+          "CacheBridge models must share a tokenizer");
+      auto source = causallm::Factory::Instance().create(
+        "Qwen3ForCausalLM", source_cfg, source_generation, source_nntr);
+      auto *source_causal = dynamic_cast<causallm::CausalLM *>(source.get());
+      if (!source_causal)
+        throw std::runtime_error("Could not create CacheBridge source model");
+      source->initialize();
+      source->load_weight(source_nntr.at("model_file_name").get<std::string>());
+      source->repack_weight();
+      causallm::runCacheBridge(*source_causal, *device_causal, spec);
+      return EXIT_SUCCESS;
+    }
     bool device_manager_enabled = false;
     auto enable_device_manager = [&] {
       if (device_manager_enabled)

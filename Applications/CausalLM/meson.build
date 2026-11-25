@@ -45,6 +45,7 @@ causallm_src = [
 
 executable_src = [
     meson.current_source_dir() / 'main.cpp',
+    meson.current_source_dir() / 'cache_bridge.cpp',
 ]
 
 causallm_inc_abs = [meson.current_source_dir()]
