@@ -1113,8 +1113,16 @@ TEST(KVCacheManagerFlash, resident_budget_keeps_owners_across_steps) {
     EXPECT_GT(flash.flashRetainedBytes(), 0u);
   }
   // Nearly the full ring of every owner (layers 0 and 3; layer 2 aliases
-  // layer 0) is retained.
-  EXPECT_GT(flash.flashRetainedBytes(), 2u * 2 * (ring_rows - 2) * width * 2u);
+  // layer 0) is retained. The accounting must track the grown rows, not
+  // stay at the first step's value. Layer 0 wraps its 65-row ring; layer 3
+  // runs linearly to row 71, so their page-aligned plane sizes differ.
+  const auto aligned_rows = [](unsigned rows, unsigned cols) {
+    return (rows * cols * 2u + 4095u) / 4096u * 4096u;
+  };
+  EXPECT_EQ(flash.flashRetainedBytes(),
+            2u *
+              (aligned_rows(std::min(ring_rows, flash.getLayerCap(0u)), width) +
+               aligned_rows(std::min(71u, flash.getLayerCap(3u)), width)));
 
   // A reset drops the retained owners and the pool, and a new prompt still
   // produces the same bytes as the DRAM reference.
@@ -1252,6 +1260,9 @@ TEST(KVCacheManagerFlash, resident_budget_flushes_dirty_on_eviction) {
     flash.setPosition(to);
     from = to;
   }
+  // Only layer 0 stays in the pool; its accounting follows the grown rows.
+  EXPECT_EQ(flash.flashRetainedBytes(),
+            2u * ((65u * 1024u * 2u + 4095) / 4096 * 4096));
   unsetenv("NNTR_KV_RESIDENT_BYTES");
 }
 #endif

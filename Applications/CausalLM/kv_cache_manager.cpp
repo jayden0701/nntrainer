@@ -302,7 +302,9 @@ public:
     if (entry.retained) {
       // The owner is already in the pool for the next step; this step wrote
       // new rows into the same buffer, so only the accounting changes.
-      retained_bytes_ -= 2 * entry.buffer->resident;
+      // store() already grew buffer.resident, so subtract the value this
+      // owner contributed when it was retained, not the current one.
+      retained_bytes_ -= 2 * entry.retained_resident;
       entry.retained = false;
     }
     if (resident_budget_ != 0 &&
@@ -310,6 +312,7 @@ public:
       // Keep the owner in the pool so the next step skips its full-history
       // read.
       entry.retained = true;
+      entry.retained_resident = entry.buffer->resident;
       retained_bytes_ += 2 * entry.buffer->resident;
       restore();
       return;
@@ -387,6 +390,7 @@ public:
     retained_bytes_ = 0;
     for (auto &layer : layers_) {
       layer.retained = false;
+      layer.retained_resident = 0;
       layer.saved = 0;
     }
   }
@@ -503,6 +507,7 @@ private:
     size_t saved = 0;
     Buffer *buffer = nullptr;
     bool retained = false;
+    size_t retained_resident = 0;
     std::vector<std::pair<size_t, size_t>> dirty;
   };
 
