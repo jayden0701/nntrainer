@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
@@ -97,6 +98,9 @@ public:
     if (page <= 0)
       throw std::runtime_error("KV FSU: cannot determine page size");
     page_ = static_cast<size_t>(page);
+    // Optional stage timing for the device experiments. A disabled run keeps
+    // the original wait, copy and sync paths untouched.
+    timing_ = std::getenv("NNTR_KV_TIMING") != nullptr;
 
     std::string path = directory + "/nntr-kv-XXXXXX";
     fd_ = mkostemp(path.data(), O_CLOEXEC);
@@ -227,14 +231,19 @@ public:
         write_planes_[1] = std::make_unique<Mapping>(bytes);
         write_capacity_ = bytes;
       }
+      uint64_t t0 = 0;
+      if (timing_)
+        t0 = now_ns();
       for (unsigned p = 0; p < 2; ++p)
         std::memcpy(write_planes_[p]->address(),
                     entry.buffer->planes[p]->address() + first, bytes);
+      if (timing_)
+        copy_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
       const auto offset = entry.offset + first;
       const auto capacity = entry.capacity;
       write_owner_ = layer;
-      write_pending_ = write_worker_->submit(std::packaged_task<void()>(
-        [this, offset, capacity, bytes] {
+      write_pending_ = write_worker_->submit(
+        std::packaged_task<void()>([this, offset, capacity, bytes] {
           for (unsigned p = 0; p < 2; ++p)
             transferRaw(write_planes_[p]->address(), offset + p * capacity,
                         bytes, true);
@@ -246,9 +255,12 @@ public:
     }
     if (!direct_ && last != first) {
       int rc;
+      const uint64_t t0 = timing_ ? now_ns() : 0;
       do {
         rc = fdatasync(fd_);
       } while (rc && errno == EINTR);
+      if (timing_)
+        fdatasync_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
       if (rc)
         fail("sync backing file");
     }
@@ -273,8 +285,11 @@ public:
   }
 
   void finishStep() {
+    const uint64_t t0 = timing_ ? now_ns() : 0;
     wait();
     waitWrite();
+    if (timing_)
+      drain_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
     for (unsigned i = 0; i < layers_.size(); ++i)
       if (layers_[i].owner == i)
         evict(i);
@@ -324,6 +339,30 @@ public:
                  lookahead_, direct_, peak_bytes_.load(), read_bytes_.load(),
                  write_bytes_, reuse_count_, parallel_reads_, async_writes_,
                  2 * write_capacity_);
+    if (!timing_)
+      return;
+    // Per-report deltas for one request, next to the totals since start.
+    const Timing now{ready_wait_ns_.load(), write_wait_ns_.load(),
+                     fdatasync_ns_.load(),  copy_ns_.load(),
+                     io_read_ns_.load(),    io_write_ns_.load(),
+                     drain_ns_.load()};
+    std::fprintf(stderr,
+                 "[kv-fsu-timing] step ready_wait_us=%.1f write_wait_us=%.1f "
+                 "fdatasync_us=%.1f copy_us=%.1f io_read_us=%.1f "
+                 "io_write_us=%.1f drain_us=%.1f | total "
+                 "ready_wait_us=%.1f write_wait_us=%.1f fdatasync_us=%.1f "
+                 "copy_us=%.1f io_read_us=%.1f io_write_us=%.1f "
+                 "drain_us=%.1f\n",
+                 us(now.ready - last_report_.ready),
+                 us(now.write_wait - last_report_.write_wait),
+                 us(now.fdatasync - last_report_.fdatasync),
+                 us(now.copy - last_report_.copy),
+                 us(now.io_read - last_report_.io_read),
+                 us(now.io_write - last_report_.io_write),
+                 us(now.drain - last_report_.drain), us(now.ready),
+                 us(now.write_wait), us(now.fdatasync), us(now.copy),
+                 us(now.io_read), us(now.io_write), us(now.drain));
+    last_report_ = now;
   }
 
 private:
@@ -448,14 +487,21 @@ private:
   }
 
   void wait() {
-    if (pending_.valid())
+    if (pending_.valid()) {
+      const uint64_t t0 = timing_ ? now_ns() : 0;
       pending_.get();
+      if (timing_)
+        ready_wait_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
+    }
   }
 
   void waitWrite() {
     if (write_pending_.valid()) {
       write_owner_ = inactive;
+      const uint64_t t0 = timing_ ? now_ns() : 0;
       write_pending_.get();
+      if (timing_)
+        write_wait_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
     }
   }
 
@@ -524,8 +570,10 @@ private:
                 write);
   }
 
-  void transferRaw(char *address, size_t file_offset, size_t bytes, bool write) {
+  void transferRaw(char *address, size_t file_offset, size_t bytes,
+                   bool write) {
     auto offset = static_cast<off_t>(file_offset);
+    const uint64_t t0 = timing_ ? now_ns() : 0;
     while (bytes) {
       const ssize_t n = write ? pwrite(fd_, address, bytes, offset)
                               : pread(fd_, address, bytes, offset);
@@ -538,6 +586,10 @@ private:
       bytes -= static_cast<size_t>(n);
       address += n;
       offset += n;
+    }
+    if (timing_) {
+      auto &counter = write ? io_write_ns_ : io_read_ns_;
+      counter.fetch_add(now_ns() - t0, std::memory_order_relaxed);
     }
   }
 
@@ -563,6 +615,25 @@ private:
   std::unique_ptr<IOWorker> prefetch_worker_;
   std::unique_ptr<IOWorker> value_worker_;
   std::future<void> pending_;
+
+  // Stage timing state, only accumulated when the NNTR_KV_TIMING environment
+  // variable is present. The write and value workers add from their threads,
+  // so the counters are atomic. report() prints deltas since the last report
+  // next to the totals.
+  static double us(uint64_t ns) { return ns / 1000.0; }
+  static uint64_t now_ns() {
+    return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch())
+        .count());
+  }
+  struct Timing {
+    uint64_t ready, write_wait, fdatasync, copy, io_read, io_write, drain;
+  };
+  bool timing_ = false;
+  std::atomic<uint64_t> ready_wait_ns_{0}, write_wait_ns_{0}, fdatasync_ns_{0},
+    copy_ns_{0}, io_read_ns_{0}, io_write_ns_{0}, drain_ns_{0};
+  mutable Timing last_report_{};
 };
 #else
 class KVFlashStorage {
