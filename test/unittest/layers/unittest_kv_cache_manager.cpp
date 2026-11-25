@@ -1043,4 +1043,146 @@ TEST(KVCacheManagerFlash, persists_ring_alias_and_existing_snapshot_format) {
     }
   }
 }
+TEST(KVCacheManagerFlash, resident_budget_keeps_owners_across_steps) {
+  using DT = ml::train::TensorDim::DataType;
+  auto path =
+    (std::filesystem::temp_directory_path() / "nntr-kv-fsu-test-XXXXXX")
+      .string();
+  ASSERT_NE(mkdtemp(path.data()), nullptr);
+  struct Directory {
+    std::string path;
+    ~Directory() {
+      std::error_code error;
+      std::filesystem::remove_all(path, error);
+    }
+  } directory{path};
+
+  // 16 MiB keeps every owner of this fixture in the pool across steps.
+  ASSERT_EQ(0, setenv("NNTR_KV_RESIDENT_BYTES", "16777216", 1));
+  causallm::KVCacheManager dram, flash;
+  flash.setFlashStorage(directory.path, 1);
+  constexpr unsigned width = 1024, ring_rows = 65, context = 128;
+  for (auto *cache : {&dram, &flash}) {
+    cache->setActiveLayers({true, false, true, true});
+    cache->setLayerCaps({ring_rows, 0, ring_rows, 0});
+    cache->setLayerKVSources({-1, -1, 0, -1});
+    cache->allocate(4, 1, context, 1, width, DT::FP16);
+  }
+
+  const auto compareLayer = [&](unsigned layer) {
+    const auto &k = dram.getKeyCache(layer);
+    const auto &v = dram.getValueCache(layer);
+    EXPECT_EQ(0, std::memcmp(k.getData<uint16_t>(),
+                             flash.getKeyCache(layer).getData<uint16_t>(),
+                             k.bytes()));
+    EXPECT_EQ(0, std::memcmp(v.getData<uint16_t>(),
+                             flash.getValueCache(layer).getData<uint16_t>(),
+                             v.bytes()));
+  };
+
+  unsigned from = 0;
+  for (unsigned to : {64u, 70u, 71u}) {
+    SCOPED_TRACE(to);
+    flash.beginFlashStep(from);
+    for (unsigned layer : {0u, 2u, 3u}) {
+      SCOPED_TRACE(layer);
+      flash.beginFlashLayer(layer);
+      compareLayer(layer);
+      if (layer != 2u) {
+        for (auto *cache : {&dram, &flash}) {
+          for (unsigned row = from; row < to; ++row) {
+            const auto offset = row % cache->getLayerCap(layer) * width;
+            for (unsigned col = 0; col < width; ++col) {
+              auto value = static_cast<uint16_t>(layer * 500 + row + col);
+              cache->getKeyCache(layer).getData<uint16_t>()[offset + col] =
+                value;
+              cache->getValueCache(layer).getData<uint16_t>()[offset + col] =
+                0xab00u + (value & 0xffu);
+            }
+          }
+        }
+      }
+      flash.finishFlashLayer(layer, from, to);
+    }
+    flash.finishFlashStep();
+    dram.setPosition(to);
+    flash.setPosition(to);
+    from = to;
+    // Every owner fits the budget, so all three planes stay in the pool and
+    // the next step must not read them back from the file.
+    EXPECT_GT(flash.flashRetainedBytes(), 0u);
+  }
+  // Nearly the full ring of every owner (layers 0 and 3; layer 2 aliases
+  // layer 0) is retained.
+  EXPECT_GT(flash.flashRetainedBytes(), 2u * 2 * (ring_rows - 2) * width * 2u);
+
+  // A reset drops the retained owners and the pool, and a new prompt still
+  // produces the same bytes as the DRAM reference.
+  flash.reset();
+  EXPECT_EQ(flash.flashRetainedBytes(), 0u);
+  from = 0;
+  flash.beginFlashStep(from);
+  for (unsigned layer : {0u, 2u, 3u}) {
+    flash.beginFlashLayer(layer);
+    for (unsigned row = from; row < 64; ++row) {
+      const auto offset = row % flash.getLayerCap(layer) * width;
+      for (unsigned col = 0; col < width; ++col) {
+        flash.getKeyCache(layer).getData<uint16_t>()[offset + col] =
+          static_cast<uint16_t>(row + col);
+        flash.getValueCache(layer).getData<uint16_t>()[offset + col] =
+          static_cast<uint16_t>(0x1000u + row + col);
+      }
+    }
+    flash.finishFlashLayer(layer, from, 64);
+  }
+  flash.finishFlashStep();
+  dram.reset();
+  dram.setPosition(0);
+  for (unsigned layer : {0u, 2u, 3u}) {
+    for (unsigned row = 0; row < 64; ++row) {
+      const auto offset = row % dram.getLayerCap(layer) * width;
+      for (unsigned col = 0; col < width; ++col) {
+        dram.getKeyCache(layer).getData<uint16_t>()[offset + col] =
+          static_cast<uint16_t>(0x2000u + row + col);
+        dram.getValueCache(layer).getData<uint16_t>()[offset + col] =
+          static_cast<uint16_t>(0x3000u + row + col);
+      }
+    }
+  }
+  for (unsigned layer : {0u, 2u, 3u}) {
+    flash.beginFlashLayer(layer);
+    for (unsigned row = 0; row < 64; ++row) {
+      const auto offset = row % flash.getLayerCap(layer) * width;
+      for (unsigned col = 0; col < width; ++col) {
+        flash.getKeyCache(layer).getData<uint16_t>()[offset + col] =
+          static_cast<uint16_t>(0x2000u + row + col);
+        flash.getValueCache(layer).getData<uint16_t>()[offset + col] =
+          static_cast<uint16_t>(0x3000u + row + col);
+      }
+    }
+    flash.finishFlashLayer(layer, 0, 64);
+  }
+  // Reading back must go through the graph's begin/finish access pattern:
+  // finishFlashLayer leaves the binding on the pristine mapping when the
+  // owner is retained. Only the rewritten rows are valid on both sides, so
+  // the stale ring rows beyond them are excluded from the comparison.
+  const auto compareRows = [&](unsigned layer, unsigned rows) {
+    const auto &k = dram.getKeyCache(layer);
+    const auto &v = dram.getValueCache(layer);
+    EXPECT_EQ(0, std::memcmp(k.getData<uint16_t>(),
+                             flash.getKeyCache(layer).getData<uint16_t>(),
+                             rows * width * 2));
+    EXPECT_EQ(0, std::memcmp(v.getData<uint16_t>(),
+                             flash.getValueCache(layer).getData<uint16_t>(),
+                             rows * width * 2));
+  };
+  for (unsigned layer : {0u, 2u, 3u}) {
+    SCOPED_TRACE("post-reset");
+    SCOPED_TRACE(layer);
+    flash.beginFlashLayer(layer);
+    compareRows(layer, 64);
+    flash.finishFlashLayer(layer, 64, 64);
+  }
+  unsetenv("NNTR_KV_RESIDENT_BYTES");
+}
 #endif

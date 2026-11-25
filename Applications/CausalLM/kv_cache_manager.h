@@ -78,6 +78,7 @@ public:
   void finishFlashStep();
   void abortFlashStep() noexcept;
   void reportFlashStorage() const;
+  size_t flashRetainedBytes() const;
 
   /**
    * @brief Route every cache slab through an accelerator-visible allocator.

@@ -101,6 +101,13 @@ public:
     // Optional stage timing for the device experiments. A disabled run keeps
     // the original wait, copy and sync paths untouched.
     timing_ = std::getenv("NNTR_KV_TIMING") != nullptr;
+    if (const char *budget = std::getenv("NNTR_KV_RESIDENT_BYTES")) {
+      // Owner retention budget in DRAM bytes. Owners kept in the pool skip
+      // the full-history read on the next step; the others still stream.
+      resident_budget_ = std::strtoull(budget, nullptr, 10);
+      buffers_.resize(layers_.size() +
+                      std::min<size_t>(lookahead_, layers_.size() - 1) + 1);
+    }
 
     std::string path = directory + "/nntr-kv-XXXXXX";
     fd_ = mkostemp(path.data(), O_CLOEXEC);
@@ -272,8 +279,29 @@ public:
     auto &entry = layers_[layers_[layer].owner];
     if (!entry.buffer)
       return;
+    // The tensor binding always returns to the original mapping address, so
+    // the graph keeps seeing the pristine plane it was built with.
+    const auto restore = [&entry] {
+      for (unsigned plane = 0; plane < 2; ++plane)
+        entry.bindings[plane]->setAddr(entry.bindings[plane]->address());
+    };
+    if (entry.retained) {
+      // The owner is already in the pool for the next step; this step wrote
+      // new rows into the same buffer, so only the accounting changes.
+      retained_bytes_ -= 2 * entry.buffer->resident;
+      entry.retained = false;
+    }
+    if (resident_budget_ != 0 &&
+        retained_bytes_ + 2 * entry.buffer->resident <= resident_budget_) {
+      // Keep the owner in the pool so the next step skips its full-history
+      // read.
+      entry.retained = true;
+      retained_bytes_ += 2 * entry.buffer->resident;
+      restore();
+      return;
+    }
     for (unsigned plane = 0; plane < 2; ++plane) {
-      entry.bindings[plane]->setAddr(entry.bindings[plane]->address());
+      restore();
       if (!direct_ && entry.saved != 0) {
         const auto off =
           static_cast<off_t>(entry.offset + plane * entry.capacity);
@@ -322,23 +350,40 @@ public:
     }
   }
 
+  size_t retainedBytes() const { return retained_bytes_; }
+
   void reset() {
-    finishStep();
+    // A new prompt must not retain the previous request's owners. The
+    // bindings must return to their own mappings before the pool pages go.
+    wait();
+    waitWrite();
+    for (auto &layer : layers_) {
+      if (!layer.buffer)
+        continue;
+      for (unsigned plane = 0; plane < 2; ++plane)
+        layer.bindings[plane]->setAddr(layer.bindings[plane]->address());
+      layer.retained = false;
+      releaseBuffer(layer);
+    }
     for (auto &buffer : buffers_)
       discardTail(buffer, 0);
     failed_ = false;
-    for (auto &layer : layers_)
+    retained_bytes_ = 0;
+    for (auto &layer : layers_) {
+      layer.retained = false;
       layer.saved = 0;
+    }
   }
 
   void report() const {
     std::fprintf(stderr,
                  "[kv-fsu] lookahead=%u direct_io=%d peak_kv_bytes=%zu "
                  "read_bytes=%zu write_bytes=%zu reused_buffers=%zu "
-                 "parallel_reads=%zu async_writes=%zu staging_bytes=%zu\n",
+                 "parallel_reads=%zu async_writes=%zu staging_bytes=%zu "
+                 "retained_bytes=%zu\n",
                  lookahead_, direct_, peak_bytes_.load(), read_bytes_.load(),
                  write_bytes_, reuse_count_, parallel_reads_, async_writes_,
-                 2 * write_capacity_);
+                 2 * write_capacity_, retained_bytes_);
     if (!timing_)
       return;
     // Per-report deltas for one request, next to the totals since start.
@@ -441,6 +486,7 @@ private:
     size_t capacity = 0;
     size_t saved = 0;
     Buffer *buffer = nullptr;
+    bool retained = false;
   };
 
   [[noreturn]] static void fail(const char *operation) {
@@ -634,6 +680,8 @@ private:
   std::atomic<uint64_t> ready_wait_ns_{0}, write_wait_ns_{0}, fdatasync_ns_{0},
     copy_ns_{0}, io_read_ns_{0}, io_write_ns_{0}, drain_ns_{0};
   mutable Timing last_report_{};
+  size_t resident_budget_ = 0;
+  size_t retained_bytes_ = 0;
 };
 #else
 class KVFlashStorage {
@@ -718,6 +766,10 @@ void KVCacheManager::finishFlashStep() {
 void KVCacheManager::abortFlashStep() noexcept {
   if (flash_)
     flash_->abortStep();
+}
+
+size_t KVCacheManager::flashRetainedBytes() const {
+  return flash_ ? flash_->retainedBytes() : 0;
 }
 
 void KVCacheManager::reportFlashStorage() const {
