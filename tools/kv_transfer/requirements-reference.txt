@@ -1,0 +1,7 @@
+# Separate optional environment for the small CPU cross-runtime diagnostic.
+# Install torch with --index-url https://download.pytorch.org/whl/cpu
+# before installing this file.
+torch==2.9.1
+transformers==4.57.3
+numpy==2.2.6
+safetensors==0.7.0

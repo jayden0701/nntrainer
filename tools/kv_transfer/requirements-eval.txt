@@ -1,0 +1,6 @@
+# Versions used by the 2026-11-17 CPU paper-protocol evaluation.
+numpy==2.5.5
+huggingface-hub==2.4.0
+tokenizers==0.23.3
+pyarrow==26.0.1
+safetensors==0.8.0
