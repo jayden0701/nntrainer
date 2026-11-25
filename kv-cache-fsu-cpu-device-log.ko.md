@@ -129,3 +129,32 @@ resident와 fsu0/1/3의 `output_ids`가 전부 일치했다. `[kv-fsu]`: `direct
 - 문서 3.3: 워커 `job_` 1칸 구조 개선(첫 레이어 선읽기와 예산 부족 시의 동기 처리 겹침).
 - qwen3 1.7b는 nntr pack 변환이 필요해 미수행. 0.6b에서 확정한 정책(예산 ≥ 작업 집합이면 읽기 0)을 긴 컨텍스트·더 큰 모델에서 반복 검증한다.
 
+## 6. 3.4 구현과 기기 재측정 — 쓰기 모음(write-back)
+
+### 구현 (커밋 `4cf90f660`)
+
+예산 모드에서 풀 버퍼가 이미 작업 복사본이므로 `store()`가 더 이상 매번 `pwrite`하지 않고 dirty 범위만 표시하고, owner가 풀에서 쫓겨날 때(evict 방출 경로) 합쳐서 쓴다. 스냅샷 복원(`replace=true`)은 여전히 즉시 기록해 오류를 반환 전에 보고하고, `reset`은 새 프롬프트 데이터이므로 미기록 범위를 함께 버린다. `NNTR_KV_WRITE_THROUGH`로 구 경로(매 store 기록)를 A/B할 수 있다. `store`의 논리적 `write_bytes` 계산은 그대로 두고 실제 기록만 늦춘다. 유닛테스트 1개(`resident_budget_flushes_dirty_on_eviction`, 예산을 owner 1개 크기로 제한해 쫓겨나는 레이어의 flush 후 재읽기를 검증)를 추가해 39/39다.
+
+### 기기 측정 — qwen3 0.6b, fsu1, 예산 242 MB(전부 유지)
+
+같은 빌드에서 교차 5회씩(write-through vs write-back), prefill 542 / decode 96, requests_long:
+
+| 모드 | decode p50 (ms) | decode min–max | TTFT p50 (ms) | 요청당 flash write IO | peak RSS |
+|---|---:|---:|---:|---:|---:|
+| write-through (기존) | 16.98 | 16.6–74.0 | 1620 | io_write 414,913 us | 561 MB |
+| write-back | **15.01** | 14.8–15.4 | **1257** | **0 us** | 558 MB |
+
+10회 전부 `output_ids` 일치(단일 결과), cached_after 638, `read_bytes=0` 유지. `io_write_us` 합계 0은 이 요청에서 owner가 전혀 쫓겨나지 않아 flush가 한 번도 없었음을 뜻한다(논리적 write_bytes 84,180,992는 그대로 기록).
+
+### 해석
+
+1. **쓰기 제거 효과.** decode p50 17.0→15.0 ms(−12%), 분산 상한이 74 ms → 15.4 ms로 사라졌다. 토큰당 56회 4 KiB `pwrite`가 우발 부하에서 빠졌다.
+2. **TTFT 개발.** prefill의 큰 청크 쓰기도 지연 기록되어 TTFT p50 1620→1257 ms(−360 ms, −22%).
+3. **트레이드오프.** 전부 유지 + write-back에서는 요청 내 파일 기록이 전혀 없다 — 데이터는 풀 버퍼(DRAM)에만 있고, owner가 예산 밖으로 쫓겨날 때만 파일에 도달한다. 프로세스 비정상 종료 시 미기록 데이터가 사라진다(재시작 정책은 기존과 동일: 실패 세션을 잇지 않고 새 프롬프트로 재시작). 예산을 줄이면 쫓겨나는 시점마다 flush되므로 기존 의미가 보존된다.
+4. **잔여 격차.** resident 대비 decode ~15 vs ~18.8 ms 수준에서 역전(이 컨텍스트에서는 FSU 쪽이 오히려 빠르다 — 쓰기·읽기 IO가 0이면 resident의 KV 전역 접근과 동일해지기 때문). 남는 차이는 관리 비용과 풀 슬롯 복사이다.
+
+### 결론
+
+- 예산 ≥ 작업 집합 + write-back 조합이 qwen3 0.6b CPU에서 resident보다 RSS −130 MB, decode p50 ~15 ms로 최적이며 출력은 전부 일치한다.
+- 문서 3단계(CPU)의 계측·읽기 억제·쓰기 억제가 모두 기기에서 검증됐다. 남은 문서 작업은 3.3(워커 `job_` 1칸 구조 개선)과 4단계(HTP, S26U 확보 후)다.
+- qwen3 1.7b는 nntr pack 변환이 필요해 미수행(HF 원본만 존재).
