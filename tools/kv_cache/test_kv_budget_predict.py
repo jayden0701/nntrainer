@@ -80,6 +80,12 @@ class BudgetPolicyTest(unittest.TestCase):
             self.assertNotIn("t_service", p)
             with self.assertRaises(ValueError):
                 tool.calibrate(root, 6, None, None, {"b0": "1MiB"})
+            mixed_policy = root / "b0_r2.log"
+            mixed_policy.write_text(report(0, 0, 0).strip() + " owner_lookahead=1\n" +
+                                    tail + request(6, 14))
+            with self.assertRaisesRegex(ValueError, "lookahead"):
+                tool.calibrate(root, 6, None, None, {})
+            mixed_policy.unlink()
             (root/"different.log").write_text(report(0, 0, 0) +
                                               request(6, 14).replace("[1, 2]", "[2, 1]"))
             with self.assertRaises(ValueError):

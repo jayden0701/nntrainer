@@ -181,7 +181,8 @@ def calibrate(logdir, rows, row_bytes, owners, mapping, page_bytes=None):
             if fsu is None or tag.startswith("resident"):
                 raise ValueError(f"{path}: inconsistent FSU/resident run")
             mode = (fsu["direct_io"], fsu["lookahead"], fsu.get("page_bytes"),
-                    fsu.get("parallel_reader"), fsu.get("async_writer"))
+                    fsu.get("parallel_reader"), fsu.get("async_writer"),
+                    fsu.get("owner_lookahead", 0))
             shape = (fsu.get("flash_owners", fsu.get("layers")), fsu.get("uniform_row_bytes"),
                      fsu.get("layers"))
             if geometry is not None and geometry != shape:
@@ -228,7 +229,7 @@ def calibrate(logdir, rows, row_bytes, owners, mapping, page_bytes=None):
                "row_bytes": row_bytes, "owners": owners, "layers": layers,
                "resident": summarize(resident),
                "io": dict(zip(("direct_io", "lookahead", "page_bytes", "parallel_reader",
-                               "async_writer"), io_mode)),
+                               "async_writer", "owner_lookahead"), io_mode)),
                "points": []}
     if write_modes:
         profile["io"]["write_back"], profile["io"]["flush_sync"] = write_modes.pop()

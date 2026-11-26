@@ -208,13 +208,19 @@ public:
   }
 
   void begin(unsigned layer) {
+    const auto owner = layers_[layer].owner;
+    // A retained owner was excluded when the batch was submitted. It can
+    // compute while later owners are being read, just like a DRAM window.
+    if (layers_[owner].retained && pending_.valid()) {
+      load(layer);
+      return;
+    }
     wait();
     load(layer);
-    const unsigned end =
-      layer + 1 + std::min<unsigned>(lookahead_, layers_.size() - layer - 1);
-    if (layer + 1 == end)
-      return;
-    prefetch(layer + 1, end, layers_[layer].owner);
+    const auto it = std::find(prefetched_.begin(), prefetched_.end(), owner);
+    if (it != prefetched_.end())
+      prefetched_.erase(it);
+    prefetch(layer + 1, owner, lookahead_);
   }
 
   void load(unsigned layer, bool bind = true) {
@@ -350,11 +356,17 @@ public:
       }
     }
     releaseBuffer(entry);
+    // A later alias can now need a read that an earlier scan skipped while
+    // this owner was current or retained. Recheck from the next consumer.
+    if (has_aliases_)
+      next_search_ = 0;
   }
 
   void finishStep() {
     const uint64_t t0 = timing_ ? now_ns() : 0;
     wait();
+    prefetched_.clear();
+    next_search_ = 0;
     waitWrite();
     if (timing_)
       drain_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
@@ -370,15 +382,10 @@ public:
       reset();
     else if (failed_)
       throw std::runtime_error("KV FSU: start a new prompt after an I/O error");
-    if (lookahead_ == 0)
-      return;
-    const auto first =
-      std::find_if(layers_.begin(), layers_.end(),
-                   [](const Layer &layer) { return layer.owner != inactive; });
-    if (first != layers_.end() && layers_[first->owner].saved != 0) {
-      const auto index = static_cast<unsigned>(first - layers_.begin());
-      prefetch(index, index + 1, inactive);
-    }
+    // Prime at most one miss before the first attention, including when a
+    // run of sliding layers precedes it. A new prompt has no saved history.
+    if (lookahead_ && from)
+      prefetch(0, inactive, 1);
   }
 
   void abortStep() noexcept {
@@ -396,6 +403,8 @@ public:
     // A new prompt must not retain the previous request's owners. The
     // bindings must return to their own mappings before the pool pages go.
     wait();
+    prefetched_.clear();
+    next_search_ = 0;
     waitWrite();
     for (auto &layer : layers_) {
       layer.dirty.clear();
@@ -426,7 +435,8 @@ public:
       "retained_bytes=%zu deferred_writes=%zu budget_bytes=%zu "
       "page_bytes=%zu backing_write_bytes=%zu kv_payload_peak_bytes=%zu "
       "retained_owners=%zu layers=%zu flash_owners=%zu uniform_row_bytes=%zu "
-      "write_back=%d flush_sync=%d parallel_reader=%d async_writer=%d\n",
+      "write_back=%d flush_sync=%d parallel_reader=%d async_writer=%d "
+      "owner_lookahead=1\n",
       lookahead_, direct_, peak_bytes_.load(), read_bytes_.load(), write_bytes_,
       reuse_count_, parallel_reads_, async_writes_, 2 * write_capacity_,
       retained_bytes_, deferred_writes_, resident_budget_, page_,
@@ -597,16 +607,32 @@ private:
     return (bytes + page_ - 1) / page_ * page_;
   }
 
-  void prefetch(unsigned first, unsigned end, unsigned exclude) {
-    pending_ = prefetch_worker_->submit(
-      std::packaged_task<void()>([this, first, end, exclude] {
-        for (unsigned next = first; next < end; ++next) {
-          const auto owner = layers_[next].owner;
-          if (owner != inactive && owner != exclude &&
-              layers_[owner].saved != 0)
-            load(next, false);
-        }
-      }));
+  void prefetch(unsigned first, unsigned exclude, unsigned limit) {
+    // Select on the inference thread after joining the previous batch. Slots
+    // already prefetched stay charged until their first consumer binds them.
+    const size_t already_ready = prefetched_.size();
+    // Already inspected resident or empty suffixes need no further scan
+    // this step unless eviction makes an upcoming alias eligible again.
+    next_search_ = std::max<size_t>(first, next_search_);
+    while (next_search_ < layers_.size() && prefetched_.size() < limit) {
+      const auto owner = layers_[next_search_++].owner;
+      if (owner == inactive || owner == exclude || owner == write_owner_)
+        continue;
+      const auto &entry = layers_[owner];
+      if (!entry.saved || entry.buffer)
+        continue;
+      // Earlier entries are ready and already have a buffer. Only the
+      // newly selected suffix can contain this yet-unloaded owner.
+      if (std::find(prefetched_.begin() + already_ready, prefetched_.end(),
+                    owner) == prefetched_.end())
+        prefetched_.push_back(owner);
+    }
+    if (prefetched_.size() > already_ready)
+      pending_ = prefetch_worker_->submit(
+        std::packaged_task<void()>([this, already_ready] {
+          for (size_t i = already_ready; i < prefetched_.size(); ++i)
+            load(prefetched_[i], false);
+        }));
   }
 
   void readPlanes(const Layer &entry) {
@@ -764,6 +790,8 @@ private:
   std::unique_ptr<IOWorker> prefetch_worker_;
   std::unique_ptr<IOWorker> value_worker_;
   std::future<void> pending_;
+  std::vector<unsigned> prefetched_;
+  size_t next_search_ = 0;
 
   // Stage timing state, only accumulated when the NNTR_KV_TIMING environment
   // variable is present. The write and value workers add from their threads,
@@ -848,13 +876,8 @@ void KVCacheManager::setFlashStorage(std::string directory,
 }
 
 void KVCacheManager::beginFlashLayer(unsigned layer) {
-  // [kv-fsu mixed] only flash-owned layers enter the streaming bracket; a
-  // windowed layer's host DRAM tensor is always live, so there is nothing
-  // to lease or prefetch for it. Known cost in a mixed layout with
-  // lookahead 1: a flash layer whose next layer is windowed loses its
-  // one-deep prefetch overlap (the next flash owner is outside the
-  // i+1..end window). Correctness is unaffected; revisit if a mixed
-  // model shows ready-wait regression (see design doc §2.5 D).
+  // Windowed layers use their DRAM tensors while the reader can already
+  // be loading a subsequent flash owner.
   if (!isFlashOwned(layer))
     return;
   flash_->begin(layer);

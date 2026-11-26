@@ -20,6 +20,9 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
+#ifdef __linux__
+#include <unistd.h>
+#endif
 
 #include <kv_cache_manager.h>
 #include <kv_ring.h>
@@ -1173,6 +1176,66 @@ void mixedStep(causallm::KVCacheManager &dram, causallm::KVCacheManager &flash,
   EXPECT_EQ(dram.getBase(2), flash.getBase(2));
 }
 } // namespace
+
+TEST(KVCacheManagerFlash, lookahead_counts_distinct_upcoming_file_reads) {
+  const auto page = static_cast<unsigned>(sysconf(_SC_PAGESIZE));
+  const auto path = std::filesystem::temp_directory_path().string();
+  using Dim = ml::train::TensorDim;
+  for (bool mixed : {false, true}) {
+    for (bool keep_middle : {false, true}) {
+      const auto budget = std::to_string(keep_middle ? 2 * page : 0);
+      ScopedEnv retention("NNTR_KV_RESIDENT_BYTES", budget.c_str());
+      for (unsigned depth : {0u, 1u, 2u, 8u}) {
+        SCOPED_TRACE(::testing::Message()
+                     << mixed << "/" << budget << "/" << depth);
+        causallm::KVCacheManager cache;
+        cache.setFlashStorage(path, depth);
+        const unsigned mid = mixed ? 3 : 1, last = mixed ? 6 : 2;
+        std::vector<unsigned> widths(last + 1, 1), caps(last + 1),
+          keep(last + 1);
+        widths[0] = page;
+        widths[last] = 2 * page;
+        if (mixed) {
+          // Window, inactive layer, flash owner, its alias, another window.
+          caps[1] = caps[5] = 3;
+          keep[1] = keep[5] = 1;
+          cache.setActiveLayers({true, true, false, true, true, true, true});
+          cache.setLayerKVSources({-1, -1, -1, -1, 3, -1, -1});
+        }
+        cache.allocate(last + 1, 1, 8, widths, Dim::DataType::FP16,
+                       Dim::Format::NCHW, caps, keep);
+        const auto read_bytes = [&cache]() -> size_t {
+          ::testing::internal::CaptureStderr();
+          cache.reportFlashStorage();
+          const auto report = ::testing::internal::GetCapturedStderr();
+          const std::string field = " read_bytes=";
+          return std::stoull(report.substr(report.find(field) + field.size()));
+        };
+        cache.beginFlashStep(0);
+        for (unsigned owner : {0u, mid, last}) {
+          cache.beginFlashLayer(owner);
+          cache.getKeyCache(owner).getData<uint16_t>()[0] = owner + 1;
+          cache.finishFlashLayer(owner, 0, 1);
+        }
+        cache.finishFlashStep();
+        const auto initial = read_bytes();
+        cache.beginFlashStep(1);
+        cache.beginFlashLayer(0);
+        EXPECT_EQ(cache.getKeyCache(0).getData<uint16_t>()[0], 1u);
+        cache.finishFlashLayer(0, 1, 2);
+        // Drain before entering another attention. Each owner's byte count
+        // is distinct, so this checks exactly which owners were read ahead.
+        cache.finishFlashStep();
+        size_t expected = 4 * page;
+        if (!keep_middle && depth >= 1)
+          expected += 2 * page;
+        if (depth >= (keep_middle ? 1u : 2u))
+          expected += 8 * page;
+        EXPECT_EQ(read_bytes() - initial, expected);
+      }
+    }
+  }
+}
 
 TEST(KVCacheManagerFlash, mixed_storage_keeps_windowed_layers_off_flash) {
   using DT = ml::train::TensorDim::DataType;

@@ -69,7 +69,9 @@ public:
   KVCacheManager(KVCacheManager &&);
   KVCacheManager &operator=(KVCacheManager &&other) noexcept;
 
-  /** Opt into per-layer Flash storage for batch-one CPU inference. */
+  /** Opt into batch-one CPU Flash storage. lookahead limits the number of
+   * distinct upcoming owners with saved KV prefetched from the backing file.
+   * Zero disables prefetch. DRAM-resident windows consume no slots. */
   void setFlashStorage(std::string directory, unsigned lookahead);
   bool usesFlashStorage() const { return flash_ != nullptr; }
   /**
