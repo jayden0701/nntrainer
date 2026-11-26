@@ -436,7 +436,7 @@ FSU 실행의 I/O 회계: `peak_kv_bytes=16384 read_bytes=196608 write_bytes=172
 
 ### 실험실 실팩(gemma4_cpu / gemma4_it_x86) — 선결과제로 보류
 
-로컬 gemma4 실팩 전체가 `tie_word_embeddings=true` + `skip_prefill=true`인데, HEAD의 `buildLmHeadOutput()`이 tied lm_head에 `plan_last_row_only=true`를 넣고 `TieWordEmbedding`이 이 속성을 받지 못해 그래프 구성 단계에서 FATAL난다(변경 코드가 전부 dormant인 구 의미 상주 경로에서도 동일 재현 — 본 변경과 무관한 기존 불일치). 또한 실팩의 기본 설정은 windowed 상한이 어차피 full height다: gemma4_cpu는 `roundUp64(512+2560)=3072 = max_seq`, gemma4_it_x86은 `min(roundUp64(512+4500), 5000) = 5000 = max_seq`. 행 축소를 관측하려면 `init_seq_len`을 줄인 pack이 필요한데 위 FATAL이 먼저 막는다. 실팩 측정(메모리 절감량, RSS, 창 크기별 디코드)은 이 lm_head 속성 정리 이후 별도 기록으로 남긴다.
+로컬 gemma4 실팩 전체가 `tie_word_embeddings=true` + `skip_prefill=true`인데, HEAD의 `buildLmHeadOutput()`이 tied lm_head에 `plan_last_row_only=true`를 넣고 `TieWordEmbedding`이 이 속성을 받지 못해 그래프 구성 단계에서 FATAL난다(변경 코드가 전부 dormant인 구 의미 상주 경로에서도 동일 재현 — 본 변경과 무관한 기존 불일치). **이 FATAL은 이후 [lmhead] 커밋(`fa82a1799`)으로 수정됐다** — 두 레이어가 이미 height-1 플래닝과 마지막 행만 계산을 무조건 하고 있었으므로 속성 선언만 추가했고, tied pack 두 경로(skip_prefill on/off) 완주를 확인했다. 또한 실팩의 기본 설정은 windowed 상한이 어차피 full height다: gemma4_cpu는 `roundUp64(512+2560)=3072 = max_seq`, gemma4_it_x86은 `min(roundUp64(512+4500), 5000) = 5000 = max_seq`. 행 축소를 관측하려면 `init_seq_len`을 줄인 pack이 필요하다(위 FATAL은 해제됐다). 실팩 측정(메모리 절감량, RSS, 창 크기별 디코드)은 별도 기록으로 남긴다. 참고: gemma4_cpu·gemma4_it_arm_precomputed_q40 pack은 별개의 기존 문제(Q4_0 시절 양자화본과 HEAD의 Q6_K `per_layer_input_embedding` 기대 불일치, 재양자화 필요)로 가중치 로드 단계에서 실패한다.
 
 ### 남은 것
 
