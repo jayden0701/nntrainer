@@ -15,7 +15,7 @@
   `build-fsu/logs/roll74/g4/*.log`
 - resident 기준: `resident_rep{1,2}.log` (NNTR_KV_WINDOW_CAP=1)
 - 무효 파일: `qw/*.INVALID-ran-la1` (실행기 config 토글 버그로 la2/rolling 의도가 la1으로 실행됨 — 제외)
-- `*.log` 파싱: `python3 /tmp/parse_roll.py "qw/*"` (파서 사본은 이 디렉터리에 둘 것)
+- `*.log` 파싱: `python3 tools/kv_cache/parse_kv_roll_logs.py "qw/*"`
 
 ## qwen3-1.7b (C=16 MiB / R=8 MiB 및 C=10 MiB / R=6 MiB)
 
