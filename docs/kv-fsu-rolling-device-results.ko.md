@@ -115,3 +115,27 @@ R=2~4M(부분 상주)은 demand read 26~29 s를 유발해 오히려 해롭고, *
 - 같은 시간대 R≥8M 구성은 전혀 열화 없음(52 ms 유지)
 - 결론: **UFS 읽기 지연이 세션 후반 팽창하며, 상주 유지가 그 열화에 대한 방어막**. 긴 벤치마크 캠페인에서는 구성 실행 순서를 회전시키지 않으면 이 효과가 정책 비교를 오염시킨다.
 - 참고: gemma4 resident_sweep{1,2,3} 로그는 config 미전환으로 FSU la2 nocap으로 실행됨 → `.INVALID-ran-fsu-la2nocap`로 개명
+# 3차: 긴 컨텍스트 2 시나리오 (커밋 74d30f11b, SM-S947N)
+
+- 시나리오 A "긴 prefill + 짧은 decode": prefill 1,024토큰 + 48토큰 생성 (ctx ~1,072)
+- 시나리오 B "긴 decode": prefill 1,024토큰 + 700토큰 생성 (ctx ~1,724)
+- 구성: resident / FSU 전량 스트리밍(la2, R=0) / FSU 튜닝 예산 (qwen C=48M/R=24M, gemma C=48M/R=8M)
+- 로그: `scen/{qw,g4}_{A,B}_{res,stream,tuned}.log`. 전부 0 fatal, 출력은 resident와 비트 일치
+
+## 결과 (steady ms/tok, 토큰당 플래시 읽기)
+
+| 모델 | 시나리오 | resident | 스트리밍 R=0 | 튜닝 예산 | 비고 |
+|---|---|---:|---:|---:|---|
+| qwen | A (prefill 1024+48) | 32.4 | 51.9 (120 MB/tok) | **73.8** (99 MB/tok) | 튜닝이 스트리밍보다 느림 |
+| qwen | B (긴 decode 700) | 37.4 | 90.5 (158 MB/tok) | **219.1** (136 MB/tok) | consumer_wait 88.5 s — 예산 정책 붕괴 |
+| gemma4 | A | 60.4 | 112.4 (15.2 MB/tok) | **60.4** (0 MB/tok) | resident 완전 동급 |
+| gemma4 | B | 63.1 | 143.7 (19.7 MB/tok) | **64.3** (1.6 MB/tok) | resident 동급 |
+
+- TTFT(긴 prefill): qwen 8.4~9.0 s (resident) vs 9.4~10.0 (FSU) vs 9.5~10.4 (튜닝) — FSU prefill 오버헤드 ~10%
+- RSS: qwen resident 1.42 GB vs FSU 1.20 GB vs 튜닝 1.24 GB
+
+## 새 발견
+
+1. **ctx가 자라면 "중간 예산"이 최악이 된다 (U자 곡선의 ctx 축 재현)**: ctx ~1,316에서 무릎이었던 qwen C=48M/R=24M가 ctx ~1,724에서는 스트리밍보다 2.4배 느다 (219 vs 90 ms/tok). 읽기 바이트는 오히려 적은데(136 vs 158 MB/tok) consumer_wait가 88.5 s로 폭증 — owner 하나가 7.2 MB로 커진 상태에서 R=24M(≈3 owner)만 유지하면 풀이 예약으로 포화되어 필수 읽기가 선읽기 뒤에 줄을 선다. **예산 정책의 무릎은 ctx에 따라 이동한다: 깊은 ctx에서는 전부 상주(R=ctx×114,688 B) 아니면 R=0 둘 중 하나다.**
+2. **gemma4는 ctx에 강하다**: 창 24.6 MB + global 3 owner만 스트리밍 대상이라, R=8M로 global 행 전부를 상주하면 ctx 1,724에서도 resident 동급(64.3 vs 63.1). sliding 혼합 모델의 FSU 적합성 재확인.
+3. **resident 요구 메모리 (참고)**: qwen ctx 1,724 → 197.7 MB (1,724 × 114,688 B); gemma4 ctx 1,724 → 창 상한 적용 시 45.8 MB / 무상한 105.9 MB.
