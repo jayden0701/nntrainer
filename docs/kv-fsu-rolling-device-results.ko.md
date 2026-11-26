@@ -10,9 +10,8 @@
 
 ## 로그 경로
 
-- qwen3-1.7b (global 전용, 28 owner): `build-fsu/logs/roll74/qw/*.log`
-- gemma4-e2b (sliding/global 혼합: 12 windowed + 3 streaming + 20 aliased / 35 layers):
-  `build-fsu/logs/roll74/g4/*.log`
+- 원본 로그 사본(저장소): `tools/kv_cache/roll74_device_logs/{qw,g4}/*.log`
+- 실행 당시 경로(로컬, gitignore): `build-fsu/logs/roll74/qw/*.log`, `build-fsu/logs/roll74/g4/*.log`
 - resident 기준: `resident_rep{1,2}.log` (NNTR_KV_WINDOW_CAP=1)
 - 무효 파일: `qw/*.INVALID-ran-la1` (실행기 config 토글 버그로 la2/rolling 의도가 la1으로 실행됨 — 제외)
 - `*.log` 파싱: `python3 tools/kv_cache/parse_kv_roll_logs.py "qw/*"`
