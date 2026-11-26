@@ -365,3 +365,81 @@ I/O 회계(네 구성·모든 반복 공통 확인): read A 6,407,847,936 B, B·
 3. 호스트 decode 쓰기(평면당 4 KB)는 64 KB 비동기 경로 미달이라 전부 동기 실행된다(async_writes = 0) — 쓰기 모음 이득이 과소 계산될 여지는 있으나 네 구성 모두 같은 조건이다.
 4. 첫 시도에서 스크립트가 FSU 설정이 없는 pack(`~/TEST_MODELS/qwen3-1.7b`)을 가리켜 FSU가 꺼진 채 돌았다. pack을 `~/TEST_MODELS/qwen3-1.7b-fsu`로 고쳐 재실행했고(요청 파일은 원본 pack 것을 사용), 위 20개 로그가 그 결과다. 코드 변경은 없다.
 5. `output_ids`는 20개 실행 모두 완전 일치한다(요청당 97 ids — `gen_tok` 96 표기와 1 차이 나는 보고 필드 특성은 §9.1 기기 로그와 같은 기존 현상이며 전 실행 동일하다).
+
+## 11. 혼재 KV 저장소를 CPU 실그래프에 연결 — sliding window 행 축소 활성화 (호스트)
+
+§9.2가 기록한 대로 `compact()`의 이동 대상은 "allocate()가 rows/keep을 거부하는 동안에는 존재하지 않는다"가 정확했다. fc2fec519가 저장소 레이아웃(혼재 구성)을 연 뒤에도 CPU 실그래프의 `planKVCache()`는 sliding 레이어에 여전히 full height(`MAX_SEQ_LEN`)를 내려주고 있어서, windowed 레이어라는 물리 실체가 그래프 위에는 만들어지지 않았다. 이번 변경으로 CPU 경로가 HTP(`gemma4_htp_causallm.cpp`의 행 산식)와 **동일한 windowed 상한**을 쓰도록 활성화했다 — 즉 1단계(fc2fec519)와 6단계(CPU 반쪽)가 이어졌다. 레이아웃 수식 자체는 바꾸지 않았다(§3.1의 D 정책 유지, B는 여전히 미래 과제).
+
+### 구현
+
+| 위치 | 내용 |
+|---|---|
+| `transformer.h` | `getKVCacheRows()`에 windowed 분기 추가: sliding 레이어가 `rows = min(max_seq, roundUp64(window + max(init_seq_len, num_to_generate)))` 행으로 줄어든다(HTP 산식과 동일). `kvFsuWindowCap()`이 참일 때만 적용되고, sink/int8 레이어는 구조적으로 제외(`kvRingLayerEligible` 재사용), window ≥ max_seq면 full height(기존 동작) |
+| `causal_lm.{h,cpp}` | `KVCacheLayout`에 rows/keep 벡터 추가. `planKVCache()`가 windowed rows를 계산하고 `allocateKVCacheStorage()`가 `kv_cache.allocate(..., rows, keep)`로 전달. `CausalLM::kvFsuWindowCap()`: `kv_flash_fsu` 구성 + cpu 엔진에서 자동, 상주 실행에서는 `NNTR_KV_WINDOW_CAP=1`로 강제(동일 상한의 A/B 기준선용) |
+| `causal_lm.cpp` | `compactKVCache()`가 `cache_base`를 CPU `MHACoreLayer`에도 push(기존엔 HTP 전용). prefill 경로(windowed가 켜지면)에 compaction 지점 정리: 청크 루프는 청크 앞, 단일 블록은 블록 앞, 행 단위 재개 프리필은 행 앞 |
+| `mha_core.{h,cpp}` | legacy host 경로에 `kv_cache_base` 추가 — 모든 캐시 행 오프셋(`cacheRow()`)이 평면 상대가 되고 RoPE/마스크는 절대 위치 유지. 창을 벗어나는 step 쓰기는 "compaction을 건너뛰었다"는 원인을 밝히는 예외로 거부 |
+| `kv_cache_manager.cpp` | allocate 완료 시 혼재 분해를 한 줄로 증언: `[kv-fsu] mixed storage: N windowed layer(s) on host DRAM (compacting rows), M streaming through flash, ...` |
+
+### 의미 변화 (기존 CPU 상주 실행 대비, 명시)
+
+**CPU sliding 레이어의 KV 캐시 저장 높이가 "전체 이력(max_seq행)"에서 "창 K행(window + headroom)"으로 바뀐다.** 기존 CPU 상주 실행은 sliding 레이어도 max_seq 전체를 유지했지만, 참조하는 마스크는 마지막 W행뿐이었다(HTP와 gemma4 모델 의미와 같은 근거). 이 변경은 그 **버려지는 접두 행의 저장을 실제로 줄이는 것**이고, 정확도 기준선은 같은 상한을 강제한 상주 실행(`NNTR_KV_WINDOW_CAP=1`)이다. 전체평면 상주 실행(구 의미)도 함께 비교했고 결과는 아래 표와 같다. full-attention 레이어와 sliding 없는 모델(qwen3)은 이 변경과 무관하다 — cap 수식이 full height를 그대로 내려주므로 회귀면이 아니다.
+
+### 검증 — gemma4_tiny 3-way (sliding_window=4, layer 0 sliding + layer 1 full, max_seq_len 128 확장)
+
+원본 fixture(max_seq 8)는 `roundUp64(4+4)=64 ≥ 8`이라 full height 그대로라(회귀 확인용으로 남김), `max_seq_len=128`·`max_position_embeddings=128`로 확장한 pack 3종으로 비교했다. 프롬프트 80토큰, `NNTR_PREFILL_CHUNK=4`(청크마다 compaction), num_to_generate 1.
+
+| 구성 | windowed 상한 | output_ids | prefill / cached_after | 비고 |
+|---|---|---|---|---|
+| 상주, 전체평면 (구 의미) | 없음(2×128행) | `[0, 0]` | 80 / 81 | 기준선 A |
+| 상주 + `NNTR_KV_WINDOW_CAP=1` | sliding 64행(`KV rows 192 (vs 256 full)` 로그) | `[0, 0]` | 80 / 81 | 기준선 B — A와 일치 |
+| FSU (`kv_flash_fsu`) | 자동 | `[0, 0]` | 80 / 81 | `[kv-fsu] mixed storage: 1 windowed layer(s) on host DRAM (compacting rows), 1 streaming through flash, 0 aliased, of 2 layers` |
+
+FSU 실행의 I/O 회계: `peak_kv_bytes=16384 read_bytes=196608 write_bytes=172032` — flash 스트리밍은 full 레이어(128행)만으로 windowed 레이어는 flash에 없다. 이어지는 요청(reset 없음, cached_after 81 → 89)도 세 구성 모두 `[0, 0]`으로 일치 — 재개 프리필 구간에서도 compaction·base 전파가 유지된다. 위치 4 이후 매 청크에서 창 이동(memmove)이 일어나므로 이 비교는 "창 밖 행을 버린 후의 출력"이 같음을 검증한다.
+
+### 회귀
+
+- `unittest_kv_cache_manager` **42/42**(build-fsu, fp16 빌드) — fc2fec519의 혼재 3건 포함.
+- `unittest_causallm_models` **124/125**(builddir_x86_test, fp32 빌드; `NNTR_QUANTIZE_BIN` 지정, `ASAN_OPTIONS=detect_leaks=0` — leak은 별개 기존 항목) — Gemma4/Qwen3/GptOss 등 CPU 실그래프 전 경로. 1건 스킵은 QINT4의 KAI int4 패킹이 NEON 전용이라는 기존 플랫폼 게이트.
+- 원본 fixture 그대로: qwen3_tiny 상주=FSU, gemma4_tiny(max_seq 8, windowing 불가) 상주=FSU — `output_ids`·FSU 바이트 회계 모두 변경 전과 동일, mixed 라인 없음.
+
+### 리뷰 결함 3건 수정 (동일 변경 내 재검증 라운드)
+
+첫 리뷰에서 세 가지 결함이 지적되어 모두 수정하고 재검증했다.
+
+**1. 리셋 후 재요청 FATAL (치명) — 수정.** 첫 요청의 compact가 남긴 `bases_ > 0`을 `setSessionTokenPosition(0)`이 지우지 않아, `reset: true` 두 번째 요청의 `compact(0)`이 `validateRange`에서 "layer 0 does not hold rows [0, 0)"로 죽었다. `setPosition(0)`은 쓰기 커서만 되감을 뿐 windowed 메타데이터(base·decode offset·dropped amax)는 그대로 둔다. 수정: 새 프롬프트 진입점(`setSessionTokenPosition`의 `pos == 0` 분기, 기기측 세션 상태를 지우는 곳)에서 `kv_cache.reset()`을 호출해 원점으로 복원하고 — flash 소유권 해제와 prefix view freeze가 `reset()` 안에 이미 있다 — 바로 이어 `compactKVCache(0, /*force=*/true)`로 `cache_base=0`을 레이어에 재푸시한다. manager reset과 base 재푸시는 한 쌍이다: `compactKVCache`의 no-op 조기 리턴(`!compact && !force`)은 "레이어가 이미 관리자의 base를 알고 있는" 경우에만 지름길이 되어야 하는데, 리셋 직후는 그 반대이므로 force로 지나간다.
+
+**2. 무제한 생성이 mid-generation FATAL (중간) — 수정.** `NUM_TO_GENERATE`는 `setupParameters`가 없는/음수 값을 0으로 정규화하는데("컨텍스트 끝까지 생성"), headroom 계산은 `max(INIT_SEQ_LEN, 0)` = INIT_SEQ_LEN만 남겨 유한 평면을 만들었다. g4t_512 팩(max_seq 512, window 4, num_to_generate 없음)에서 60토큰쯤 생성 후 `mha_core kv-window: step write [140, 141) does not fit a 64-row windowed plane based at 76`로 죽었다(전체평면 컨트롤은 cached_after 511까지 정상 — 회귀). 수정: 행 산식을 `windowedKVRows()`(kv_ring.h, 유닛테스트 가능한 순수 함수)로 뽑아내고, `num_to_generate <= 0`이면 headroom을 `max_seq - window`로 잡아 수식이 전체 높이로 퇴화시킨다 — planKVCache의 keep은 full height 레이어에 0이므로 그 레이어는 애초 windowed가 아니게 된다(사실상 전체 높이 fall-back). 기존 주석의 "unsigned cast가 headroom을 balloon시킨다"는 서술은 정규화를 놓친 것이어서 실제 근거(무제한 꼬리는 유한 평면에 못 담는다)로 고쳤다. 참고로 HTP 산식(`Gemma4HtpTransformer::getKVCacheRows`)에는 이 무제한 분기가 없는데, HTP 팩은 항상 유한 `num_to_generate`를 실어 보내므로 그대로 뒀다(다른 저장소 경로라 여기서 넓히지 않음).
+
+**3. windowed→windowed alias의 base stale (중간) — 수정, 대안 (a) 채택.** gemma4 `num_kv_shared_layers > 0`에서 공유 trailing 레이어가 sliding 타입이면 windowed 레이어가 windowed 소유자를 alias한다. compact는 aliased 레이어를 스키핑하므로 sharer의 `getBase()`가 영원히 0이고, 소유자가 compact로 움직인 뒤 sharer의 CPU attention는 평면 row 0을 절대 0으로 읽는다(조용한 오답), save 오프셋도 어긋난다. 택일: (a) base 푸시 시 alias 소스의 base로 resolve / (b) windowed alias 자체를 거부. **(a)를 채택했다** — sharer의 mha_core는 그래프가 소유자의 k/v norm으로 연결되므로 같은 절대 행에 byte-identical 값을 쓰는 redundant write가 되고, 소유자 사상 위에서는 무해하다. 기능 보존(gemma4 kv-share + 혼재 공존)이 (b)보다 낫다. 구현: `getBase()`/`getDecodeOffset()`가 alias 소스를 재귀 resolve(isFlashOwned와 같은 모양)해서 `cache_base` 푸시·`validateRange`·save의 행 오프셋이 모두 소유자 base를 쓰게 하고, `validateKVSources`가 alias 가족의 창(keep) 동일성을 강제한다(창이 다르면 소유자 base가 sharer의 liveFrom과 어긋나므로 allocate 시 거부). sharer의 `bases_`에 소유자 base를 복사하는 방식은 base 변경 지점 4곳(compact·prepareDecodeView·restore·reset)마다 복사를 맞춰야 해서 기각 — resolve는 읽는 곳이 한 곳이다.
+
+**회귀 테스트 4건 추가**(`unittest_kv_cache_manager.cpp`, 42 → 46):
+
+- `KVCacheManagerWindowed.reset_returns_windowed_state_to_origin` — compact로 base 4까지 진행한 뒤 reset → base/position/dropped amax 원점 단언, `compact(0)` 성공, 이어쓰기 정합(재충전 후 같은 compaction 결과). FSU 변형은 flash 소유권 해제(`flashRetainedBytes() == 0`)까지 단언. CLI 레벨 확인은 아래 재검증 (i).
+- `KVCacheManagerWindowed.rows_formula_bounds_the_decode_tail` — `windowedKVRows` 수식: 유한 num_to_generate(창+headroom 반올림, max_seq 캡), 무제한(0/음수)은 전체 높이.
+- `KVCacheManagerFlash.windowed_alias_tracks_the_owner_base` — windowed 소유자 + windowed alias + full flash + full alias 4층 구성에서 compaction마다 `getBase(aliased) == getBase(owner)` 단언(수정 전에는 0으로 머무는 것을 확인했다 — stash로 구 수정을 걷어내고 동일 테스트가 이 단언에서 실패하는 것을 검증), 스냅샷 페이로드가 "sharer가 자기 평면을 소유하는 DRAM 빌드"와 byte-identical(헤더의 geom digest는 alias 맵 자체를 인코딩하므로 페이로드만 비교).
+- `KVCacheManagerShare.rejects_windowed_alias_with_mismatched_window` — keep 불일치·windowed/full 방향 불일치 거부, 동일 keep 수용.
+
+### 재검증 (수정 후, /tmp/kvwin-verif 팩)
+
+| 확인 | 결과 |
+|---|---|
+| `unittest_kv_cache_manager` (build-fsu, fp16) | **46/46** (기존 42 + 신규 4) |
+| `unittest_kv_cache_manager` (builddir_x86_test, fp32) | **36/36** (fp32 빌드는 fp16 전용 블록이 컴파일 제외 — 기존과 동일 기준, 신규 테스트는 fp16 게이트 안에 있어 빌드 자체가 정상) |
+| `unittest_causallm_models` (builddir_x86_test, fp32, `NNTR_QUANTIZE_BIN`, `ASAN_OPTIONS=detect_leaks=0`) | **124/125**(1건 스킵 — QINT4 KAI int4 패킹 NEON 전용 기존 게이트, 변경 전과 동일) |
+| `unittest_causallm_mha_core_dispatch` (build-fsu) | 11/11 |
+| (i) 리셋 2요청 — 상주 windowed(`NNTR_KV_WINDOW_CAP=1`)·FSU 모두 | FATAL 0, exit 0. 요청 1은 수정 전 기록(cached_after 8, `[0, 0]`)과 동일, 요청 2는 두 구성 모두 cached_after 4·`[0, 0]`으로 서로 일치(수정 전에는 둘 다 FATAL로 요청 2 미완료) |
+| (ii) 상주 windowed vs FSU 혼재 (연속 요청 포함) | `output_ids`·`cached_after`(81→89) 전 필드 일치 |
+| (iii) 3-way(전체평면 A = windowed B = FSU C, 단일+연속) | 세 구성의 `output_ids`/`cached_after`/`prefill_tokens` 일치, 수정 전 기록(A_full/B2_win/C2_fsu)과도 일치 |
+| (iv) qwen3_tiny·원본 gemma4_tiny(max_seq 8) 상주=FSU | `output_ids` 수정 전과 동일(회귀 없음, mixed 라인 없음) |
+| 무제한 생성(g4t_512, num_to_generate 없음, reset 요청 1개) | 전체평면·windowed·FSU 세 구성 모두 FATAL 없이 **cached_after 511까지 완주**, `output_ids`가 전체평면 컨트롤과 비트 일치(수정 전: windowed·FSU는 140에서 FATAL) |
+| 포맷 | `git clang-format-14 HEAD`로 변경 라인 검사 — 추가 수정 없음 |
+
+### 실험실 실팩(gemma4_cpu / gemma4_it_x86) — 선결과제로 보류
+
+로컬 gemma4 실팩 전체가 `tie_word_embeddings=true` + `skip_prefill=true`인데, HEAD의 `buildLmHeadOutput()`이 tied lm_head에 `plan_last_row_only=true`를 넣고 `TieWordEmbedding`이 이 속성을 받지 못해 그래프 구성 단계에서 FATAL난다(변경 코드가 전부 dormant인 구 의미 상주 경로에서도 동일 재현 — 본 변경과 무관한 기존 불일치). 또한 실팩의 기본 설정은 windowed 상한이 어차피 full height다: gemma4_cpu는 `roundUp64(512+2560)=3072 = max_seq`, gemma4_it_x86은 `min(roundUp64(512+4500), 5000) = 5000 = max_seq`. 행 축소를 관측하려면 `init_seq_len`을 줄인 pack이 필요한데 위 FATAL이 먼저 막는다. 실팩 측정(메모리 절감량, RSS, 창 크기별 디코드)은 이 lm_head 속성 정리 이후 별도 기록으로 남긴다.
+
+### 남은 것
+
+1. HTP 기기 매트릭스의 compaction 경계 행(6단계의 기기 반쪽) — 이 기록은 호스트 반쪽만이다.
+2. 실팩 규모의 메모리 절감 실측(위 보류 사유). tiny fixture에서는 절감량이 64행×32채널 수준이라 측정 의미가 없다.
+3. lookahead 겹침 손실(fc2fec519 기록)의 실팩 규모 정량화.
