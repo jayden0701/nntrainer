@@ -782,9 +782,9 @@ std::vector<float *> CausalLM::incrementalInference(
     }
   }
 
-  kv_cache.beginFlashStep(from);
   nntrainer::sharedConstTensors output_tensors;
   try {
+    kv_cache.beginFlashStep(from, to);
     output_tensors =
       nn->incremental_inference(input_tensors, init_seq_len, from, to);
     kv_cache.finishFlashStep();

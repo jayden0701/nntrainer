@@ -1237,6 +1237,107 @@ TEST(KVCacheManagerFlash, lookahead_counts_distinct_upcoming_file_reads) {
   }
 }
 
+TEST(KVCacheManagerFlash, capped_rolling_preserves_dirty_owners_across_growth) {
+  using Dim = ml::train::TensorDim;
+  const unsigned page = getpagesize(), width = page / 4;
+  // Four stream owners, one DRAM window (3 FP16 rows x K,V) and an alias.
+  const auto cap = 4 * page + 12;
+  const auto limit = std::to_string(cap);
+  ScopedEnv total("NNTR_KV_TOTAL_BYTES", limit.c_str());
+  ScopedEnv retention("NNTR_KV_RESIDENT_BYTES", limit.c_str());
+  for (const char *mode : {"0", "1"}) {
+    ScopedEnv policy("NNTR_KV_ROLLING", mode);
+    causallm::KVCacheManager cache;
+    cache.setFlashStorage(std::filesystem::temp_directory_path().string(), 3);
+    cache.setLayerKVSources({-1, -1, -1, -1, 2, -1});
+    cache.allocate(6, 1, 8, {width, 1, width, width, width, width},
+                   Dim::DataType::FP16, Dim::Format::NCHW, {0, 3, 0, 0, 0, 0},
+                   {0, 1, 0, 0, 0, 0});
+    for (unsigned row = 0; row < 4; ++row) {
+      cache.beginFlashStep(row, row + 1);
+      for (unsigned layer : {0u, 2u, 3u, 4u, 5u}) {
+        const unsigned owner = layer == 4 ? 2 : layer;
+        cache.beginFlashLayer(layer);
+        auto *k = cache.getKeyCache(layer).getData<uint16_t>();
+        auto *v = cache.getValueCache(layer).getData<uint16_t>();
+        for (unsigned r = 0; r < row + (layer != owner); ++r) {
+          EXPECT_EQ(k[r * width], 10 * owner + r + 1);
+          EXPECT_EQ(v[r * width], 100 * owner + r + 1);
+        }
+        if (layer == owner) {
+          k[row * width] = 10 * owner + row + 1;
+          v[row * width] = 100 * owner + row + 1;
+        }
+        cache.finishFlashLayer(layer, row, row + 1);
+      }
+      cache.finishFlashStep();
+    }
+    ::testing::internal::CaptureStderr();
+    cache.reportFlashStorage();
+    const auto report = ::testing::internal::GetCapturedStderr();
+    const auto field = [&report](const std::string &name) {
+      const auto pos = report.find(" " + name + "=");
+      if (pos == std::string::npos)
+        throw std::runtime_error("missing FSU field: " + name);
+      return std::stoull(report.substr(pos + name.size() + 2));
+    };
+    EXPECT_EQ(field("total_budget_bytes"), cap);
+    EXPECT_EQ(field("kv_payload_peak_bytes"), cap);
+    EXPECT_EQ(field("borrowed_owners") > 0, *mode == '1');
+    cache.beginFlashStep(4, 5);
+    EXPECT_THROW(cache.beginFlashLayer(0), std::runtime_error);
+    cache.abortFlashStep();
+    cache.beginFlashStep(0, 1);
+    cache.beginFlashLayer(0);
+    EXPECT_EQ(cache.getKeyCache(0).getData<uint16_t>()[0], 0u);
+    cache.finishFlashLayer(0, 0, 1);
+    cache.finishFlashStep();
+  }
+}
+
+TEST(KVCacheManagerFlash, rejects_total_budget_smaller_than_sliding_storage) {
+  ScopedEnv total("NNTR_KV_TOTAL_BYTES", "11");
+  using Dim = ml::train::TensorDim;
+  causallm::KVCacheManager cache;
+  cache.setFlashStorage(std::filesystem::temp_directory_path().string(), 1);
+  EXPECT_THROW(cache.allocate(1, 1, 8, std::vector<unsigned>{1},
+                              Dim::DataType::FP16, Dim::Format::NCHW, {3}, {1}),
+               std::invalid_argument);
+}
+
+TEST(KVCacheManagerFlash, capped_demand_reclaims_async_write_staging) {
+  using Dim = ml::train::TensorDim;
+  constexpr unsigned chunk = 65536;
+  ScopedEnv total("NNTR_KV_TOTAL_BYTES", "262144");
+  ScopedEnv retention("NNTR_KV_RESIDENT_BYTES", "0");
+  ScopedEnv async_write("NNTR_KV_ASYNC_WRITE", "1");
+  causallm::KVCacheManager cache;
+  cache.setFlashStorage(std::filesystem::temp_directory_path().string(), 1);
+  cache.allocate(1, 1, 8, 1, chunk / 8, Dim::DataType::FP16);
+  for (unsigned from : {0u, 4u}) {
+    cache.beginFlashStep(from, from + 4);
+    cache.beginFlashLayer(0);
+    auto *k = cache.getKeyCache(0).getData<uint16_t>();
+    if (from)
+      EXPECT_EQ(k[0], 12u);
+    k[from * chunk / 8] = 12 + from;
+    cache.finishFlashLayer(0, from, from + 4);
+    cache.finishFlashStep();
+    ::testing::internal::CaptureStderr();
+    cache.reportFlashStorage();
+    const auto report = ::testing::internal::GetCapturedStderr();
+    if (report.find("async_writer=1") != std::string::npos) {
+      EXPECT_NE(
+        report.find(from ? "staging_bytes=0 " : "staging_bytes=131072 "),
+        std::string::npos);
+      EXPECT_NE(report.find("async_writes=1 "), std::string::npos);
+    }
+    if (from)
+      EXPECT_NE(report.find("kv_payload_peak_bytes=262144 "),
+                std::string::npos);
+  }
+}
+
 TEST(KVCacheManagerFlash, mixed_storage_keeps_windowed_layers_off_flash) {
   using DT = ml::train::TensorDim::DataType;
   auto path =

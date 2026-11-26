@@ -94,6 +94,8 @@ public:
   void beginFlashLayer(unsigned layer);
   void finishFlashLayer(unsigned layer, unsigned from, unsigned to);
   void beginFlashStep(unsigned from);
+  /** Reserve the current step's writable extent before binding its KV. */
+  void beginFlashStep(unsigned from, unsigned to);
   void finishFlashStep();
   void abortFlashStep() noexcept;
   void reportFlashStorage() const;
