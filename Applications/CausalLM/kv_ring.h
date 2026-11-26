@@ -709,6 +709,47 @@ inline unsigned int kvRingCap(unsigned int local_window, unsigned int max_seq,
 }
 
 /**
+ * @brief Rows of the WINDOWED (CPU mixed-storage) cache of a sliding layer.
+ * @details The windowed-cap counterpart of kvRingCap(): a sliding layer under
+ * CausalLM::kvFsuWindowCap() keeps its last W rows contiguous at the front
+ * (KVCacheManager::compact) and writes the rows behind them. The plane has to
+ * hold the window PLUS the longest span written behind it without a compaction
+ * in between:
+ *
+ *   - a prefill chunk (<= init_seq_len rows, the activation plane's height),
+ *   - the decode tail: num_to_generate rows, one per generated token -- the
+ *     decode loop compacts once before it starts and never again.
+ *
+ * so headroom = max(init_seq_len, num_to_generate), rounded up to the 64-row
+ * grid and capped at max_seq. setupParameters() normalizes an absent or
+ * negative num_to_generate to 0 = "generate until EOS or the context ends":
+ * the decode loop then stops only at max_seq, so no bounded plane can hold the
+ * tail and the headroom becomes max_seq - window -- the formula degenerates to
+ * full height, which the caller reads back as "not windowed" (keep 0 in
+ * planKVCache), i.e. the pre-cap full-plane layout. (The HTP rule in
+ * Gemma4HtpTransformer::getKVCacheRows does not have this arm: its packs ship
+ * a bounded num_to_generate, and the device window is pushed separately.)
+ *
+ * @param window W, the layer's sliding window; the caller guarantees
+ *        0 < window < max_rows (a full-attention layer never gets here).
+ * @param init_seq_len the activation plane's height (bounds one prefill chunk).
+ * @param num_to_generate the decode tail length; <= 0 means unbounded.
+ * @param max_rows the full context height (MAX_SEQ_LEN).
+ */
+inline unsigned int windowedKVRows(unsigned int window,
+                                   unsigned int init_seq_len,
+                                   int num_to_generate, unsigned int max_rows) {
+  const unsigned long headroom =
+    num_to_generate > 0 ? std::max(static_cast<unsigned long>(init_seq_len),
+                                   static_cast<unsigned long>(num_to_generate))
+                        : static_cast<unsigned long>(max_rows - window);
+  const unsigned long rows =
+    (static_cast<unsigned long>(window) + headroom + 63ul) / 64ul * 64ul;
+  return static_cast<unsigned int>(
+    std::min(rows, static_cast<unsigned long>(max_rows)));
+}
+
+/**
  * @brief Rows the Adreno OHWI K/V image mirror of a RINGED layer must hold.
  * @param ring_cap Wcap from kvRingCap() (0 = not ringed, this returns 0 too and
  *        the caller keeps its own derivation -- max_timestep for a linear

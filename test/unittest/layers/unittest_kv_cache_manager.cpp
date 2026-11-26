@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <kv_cache_manager.h>
+#include <kv_ring.h>
 #include <mem_allocator.h>
 #include <tensor.h>
 #include <tensor_dim.h>
@@ -1561,5 +1562,305 @@ TEST(KVCacheManagerFlash, resident_budget_flushes_dirty_on_eviction) {
   // Only layer 0 stays in the pool; its accounting follows the grown rows.
   EXPECT_EQ(flash.flashRetainedBytes(),
             2u * ((65u * 1024u * 2u + 4095) / 4096 * 4096));
+}
+
+/**
+ * @brief [kv-fsu windowed] reset() after compactions: a fresh request must
+ *        find the windowed state at its ORIGIN.
+ *
+ * The regression: the first request's compactions left bases_ > 0, and the
+ * next request (setSessionTokenPosition(0) + compact(0)) died with "layer 0
+ * does not hold rows [0, 0)" because setPosition(0) rewinds only the write
+ * cursor, not the windowed metadata. reset() restores bases_/decode
+ * offsets/dropped maxima (and releases the flash owners); compact(0) is then
+ * a clean no-op and a fresh cycle of writes + compactions works from origin.
+ */
+TEST(KVCacheManagerWindowed, reset_returns_windowed_state_to_origin) {
+  using DT = ml::train::TensorDim::DataType;
+#ifdef ENABLE_FP16
+  const auto dtype = DT::FP16;
+#else
+  const auto dtype = DT::UINT16;
+#endif
+  auto path =
+    (std::filesystem::temp_directory_path() / "nntr-kv-fsu-test-XXXXXX")
+      .string();
+  ASSERT_NE(mkdtemp(path.data()), nullptr);
+  struct Directory {
+    std::string path;
+    ~Directory() {
+      std::error_code error;
+      std::filesystem::remove_all(path, error);
+    }
+  } directory{path};
+
+  constexpr unsigned width = 64;
+  const auto fill = [](causallm::KVCacheManager &m, unsigned layer,
+                       unsigned from, unsigned to) {
+    for (unsigned row = from; row < to; ++row)
+      for (unsigned col = 0; col < width; ++col) {
+        m.getKeyCache(layer)
+          .getData<uint16_t>()[(row - m.getBase(layer)) * width + col] =
+          static_cast<uint16_t>(0x3c00u + row);
+        m.getValueCache(layer)
+          .getData<uint16_t>()[(row - m.getBase(layer)) * width + col] =
+          static_cast<uint16_t>(0x4000u + row);
+      }
+  };
+
+  // Host-DRAM windowed layers: two requests of writes/compactions around a
+  // reset, with the exact FATAL the review reproduced as the regression.
+  causallm::KVCacheManager m;
+  m.allocate(2, 1, 32, std::vector<unsigned int>(2, width), dtype,
+             ml::train::TensorDim::Format::NCHW, {8u, 0u}, {4u, 0u});
+  // request 1: prefill [0, 8) and the compactions it triggers
+  fill(m, 0, 0, 8);
+  m.setPosition(8);
+  ASSERT_TRUE(m.compact(8));
+  ASSERT_EQ(m.getBase(0), 4u);
+  ASSERT_FALSE(m.droppedAmaxK(0).empty());
+  // request 2 (reset:true): the cache must go back to origin, not just rewind
+  // the cursor -- compact(0) used to throw "does not hold rows [0, 0)" here.
+  m.reset();
+  EXPECT_EQ(m.getBase(0), 0u);
+  EXPECT_EQ(m.getPosition(), 0u);
+  EXPECT_TRUE(m.droppedAmaxK(0).empty());
+  EXPECT_TRUE(m.droppedAmaxV(0).empty());
+  EXPECT_FALSE(m.compact(0)); // nothing to move at origin, and no throw
+  // the fresh request re-writes from absolute 0 and compacts normally again
+  fill(m, 0, 0, 8);
+  m.setPosition(8);
+  EXPECT_TRUE(m.compact(8));
+  EXPECT_EQ(m.getBase(0), 4u);
+  EXPECT_EQ(m.getKeyCache(0).getData<uint16_t>()[0], 0x3c04u);
+
+  // The FSU variant: the reset also releases the previous request's flash
+  // owners, so the next request streams from an empty storage.
+  causallm::KVCacheManager flash;
+  flash.setFlashStorage(directory.path, 1);
+  flash.allocate(2, 1, 32, std::vector<unsigned int>(2, width), dtype,
+                 ml::train::TensorDim::Format::NCHW, {8u, 0u}, {4u, 0u});
+  ASSERT_FALSE(flash.isFlashOwned(0)); // windowed: host DRAM
+  ASSERT_TRUE(flash.isFlashOwned(1));  // full: streams through the FSU
+  flash.beginFlashStep(0);
+  {
+    flash.beginFlashLayer(1);
+    for (unsigned row = 0; row < 8; ++row)
+      for (unsigned col = 0; col < width; ++col) {
+        flash.getKeyCache(1).getData<uint16_t>()[row * width + col] =
+          static_cast<uint16_t>(0x3c00u + row);
+        flash.getValueCache(1).getData<uint16_t>()[row * width + col] =
+          static_cast<uint16_t>(0x4000u + row);
+      }
+    flash.finishFlashLayer(1, 0, 8);
+  }
+  flash.finishFlashStep();
+  fill(flash, 0, 0, 8);
+  flash.setPosition(8);
+  ASSERT_TRUE(flash.compact(8));
+  ASSERT_EQ(flash.getBase(0), 4u);
+  flash.reset();
+  EXPECT_EQ(flash.getBase(0), 0u);
+  EXPECT_EQ(flash.getPosition(), 0u);
+  EXPECT_EQ(flash.flashRetainedBytes(), 0u);
+  EXPECT_FALSE(flash.compact(0));
+}
+
+/**
+ * @brief [kv-fsu mixed] The windowed rows formula (windowedKVRows): the
+ *        plane holds the window plus one prefill chunk or the generated
+ *        tail; an UNBOUNDED num_to_generate (<= 0, the setupParameters
+ *        sentinel) spans the rest of the context and degenerates to full
+ *        height. The regression: NUM_TO_GENERATE 0 left only INIT_SEQ_LEN
+ *        of headroom and an unlimited decode ran off the end of the plane
+ *        mid-generation ("step write [140, 141) does not fit a 64-row
+ *        windowed plane based at 76") where the full-plane control ran to
+ *        cached_after 511.
+ */
+TEST(KVCacheManagerWindowed, rows_formula_bounds_the_decode_tail) {
+  // bounded: window 4 + max(init 60, ntg 1) -> roundUp64(64) = 64 rows (the
+  // gemma4_tiny_win sliding layer at max_seq 128).
+  EXPECT_EQ(causallm::windowedKVRows(4, 60, 1, 128), 64u);
+  // bounded: the decode tail binds -- window 4 + ntg 100 -> roundUp64(104).
+  EXPECT_EQ(causallm::windowedKVRows(4, 4, 100, 512), 128u);
+  // bounded but capped at the context height.
+  EXPECT_EQ(causallm::windowedKVRows(4, 4, 1000, 128), 128u);
+  // unbounded (num_to_generate <= 0): the decode loop stops only at
+  // max_seq, so the headroom is max_seq - window and the layer stays a
+  // FULL-HEIGHT plane (planKVCache's keep is then 0: not windowed at all).
+  EXPECT_EQ(causallm::windowedKVRows(4, 4, 0, 512), 512u);
+  EXPECT_EQ(causallm::windowedKVRows(4, 60, 0, 128), 128u);
+  EXPECT_EQ(causallm::windowedKVRows(4, 4, -5, 512), 512u);
+}
+
+/**
+ * @brief [kv-fsu mixed] A WINDOWED alias tracks its owner's compaction base.
+ *
+ * gemma4's num_kv_shared_layers resolves a trailing shared layer to the last
+ * SAME-TYPE layer of the prefix -- when that type is sliding_attention, a
+ * windowed layer aliases a windowed owner. compact() moves only owners, so
+ * the sharer's base lives ONLY through getBase()'s resolution; a stale 0
+ * there made the sharer's attention read plane row 0 as absolute 0 (silent
+ * wrong answers) and offset its snapshot slice past the live window.
+ */
+TEST(KVCacheManagerFlash, windowed_alias_tracks_the_owner_base) {
+  using DT = ml::train::TensorDim::DataType;
+  auto path =
+    (std::filesystem::temp_directory_path() / "nntr-kv-fsu-test-XXXXXX")
+      .string();
+  ASSERT_NE(mkdtemp(path.data()), nullptr);
+  struct Directory {
+    std::string path;
+    ~Directory() {
+      std::error_code error;
+      std::filesystem::remove_all(path, error);
+    }
+  } directory{path};
+
+  constexpr unsigned width = 64, max_seq = 20;
+  // layer 0: windowed owner; layer 1: full (flash); layer 2: WINDOWED alias
+  // of 0; layer 3: alias of 1.
+  const std::vector<unsigned int> rows{8u, 0u, 8u, 0u};
+  const std::vector<unsigned int> keep{4u, 0u, 4u, 0u};
+  causallm::KVCacheManager dram, flash;
+  flash.setFlashStorage(directory.path, 1);
+  for (auto *cache : {&dram, &flash}) {
+    cache->setLayerKVSources({-1, -1, 0, 1});
+    cache->allocate(4, 1, max_seq, std::vector<unsigned int>(4, width),
+                    DT::FP16, ml::train::TensorDim::Format::NCHW, rows, keep);
+  }
+  ASSERT_FALSE(flash.isFlashOwned(0));
+  ASSERT_TRUE(flash.isFlashOwned(1));
+  ASSERT_FALSE(flash.isFlashOwned(2)); // windowed: resolves through owner 0
+  ASSERT_TRUE(flash.isFlashOwned(3));
+
+  // The written VALUES, per absolute row: what the owners (and, in the real
+  // model, the sharer's byte-identical redundant write) leave in the plane.
+  const auto value = [](unsigned layer, unsigned row, unsigned col) {
+    return static_cast<uint16_t>(layer * 500u + row + col);
+  };
+  auto writeOwners = [&](causallm::KVCacheManager &m, unsigned from,
+                         unsigned to) {
+    for (unsigned layer : {0u, 1u})
+      for (unsigned row = from; row < to; ++row)
+        for (unsigned col = 0; col < width; ++col) {
+          const size_t plane_row =
+            layer == 0u ? row - m.getBase(layer) : row % m.getLayerCap(layer);
+          m.getKeyCache(layer).getData<uint16_t>()[plane_row * width + col] =
+            value(layer, row, col);
+          m.getValueCache(layer).getData<uint16_t>()[plane_row * width + col] =
+            static_cast<uint16_t>(0xab00u + (value(layer, row, col) & 0xffu));
+        }
+  };
+
+  unsigned from = 0;
+  for (unsigned to : {5u, 8u, 9u}) {
+    SCOPED_TRACE(to);
+    flash.beginFlashStep(from);
+    flash.beginFlashLayer(1);
+    writeOwners(dram, from, to);
+    writeOwners(flash, from, to);
+    flash.finishFlashLayer(1, from, to);
+    flash.finishFlashStep();
+    dram.setPosition(to);
+    flash.setPosition(to);
+    ASSERT_TRUE(dram.compact(to));
+    ASSERT_TRUE(flash.compact(to));
+    // THE regression assertion: the sharer's base is the OWNER's base. It
+    // stayed 0 before the fix, and every cache_base push / read span / save
+    // offset derived from it was wrong from the owner's first compaction.
+    EXPECT_EQ(dram.getBase(2), dram.getBase(0));
+    EXPECT_EQ(flash.getBase(2), flash.getBase(0));
+    EXPECT_EQ(flash.getBase(3), flash.getBase(1));
+    from = to;
+  }
+  EXPECT_EQ(dram.getBase(0), 5u); // liveFrom(9, keep 4)
+
+  // And the snapshot must stay format-transparent: an aliased layer's
+  // region is byte-identical to a DRAM build where the sharer owns a real
+  // plane filled with the same byte-identical values (what its redundant
+  // write produces). A save offset derived from the stale base 0 wrote the
+  // wrong rows here.
+  causallm::KVCacheManager dram_ref;
+  dram_ref.allocate(4, 1, max_seq, std::vector<unsigned int>(4, width),
+                    DT::FP16, ml::train::TensorDim::Format::NCHW, rows, keep);
+  from = 0;
+  for (unsigned to : {5u, 8u, 9u}) {
+    writeOwners(dram_ref, from, to); // layer 2/3 own planes here
+    // the sharer's redundant write: byte-identical values, same rows
+    for (unsigned layer : {2u, 3u})
+      for (unsigned row = from; row < to; ++row)
+        for (unsigned col = 0; col < width; ++col) {
+          const size_t plane_row = layer == 2u
+                                     ? row - dram_ref.getBase(layer)
+                                     : row % dram_ref.getLayerCap(layer);
+          const unsigned source = layer == 2u ? 0u : 1u;
+          dram_ref.getKeyCache(layer)
+            .getData<uint16_t>()[plane_row * width + col] =
+            value(source, row, col);
+          dram_ref.getValueCache(layer)
+            .getData<uint16_t>()[plane_row * width + col] =
+            static_cast<uint16_t>(0xab00u + (value(source, row, col) & 0xffu));
+        }
+    dram_ref.setPosition(to);
+    ASSERT_TRUE(dram_ref.compact(to));
+    from = to;
+  }
+  const auto aliased_path = directory.path + "/aliased.bin";
+  const auto owned_path = directory.path + "/owned.bin";
+  dram.save(aliased_path);
+  dram_ref.save(owned_path);
+  const auto aliased = readFileBytes(aliased_path);
+  const auto owned = readFileBytes(owned_path);
+  ASSERT_EQ(aliased.size(), owned.size());
+  // The 128-byte header differs in one field by design: the geom digest
+  // encodes the alias map itself. The PAYLOAD is what the transparency
+  // claim is about -- one K plane + one V plane per layer, byte-identical
+  // whether the sharer owns its plane or aliases the owner's.
+  constexpr size_t kKvHeaderBytes = 128;
+  EXPECT_EQ(0, std::memcmp(aliased.data() + kKvHeaderBytes,
+                           owned.data() + kKvHeaderBytes,
+                           aliased.size() - kKvHeaderBytes));
+}
+
+/**
+ * @brief [kv-fsu mixed] An alias family slides by ONE window: a sharer whose
+ *        keep differs from its owner's would track the owner's base while its
+ *        own liveFrom() derives a different window start -- silently shifted
+ *        rows. Rejected at allocate(), before any memory is requested.
+ */
+TEST(KVCacheManagerShare, rejects_windowed_alias_with_mismatched_window) {
+  const std::vector<unsigned int> rows{8u, 0u, 8u, 0u};
+  {
+    causallm::KVCacheManager m;
+    m.setLayerKVSources({-1, -1, 0, -1});
+    // sharer keep 2 vs owner keep 4
+    EXPECT_THROW(m.allocate(4, 1, 32, std::vector<unsigned int>(4, 64),
+                            ml::train::TensorDim::DataType::FP16,
+                            ml::train::TensorDim::Format::NCHW, rows,
+                            {4u, 0u, 2u, 0u}),
+                 std::invalid_argument);
+  }
+  {
+    causallm::KVCacheManager m;
+    m.setLayerKVSources({-1, -1, 0, -1});
+    // a windowed sharer over a FULL owner is the same mismatch in the other
+    // direction (and would also fail the plane-dim check later)
+    EXPECT_THROW(m.allocate(4, 1, 32, std::vector<unsigned int>(4, 64),
+                            ml::train::TensorDim::DataType::FP16,
+                            ml::train::TensorDim::Format::NCHW,
+                            {0u, 0u, 8u, 0u}, {0u, 0u, 4u, 0u}),
+                 std::invalid_argument);
+  }
+  {
+    causallm::KVCacheManager m;
+    m.setLayerKVSources({-1, -1, 0, -1});
+    // same window: accepted, and the sharer reads the owner's plane
+    m.allocate(4, 1, 32, std::vector<unsigned int>(4, 64),
+               ml::train::TensorDim::DataType::FP16,
+               ml::train::TensorDim::Format::NCHW, rows, {4u, 0u, 4u, 0u});
+    EXPECT_EQ(m.getKeyCache(2).getData<uint16_t>(),
+              m.getKeyCache(0).getData<uint16_t>());
+  }
 }
 #endif

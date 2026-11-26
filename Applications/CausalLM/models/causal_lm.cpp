@@ -416,6 +416,19 @@ void CausalLM::setupParameters(json &cfg, json &generation_cfg,
   global_token_len = 0;
 }
 
+bool CausalLM::kvFsuWindowCap() const {
+  if (causallm_engine() != "cpu" || htp_execution_profile_)
+    return false;
+  // The same precondition allocateKVCacheStorage enforces for the FSU itself;
+  // NNTR_KV_WINDOW_CAP is the opt-in that reproduces the windowed rows on a
+  // RESIDENT run (no kv_flash_fsu) so the mixed storage has its like-for-like
+  // baseline: same caps, no streaming.
+  if (system_prefix_nntr_.contains("kv_flash_fsu"))
+    return true;
+  const char *e = std::getenv("NNTR_KV_WINDOW_CAP");
+  return e != nullptr && e[0] != '\0' && e[0] != '0';
+}
+
 CausalLM::KVCacheLayout CausalLM::planKVCache() {
   KVCacheLayout layout;
   layout.max_timestep = static_cast<unsigned int>(MAX_SEQ_LEN);
@@ -424,9 +437,26 @@ CausalLM::KVCacheLayout CausalLM::planKVCache() {
   // stores a Wcap-row ring, every other layer keeps max_seq. Same
   // getKVCacheRows() hook the placeholder factories use, so the two shapes
   // line up at bind time (the bind asserts they do).
+  //
+  // [kv-fsu mixed] Under kvFsuWindowCap() the same hook returns the HTP
+  // window rule's rows for a sliding layer; those layers must then go through
+  // allocate()'s rows/keep (the windowed, compacting contract whose planes
+  // stay host DRAM tensors in the mixed storage) rather than the caps alone
+  // (the ring contract, whose modulo read no CPU attention arm serves). The
+  // rows/keep vectors are full-length: a layer the cap did not shrink carries
+  // keep 0 and stays a full flash-streamed layer.
   std::vector<unsigned int> layer_caps(static_cast<size_t>(NUM_LAYERS), 0u);
   for (int i = 0; i < NUM_LAYERS; ++i)
     layer_caps[static_cast<size_t>(i)] = getKVCacheRows(i);
+  if (kvFsuWindowCap()) {
+    layout.rows = layer_caps;
+    layout.keep.assign(static_cast<size_t>(NUM_LAYERS), 0u);
+    for (int i = 0; i < NUM_LAYERS; ++i)
+      layout.keep[static_cast<size_t>(i)] =
+        layer_caps[static_cast<size_t>(i)] < layout.max_timestep
+          ? getLayerSlidingWindow(i)
+          : 0u;
+  }
   kv_cache.setLayerCaps(layer_caps);
 
   // Per-layer width via the getKVCacheWidth() hook: uniform
@@ -485,8 +515,13 @@ void CausalLM::allocateKVCacheStorage(const KVCacheLayout &layout) {
 #else
   const auto cache_dtype = ml::train::TensorDim::DataType::UINT16;
 #endif
+  // [kv-fsu mixed] layout.rows non-empty hands the windowed layers (rows[i]
+  // < max_seq_len, keep[i] the window) to allocate()'s rows/keep contract;
+  // empty vectors are the pre-mixed call verbatim.
   kv_cache.allocate(static_cast<unsigned int>(NUM_LAYERS), BATCH_SIZE,
-                    layout.max_timestep, layout.widths, cache_dtype);
+                    layout.max_timestep, layout.widths, cache_dtype,
+                    ml::train::TensorDim::Format::NCHW, layout.rows,
+                    layout.keep);
 }
 
 void CausalLM::load_weight(const std::string &weight_path) {
@@ -1097,17 +1132,37 @@ void CausalLM::compactKVCache(unsigned int pos, bool force, bool decode_view) {
     kv_cache.prepareDecodeView(pos);
   else if (!kv_cache.compact(pos) && !force)
     return;
-  // ponytail: the n-th HTP attention layer in graph order is attention
-  // layer n (the fused model builds them in that order); a model that shares
-  // or reorders them needs the layer's own index instead.
+  // ponytail: the n-th attention layer in graph order is attention layer n
+  // (the fused model builds them in that order); a model that shares or
+  // reorders them needs the layer's own index instead.
+  // [kv-fsu windowed] Both attention layer types take the base push: the HTP
+  // layer reads its plane through Fp16Attention's cache_base, and a windowed
+  // CPU layer reads it through mha_core's own kv_cache_base -- without the
+  // push its write row would stay absolute and run past the window at the
+  // first compaction. A full-height layer gets base 0, which is a no-op.
+  // [kv-fsu mixed] getBase(idx) resolves an ALIASED layer to its owner's
+  // base: the sharer attends over the owner's plane (its mha_core is wired
+  // to the source's k/v norms, so its step write is byte-identical to the
+  // owner's at the same row), and the resolved base is what keeps that
+  // write/read on the owner's mapping after the owner's compactions.
+  // The early return above (compact moved nothing, not forced) may skip this
+  // walk ONLY when the layers already hold the manager's bases; the one case
+  // where they don't -- right after KVCacheManager::reset(), whose compact(0)
+  // is a no-op by construction -- goes through force=true at the reset site
+  // (setSessionTokenPosition), so the reset and the cache_base=0 re-push stay
+  // one pair. An aliased layer resolves its base through its source below.
   unsigned int n = 0;
   std::function<void(ml::train::Layer &, nntrainer::RunLayerContext &, void *)>
     fn = [&](ml::train::Layer &l, nntrainer::RunLayerContext &, void *) {
-      if (l.getType() != causallm::HtpMHACoreLayer::type ||
-          n >= kv_cache.getNumLayers())
+      const bool htp = l.getType() == causallm::HtpMHACoreLayer::type;
+      if (!htp && l.getType() != causallm::MHACoreLayer::type)
+        return;
+      if (n >= kv_cache.getNumLayers())
         return;
       const unsigned int idx = n++;
       l.setProperty({"cache_base=" + std::to_string(kv_cache.getBase(idx))});
+      if (!htp)
+        return;
       // [#4428 window] the rows the compactions dropped so far: their |max|
       // reaches the decode seed's int8 scales through the layer
       auto *node = dynamic_cast<nntrainer::LayerNode *>(&l);
@@ -1179,6 +1234,21 @@ void CausalLM::setSessionTokenPosition(unsigned int pos) {
     device_prefill_restored_ = false;
     htp_pending_tokens_.clear();
     htp_session_failed_ = false;
+    // [kv-fsu windowed] A fresh prompt also rewinds the host KV cache to its
+    // origin. After the previous request's compactions a windowed layer's
+    // base sits at its last window start, and the next request's compact(0)
+    // would FATAL against that base ("layer 0 does not hold rows [0, 0)") --
+    // setPosition(0) alone rewinds only the write cursor, not the windowed
+    // metadata. reset() restores bases_/decode offsets/dropped maxima to
+    // origin and releases the flash owners (the same rewind the FSU's own
+    // startStep(0) applies); the compactKVCache(0, true) right after is the
+    // other half of the pair -- it re-pushes cache_base=0 to the attention
+    // layers, whose planes are absolute rows again. Without that re-push a
+    // no-op compact would leave the layers on the previous request's base.
+    if (kv_cache.isAllocated()) {
+      kv_cache.reset();
+      compactKVCache(0, true);
+    }
   }
   USE_KVCACHE = false;
   PRE_COMPUTED_CACHE_PATH.clear();
@@ -2681,11 +2751,14 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
                   : native_prefill_end;
   unsigned last_device_prefill_from = prefill_from;
   auto prepare_single_prefill_row = [&](unsigned from) {
+    // [kv-fsu windowed] a windowed layer's window moves to the front before
+    // the step writes behind it; a no-op without windowed layers (compact
+    // finds nothing to move and no base changes). resident_continuation
+    // already ran this at the row that flipped the flag.
+    if (!resident_continuation)
+      compactKVCache(from);
     if (!htp_execution_profile_ || resident_continuation)
       return;
-    // A native chunk can end in one M1 row. Configure its original window
-    // before that row seeds DSP KV, rather than after prefill has finished.
-    compactKVCache(from);
     for (unsigned l = 0; l < kv_cache.getNumLayers(); ++l)
       if (kv_cache.getRows(l) < kv_cache.getMaxSeqLen()) {
         const unsigned base = kv_cache.getBase(l);
@@ -2714,6 +2787,9 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
           input_sample[static_cast<size_t>(b) * MAX_SEQ_LEN] =
             static_cast<float>(init_input[i]);
         const unsigned int p = from_pos + i;
+        // [kv-fsu windowed] each row is its own step: the window moves first.
+        if (!resident_continuation)
+          compactKVCache(p);
         auto so = incrementalInference(BATCH_SIZE, input, p, p, p + 1);
         if (i + 1 < n_tok)
           for (auto &o : so)
@@ -2729,6 +2805,12 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     if (prefill_chunk == 0 || (n_tok <= prefill_chunk && one_block_on_grid)) {
       if (n_tok == 1)
         prepare_single_prefill_row(from_pos);
+      else if (!resident_continuation)
+        // [kv-fsu windowed] a windowed layer's window moves to the front
+        // before the block writes behind it -- the chunked loop below does
+        // this per chunk; the single block needs it once, here. A no-op
+        // without windowed layers.
+        compactKVCache(from_pos);
       const auto prefill_start = std::chrono::steady_clock::now();
       beforePrefillBlock(from_pos, from_pos + n_tok);
       auto result = incrementalInference(BATCH_SIZE, input, n_tok, from_pos,

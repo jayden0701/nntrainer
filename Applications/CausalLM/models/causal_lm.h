@@ -162,6 +162,15 @@ protected:
    */
   bool cuda_prewarmed_ = false;
 
+  /**
+   * @copydoc Transformer::kvFsuWindowCap() — true when this CPU-engine model
+   *          runs with kv_flash_fsu (or NNTR_KV_WINDOW_CAP forces the same
+   *          windowed cap on a resident run, the A/B baseline). The HTP
+   *          profile is excluded: those models carry their own rows rule.
+   *          Defined in causal_lm.cpp; it reads the pack config member.
+   */
+  bool kvFsuWindowCap() const override;
+
 public:
 #ifdef ENABLE_TEST
 protected:
@@ -621,6 +630,16 @@ protected:
   struct KVCacheLayout {
     std::vector<unsigned int> widths; /**< per-layer K/V row width */
     unsigned int max_timestep = 0;    /**< MAX_SEQ_LEN */
+    // [kv-fsu mixed] Per-layer physical rows and the window to keep, filled
+    // only under kvFsuWindowCap(): a shrunken layer (rows[i] < max_timestep)
+    // is a WINDOWED layer -- allocate()'s compacting rows/keep contract, the
+    // host DRAM plane of the mixed storage -- not a ring layer (the
+    // setLayerCaps contract, whose modulo read no CPU attention arm can
+    // serve). Empty vectors mean "no windowed layers": every layer is sized
+    // by the caps alone.
+    std::vector<unsigned int>
+      rows; /**< per-layer physical rows (kv-fsu mixed) */
+    std::vector<unsigned int> keep; /**< per-layer window rows (kv-fsu mixed) */
   };
 
   /**

@@ -1069,6 +1069,24 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
         flash_->addLayer(i, entry.key_cache, entry.value_cache);
       }
     }
+    // [kv-fsu mixed] One-time witness of the resolved split, same channel and
+    // rationale as reportKVShare: the composition is the fact a memory
+    // measurement and an output comparison both have to be able to trust,
+    // and it is invisible after the fact. Emitted only when a windowed layer
+    // actually keeps a plane out of the flash storage.
+    unsigned int n_windowed = 0, n_flash = 0, n_alias = 0;
+    for (unsigned int i = 0; i < num_layers; ++i) {
+      if (getLayerKVSource(i) >= 0)
+        ++n_alias;
+      else if (isLayerActive(i))
+        windowed(i) ? ++n_windowed : ++n_flash;
+    }
+    if (n_windowed)
+      std::fprintf(stderr,
+                   "[kv-fsu] mixed storage: %u windowed layer(s) on host DRAM "
+                   "(compacting rows), %u streaming through flash, %u aliased, "
+                   "of %u layers\n",
+                   n_windowed, n_flash, n_alias, num_layers);
     reportKVShare(num_layers, batch_size, dtype, "flash");
     return;
   }
@@ -1371,6 +1389,22 @@ void KVCacheManager::validateKVSources(unsigned int num_layers) const {
         std::to_string(i) + " (width " + std::to_string(kv_widths_[i]) +
         ") -> layer " + std::to_string(src) + " (width " +
         std::to_string(kv_widths_[static_cast<unsigned int>(src)]) + ")");
+
+    // [kv-fsu mixed] An aliased sharer tracks its owner's compaction base
+    // (getBase resolves through the source), which is the owner's mapping
+    // only if both sides slide by the SAME window: different keeps would
+    // move the owner's window to a row the sharer's own liveFrom() never
+    // derives, and the sharer would read a silently shifted plane (or write
+    // past it). The dim check below already forces the same row count; the
+    // keep is the piece that makes one base serve both layers.
+    const unsigned int src_idx = static_cast<unsigned int>(src);
+    if (windowed(i) != windowed(src_idx) ||
+        (windowed(i) && keep_[i] != keep_[src_idx]))
+      throw std::invalid_argument(
+        "KVCacheManager::allocate: KV alias window mismatch, layer " +
+        std::to_string(i) + " (keep " + std::to_string(keep_[i]) +
+        ") -> layer " + std::to_string(src) + " (keep " +
+        std::to_string(keep_[src_idx]) + ")");
   }
 }
 
@@ -1548,12 +1582,16 @@ void KVCacheManager::validateRange(unsigned int pos, bool compacting) const {
     if (!isLayerActive(l) || !windowed(l) ||
         (compacting && isLayerKVAliased(l)))
       continue;
+    // [kv-fsu mixed] getBase(l) resolves an aliased layer to its owner's
+    // base: the sharer's plane IS the owner's, so the rows it holds are the
+    // owner's [base, base + cap), not a stale 0-based prefix.
+    const unsigned int base = getBase(l);
     const unsigned int from = liveFrom(l, pos);
-    if (from < bases_[l] || pos - bases_[l] > getLayerCap(l))
+    if (from < base || pos - base > getLayerCap(l))
       throw std::out_of_range("KVCacheManager: layer " + std::to_string(l) +
                               " does not hold rows [" + std::to_string(from) +
                               ", " + std::to_string(pos) + ")");
-    if (compacting && from > bases_[l]) {
+    if (compacting && from > base) {
       for (const auto *t :
            {&layer_caches_[l].key_cache, &layer_caches_[l].value_cache}) {
         const auto md = t->getMemoryData();
@@ -2085,11 +2123,14 @@ void KVCacheManager::save(const std::string &path, unsigned int seq_len,
     // is byte-identical to a DRAM build's.
     const FlashSnapshotLease lease(isFlashOwned(li) ? flash_.get() : nullptr,
                                    li);
-    // [HTP window] a windowed layer's live rows start at liveFrom - base
+    // [HTP window] a windowed layer's live rows start at liveFrom - base;
+    // getBase(li) resolves an aliased layer to its owner's base, whose plane
+    // it shares -- a raw bases_[li] (never moved for a sharer) would offset
+    // the slice past the plane.
     size_t save_off = 0;
     if (windowed(li)) {
       const unsigned int from = liveFrom(li, seq_len);
-      save_off = static_cast<size_t>(from - bases_[li]) * kv_widths_[li];
+      save_off = static_cast<size_t>(from - getBase(li)) * kv_widths_[li];
     }
 
     nntrainer::Tensor k_slice =
@@ -2242,8 +2283,10 @@ unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
       continue;
     }
     // [HTP window] the loaded rows land at row 0; the base says which
-    // absolute position that is
-    if (windowed(i))
+    // absolute position that is. Only an OWNER records it: an aliased
+    // sharer's base resolves through its source (getBase), and the source's
+    // own iteration set it above.
+    if (windowed(i) && !isLayerKVAliased(i))
       bases_[i] = liveFrom(i, seq_len);
 
     // [kv-fsu mixed] a flash owner leases its plane, reads the file into the
