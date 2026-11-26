@@ -120,7 +120,14 @@ public:
   inline static const std::string type = "lm_head";
 
 private:
-  std::tuple<nntrainer::props::Unit> lmhead_props;
+  /// plan_last_row_only is accepted so a model graph can tag a skip-prefill
+  /// head with the same property the fully_connected head takes
+  /// (CausalLM::buildLmHeadOutput). This head already plans its output at
+  /// height 1 and computes only the last row unconditionally, so the property
+  /// is honoured by construction and read by no code path; without the
+  /// declaration LayerImpl rejects it and the graph build dies.
+  std::tuple<nntrainer::props::Unit, nntrainer::props::PlanLastRowOnly>
+    lmhead_props;
   std::array<unsigned int, 2> weight_idx; /**< indices of the weights */
   bool skip_prefill = false;
 };

@@ -338,6 +338,45 @@ TEST(Gemma4GraphTest, PerLayerEmbeddingCanBeDisabled) {
 }
 
 /**
+ * @brief A tied lm_head graph with skip_prefill enabled must build.
+ *
+ * skip_prefill=true makes CausalLM::buildLmHeadOutput() tag output_of_causallm
+ * with skip_prefill + plan_last_row_only -- every shipped tied gemma4 pack
+ * runs exactly this combination. The tied head is a tie_word_embeddings layer,
+ * which plans its output at height 1 and computes only the last row anyway, so
+ * the declaration is pure graph-build acceptance: before the layer learned the
+ * property, LayerImpl rejected it and the build died with
+ * "[LayerImpl] Unknown Layer Properties" before any weight was read.
+ */
+TEST(Gemma4GraphTest, TiedLmHeadWithSkipPrefillBuilds_p) {
+  const auto files = causallm_test::makeTinyCausalLMFiles(
+    "Gemma4GraphTest", "TiedLmHeadWithSkipPrefillBuilds",
+    "TiedLmHeadWithSkipPrefillBuilds");
+  auto test_case = makeGemma4Case(causallm_test::makeTinyFp32DataType());
+  test_case.make_nntrainer_config =
+    [](const std::filesystem::path &tokenizer_path,
+       const causallm_test::TinyCausalLMDataType &data_type) {
+      auto nntr_cfg =
+        causallm_test::makeTinyNntrainerConfig(tokenizer_path, data_type);
+      nntr_cfg["skip_prefill"] = true;
+      return nntr_cfg;
+    };
+  auto config =
+    causallm_test::makeTinyCausalLMConfig(test_case, files.tokenizer_path);
+
+  TinyGemma4CausalLM model(config.model, config.generation, config.nntrainer);
+  ASSERT_NO_THROW(model.initializeModel());
+
+  std::string head_type;
+  model.forEachLayer([&head_type](ml::train::Layer &layer,
+                                  nntrainer::RunLayerContext &, void *) {
+    if (layer.getName() == "output_of_causallm")
+      head_type = layer.getType();
+  });
+  EXPECT_EQ(head_type, "tie_word_embeddings");
+}
+
+/**
  * @brief Full attention reuses K projection for V when attention_k_eq_v is set
  */
 TEST(Gemma4GraphTest, FullAttentionCanShareKeyAndValueProjection) {

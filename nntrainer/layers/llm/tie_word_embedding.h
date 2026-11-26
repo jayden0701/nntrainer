@@ -155,8 +155,15 @@ protected:
   WIN_EXPORT void finalize(nntrainer::InitLayerContext &context,
                            nntrainer::TensorDim::DataType logits_type);
 
+  /// plan_last_row_only is accepted so a model graph can tag a skip-prefill
+  /// head with the same property the fully_connected head takes
+  /// (CausalLM::buildLmHeadOutput). The lm_head mode already plans its output
+  /// at height 1 and computes only the last row unconditionally, so the
+  /// property is honoured by construction and read by no code path; without
+  /// the declaration LayerImpl rejects it and the graph build dies.
   std::tuple<nntrainer::props::InDim, nntrainer::props::OutDim,
-             nntrainer::props::Unit, nntrainer::props::Scale>
+             nntrainer::props::Unit, nntrainer::props::Scale,
+             nntrainer::props::PlanLastRowOnly>
     tieword_embedding_props;
   enum mode { embedding, lm_head };
   enum mode mode_;

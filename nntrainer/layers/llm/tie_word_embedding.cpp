@@ -121,7 +121,8 @@ enum TieWordEmbeddingParams {
 TieWordEmbedding::TieWordEmbedding() :
   LayerImpl(),
   tieword_embedding_props(nntrainer::props::InDim(), nntrainer::props::OutDim(),
-                          nntrainer::props::Unit(), nntrainer::props::Scale()) {
+                          nntrainer::props::Unit(), nntrainer::props::Scale(),
+                          nntrainer::props::PlanLastRowOnly()) {
   weight_idx.fill(std::numeric_limits<unsigned>::max());
 }
 
@@ -227,6 +228,13 @@ void TieWordEmbedding::finalize_lmhead(
   auto const &in_dim = context.getInputDimensions()[0];
   output_dims[0] = in_dim;
   is_nchw ? output_dims[0].width(unit) : output_dims[0].channel(unit);
+  // The head is planned at height 1 unconditionally: a decode step feeds one
+  // row and incremental_forwarding_lmhead writes only that row's logits into
+  // output row 0. This is the same plan the fully_connected head applies when
+  // the model tags it skip_prefill + plan_last_row_only
+  // (props::PlanLastRowOnly, fc_layer.cpp) -- which this layer accepts for
+  // exactly that tagging (CausalLM::buildLmHeadOutput) -- so the tied head's
+  // output plane matches the untied one either way.
   output_dims[0].height(1);
 
   // The regular head keeps the activation dtype for device execution;
