@@ -578,6 +578,10 @@ public:
   }
 
 private:
+  /** Restore one window from dense, headerless K then V planes. */
+  void loadLegacyWindow(std::ifstream &file, unsigned layer,
+                        const ml::train::TensorDim &file_dim);
+
   /** @brief Check all ranges before save or compaction changes any state. */
   void validateRange(unsigned int pos, bool compacting) const;
 

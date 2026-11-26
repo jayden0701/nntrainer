@@ -1343,6 +1343,79 @@ TEST(KVCacheManagerFlash, mixed_snapshot_round_trip_matches_dram_bytes) {
   flash.finishFlashLayer(1, 18, 18);
 }
 
+TEST(KVCacheManagerFlash, legacy_dense_window_reads_tail_and_skips_alias_slot) {
+  auto path =
+    (std::filesystem::temp_directory_path() / "nntr-kv-fsu-legacy-XXXXXX")
+      .string();
+  ASSERT_NE(mkdtemp(path.data()), nullptr);
+  const std::filesystem::path dir(path);
+  const auto file = dir / "dense.bin";
+  constexpr unsigned rows = 11, cap = 4, keep = 2;
+  using Dim = ml::train::TensorDim;
+  causallm::KVCacheManager cache;
+  cache.setFlashStorage(path, 1);
+  cache.setLayerKVSources({-1, 0, -1});
+  cache.allocate(3, 1, 16, std::vector<unsigned>{1, 1, 1}, Dim::DataType::FP16,
+                 Dim::Format::NCHW, {cap, cap, 0}, {keep, keep, 0});
+  {
+    std::ofstream out(file, std::ios::binary);
+    for (unsigned plane = 0; plane < 6; ++plane)
+      for (unsigned row = 0; row < rows; ++row) {
+        const uint16_t value = 0x3c00 + 16 * plane + row;
+        out.write(reinterpret_cast<const char *>(&value), sizeof(value));
+      }
+  }
+  ASSERT_EQ(cache.load(file.string(), rows), rows);
+  for (unsigned layer : {0u, 1u}) {
+    EXPECT_EQ(cache.getBase(layer), rows - keep);
+    EXPECT_EQ(cache.getKeyCache(layer).getData<uint16_t>()[0], 0x3c09);
+    EXPECT_EQ(cache.getValueCache(layer).getData<uint16_t>()[1], 0x3c1a);
+  }
+  ASSERT_EQ(cache.droppedAmaxK(0).size(), 1u);
+  EXPECT_FLOAT_EQ(cache.droppedAmaxK(0)[0], 1.0f + 8.0f / 1024);
+  cache.beginFlashLayer(2);
+  EXPECT_EQ(cache.getKeyCache(2).getData<uint16_t>()[10], 0x3c4a);
+  cache.finishFlashLayer(2, rows, rows);
+  std::filesystem::resize_file(file, 12);
+  EXPECT_THROW(cache.load(file.string(), rows), std::runtime_error);
+  EXPECT_EQ(cache.getBase(0), rows - keep);
+  std::filesystem::remove_all(dir);
+}
+
+TEST_F(KVCacheManagerTest, legacy_window_preserves_batches_and_plane_encoding) {
+  using Dim = ml::train::TensorDim;
+  const unsigned cap = 4, keep = 2;
+  const auto file =
+    std::filesystem::temp_directory_path() / "nntr-kv-legacy-batch-window.bin";
+  for (auto dtype : {Dim::DataType::FP16, Dim::DataType::UINT16}) {
+    for (unsigned rows : {2u, 7u}) {
+      causallm::KVCacheManager cache;
+      cache.allocate(1, 2, 8, std::vector<unsigned>{1}, dtype,
+                     Dim::Format::NCHW, {cap}, {keep});
+      {
+        std::ofstream out(file, std::ios::binary);
+        nntrainer::Tensor source(
+          Dim({2, 1, rows, 1}, {Dim::Format::NCHW, dtype}), true);
+        for (unsigned plane : {0u, 1u}) {
+          for (unsigned n = 0; n < 2 * rows; ++n)
+            source.getData<uint16_t>()[n] = 0x3c00 + 32 * plane + n;
+          source.save(out);
+        }
+      }
+      ASSERT_EQ(cache.load(file.string(), rows), rows);
+      const unsigned dropped = rows - keep;
+      EXPECT_EQ(cache.getBase(0), dropped);
+      for (unsigned batch : {0u, 1u}) {
+        EXPECT_EQ(cache.getKeyCache(0).getData<uint16_t>()[batch * cap],
+                  0x3c00u + batch * rows + dropped);
+        EXPECT_EQ(cache.getValueCache(0).getData<uint16_t>()[batch * cap + 1],
+                  0x3c20u + batch * rows + dropped + 1);
+      }
+    }
+  }
+  std::filesystem::remove(file);
+}
+
 TEST(KVCacheManagerFlash, resident_budget_keeps_owners_across_steps) {
   using DT = ml::train::TensorDim::DataType;
   auto path =

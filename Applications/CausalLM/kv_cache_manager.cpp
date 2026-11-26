@@ -2165,6 +2165,84 @@ void KVCacheManager::save(const std::string &path, unsigned int seq_len,
   }
 }
 
+void KVCacheManager::loadLegacyWindow(std::ifstream &f, unsigned i,
+                                      const ml::train::TensorDim &load_dim) {
+  const unsigned seq_len = load_dim.height();
+  auto &lc = layer_caches_[i];
+  const unsigned dropped = liveFrom(i, seq_len);
+  const unsigned live = seq_len - dropped;
+  const size_t width = kv_widths_[i];
+  const bool owner = !isLayerKVAliased(i);
+  for (bool value : {false, true}) {
+    // FP16 legacy planes are raw rows. Reuse the destination as scratch
+    // while folding the discarded prefix, even when seq_len exceeds cap.
+    // Other tensor encodings may carry per-plane metadata: let Tensor
+    // deserialize it once before slicing the dense host plane.
+    nntrainer::Tensor dense(load_dim, false);
+    const bool raw = dtype_ == ml::train::TensorDim::DataType::FP16;
+    if (!raw) {
+      dense.allocate();
+      dense.read(f);
+    }
+    if (!owner) {
+      if (raw)
+        f.seekg(static_cast<std::streamoff>(dense.bytes()), std::ios::cur);
+      continue;
+    }
+    auto &plane = value ? lc.value_cache : lc.key_cache;
+    auto &maxima = value ? dropped_amax_v_[i] : dropped_amax_k_[i];
+    const size_t row_bytes = width * load_dim.getDataTypeSize();
+    const unsigned cap = getLayerCap(i);
+    const auto memory = plane.getMemoryData();
+    const bool device = memory && !memory->isHostAddressable();
+    std::vector<char> staging(device ? cap * row_bytes : 0);
+    const bool half_bits =
+      raw || dtype_ == ml::train::TensorDim::DataType::UINT16;
+    if (half_bits && dropped)
+      maxima.assign(width, 0.0f);
+    for (unsigned b = 0; b < batch_size_; ++b) {
+      char *target = plane.getData<char>() + b * size_t(cap) * row_bytes;
+      char *dst = device ? staging.data() : target;
+      auto read_rows = [&](unsigned from, unsigned rows) {
+        const size_t count = rows * row_bytes;
+        if (raw) {
+          if (!f.read(dst, static_cast<std::streamsize>(count)))
+            throw std::runtime_error(
+              "KVCacheManager::load: truncated legacy window");
+        } else {
+          std::memcpy(dst,
+                      dense.getData<char>() +
+                        (b * size_t(seq_len) + from) * row_bytes,
+                      count);
+        }
+      };
+      for (unsigned from = 0; from < dropped;) {
+        const unsigned rows = std::min(cap, dropped - from);
+        read_rows(from, rows);
+        if (half_bits) {
+          const auto *bits = reinterpret_cast<const uint16_t *>(dst);
+          for (unsigned r = 0; r < rows; ++r)
+            for (size_t col = 0; col < width; ++col)
+              maxima[col] =
+                std::max(maxima[col], nntrainer::compute_fp16_to_fp32(
+                                        bits[r * width + col] & 0x7fff));
+        }
+        from += rows;
+      }
+      read_rows(dropped, live);
+      if (device) {
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
+        if (nntrainer::cuda::copy_any(target, dst, live * row_bytes))
+          continue;
+#endif
+        throw std::runtime_error("Cannot stage legacy window to device KV");
+      }
+    }
+  }
+  if (owner)
+    bases_[i] = dropped;
+}
+
 unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
                                   const std::string &model_tag) {
   if (layer_caches_.empty()) {
@@ -2269,8 +2347,21 @@ unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
       "KVCacheManager::load: seq_len exceeds max_seq_len");
   }
 
-  if (flash_)
-    flash_->reset();
+  // A dense headerless file has a different batch/plane stride from a
+  // compact snapshot. Check its minimum extent before replacing live state.
+  if (!versioned) {
+    auto remaining = file_end;
+    for (const auto &layer : layer_caches_) {
+      auto dim = layer.key_cache.getDim();
+      dim.height(seq_len);
+      const auto bytes =
+        static_cast<std::streamoff>(dim.getDataLen() * dim.getDataTypeSize());
+      if (bytes < 0 || bytes > remaining / 2)
+        refuse("truncated dense legacy snapshot");
+      remaining -= 2 * bytes;
+    }
+  }
+  reset();
   for (unsigned int i = 0; i < layer_caches_.size(); ++i) {
     auto &lc = layer_caches_[i];
     ml::train::TensorDim load_dim = lc.key_cache.getDim();
@@ -2280,6 +2371,11 @@ unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
       nntrainer::Tensor padding(load_dim, true);
       padding.read(f);
       padding.read(f);
+      continue;
+    }
+    if (!versioned && windowed(i) &&
+        (liveFrom(i, seq_len) > 0 || batch_size_ > 1)) {
+      loadLegacyWindow(f, i, load_dim);
       continue;
     }
     // [HTP window] the loaded rows land at row 0; the base says which
@@ -2351,7 +2447,7 @@ unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
       flash_->store(i, 0, k_slice.bytes(), true);
   }
 
-  cache_pos_ = seq_len;
+  setPosition(seq_len);
   return seq_len;
 }
 
