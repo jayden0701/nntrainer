@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -104,7 +105,11 @@ public:
     if (const char *budget = std::getenv("NNTR_KV_RESIDENT_BYTES")) {
       // Owner retention budget in DRAM bytes. Owners kept in the pool skip
       // the full-history read on the next step; the others still stream.
-      resident_budget_ = std::strtoull(budget, nullptr, 10);
+      const char *end = budget + std::strlen(budget);
+      const auto parsed = std::from_chars(budget, end, resident_budget_);
+      if (parsed.ec != std::errc{} || parsed.ptr != end)
+        throw std::invalid_argument(
+          "NNTR_KV_RESIDENT_BYTES requires a nonnegative integer in bytes");
       // Pool buffers are the working copy now, so a flush can be given the
       // durability a write-through store pays per write in buffered mode.
       flush_sync_ = std::getenv("NNTR_KV_FLUSH_SYNC") != nullptr;
@@ -245,7 +250,15 @@ public:
     if (write_back_ && !replace) {
       // The retained buffer holds the live rows; persist when the owner
       // leaves the pool. Snapshot restores still write through.
-      entry.dirty.push_back({first, last});
+      // Consecutive decode steps usually dirty the same or adjacent pages.
+      if (!entry.dirty.empty() && first <= entry.dirty.back().second &&
+          last >= entry.dirty.back().first) {
+        auto &range = entry.dirty.back();
+        range.first = std::min(range.first, first);
+        range.second = std::max(range.second, last);
+      } else if (bytes) {
+        entry.dirty.emplace_back(first, last);
+      }
       ++deferred_writes_;
       entry.saved = std::max(entry.saved, last);
       write_bytes_ += 2 * (last - first);
@@ -528,11 +541,11 @@ private:
     for (const auto &range : merged)
       for (unsigned plane = 0; plane < 2; ++plane)
         transfer(entry, plane, range.first, range.second - range.first, true);
-    entry.dirty.clear();
     // A write-through store syncs after each write when buffered; syncing
     // here is what makes batching and durability comparable in an A/B.
     if (flush_sync_ && !direct_)
       syncBackingFile();
+    entry.dirty.clear();
   }
 
   void syncBackingFile() {
@@ -761,6 +774,7 @@ public:
   void abortStep() noexcept {}
   void reset() {}
   void report() const {}
+  size_t retainedBytes() const { return 0; }
 };
 #endif
 

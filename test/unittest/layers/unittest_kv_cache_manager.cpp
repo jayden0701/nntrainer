@@ -1382,6 +1382,18 @@ TEST(KVCacheManagerFlash, legacy_dense_window_reads_tail_and_skips_alias_slot) {
   std::filesystem::remove_all(dir);
 }
 
+TEST(KVCacheManagerFlash, rejects_invalid_byte_budgets) {
+  for (const char *value : {"-1", "", "24MiB", "18446744073709551616"}) {
+    ScopedEnv env("NNTR_KV_RESIDENT_BYTES", value);
+    causallm::KVCacheManager cache;
+    cache.setFlashStorage(std::filesystem::temp_directory_path().string(), 1);
+    EXPECT_THROW(
+      cache.allocate(1, 1, 16, 1, 16, ml::train::TensorDim::DataType::FP16),
+      std::invalid_argument)
+      << value;
+  }
+}
+
 TEST_F(KVCacheManagerTest, legacy_window_preserves_batches_and_plane_encoding) {
   using Dim = ml::train::TensorDim;
   const unsigned cap = 4, keep = 2;
