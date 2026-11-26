@@ -15,12 +15,14 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <future>
 #include <limits>
 #include <memory>
@@ -101,17 +103,23 @@ public:
     // Optional stage timing for the device experiments. A disabled run keeps
     // the original wait, copy and sync paths untouched.
     timing_ = std::getenv("NNTR_KV_TIMING") != nullptr;
-    if (const char *budget = std::getenv("NNTR_KV_RESIDENT_BYTES")) {
-      // Owner retention budget in DRAM bytes. Owners kept in the pool skip
-      // the full-history read on the next step; the others still stream.
-      resident_budget_ = std::strtoull(budget, nullptr, 10);
-      // Pool buffers are the working copy now, so a flush can be given the
-      // durability a write-through store pays per write in buffered mode.
+    const char *cap = std::getenv("NNTR_KV_TOTAL_BYTES");
+    capped_ = cap != nullptr;
+    if (capped_)
+      total_budget_ = parseBytes(cap, "NNTR_KV_TOTAL_BYTES");
+    const char *rolling = std::getenv("NNTR_KV_ROLLING");
+    if (rolling && std::strcmp(rolling, "0") && std::strcmp(rolling, "1"))
+      throw std::invalid_argument("NNTR_KV_ROLLING requires 0 or 1");
+    rolling_ = rolling && !std::strcmp(rolling, "1");
+    if (rolling_ && !capped_)
+      throw std::invalid_argument(
+        "NNTR_KV_ROLLING requires NNTR_KV_TOTAL_BYTES");
+    const char *budget = std::getenv("NNTR_KV_RESIDENT_BYTES");
+    if (budget || capped_) {
+      resident_budget_ =
+        budget ? parseBytes(budget, "NNTR_KV_RESIDENT_BYTES") : total_budget_;
       flush_sync_ = std::getenv("NNTR_KV_FLUSH_SYNC") != nullptr;
-      // layers_.size() - 1 would underflow for a manager with no layers.
-      const size_t slack =
-        layers_.empty() ? 0 : std::min<size_t>(lookahead_, layers_.size() - 1);
-      buffers_.resize(layers_.size() + slack + 1);
+      buffers_.resize(layers_.size());
     }
 
     std::string path = directory + "/nntr-kv-XXXXXX";
@@ -150,8 +158,11 @@ public:
 
     auto &entry = layers_[layer];
     entry.owner = layer;
+    if (capped_)
+      entry.uses.push_back(layer);
     entry.offset = next_offset_;
     entry.capacity = bytes;
+    entry.row_bytes = k.bytes() / k.getDim().height();
     for (auto *tensor : {&k, &v}) {
       auto data = std::make_shared<Mapping>(bytes);
       const auto plane = tensor == &v;
@@ -199,37 +210,51 @@ public:
 
   void alias(unsigned layer, unsigned source) {
     layers_[layer].owner = layers_[source].owner;
+    if (capped_)
+      layers_[layers_[layer].owner].uses.push_back(layer);
     has_aliases_ = true;
   }
 
-  void begin(unsigned layer) {
-    wait();
-    load(layer);
-    const unsigned end =
-      layer + 1 + std::min<unsigned>(lookahead_, layers_.size() - layer - 1);
-    if (layer + 1 == end)
-      return;
-    prefetch(layer + 1, end, layers_[layer].owner);
+  void addWindow(size_t bytes) {
+    if (capped_ && bytes > total_budget_ - window_bytes_)
+      throw std::invalid_argument(
+        "KV total budget cannot hold the sliding windows");
+    window_bytes_ += bytes;
   }
 
-  void load(unsigned layer, bool bind = true) {
-    if (bind && write_owner_ == layers_[layer].owner)
+  void begin(unsigned layer) {
+    const auto owner = layers_[layer].owner;
+    const auto &entry = layers_[owner];
+    const size_t rows =
+      std::min<size_t>(step_end_, entry.capacity / entry.row_bytes);
+    const size_t required = step_end_ == std::numeric_limits<unsigned>::max()
+                              ? entry.capacity
+                              : alignUp(rows * entry.row_bytes);
+    load(layer, required);
+    prefetch(layer + 1, owner, lookahead_);
+  }
+
+  void load(unsigned layer, size_t required) {
+    const auto owner = layers_[layer].owner;
+    if (write_owner_ == owner)
       waitWrite();
-    auto &entry = layers_[layers_[layer].owner];
-    if (!entry.buffer) {
-      entry.buffer = &acquire(entry.capacity, entry.saved);
+    waitOwner(owner, true);
+    auto &entry = layers_[owner];
+    const bool miss = !entry.buffer;
+    if (!reserve(owner, capped_ ? std::max(required, entry.saved) : entry.saved,
+                 inactive, layer, layer, false))
+      throw std::runtime_error(
+        "KV total budget cannot hold the current owner and sliding windows");
+    if (miss) {
       try {
-        readPlanes(entry);
+        readOwner(entry, true);
       } catch (...) {
         releaseBuffer(entry);
         throw;
       }
-      read_bytes_ += 2 * entry.saved;
     }
-    if (bind) {
-      for (unsigned plane = 0; plane < 2; ++plane)
-        entry.bindings[plane]->setAddr(entry.buffer->planes[plane]->address());
-    }
+    for (unsigned plane = 0; plane < 2; ++plane)
+      entry.bindings[plane]->setAddr(entry.buffer->planes[plane]->address());
   }
 
   void store(unsigned layer, size_t start, size_t end, bool replace = false) {
@@ -240,12 +265,22 @@ public:
     const size_t last = alignUp(end);
     if (last > entry.capacity || first > last)
       throw std::out_of_range("KV FSU: write outside layer capacity");
+    if (capped_ && last > entry.buffer->resident)
+      throw std::out_of_range("KV write exceeds the reserved step extent");
     account(*entry.buffer, std::max(entry.buffer->resident, last));
     const size_t bytes = last - first;
     if (write_back_ && !replace) {
       // The retained buffer holds the live rows; persist when the owner
       // leaves the pool. Snapshot restores still write through.
-      entry.dirty.push_back({first, last});
+      // Consecutive decode steps usually dirty the same or adjacent pages.
+      if (!entry.dirty.empty() && first <= entry.dirty.back().second &&
+          last >= entry.dirty.back().first) {
+        auto &range = entry.dirty.back();
+        range.first = std::min(range.first, first);
+        range.second = std::max(range.second, last);
+      } else if (bytes) {
+        entry.dirty.emplace_back(first, last);
+      }
       ++deferred_writes_;
       entry.saved = std::max(entry.saved, last);
       write_bytes_ += 2 * (last - first);
@@ -256,11 +291,20 @@ public:
     // Small decode writes can contend with prefetch on mobile storage.
     // Pipeline larger prefill chunks; leave decode writes synchronous.
     // Snapshot restore must report write errors before returning.
-    if (write_worker_ && !has_aliases_ && !replace && bytes >= 64 * 1024) {
+    if (write_worker_ && !has_aliases_ && !replace && bytes >= 64 * 1024 &&
+        (!capped_ || bytes <= write_capacity_ ||
+         bytes - write_capacity_ <= freeBytes() / 2)) {
       if (write_capacity_ < bytes) {
-        write_planes_[0] = std::make_unique<Mapping>(bytes);
-        write_planes_[1] = std::make_unique<Mapping>(bytes);
+        for (auto &plane : write_planes_)
+          plane.reset();
+        write_capacity_ = 0;
+        auto key = std::make_unique<Mapping>(bytes);
+        auto value = std::make_unique<Mapping>(bytes);
+        write_planes_[0] = std::move(key);
+        write_planes_[1] = std::move(value);
         write_capacity_ = bytes;
+        payload_peak_ =
+          std::max(payload_peak_, resident_bytes_.load() + 2 * bytes);
       }
       uint64_t t0 = 0;
       if (timing_)
@@ -290,7 +334,7 @@ public:
     write_bytes_ += 2 * (last - first);
   }
 
-  void evict(unsigned layer) {
+  void evict(unsigned layer, bool keep = true) {
     auto &entry = layers_[layers_[layer].owner];
     if (!entry.buffer)
       return;
@@ -308,7 +352,7 @@ public:
       retained_bytes_ -= 2 * entry.retained_resident;
       entry.retained = false;
     }
-    if (resident_budget_ != 0 &&
+    if (keep && resident_budget_ != 0 &&
         retained_bytes_ + 2 * entry.buffer->resident <= resident_budget_) {
       // Keep the owner in the pool so the next step skips its full-history
       // read.
@@ -329,9 +373,20 @@ public:
       }
     }
     releaseBuffer(entry);
+    if (!keep || has_aliases_)
+      next_search_ = 0;
+  }
+
+  void finishLayer(unsigned layer) {
+    evict(layer);
+    // A slot may only become available once the current kernel finishes.
+    // Refill here so intervening DRAM windows can cover the read.
+    if (rolling_)
+      prefetch(layer + 1, inactive, lookahead_);
   }
 
   void finishStep() {
+    next_search_ = 0;
     const uint64_t t0 = timing_ ? now_ns() : 0;
     wait();
     waitWrite();
@@ -342,22 +397,18 @@ public:
         evict(i);
   }
 
-  void startStep(unsigned from) {
+  void startStep(unsigned from, unsigned to) {
     // A snapshot load can leave a write pending before the next step.
     waitWrite();
     if (from == 0)
       reset();
     else if (failed_)
       throw std::runtime_error("KV FSU: start a new prompt after an I/O error");
-    if (lookahead_ == 0)
-      return;
-    const auto first =
-      std::find_if(layers_.begin(), layers_.end(),
-                   [](const Layer &layer) { return layer.owner != inactive; });
-    if (first != layers_.end() && layers_[first->owner].saved != 0) {
-      const auto index = static_cast<unsigned>(first - layers_.begin());
-      prefetch(index, index + 1, inactive);
-    }
+    // Prime at most one miss before the first attention, including when a
+    // run of sliding layers precedes it. A new prompt has no saved history.
+    step_end_ = to;
+    if (lookahead_ && from)
+      prefetch(0, inactive, 1);
   }
 
   void abortStep() noexcept {
@@ -372,6 +423,7 @@ public:
   size_t retainedBytes() const { return retained_bytes_; }
 
   void reset() {
+    next_search_ = 0;
     // A new prompt must not retain the previous request's owners. The
     // bindings must return to their own mappings before the pool pages go.
     wait();
@@ -396,17 +448,42 @@ public:
     }
   }
 
-  void report() const {
-    std::fprintf(stderr,
-                 "[kv-fsu] lookahead=%u direct_io=%d peak_kv_bytes=%zu "
-                 "read_bytes=%zu write_bytes=%zu reused_buffers=%zu "
-                 "parallel_reads=%zu async_writes=%zu staging_bytes=%zu "
-                 "retained_bytes=%zu deferred_writes=%zu\n",
-                 lookahead_, direct_, peak_bytes_.load(), read_bytes_.load(),
-                 write_bytes_, reuse_count_, parallel_reads_, async_writes_,
-                 2 * write_capacity_, retained_bytes_, deferred_writes_);
+  void report(size_t window_bytes, size_t uniform_row_bytes) const {
+    std::fprintf(
+      stderr,
+      "[kv-fsu] lookahead=%u direct_io=%d peak_kv_bytes=%zu "
+      "read_bytes=%zu write_bytes=%zu reused_buffers=%zu "
+      "parallel_reads=%zu async_writes=%zu staging_bytes=%zu "
+      "retained_bytes=%zu deferred_writes=%zu budget_bytes=%zu "
+      "page_bytes=%zu backing_write_bytes=%zu kv_payload_peak_bytes=%zu "
+      "retained_owners=%zu layers=%zu flash_owners=%zu uniform_row_bytes=%zu "
+      "write_back=%d flush_sync=%d parallel_reader=%d async_writer=%d "
+      "owner_lookahead=2 capped=%d total_budget_bytes=%zu rolling=%d "
+      "borrowed_owners=%zu discarded_prefetch=%zu budget_blocks=%zu\n",
+      lookahead_, direct_, peak_bytes_.load(), read_bytes_.load(), write_bytes_,
+      reuse_count_, parallel_reads_.load(), async_writes_, 2 * write_capacity_,
+      retained_bytes_, deferred_writes_, resident_budget_, page_,
+      backing_write_bytes_.load(),
+      capped_ ? window_bytes + payload_peak_
+              : window_bytes + peak_bytes_.load() + 2 * write_capacity_,
+      static_cast<size_t>(
+        std::count_if(layers_.begin(), layers_.end(),
+                      [](const Layer &l) { return l.retained; })),
+      layers_.size(),
+      static_cast<size_t>(
+        std::count_if(layers_.begin(), layers_.end(),
+                      [](const Layer &l) { return l.bindings[0] != nullptr; })),
+      uniform_row_bytes, write_back_, flush_sync_, bool(value_worker_),
+      bool(write_worker_) && !has_aliases_, capped_, total_budget_, rolling_,
+      borrowed_owners_, discarded_prefetch_, budget_blocks_);
     if (!timing_)
       return;
+    std::fprintf(
+      stderr,
+      "[kv-fsu-reads] total owner_reads=%zu "
+      "owner_read_us=%.1f demand_read_us=%.1f consumer_wait_us=%.1f\n",
+      owner_reads_.load(), us(owner_read_ns_.load()),
+      us(demand_read_ns_.load()), us(consumer_wait_ns_));
     // Per-report deltas for one request, next to the totals since start.
     const Timing now{ready_wait_ns_.load(), write_wait_ns_.load(),
                      fdatasync_ns_.load(),  copy_ns_.load(),
@@ -438,10 +515,11 @@ private:
       thread_([this] {
         for (;;) {
           std::unique_lock<std::mutex> lock(mutex_);
-          work_.wait(lock, [this] { return job_.valid() || stopping_; });
-          if (!job_.valid())
+          work_.wait(lock, [this] { return !jobs_.empty() || stopping_; });
+          if (jobs_.empty())
             return;
-          auto job = std::move(job_);
+          auto job = std::move(jobs_.front());
+          jobs_.pop_front();
           lock.unlock();
           job();
         }
@@ -460,7 +538,7 @@ private:
       auto future = task.get_future();
       {
         std::lock_guard<std::mutex> lock(mutex_);
-        job_ = std::move(task);
+        jobs_.push_back(std::move(task));
       }
       work_.notify_one();
       return future;
@@ -469,7 +547,7 @@ private:
   private:
     std::mutex mutex_;
     std::condition_variable work_;
-    std::packaged_task<void()> job_;
+    std::deque<std::packaged_task<void()>> jobs_;
     bool stopping_ = false;
     std::thread thread_;
   };
@@ -503,6 +581,9 @@ private:
   struct Layer {
     unsigned owner = inactive;
     Mapping *bindings[2]{};
+    std::future<void> ready;
+    size_t row_bytes = 0;
+    std::vector<unsigned> uses;
     size_t offset = 0;
     size_t capacity = 0;
     size_t saved = 0;
@@ -528,11 +609,11 @@ private:
     for (const auto &range : merged)
       for (unsigned plane = 0; plane < 2; ++plane)
         transfer(entry, plane, range.first, range.second - range.first, true);
-    entry.dirty.clear();
     // A write-through store syncs after each write when buffered; syncing
     // here is what makes batching and durability comparable in an A/B.
     if (flush_sync_ && !direct_)
       syncBackingFile();
+    entry.dirty.clear();
   }
 
   void syncBackingFile() {
@@ -556,16 +637,124 @@ private:
     return (bytes + page_ - 1) / page_ * page_;
   }
 
-  void prefetch(unsigned first, unsigned end, unsigned exclude) {
-    pending_ = prefetch_worker_->submit(
-      std::packaged_task<void()>([this, first, end, exclude] {
-        for (unsigned next = first; next < end; ++next) {
-          const auto owner = layers_[next].owner;
-          if (owner != inactive && owner != exclude &&
-              layers_[owner].saved != 0)
-            load(next, false);
+  static size_t parseBytes(const char *value, const char *name) {
+    size_t bytes = 0;
+    const char *end = value + std::strlen(value);
+    const auto parsed = std::from_chars(value, end, bytes);
+    if (parsed.ec != std::errc{} || parsed.ptr != end)
+      throw std::invalid_argument(std::string(name) +
+                                  " requires a nonnegative integer in bytes");
+    return bytes;
+  }
+
+  size_t freeBytes() const {
+    return total_budget_ - window_bytes_ - resident_bytes_.load() -
+           2 * write_capacity_;
+  }
+
+  bool reserve(unsigned owner, size_t bytes, unsigned active, unsigned first,
+               unsigned use, bool speculative) {
+    auto &entry = layers_[owner];
+    size_t current = entry.buffer ? entry.buffer->resident : 0;
+    bytes = std::max(alignUp(bytes), current);
+    const size_t extra = 2 * (bytes - current);
+    if (capped_ && bytes > (total_budget_ - window_bytes_) / 2)
+      return false;
+    if (capped_ && extra > freeBytes() && !speculative && write_capacity_) {
+      waitWrite();
+      for (auto &plane : write_planes_)
+        plane.reset();
+      write_capacity_ = 0;
+    }
+    while (capped_ && extra > freeBytes()) {
+      if (speculative && !rolling_)
+        return false;
+      // Protect the bound owner. Prefer an owner whose next use is farthest
+      // away. For speculation only borrow from beyond the requested use.
+      unsigned victim = inactive;
+      size_t farthest = 0, reclaimable = 0;
+      for (unsigned i = 0; i < layers_.size(); ++i) {
+        if (i == owner || i == active || !layers_[i].retained)
+          continue;
+        const auto &uses = layers_[i].uses;
+        const auto next = std::lower_bound(uses.begin(), uses.end(), first);
+        const size_t distance = next == uses.end() ? layers_.size() + i : *next;
+        if (speculative && distance <= use)
+          continue;
+        reclaimable += 2 * layers_[i].buffer->resident;
+        if (distance > farthest || victim == inactive) {
+          victim = i;
+          farthest = distance;
         }
-      }));
+      }
+      if (speculative && reclaimable < extra - freeBytes())
+        return false;
+      if (victim != inactive) {
+        evict(victim, false);
+        if (speculative)
+          ++borrowed_owners_;
+        continue;
+      }
+      if (speculative || prefetched_.empty())
+        return false;
+      // Mandatory growth can displace the farthest queued read. Join it
+      // before returning its buffer; the file remains authoritative.
+      victim = prefetched_.back();
+      waitOwner(victim);
+      releaseBuffer(layers_[victim]);
+      next_search_ = 0;
+      ++discarded_prefetch_;
+    }
+    if (!entry.buffer)
+      entry.buffer = &acquire(entry.capacity, bytes);
+    else if (bytes > current)
+      account(*entry.buffer, bytes);
+    return true;
+  }
+
+  void prefetch(unsigned first, unsigned exclude, unsigned limit) {
+    // Fixed policy can skip the already examined suffix until an eviction
+    // changes eligibility. Rolling can change that set during this scan.
+    for (size_t i = rolling_ ? first : std::max<size_t>(first, next_search_);
+         prefetched_.size() < limit && i < layers_.size(); ++i) {
+      next_search_ = i + 1;
+      const auto owner = layers_[i].owner;
+      if (owner == inactive || owner == exclude || owner == write_owner_)
+        continue;
+      auto &entry = layers_[owner];
+      if (!entry.saved || entry.buffer)
+        continue;
+      if (!reserve(owner, entry.saved, exclude, first, i, true)) {
+        next_search_ = i;
+        ++budget_blocks_;
+        break;
+      }
+      try {
+        prefetched_.push_back(owner);
+        entry.ready = prefetch_worker_->submit(std::packaged_task<void()>(
+          [this, &entry] { readOwner(entry, false); }));
+      } catch (...) {
+        if (!prefetched_.empty() && prefetched_.back() == owner)
+          prefetched_.pop_back();
+        releaseBuffer(entry);
+        throw;
+      }
+    }
+  }
+
+  void readOwner(const Layer &entry, bool demand) {
+    if (!entry.saved)
+      return;
+    const auto start = timing_ ? now_ns() : 0;
+    readPlanes(entry);
+    if (timing_) {
+      const auto elapsed = now_ns() - start;
+      owner_read_ns_.fetch_add(elapsed, std::memory_order_relaxed);
+      if (demand)
+        demand_read_ns_.fetch_add(elapsed, std::memory_order_relaxed);
+      ++owner_reads_;
+    }
+    read_bytes_ += 2 * entry.saved;
   }
 
   void readPlanes(const Layer &entry) {
@@ -590,13 +779,40 @@ private:
     ++parallel_reads_;
   }
 
-  void wait() {
-    if (pending_.valid()) {
-      const uint64_t t0 = timing_ ? now_ns() : 0;
-      pending_.get();
-      if (timing_)
-        ready_wait_ns_.fetch_add(now_ns() - t0, std::memory_order_relaxed);
+  void waitOwner(unsigned owner, bool consumer = false) {
+    auto &entry = layers_[owner];
+    if (!entry.ready.valid())
+      return;
+    auto found = std::find(prefetched_.begin(), prefetched_.end(), owner);
+    prefetched_.erase(found);
+    const auto start = timing_ ? now_ns() : 0;
+    try {
+      entry.ready.get();
+    } catch (...) {
+      releaseBuffer(entry);
+      failed_ = true;
+      throw;
     }
+    if (timing_) {
+      const auto elapsed = now_ns() - start;
+      ready_wait_ns_.fetch_add(elapsed, std::memory_order_relaxed);
+      if (consumer)
+        consumer_wait_ns_ += elapsed;
+    }
+  }
+
+  void wait() {
+    std::exception_ptr error;
+    while (!prefetched_.empty()) {
+      try {
+        waitOwner(prefetched_.back());
+      } catch (...) {
+        if (!error)
+          error = std::current_exception();
+      }
+    }
+    if (error)
+      std::rethrow_exception(error);
   }
 
   void waitWrite() {
@@ -642,6 +858,8 @@ private:
 
   void releaseBuffer(Layer &entry) {
     std::lock_guard<std::mutex> lock(buffer_mutex_);
+    if (capped_)
+      discardTail(*entry.buffer, 0);
     entry.buffer->used = false;
     entry.buffer = nullptr;
   }
@@ -662,6 +880,7 @@ private:
     const size_t added = 2 * (bytes - buffer.resident);
     buffer.resident = bytes;
     const size_t now = resident_bytes_.fetch_add(added) + added;
+    payload_peak_ = std::max(payload_peak_, now + 2 * write_capacity_);
     size_t peak = peak_bytes_.load();
     while (now > peak && !peak_bytes_.compare_exchange_weak(peak, now)) {
     }
@@ -687,6 +906,9 @@ private:
         fail(write ? "write KV pages" : "read KV pages");
       if (n == 0)
         throw std::runtime_error("KV FSU: incomplete backing file transfer");
+      if (write)
+        backing_write_bytes_.fetch_add(static_cast<size_t>(n),
+                                       std::memory_order_relaxed);
       bytes -= static_cast<size_t>(n);
       address += n;
       offset += n;
@@ -709,7 +931,8 @@ private:
   bool failed_ = false;
   std::atomic<size_t> resident_bytes_{0}, peak_bytes_{0}, read_bytes_{0};
   size_t write_bytes_ = 0;
-  size_t parallel_reads_ = 0;
+  std::atomic<size_t> backing_write_bytes_{0};
+  std::atomic<size_t> parallel_reads_{0};
   size_t async_writes_ = 0, write_capacity_ = 0;
   bool has_aliases_ = false;
   unsigned write_owner_ = inactive;
@@ -718,7 +941,13 @@ private:
   std::future<void> write_pending_;
   std::unique_ptr<IOWorker> prefetch_worker_;
   std::unique_ptr<IOWorker> value_worker_;
-  std::future<void> pending_;
+  std::vector<unsigned> prefetched_;
+  size_t next_search_ = 0;
+  unsigned step_end_ = std::numeric_limits<unsigned>::max();
+  bool capped_ = false, rolling_ = false;
+  size_t total_budget_ = 0, window_bytes_ = 0, payload_peak_ = 0;
+  size_t borrowed_owners_ = 0, discarded_prefetch_ = 0, budget_blocks_ = 0;
+  uint64_t consumer_wait_ns_ = 0;
 
   // Stage timing state, only accumulated when the NNTR_KV_TIMING environment
   // variable is present. The write and value workers add from their threads,
@@ -737,6 +966,8 @@ private:
   bool timing_ = false;
   std::atomic<uint64_t> ready_wait_ns_{0}, write_wait_ns_{0}, fdatasync_ns_{0},
     copy_ns_{0}, io_read_ns_{0}, io_write_ns_{0}, drain_ns_{0};
+  std::atomic<uint64_t> owner_read_ns_{0}, demand_read_ns_{0};
+  std::atomic<size_t> owner_reads_{0};
   mutable Timing last_report_{};
   size_t resident_budget_ = 0;
   size_t retained_bytes_ = 0;
@@ -753,24 +984,27 @@ public:
   void addLayer(unsigned, nntrainer::Tensor &, nntrainer::Tensor &) {}
   void alias(unsigned, unsigned) {}
   void begin(unsigned) {}
-  void load(unsigned) {}
+  void addWindow(size_t) {}
+  void load(unsigned, size_t) {}
   void store(unsigned, size_t, size_t, bool = false) {}
   void evict(unsigned) {}
+  void finishLayer(unsigned) {}
   void finishStep() {}
-  void startStep(unsigned) {}
+  void startStep(unsigned, unsigned) {}
   void abortStep() noexcept {}
   void reset() {}
-  void report() const {}
+  void report(size_t, size_t) const {}
+  size_t retainedBytes() const { return 0; }
 };
 #endif
 
 namespace {
 class FlashSnapshotLease {
 public:
-  FlashSnapshotLease(KVFlashStorage *storage, unsigned layer) :
+  FlashSnapshotLease(KVFlashStorage *storage, unsigned layer, size_t bytes) :
     storage_(storage), layer_(layer) {
     if (storage_)
-      storage_->load(layer_);
+      storage_->load(layer_, bytes);
   }
 
   ~FlashSnapshotLease() {
@@ -800,13 +1034,8 @@ void KVCacheManager::setFlashStorage(std::string directory,
 }
 
 void KVCacheManager::beginFlashLayer(unsigned layer) {
-  // [kv-fsu mixed] only flash-owned layers enter the streaming bracket; a
-  // windowed layer's host DRAM tensor is always live, so there is nothing
-  // to lease or prefetch for it. Known cost in a mixed layout with
-  // lookahead 1: a flash layer whose next layer is windowed loses its
-  // one-deep prefetch overlap (the next flash owner is outside the
-  // i+1..end window). Correctness is unaffected; revisit if a mixed
-  // model shows ready-wait regression (see design doc §2.5 D).
+  // Windowed layers use their DRAM tensors while the reader can already
+  // be loading a subsequent flash owner.
   if (!isFlashOwned(layer))
     return;
   flash_->begin(layer);
@@ -824,12 +1053,16 @@ void KVCacheManager::finishFlashLayer(unsigned layer, unsigned from,
   flash_->store(layer, start * row_bytes, (start + first_rows) * row_bytes);
   if (first_rows < count)
     flash_->store(layer, 0, (count - first_rows) * row_bytes);
-  flash_->evict(layer);
+  flash_->finishLayer(layer);
 }
 
 void KVCacheManager::beginFlashStep(unsigned from) {
+  beginFlashStep(from, std::numeric_limits<unsigned>::max());
+}
+
+void KVCacheManager::beginFlashStep(unsigned from, unsigned to) {
   if (flash_)
-    flash_->startStep(from);
+    flash_->startStep(from, to);
 }
 
 void KVCacheManager::finishFlashStep() {
@@ -847,8 +1080,19 @@ size_t KVCacheManager::flashRetainedBytes() const {
 }
 
 void KVCacheManager::reportFlashStorage() const {
-  if (flash_)
-    flash_->report();
+  if (!flash_)
+    return;
+  size_t window_bytes = 0;
+  size_t uniform_row_bytes = 2 * sizeof(uint16_t) * size_t(kv_widths_.front());
+  for (unsigned i = 0; i < layer_caches_.size(); ++i) {
+    if (!isLayerActive(i) || isLayerKVAliased(i) || windowed(i) ||
+        kv_widths_[i] != kv_widths_.front())
+      uniform_row_bytes = 0;
+    if (isLayerActive(i) && !isLayerKVAliased(i) && windowed(i))
+      window_bytes += layer_caches_[i].key_cache.bytes() +
+                      layer_caches_[i].value_cache.bytes();
+  }
+  flash_->report(window_bytes, uniform_row_bytes);
 }
 
 KVCacheManager::~KVCacheManager() { releaseShared(); }
@@ -1057,6 +1301,7 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
         // [kv-fsu mixed, design §2.5 D] the sliding window's compaction
         // memmoves rows, so the layer keeps a host DRAM tensor and stays
         // out of the flash storage; the remaining layers stream.
+        flash_->addWindow(2 * dim.getDataLen() * dim.getDataTypeSize());
         entry.key_cache = nntrainer::Tensor(dim, true);
         entry.value_cache = nntrainer::Tensor(dim, true);
         // Same fresh-cache contract as the dense path: unwritten rows are
@@ -2121,8 +2366,9 @@ void KVCacheManager::save(const std::string &path, unsigned int seq_len,
     // alias of a flash owner resolves the lease to its owner's entry, so the
     // dense file layout (one K plane + one V plane per layer, in layer order)
     // is byte-identical to a DRAM build's.
-    const FlashSnapshotLease lease(isFlashOwned(li) ? flash_.get() : nullptr,
-                                   li);
+    const FlashSnapshotLease lease(
+      isFlashOwned(li) ? flash_.get() : nullptr, li,
+      save_dim.getDataLen() * save_dim.getDataTypeSize());
     // [HTP window] a windowed layer's live rows start at liveFrom - base;
     // getBase(li) resolves an aliased layer to its owner's base, whose plane
     // it shares -- a raw bases_[li] (never moved for a sharer) would offset
@@ -2392,7 +2638,8 @@ unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
     // above was the single writer (the file still carries the duplicate bytes
     // for the format's sake).
     const FlashSnapshotLease lease(
-      isFlashOwned(i) && !isLayerKVAliased(i) ? flash_.get() : nullptr, i);
+      isFlashOwned(i) && !isLayerKVAliased(i) ? flash_.get() : nullptr, i,
+      load_dim.getDataLen() * load_dim.getDataTypeSize());
     nntrainer::Tensor k_slice =
       lc.key_cache.getSharedDataTensor(load_dim, 0, true);
     nntrainer::Tensor v_slice =

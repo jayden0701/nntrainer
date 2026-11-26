@@ -69,7 +69,9 @@ public:
   KVCacheManager(KVCacheManager &&);
   KVCacheManager &operator=(KVCacheManager &&other) noexcept;
 
-  /** Opt into per-layer Flash storage for batch-one CPU inference. */
+  /** Opt into batch-one CPU Flash storage. lookahead limits the number of
+   * distinct upcoming owners with saved KV prefetched from the backing file.
+   * Zero disables prefetch. DRAM-resident windows consume no slots. */
   void setFlashStorage(std::string directory, unsigned lookahead);
   bool usesFlashStorage() const { return flash_ != nullptr; }
   /**
@@ -77,8 +79,7 @@ public:
    *        flash storage: a non-windowed owner, or an alias onto one. A
    *        windowed layer (allocate()'s rows / keep) keeps a host DRAM tensor
    *        even when flash storage is on -- its sliding-window compaction
-   *        memmoves rows, which a flash owner's pool buffer cannot honor
-   *        (docs/kv-fsu-compaction-reconciliation-design.ko.md §2.5, D).
+   *        memmoves rows, which a flash owner's pool buffer cannot honor.
    * @param[in] layer_idx attention layer index
    */
   bool isFlashOwned(unsigned int layer_idx) const {
@@ -92,6 +93,8 @@ public:
   void beginFlashLayer(unsigned layer);
   void finishFlashLayer(unsigned layer, unsigned from, unsigned to);
   void beginFlashStep(unsigned from);
+  /** Reserve the current step's writable extent before binding its KV. */
+  void beginFlashStep(unsigned from, unsigned to);
   void finishFlashStep();
   void abortFlashStep() noexcept;
   void reportFlashStorage() const;
