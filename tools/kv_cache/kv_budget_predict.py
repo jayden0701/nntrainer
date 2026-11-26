@@ -182,14 +182,15 @@ def calibrate(logdir, rows, row_bytes, owners, mapping, page_bytes=None):
                 raise ValueError(f"{path}: inconsistent FSU/resident run")
             mode = (fsu["direct_io"], fsu["lookahead"], fsu.get("page_bytes"),
                     fsu.get("parallel_reader"), fsu.get("async_writer"),
-                    fsu.get("owner_lookahead", 0))
+                    fsu.get("owner_lookahead", 0), fsu.get("capped", 0),
+                    fsu.get("total_budget_bytes", 0), fsu.get("rolling", 0))
             shape = (fsu.get("flash_owners", fsu.get("layers")), fsu.get("uniform_row_bytes"),
                      fsu.get("layers"))
             if geometry is not None and geometry != shape:
                 raise ValueError(f"{path}: mixed model geometries")
             geometry = shape
             if io_mode is not None and mode != io_mode:
-                raise ValueError(f"{path}: separate sweeps by I/O mode, workers, lookahead and page size")
+                raise ValueError(f"{path}: separate sweeps by I/O mode, workers, lookahead, page size, total cap and rolling policy")
             io_mode = mode
             budget = fsu.get("budget_bytes")
             if tag in mapping:
@@ -206,6 +207,8 @@ def calibrate(logdir, rows, row_bytes, owners, mapping, page_bytes=None):
                 if len(write_modes) > 1:
                     raise ValueError(f"{path}: separate sweeps by write policy")
             run["kv_peak"] = fsu.get("kv_payload_peak_bytes")
+            if fsu.get("capped") and (run["kv_peak"] is None or run["kv_peak"] > fsu["total_budget_bytes"]):
+                raise ValueError(f"{path}: missing or over-budget KV payload peak")
             run["k"] = fsu.get("retained_owners")
             # Older logs have only bytes. Divide only for an explicitly
             # specified uniform geometry and its actual per-plane alignment.
@@ -229,7 +232,8 @@ def calibrate(logdir, rows, row_bytes, owners, mapping, page_bytes=None):
                "row_bytes": row_bytes, "owners": owners, "layers": layers,
                "resident": summarize(resident),
                "io": dict(zip(("direct_io", "lookahead", "page_bytes", "parallel_reader",
-                               "async_writer", "owner_lookahead"), io_mode)),
+                               "async_writer", "owner_lookahead", "capped", "total_budget_bytes",
+                               "rolling"), io_mode)),
                "points": []}
     if write_modes:
         profile["io"]["write_back"], profile["io"]["flush_sync"] = write_modes.pop()
@@ -431,7 +435,11 @@ def main(argv=None):
                 print(f"Fastest within the memory limit: {fastest[args.metric]:.2f} ms/token "
                       f"at {fastest['budget']} retention bytes.", file=sys.stderr)
             return 1
-        print(f"{p.get('name', 'profile')} ({args.rows} rows): "
+        io = p.get("io", {})
+        policy = (f"NNTR_KV_TOTAL_BYTES={io['total_budget_bytes']} "
+                  f"NNTR_KV_ROLLING={io['rolling']} lookahead={io['lookahead']}  "
+                  if io.get("capped") else "")
+        print(f"{p.get('name', 'profile')} ({args.rows} rows): {policy}"
               f"NNTR_KV_RESIDENT_BYTES={result['budget']}  "
               f"{args.memory}={result[memory]} bytes  {args.metric}={result[args.metric]:.2f} ms/token "
               f"({source})")

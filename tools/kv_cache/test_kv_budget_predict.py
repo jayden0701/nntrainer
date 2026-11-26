@@ -86,6 +86,21 @@ class BudgetPolicyTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "lookahead"):
                 tool.calibrate(root, 6, None, None, {})
             mixed_policy.unlink()
+            # A sparse sampling of retention budgets must still use one
+            # scheduler and one total cap. Reject a broken runtime peak too.
+            base = report(0, 0, 0).strip()
+            for extra, reason in [
+                ("capped=1 total_budget_bytes=32768 rolling=1", "separate sweeps"),
+                ("capped=1 total_budget_bytes=100 rolling=0", "over-budget"),
+            ]:
+                log = root / "b0_r1.log"
+                log.write_text(base + " " + extra + "\n" + tail + request(6, 14))
+                if reason == "separate sweeps":
+                    mixed_policy.write_text(base + "\n" + tail + request(6, 14))
+                with self.assertRaisesRegex(ValueError, reason):
+                    tool.calibrate(root, 6, None, None, {})
+                mixed_policy.unlink(missing_ok=True)
+            log.write_text(base + "\n" + tail + request(6, 14))
             (root/"different.log").write_text(report(0, 0, 0) +
                                               request(6, 14).replace("[1, 2]", "[2, 1]"))
             with self.assertRaises(ValueError):
