@@ -224,7 +224,15 @@ public:
     if (!entry.buffer) {
       entry.buffer = &acquire(entry.capacity, entry.saved);
       try {
+        const uint64_t start = timing_ ? now_ns() : 0;
         readPlanes(entry);
+        if (timing_ && entry.saved) {
+          const auto elapsed = now_ns() - start;
+          owner_read_ns_.fetch_add(elapsed, std::memory_order_relaxed);
+          if (bind)
+            demand_read_ns_.fetch_add(elapsed, std::memory_order_relaxed);
+          ++owner_reads_;
+        }
       } catch (...) {
         releaseBuffer(entry);
         throw;
@@ -409,17 +417,37 @@ public:
     }
   }
 
-  void report() const {
-    std::fprintf(stderr,
-                 "[kv-fsu] lookahead=%u direct_io=%d peak_kv_bytes=%zu "
-                 "read_bytes=%zu write_bytes=%zu reused_buffers=%zu "
-                 "parallel_reads=%zu async_writes=%zu staging_bytes=%zu "
-                 "retained_bytes=%zu deferred_writes=%zu\n",
-                 lookahead_, direct_, peak_bytes_.load(), read_bytes_.load(),
-                 write_bytes_, reuse_count_, parallel_reads_, async_writes_,
-                 2 * write_capacity_, retained_bytes_, deferred_writes_);
+  void report(size_t window_bytes, size_t uniform_row_bytes) const {
+    std::fprintf(
+      stderr,
+      "[kv-fsu] lookahead=%u direct_io=%d peak_kv_bytes=%zu "
+      "read_bytes=%zu write_bytes=%zu reused_buffers=%zu "
+      "parallel_reads=%zu async_writes=%zu staging_bytes=%zu "
+      "retained_bytes=%zu deferred_writes=%zu budget_bytes=%zu "
+      "page_bytes=%zu backing_write_bytes=%zu kv_payload_peak_bytes=%zu "
+      "retained_owners=%zu layers=%zu flash_owners=%zu uniform_row_bytes=%zu "
+      "write_back=%d flush_sync=%d parallel_reader=%d async_writer=%d\n",
+      lookahead_, direct_, peak_bytes_.load(), read_bytes_.load(), write_bytes_,
+      reuse_count_, parallel_reads_, async_writes_, 2 * write_capacity_,
+      retained_bytes_, deferred_writes_, resident_budget_, page_,
+      backing_write_bytes_.load(),
+      window_bytes + peak_bytes_.load() + 2 * write_capacity_,
+      static_cast<size_t>(
+        std::count_if(layers_.begin(), layers_.end(),
+                      [](const Layer &l) { return l.retained; })),
+      layers_.size(),
+      static_cast<size_t>(
+        std::count_if(layers_.begin(), layers_.end(),
+                      [](const Layer &l) { return l.bindings[0] != nullptr; })),
+      uniform_row_bytes, write_back_, flush_sync_, bool(value_worker_),
+      bool(write_worker_) && !has_aliases_);
     if (!timing_)
       return;
+    std::fprintf(stderr,
+                 "[kv-fsu-reads] total owner_reads=%zu "
+                 "owner_read_us=%.1f demand_read_us=%.1f\n",
+                 owner_reads_.load(), us(owner_read_ns_.load()),
+                 us(demand_read_ns_.load()));
     // Per-report deltas for one request, next to the totals since start.
     const Timing now{ready_wait_ns_.load(), write_wait_ns_.load(),
                      fdatasync_ns_.load(),  copy_ns_.load(),
@@ -700,6 +728,9 @@ private:
         fail(write ? "write KV pages" : "read KV pages");
       if (n == 0)
         throw std::runtime_error("KV FSU: incomplete backing file transfer");
+      if (write)
+        backing_write_bytes_.fetch_add(static_cast<size_t>(n),
+                                       std::memory_order_relaxed);
       bytes -= static_cast<size_t>(n);
       address += n;
       offset += n;
@@ -722,6 +753,7 @@ private:
   bool failed_ = false;
   std::atomic<size_t> resident_bytes_{0}, peak_bytes_{0}, read_bytes_{0};
   size_t write_bytes_ = 0;
+  std::atomic<size_t> backing_write_bytes_{0};
   size_t parallel_reads_ = 0;
   size_t async_writes_ = 0, write_capacity_ = 0;
   bool has_aliases_ = false;
@@ -750,6 +782,8 @@ private:
   bool timing_ = false;
   std::atomic<uint64_t> ready_wait_ns_{0}, write_wait_ns_{0}, fdatasync_ns_{0},
     copy_ns_{0}, io_read_ns_{0}, io_write_ns_{0}, drain_ns_{0};
+  std::atomic<uint64_t> owner_read_ns_{0}, demand_read_ns_{0};
+  std::atomic<size_t> owner_reads_{0};
   mutable Timing last_report_{};
   size_t resident_budget_ = 0;
   size_t retained_bytes_ = 0;
@@ -773,7 +807,7 @@ public:
   void startStep(unsigned) {}
   void abortStep() noexcept {}
   void reset() {}
-  void report() const {}
+  void report(size_t, size_t) const {}
   size_t retainedBytes() const { return 0; }
 };
 #endif
@@ -861,8 +895,19 @@ size_t KVCacheManager::flashRetainedBytes() const {
 }
 
 void KVCacheManager::reportFlashStorage() const {
-  if (flash_)
-    flash_->report();
+  if (!flash_)
+    return;
+  size_t window_bytes = 0;
+  size_t uniform_row_bytes = 2 * sizeof(uint16_t) * size_t(kv_widths_.front());
+  for (unsigned i = 0; i < layer_caches_.size(); ++i) {
+    if (!isLayerActive(i) || isLayerKVAliased(i) || windowed(i) ||
+        kv_widths_[i] != kv_widths_.front())
+      uniform_row_bytes = 0;
+    if (isLayerActive(i) && !isLayerKVAliased(i) && windowed(i))
+      window_bytes += layer_caches_[i].key_cache.bytes() +
+                      layer_caches_[i].value_cache.bytes();
+  }
+  flash_->report(window_bytes, uniform_row_bytes);
 }
 
 KVCacheManager::~KVCacheManager() { releaseShared(); }

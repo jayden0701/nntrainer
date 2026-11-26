@@ -3340,6 +3340,9 @@ void CausalLM::run(const WSTR prompt, bool do_sample, const WSTR system_prompt,
     performance_metrics.decode_steady_ms =
       (n % 2 != 0) ? tail[n / 2] : 0.5 * (tail[n / 2 - 1] + tail[n / 2]);
     performance_metrics.decode_steady_tokens = static_cast<unsigned int>(n);
+    if (std::getenv("NNTR_KV_TIMING"))
+      std::fprintf(stderr, "[kv-decode] steady_tokens=%zu p95_ms=%.6f\n", n,
+                   tail[n - 1 - n / 20]);
   } else {
     performance_metrics.decode_steady_ms = 0.0;
     performance_metrics.decode_steady_tokens = 0;
