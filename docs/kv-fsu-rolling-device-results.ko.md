@@ -174,3 +174,13 @@ R=2~4M(부분 상주)은 demand read 26~29 s를 유발해 오히려 해롭고, *
 - 구조: `mixed storage: 12 windowed on host DRAM (compacting rows), 3 streaming through flash, 20 aliased`
 - **예산 통찰**: 동일 조건의 C=48 MiB(tuned)와 C=32 MiB(mixed)가 읽기 바이트까지 정확히 동일 (1,132,773,376 B) — gemma4의 읽기량은 R이 결정하고, C는 창(24.6 MB)+작업집합만 커버하면 충분. 48 MiB는 불필요.
 - 참고: 이전 §3차 표의 tuned 읽기 수치는 정확하나, 측정 스크립트가 누적 라인 1개짜리 로그에서 차분 0을 보고하는 버그가 있었다(mixed 최초 파싱). 원본 `[kv-fsu]` 누적 카운터로 재확인한 값이 위 표다.
+### 보강: 세션 드리프트 통제 재실측 (교차 A/B/A/B)
+
+§5차의 혼재 속도(51.5/55.6 ms/tok)가 resident보다 빠르게 나온 것은 세션 간 열 상태 차이로 판명. 같은 세션에서 resident↔혼재를 교차 재실행한 결과:
+
+| 반복 | resident | 혼재 32/8 |
+|---|---:|---:|
+| rep1 | 51.9 ms/tok | 53.1 ms/tok |
+| rep2 | 56.4 ms/tok | 59.7 ms/tok |
+
+→ 혼재는 resident 동급(−2~−6%, 노이즈 범위). 혼재의 이득은 속도가 아니라 KV 메모리(−36/−39%)이며, 세 구성(스트리밍·48/8·32/8)의 kv_payload_peak_bytes가 행별로 정확히 동일한 이유는 유지(R)가 별도 영역이 아니라 스트리밍 버퍼 슬롯을 고정하는 방식이기 때문(읽기만 19.7→1.62 MB/tok로 감소). 로그: `scen/g4_A_{res,mixed}_{x1,x2}.log`. 유지분 회계(retained 6.7 MB > 가변부 4.3 MB)의 물리 위치는 후속 확인 과제.
