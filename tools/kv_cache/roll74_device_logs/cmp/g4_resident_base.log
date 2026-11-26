@@ -1,0 +1,4 @@
+/data/local/tmp/nntr-cpu/gemma4-e2b
+/data/local/tmp/nntr-cpu/gemma4-e2b/nntr_gemma4_q40_embdq6k_ARM.bin
+
+[!] FATAL ERROR: [LayerImpl] Unknown Layer Properties count 3
