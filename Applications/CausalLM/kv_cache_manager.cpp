@@ -799,10 +799,23 @@ void KVCacheManager::setFlashStorage(std::string directory,
   flash_lookahead_ = lookahead;
 }
 
-void KVCacheManager::beginFlashLayer(unsigned layer) { flash_->begin(layer); }
+void KVCacheManager::beginFlashLayer(unsigned layer) {
+  // [kv-fsu mixed] only flash-owned layers enter the streaming bracket; a
+  // windowed layer's host DRAM tensor is always live, so there is nothing
+  // to lease or prefetch for it. Known cost in a mixed layout with
+  // lookahead 1: a flash layer whose next layer is windowed loses its
+  // one-deep prefetch overlap (the next flash owner is outside the
+  // i+1..end window). Correctness is unaffected; revisit if a mixed
+  // model shows ready-wait regression (see design doc §2.5 D).
+  if (!isFlashOwned(layer))
+    return;
+  flash_->begin(layer);
+}
 
 void KVCacheManager::finishFlashLayer(unsigned layer, unsigned from,
                                       unsigned to) {
+  if (!isFlashOwned(layer))
+    return;
   const unsigned cap = getLayerCap(layer);
   const size_t row_bytes = layer_caches_[layer].key_cache.bytes() / cap;
   const unsigned count = std::min(to - from, cap);
@@ -1014,7 +1027,7 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
   if (!flash_directory_.empty()) {
     using DataType = ml::train::TensorDim::DataType;
     if (batch_size != 1 || shared_alloc_ || core_shared_requested_ ||
-        !rows.empty() || dtype != DataType::FP16)
+        dtype != DataType::FP16)
       throw std::invalid_argument("KV FSU requires batch-one CPU attention "
                                   "with FP16 externally bound KV");
     flash_ = std::make_unique<KVFlashStorage>(flash_directory_, num_layers,
@@ -1022,18 +1035,58 @@ void KVCacheManager::allocate(unsigned int num_layers, unsigned int batch_size,
     for (unsigned int i = 0; i < num_layers; ++i) {
       ml::train::TensorDim dim({batch_size, 1, getLayerCap(i), kv_widths_[i]},
                                {format, dtype});
+      auto &entry = layer_caches_[i];
       const int source = getLayerKVSource(i);
       if (source >= 0) {
+        // [kv-fsu mixed] refuse before aliasLayerCache so the rejection
+        // leaves no partially wired sharer behind.
+        if (windowed(i) && isFlashOwned(static_cast<unsigned>(source)))
+          throw std::invalid_argument("KV FSU: layer " + std::to_string(i) +
+                                      " cannot alias flash-streamed layer " +
+                                      std::to_string(source) +
+                                      " while windowed: a windowed layer's "
+                                      "plane must stay a host DRAM tensor");
         aliasLayerCache(i, static_cast<unsigned>(source), dim);
-        flash_->alias(i, static_cast<unsigned>(source));
-      } else {
-        auto &entry = layer_caches_[i];
+        if (isFlashOwned(i))
+          flash_->alias(i, static_cast<unsigned>(source));
+      } else if (!isLayerActive(i)) {
+        // Inactive layers keep metadata only, as in the dense path.
         entry.key_cache = nntrainer::Tensor(dim, false);
         entry.value_cache = nntrainer::Tensor(dim, false);
-        if (isLayerActive(i))
-          flash_->addLayer(i, entry.key_cache, entry.value_cache);
+      } else if (windowed(i)) {
+        // [kv-fsu mixed, design §2.5 D] the sliding window's compaction
+        // memmoves rows, so the layer keeps a host DRAM tensor and stays
+        // out of the flash storage; the remaining layers stream.
+        entry.key_cache = nntrainer::Tensor(dim, true);
+        entry.value_cache = nntrainer::Tensor(dim, true);
+        // Same fresh-cache contract as the dense path: unwritten rows are
+        // zero, not heap garbage.
+        entry.key_cache.setZero();
+        entry.value_cache.setZero();
+      } else {
+        entry.key_cache = nntrainer::Tensor(dim, false);
+        entry.value_cache = nntrainer::Tensor(dim, false);
+        flash_->addLayer(i, entry.key_cache, entry.value_cache);
       }
     }
+    // [kv-fsu mixed] One-time witness of the resolved split, same channel and
+    // rationale as reportKVShare: the composition is the fact a memory
+    // measurement and an output comparison both have to be able to trust,
+    // and it is invisible after the fact. Emitted only when a windowed layer
+    // actually keeps a plane out of the flash storage.
+    unsigned int n_windowed = 0, n_flash = 0, n_alias = 0;
+    for (unsigned int i = 0; i < num_layers; ++i) {
+      if (getLayerKVSource(i) >= 0)
+        ++n_alias;
+      else if (isLayerActive(i))
+        windowed(i) ? ++n_windowed : ++n_flash;
+    }
+    if (n_windowed)
+      std::fprintf(stderr,
+                   "[kv-fsu] mixed storage: %u windowed layer(s) on host DRAM "
+                   "(compacting rows), %u streaming through flash, %u aliased, "
+                   "of %u layers\n",
+                   n_windowed, n_flash, n_alias, num_layers);
     reportKVShare(num_layers, batch_size, dtype, "flash");
     return;
   }
@@ -1336,6 +1389,22 @@ void KVCacheManager::validateKVSources(unsigned int num_layers) const {
         std::to_string(i) + " (width " + std::to_string(kv_widths_[i]) +
         ") -> layer " + std::to_string(src) + " (width " +
         std::to_string(kv_widths_[static_cast<unsigned int>(src)]) + ")");
+
+    // [kv-fsu mixed] An aliased sharer tracks its owner's compaction base
+    // (getBase resolves through the source), which is the owner's mapping
+    // only if both sides slide by the SAME window: different keeps would
+    // move the owner's window to a row the sharer's own liveFrom() never
+    // derives, and the sharer would read a silently shifted plane (or write
+    // past it). The dim check below already forces the same row count; the
+    // keep is the piece that makes one base serve both layers.
+    const unsigned int src_idx = static_cast<unsigned int>(src);
+    if (windowed(i) != windowed(src_idx) ||
+        (windowed(i) && keep_[i] != keep_[src_idx]))
+      throw std::invalid_argument(
+        "KVCacheManager::allocate: KV alias window mismatch, layer " +
+        std::to_string(i) + " (keep " + std::to_string(keep_[i]) +
+        ") -> layer " + std::to_string(src) + " (keep " +
+        std::to_string(keep_[src_idx]) + ")");
   }
 }
 
@@ -1513,12 +1582,16 @@ void KVCacheManager::validateRange(unsigned int pos, bool compacting) const {
     if (!isLayerActive(l) || !windowed(l) ||
         (compacting && isLayerKVAliased(l)))
       continue;
+    // [kv-fsu mixed] getBase(l) resolves an aliased layer to its owner's
+    // base: the sharer's plane IS the owner's, so the rows it holds are the
+    // owner's [base, base + cap), not a stale 0-based prefix.
+    const unsigned int base = getBase(l);
     const unsigned int from = liveFrom(l, pos);
-    if (from < bases_[l] || pos - bases_[l] > getLayerCap(l))
+    if (from < base || pos - base > getLayerCap(l))
       throw std::out_of_range("KVCacheManager: layer " + std::to_string(l) +
                               " does not hold rows [" + std::to_string(from) +
                               ", " + std::to_string(pos) + ")");
-    if (compacting && from > bases_[l]) {
+    if (compacting && from > base) {
       for (const auto *t :
            {&layer_caches_[l].key_cache, &layer_caches_[l].value_cache}) {
         const auto md = t->getMemoryData();
@@ -1722,10 +1795,10 @@ bool KVCacheManager::compact(unsigned int pos) {
     // live rows of an evicted owner in a pool buffer whose layout
     // finishFlashLayer() derived from the unshifted base: the memmove would
     // hit the pristine original mapping and leave the real data behind.
-    // allocate() already refuses rows/keep together with flash storage, so
-    // this is unreachable today; it stays as the belt until a ring shrink or
-    // the HTP port reconciles the two layouts.
-    if (usesFlashStorage())
+    // [kv-fsu mixed] allocate() keeps windowed layers out of flash ownership
+    // (their planes are host DRAM tensors), so this is unreachable; it stays
+    // as the belt until a ring shrink or the HTP port reconciles the layouts.
+    if (isFlashOwned(l))
       throw std::logic_error(
         "KVCacheManager::compact: flash streaming cannot move rows of a "
         "windowed layer; disable the sliding ring shrink or flash storage");
@@ -2043,12 +2116,21 @@ void KVCacheManager::save(const std::string &path, unsigned int seq_len,
       padding.save(f);
       continue;
     }
-    const FlashSnapshotLease lease(flash_.get(), li);
-    // [HTP window] a windowed layer's live rows start at liveFrom - base
+    // [kv-fsu mixed] only a flash-owned layer leases its plane out of the
+    // FSU file; the other layers read their host DRAM tensors directly. An
+    // alias of a flash owner resolves the lease to its owner's entry, so the
+    // dense file layout (one K plane + one V plane per layer, in layer order)
+    // is byte-identical to a DRAM build's.
+    const FlashSnapshotLease lease(isFlashOwned(li) ? flash_.get() : nullptr,
+                                   li);
+    // [HTP window] a windowed layer's live rows start at liveFrom - base;
+    // getBase(li) resolves an aliased layer to its owner's base, whose plane
+    // it shares -- a raw bases_[li] (never moved for a sharer) would offset
+    // the slice past the plane.
     size_t save_off = 0;
     if (windowed(li)) {
       const unsigned int from = liveFrom(li, seq_len);
-      save_off = static_cast<size_t>(from - bases_[li]) * kv_widths_[li];
+      save_off = static_cast<size_t>(from - getBase(li)) * kv_widths_[li];
     }
 
     nntrainer::Tensor k_slice =
@@ -2081,6 +2163,84 @@ void KVCacheManager::save(const std::string &path, unsigned int seq_len,
     v_slice.save(f);
 #endif
   }
+}
+
+void KVCacheManager::loadLegacyWindow(std::ifstream &f, unsigned i,
+                                      const ml::train::TensorDim &load_dim) {
+  const unsigned seq_len = load_dim.height();
+  auto &lc = layer_caches_[i];
+  const unsigned dropped = liveFrom(i, seq_len);
+  const unsigned live = seq_len - dropped;
+  const size_t width = kv_widths_[i];
+  const bool owner = !isLayerKVAliased(i);
+  for (bool value : {false, true}) {
+    // FP16 legacy planes are raw rows. Reuse the destination as scratch
+    // while folding the discarded prefix, even when seq_len exceeds cap.
+    // Other tensor encodings may carry per-plane metadata: let Tensor
+    // deserialize it once before slicing the dense host plane.
+    nntrainer::Tensor dense(load_dim, false);
+    const bool raw = dtype_ == ml::train::TensorDim::DataType::FP16;
+    if (!raw) {
+      dense.allocate();
+      dense.read(f);
+    }
+    if (!owner) {
+      if (raw)
+        f.seekg(static_cast<std::streamoff>(dense.bytes()), std::ios::cur);
+      continue;
+    }
+    auto &plane = value ? lc.value_cache : lc.key_cache;
+    auto &maxima = value ? dropped_amax_v_[i] : dropped_amax_k_[i];
+    const size_t row_bytes = width * load_dim.getDataTypeSize();
+    const unsigned cap = getLayerCap(i);
+    const auto memory = plane.getMemoryData();
+    const bool device = memory && !memory->isHostAddressable();
+    std::vector<char> staging(device ? cap * row_bytes : 0);
+    const bool half_bits =
+      raw || dtype_ == ml::train::TensorDim::DataType::UINT16;
+    if (half_bits && dropped)
+      maxima.assign(width, 0.0f);
+    for (unsigned b = 0; b < batch_size_; ++b) {
+      char *target = plane.getData<char>() + b * size_t(cap) * row_bytes;
+      char *dst = device ? staging.data() : target;
+      auto read_rows = [&](unsigned from, unsigned rows) {
+        const size_t count = rows * row_bytes;
+        if (raw) {
+          if (!f.read(dst, static_cast<std::streamsize>(count)))
+            throw std::runtime_error(
+              "KVCacheManager::load: truncated legacy window");
+        } else {
+          std::memcpy(dst,
+                      dense.getData<char>() +
+                        (b * size_t(seq_len) + from) * row_bytes,
+                      count);
+        }
+      };
+      for (unsigned from = 0; from < dropped;) {
+        const unsigned rows = std::min(cap, dropped - from);
+        read_rows(from, rows);
+        if (half_bits) {
+          const auto *bits = reinterpret_cast<const uint16_t *>(dst);
+          for (unsigned r = 0; r < rows; ++r)
+            for (size_t col = 0; col < width; ++col)
+              maxima[col] =
+                std::max(maxima[col], nntrainer::compute_fp16_to_fp32(
+                                        bits[r * width + col] & 0x7fff));
+        }
+        from += rows;
+      }
+      read_rows(dropped, live);
+      if (device) {
+#if defined(ENABLE_CUDA) && ENABLE_CUDA == 1
+        if (nntrainer::cuda::copy_any(target, dst, live * row_bytes))
+          continue;
+#endif
+        throw std::runtime_error("Cannot stage legacy window to device KV");
+      }
+    }
+  }
+  if (owner)
+    bases_[i] = dropped;
 }
 
 unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
@@ -2187,8 +2347,21 @@ unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
       "KVCacheManager::load: seq_len exceeds max_seq_len");
   }
 
-  if (flash_)
-    flash_->reset();
+  // A dense headerless file has a different batch/plane stride from a
+  // compact snapshot. Check its minimum extent before replacing live state.
+  if (!versioned) {
+    auto remaining = file_end;
+    for (const auto &layer : layer_caches_) {
+      auto dim = layer.key_cache.getDim();
+      dim.height(seq_len);
+      const auto bytes =
+        static_cast<std::streamoff>(dim.getDataLen() * dim.getDataTypeSize());
+      if (bytes < 0 || bytes > remaining / 2)
+        refuse("truncated dense legacy snapshot");
+      remaining -= 2 * bytes;
+    }
+  }
+  reset();
   for (unsigned int i = 0; i < layer_caches_.size(); ++i) {
     auto &lc = layer_caches_[i];
     ml::train::TensorDim load_dim = lc.key_cache.getDim();
@@ -2200,13 +2373,26 @@ unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
       padding.read(f);
       continue;
     }
+    if (!versioned && windowed(i) &&
+        (liveFrom(i, seq_len) > 0 || batch_size_ > 1)) {
+      loadLegacyWindow(f, i, load_dim);
+      continue;
+    }
     // [HTP window] the loaded rows land at row 0; the base says which
-    // absolute position that is
-    if (windowed(i))
+    // absolute position that is. Only an OWNER records it: an aliased
+    // sharer's base resolves through its source (getBase), and the source's
+    // own iteration set it above.
+    if (windowed(i) && !isLayerKVAliased(i))
       bases_[i] = liveFrom(i, seq_len);
 
-    const FlashSnapshotLease lease(isLayerKVAliased(i) ? nullptr : flash_.get(),
-                                   i);
+    // [kv-fsu mixed] a flash owner leases its plane, reads the file into the
+    // pool buffer and stores it back (replace = true). A windowed layer's
+    // host DRAM tensor IS the storage, so the read lands in it directly. An
+    // alias skips the lease: its plane is its source's, and the source's read
+    // above was the single writer (the file still carries the duplicate bytes
+    // for the format's sake).
+    const FlashSnapshotLease lease(
+      isFlashOwned(i) && !isLayerKVAliased(i) ? flash_.get() : nullptr, i);
     nntrainer::Tensor k_slice =
       lc.key_cache.getSharedDataTensor(load_dim, 0, true);
     nntrainer::Tensor v_slice =
@@ -2253,11 +2439,15 @@ unsigned int KVCacheManager::load(const std::string &path, unsigned int seq_len,
     k_slice.read(f);
     v_slice.read(f);
 #endif
-    if (flash_)
+    // [kv-fsu mixed] only a flash owner's plane reaches the FSU file here.
+    // Aliases were already skipped above (their owner's own store covered
+    // them) and windowed layers own no FSU plane at all, so this guard
+    // routes non-windowed flash owners only.
+    if (isFlashOwned(i))
       flash_->store(i, 0, k_slice.bytes(), true);
   }
 
-  cache_pos_ = seq_len;
+  setPosition(seq_len);
   return seq_len;
 }
 

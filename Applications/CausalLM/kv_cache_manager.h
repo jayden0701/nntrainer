@@ -72,6 +72,23 @@ public:
   /** Opt into per-layer Flash storage for batch-one CPU inference. */
   void setFlashStorage(std::string directory, unsigned lookahead);
   bool usesFlashStorage() const { return flash_ != nullptr; }
+  /**
+   * @brief [kv-fsu mixed] Whether the layer's K/V planes stream through the
+   *        flash storage: a non-windowed owner, or an alias onto one. A
+   *        windowed layer (allocate()'s rows / keep) keeps a host DRAM tensor
+   *        even when flash storage is on -- its sliding-window compaction
+   *        memmoves rows, which a flash owner's pool buffer cannot honor
+   *        (docs/kv-fsu-compaction-reconciliation-design.ko.md §2.5, D).
+   * @param[in] layer_idx attention layer index
+   */
+  bool isFlashOwned(unsigned int layer_idx) const {
+    if (flash_ == nullptr || layer_idx >= layer_caches_.size())
+      return false;
+    const int source = getLayerKVSource(layer_idx);
+    if (source >= 0)
+      return isFlashOwned(static_cast<unsigned int>(source));
+    return isLayerActive(layer_idx) && !windowed(layer_idx);
+  }
   void beginFlashLayer(unsigned layer);
   void finishFlashLayer(unsigned layer, unsigned from, unsigned to);
   void beginFlashStep(unsigned from);
@@ -162,8 +179,19 @@ public:
    *        rows are contiguous and compact() moves the window to the front.
    * @param[in] layer_idx attention layer index
    * @return absolute position of the layer's row 0 (0 for a full layer)
+   *
+   * [kv-fsu mixed] An ALIASED layer's plane IS its source's plane, so its
+   * base is the source's: compact() moves only owners (a sharer is skipped),
+   * and resolving here is what keeps every consumer -- the cache_base push
+   * to the sharer's attention layer, validateRange, save()'s row offset --
+   * on the owner's mapping instead of a stale 0. The recursion is the same
+   * shape isFlashOwned() already uses and validateKVSources() bounds it
+   * (strictly earlier sources, one window per alias family).
    */
   unsigned int getBase(unsigned int layer_idx) const {
+    const int source = getLayerKVSource(layer_idx);
+    if (source >= 0)
+      return getBase(static_cast<unsigned int>(source));
     return layer_idx < bases_.size() ? bases_[layer_idx] : 0u;
   }
 
@@ -185,7 +213,12 @@ public:
   bool compact(unsigned int pos);
   /** Read-only final host window; the next step must transfer KV to decode. */
   void prepareDecodeView(unsigned int pos);
+  /** [kv-fsu mixed] Resolved through the alias source, like getBase(): the
+   *  sharer reads the read-only decode window its owner prepared. */
   unsigned getDecodeOffset(unsigned layer) const {
+    const int source = getLayerKVSource(layer);
+    if (source >= 0)
+      return getDecodeOffset(static_cast<unsigned int>(source));
     return layer < decode_offsets_.size() ? decode_offsets_[layer] : 0u;
   }
 
@@ -545,6 +578,10 @@ public:
   }
 
 private:
+  /** Restore one window from dense, headerless K then V planes. */
+  void loadLegacyWindow(std::ifstream &file, unsigned layer,
+                        const ml::train::TensorDim &file_dim);
+
   /** @brief Check all ranges before save or compaction changes any state. */
   void validateRange(unsigned int pos, bool compacting) const;
 

@@ -454,6 +454,11 @@ public:
   void setCacheBase(unsigned int base) {
     if (fp16_attention_)
       fp16_attention_->setCacheBase(base);
+    else
+      // [kv-fsu windowed] legacy host path: the compaction window's absolute
+      // start row. 0 keeps the absolute-row indexing a full-height layer has
+      // always used.
+      kv_cache_base = base;
   }
   void setDecodeCacheOffset(unsigned offset) {
     if (fp16_attention_)
@@ -599,11 +604,23 @@ private:
    * allocation with. When non-zero every cache-row index -- write offset and
    * kernel read alike -- is taken modulo this. */
   unsigned int kv_ring_cap = 0;
-  /** Map an absolute cache position to its physical ring row (identity when the
-   * ring is off). Used ONLY for cache-storage row offsets: RoPE and the
-   * causal/window masks keep the absolute position. */
+  /** [kv-fsu windowed] Absolute position of the legacy host cache's row 0
+   *  (0 = full-height cache, absolute rows). compactKVCache pushes it after
+   *  every compaction of a windowed layer; every cache-ROW index (write
+   *  offset, read span) is plane-relative through cacheRow(), while RoPE
+   *  positions stay absolute. The fp16_attention_ path carries the same
+   *  fact in Fp16Attention::cache_base. */
+  unsigned int kv_cache_base = 0;
+  /** Map an absolute cache position to its physical plane row: ring layers
+   *  modulo-map, windowed layers offset by the compaction base (identity for
+   *  a full-height layer). Used ONLY for cache-storage row offsets: RoPE and
+   *  the causal/window masks keep the position the plane-relative math needs
+   *  -- for a windowed layer the plane IS the visible context, so the masks
+   *  read plane coordinates unchanged. */
   inline size_t cacheRow(size_t abs_pos) const {
-    return kv_ring_cap ? (abs_pos % (size_t)kv_ring_cap) : abs_pos;
+    if (kv_ring_cap)
+      return abs_pos % (size_t)kv_ring_cap;
+    return abs_pos - (size_t)kv_cache_base;
   }
   bool use_sink = false;
   float attn_logit_softcapping = 0.0f;

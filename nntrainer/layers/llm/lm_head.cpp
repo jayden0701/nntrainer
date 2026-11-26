@@ -32,7 +32,8 @@ enum LmHeadParams {
 };
 
 LmHeadLayer::LmHeadLayer() :
-  LayerImpl(), lmhead_props(nntrainer::props::Unit()) {
+  LayerImpl(),
+  lmhead_props(nntrainer::props::Unit(), nntrainer::props::PlanLastRowOnly()) {
   weight_idx.fill(std::numeric_limits<unsigned>::max());
 }
 
@@ -74,6 +75,12 @@ void LmHeadLayer::finalize(nntrainer::InitLayerContext &context) {
     output_dims[0].width(unit);
   else
     output_dims[0].channel(unit);
+  // Height 1 unconditionally: a decode step feeds one row and
+  // incremental_forwarding writes only that row's logits into output row 0 --
+  // the same plan the fully_connected head applies when the model tags it
+  // skip_prefill + plan_last_row_only (props::PlanLastRowOnly, fc_layer.cpp),
+  // which this layer accepts for exactly that tagging
+  // (CausalLM::buildLmHeadOutput).
   output_dims[0].height(1);
 
   output_dims[0].setTensorType(

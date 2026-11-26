@@ -495,27 +495,66 @@ public:
   virtual bool prefersPrivateActivationPlane() const { return false; }
 
   /**
+   * @brief Whether the CPU mixed-storage windowed cap governs this model's
+   *        sliding layers' KV rows.
+   * @details Set by CausalLM: true when the CPU engine runs this model with
+   *          kv_flash_fsu (or NNTR_KV_WINDOW_CAP forces the same cap on a
+   *          resident run, which is the A/B baseline the FSU comparison is
+   *          read against). Under it a sliding layer's cache is a WINDOW of
+   *          the context -- allocate()'s rows/keep, compact() moving the
+   *          window -- instead of the full history, and the layers that do
+   *          not slide stream through the flash storage. The ring never
+   *          applies at the same time: the ring needs a ring-aware attention
+   *          arm (kvRingEnabled), the windowed cache needs none, and a
+   *          model never has both caps on one layer.
+   */
+  virtual bool kvFsuWindowCap() const { return false; }
+
+  /**
    * @brief Per-layer physical KV-cache row count.
    * @details The row counterpart of getKVCacheWidth(). Every KV sizing site --
    * each model's placeholder factory and the KVCacheManager allocation -- must
    * agree on how many rows a layer's cache has, and hard-coding MAX_SEQ_LEN in
    * each of them made "how many rows" un-answerable from one place.
    *
-   * A sliding-window layer under the KV ring stores only kvRingCap() rows;
-   * every other layer keeps the full context window.
+   * Under the KV ring a sliding-window layer stores only kvRingCap() rows.
+   * Under the CPU mixed-storage cap (kvFsuWindowCap) it stores the HTP window
+   * rule's rows -- min(max_seq, roundUp64(window + max(init_seq_len,
+   * num_to_generate))), computed by windowedKVRows() so a sliding layer holds
+   * its window plus one prefill chunk or the generated tail, and compact()
+   * keeps that window at the front. An UNBOUNDED num_to_generate (<= 0,
+   * normalized to 0) degenerates to the full context height -- the decode tail
+   * would outgrow any bounded plane. Every other layer keeps the full context
+   * window.
    */
   unsigned int getKVCacheRows(int layer_id) const {
+    const unsigned int max_rows = static_cast<unsigned int>(MAX_SEQ_LEN);
+    // [kv-fsu mixed] The windowed cap keys off the SAME structural facts the
+    // ring does -- an attention-sink model reads its cache through the host
+    // compute path at absolute rows, and NNTR_KV_INT8 writes absolute rows --
+    // so a layer that cannot take a shrunken cache keeps full height here
+    // too. The window formula is the HTP one (windowedKVRows); NUM_TO_GENERATE
+    // <= 0 (normalized to 0 by setupParameters) is the UNBOUNDED decode tail,
+    // so the headroom spans the rest of the context and the layer stays a
+    // full-height plane -- not a windowed one.
+    if (kvFsuWindowCap()) {
+      const unsigned int window = getLayerSlidingWindow(layer_id);
+      if (window != UINT_MAX && window < max_rows &&
+          kvRingLayerEligible(usesAttentionSink(), /*external_cache=*/true))
+        return windowedKVRows(window, static_cast<unsigned int>(INIT_SEQ_LEN),
+                              NUM_TO_GENERATE, max_rows);
+      return max_rows;
+    }
     // The layer side (mha_core::finalize) reaches the same verdict by feeding
     // the same two facts to the same predicate: usesAttentionSink() is the
     // model's answer to mha_core's `use_sink` property, and this cache IS the
     // external one mha_core is handed. Neither side re-derives the rule.
     const unsigned int cap =
       kvRingLayerEligible(usesAttentionSink(), /*external_cache=*/true)
-        ? kvRingCap(getLayerSlidingWindow(layer_id),
-                    static_cast<unsigned int>(MAX_SEQ_LEN), prefillChunk(),
+        ? kvRingCap(getLayerSlidingWindow(layer_id), max_rows, prefillChunk(),
                     kvRingByDefault())
         : 0u;
-    return cap ? cap : static_cast<unsigned int>(MAX_SEQ_LEN);
+    return cap ? cap : max_rows;
   }
 
   /**

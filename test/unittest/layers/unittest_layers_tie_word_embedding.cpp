@@ -65,8 +65,15 @@ struct TiedLmHeadRun {
  * and return what it produced.
  *
  * @param act activation dtype ("FP32" or "FP16")
+ * @param htp drive the HTP subclass instead of the host layer
+ * @param extra_props appended to the layer's properties before finalizing
+ * @param from incremental_forwarding range start; from != 0 is a decode step
+ *        (a skip-prefill head early-returns on the from == 0 prefill step)
+ * @param to incremental_forwarding range end
  */
-TiedLmHeadRun runTiedLmHead(const std::string &act, bool htp = false) {
+TiedLmHeadRun runTiedLmHead(const std::string &act, bool htp = false,
+                            const std::vector<std::string> &extra_props = {},
+                            unsigned int from = 0, unsigned int to = 1) {
   using nntrainer::Tensor;
   using nntrainer::TensorDim;
 
@@ -80,7 +87,10 @@ TiedLmHeadRun runTiedLmHead(const std::string &act, bool htp = false) {
     layer = std::make_unique<nntrainer::HtpTieWordEmbedding>();
   else
     layer = std::make_unique<nntrainer::TieWordEmbedding>();
-  layer->setProperty({"unit=" + std::to_string(kVocab), "disable_bias=true"});
+  std::vector<std::string> props = {"unit=" + std::to_string(kVocab),
+                                    "disable_bias=true"};
+  props.insert(props.end(), extra_props.begin(), extra_props.end());
+  layer->setProperty(props);
 
   nntrainer::InitLayerContext init_ctx({in_dim}, {true}, false, "tied_lm_head",
                                        "", 0.0, {"NCHW", "Q6_K", act}, 1.0,
@@ -131,6 +141,7 @@ TiedLmHeadRun runTiedLmHead(const std::string &act, bool htp = false) {
 
   const TensorDim out_dim = init_ctx.getOutSpecs()[0].variable_spec.dim;
   EXPECT_EQ(out_dim.width(), kVocab);
+  EXPECT_EQ(out_dim.height(), 1u);
   EXPECT_EQ(out_dim.getDataType(), htp ? TensorDim::DataType::FP32 : act_dt);
   nntrainer::Var_Grad output(out_dim, nntrainer::Initializer::NONE, false, true,
                              "tied_lm_head:output");
@@ -138,7 +149,7 @@ TiedLmHeadRun runTiedLmHead(const std::string &act, bool htp = false) {
   nntrainer::RunLayerContext run_ctx("tied_lm_head", false, 0.0f, false, 1.0f,
                                      nullptr, false, {&weight}, {&input},
                                      {&output}, {});
-  layer->incremental_forwarding(run_ctx, 0, 1, false);
+  layer->incremental_forwarding(run_ctx, from, to, false);
 
   r.logits.resize(kVocab);
   for (unsigned int v = 0; v < kVocab; ++v) {
@@ -234,3 +245,31 @@ TEST(HtpTieWordEmbeddingLmHead, q6_K_host_fp16_activation_fp32_logits_p) {
   checkTiedLmHead(runTiedLmHead("FP16", true), 0.0f);
 }
 #endif
+
+/**
+ * @brief The properties a skip-prefill model graph tags the tied lm_head with
+ *        (CausalLM::buildLmHeadOutput: skip_prefill + plan_last_row_only) are
+ *        accepted. The layer already plans its output at height 1 and computes
+ *        only the last row, so the declaration changes no math -- before it
+ *        was added, LayerImpl rejected the unknown property and the whole
+ *        graph build died with "[LayerImpl] Unknown Layer Properties".
+ *
+ *        The head is driven as a decode step (from = 1): a skip-prefill head
+ *        early-returns on the from == 0 prefill step by design, and the
+ *        caller routes around it there.
+ */
+TEST(TieWordEmbeddingLmHead, plan_last_row_only_with_skip_prefill_p) {
+  TiedLmHeadRun r = runTiedLmHead(
+    "FP32", false, {"skip_prefill=true", "plan_last_row_only=true"}, 1, 2);
+  checkTiedLmHead(r, 0.0f);
+}
+
+/**
+ * @brief plan_last_row_only without skip_prefill is still accepted (the
+ *        tied head's plan does not depend on the pair), and the decode-step
+ *        logits are unchanged.
+ */
+TEST(TieWordEmbeddingLmHead, plan_last_row_only_without_skip_prefill_p) {
+  TiedLmHeadRun r = runTiedLmHead("FP32", false, {"plan_last_row_only=true"});
+  checkTiedLmHead(r, 0.0f);
+}

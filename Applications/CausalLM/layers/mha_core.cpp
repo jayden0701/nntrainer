@@ -2198,6 +2198,20 @@ void MHACoreLayer::one_batch_incremental_forwarding(
       "of the prefill chunk; set NNTR_KV_WINDOW_RING=0 to keep the linear "
       "cache.");
   }
+  // [kv-fsu windowed] A windowed layer's plane is the compaction window, not
+  // the context: a write past its height means the producer skipped the
+  // compact() that moves the window (CausalLM::compactKVCache). Throw naming
+  // that cause instead of letting the shared-tensor bounds check name a size.
+  if (kv_ring_cap == 0 && kv_cache_base > 0 && cache_index >= kv_cache_base &&
+      cacheRow(cache_index) + (size_t)cache_key_step_dim.height() >
+        (size_t)cache_key_dim.height()) {
+    throw std::runtime_error(
+      "mha_core kv-window: step write [" + std::to_string(cache_index) + ", " +
+      std::to_string(cache_index + cache_key_step_dim.height()) +
+      ") does not fit a " + std::to_string(cache_key_dim.height()) +
+      "-row windowed plane based at " + std::to_string(kv_cache_base) +
+      "; the caller must compact the windowed layers before the step");
+  }
 
   // Load Input Tensors of this batch : b_ denotes a Tensor for this batch
   nntrainer::Tensor b_cache_key_step = cache_key.getSharedDataTensor(
@@ -3483,7 +3497,17 @@ void MHACoreLayer::one_batch_incremental_forwarding(
 
   /// @todo replace step_size into input height
   unsigned int step_size = to - from;
-  unsigned int cache_from = cache_index;
+  // [kv-fsu windowed] Everything below reads and masks the cache in PLANE
+  // coordinates: the kernels' window masks are tail-relative (the last W rows
+  // of the span handed to them) and the causal relation is base-invariant, so
+  // translating the span once here serves every arm below -- the per-row
+  // compute_kcaches path, the host flash path and the device arms alike. The
+  // full-height layer (base 0) computes the identity, byte-identical to
+  // before.
+  NNTR_THROW_IF(cache_index < kv_cache_base, std::runtime_error)
+    << "mha_core: cache position " << cache_index
+    << " precedes the window base " << kv_cache_base;
+  unsigned int cache_from = cache_index - kv_cache_base;
   unsigned int cache_to = cache_from + step_size;
 
   // NNTR_KVHASH: hash this layer's SVM K/V cache so two runs of
@@ -6647,6 +6671,10 @@ void MHACoreLayer::setProperty(const std::vector<std::string> &values) {
     if (nntrainer::getKeyValue(value, key, parsed_value) == ML_ERROR_NONE &&
         key == "cache_index") {
       setCacheIndex(static_cast<unsigned int>(std::stoul(parsed_value)));
+    } else if (key == "cache_base") {
+      // [kv-fsu windowed] same push the fp16_attention_ path takes; the
+      // legacy host path keeps the value in kv_cache_base (see setCacheBase).
+      setCacheBase(static_cast<unsigned int>(std::stoul(parsed_value)));
     } else {
       props.push_back(value);
     }
