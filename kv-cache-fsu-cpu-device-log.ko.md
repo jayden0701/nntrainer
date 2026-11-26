@@ -441,5 +441,85 @@ FSU 실행의 I/O 회계: `peak_kv_bytes=16384 read_bytes=196608 write_bytes=172
 ### 남은 것
 
 1. HTP 기기 매트릭스의 compaction 경계 행(6단계의 기기 반쪽) — 이 기록은 호스트 반쪽만이다.
-2. 실팩 규모의 메모리 절감 실측(위 보류 사유). tiny fixture에서는 절감량이 64행×32채널 수준이라 측정 의미가 없다.
-3. lookahead 겹침 손실(fc2fec519 기록)의 실팩 규모 정량화.
+2. 실팩 규모의 메모리 절감 실측(위 보류 사유). tiny fixture에서는 절감량이 64행×32채널 수준이라 측정 의미가 없다. → §12에서 수행.
+3. lookahead 겹침 손실(fc2fec519 기록)의 실팩 규모 정량화. → §12에서 decode ms로 1차 확인(개별 요인 분해는 미수행).
+
+## 12. 실팩 측정 — gemma4 runtime pack에서 CPU sliding window 축소의 효과 (호스트)
+
+§11의 남은 것 2번이다. tiny fixture에서는 절감량이 측정 의미가 없다고 판단했던 "실팩 규모의 메모리 절감 실측"을 실제 pack으로 수행한다. 측정 시점 HEAD는 `10979d2b8`(§11의 행 축소 + tied lm_head FATAL 수정 `fa82a1799`까지 반영)이며, 이 절의 작업에 코드 변경은 없다(측정·기록만).
+
+### pack과 설정 복제
+
+원본 pack `~/TEST_MODELS/gemma4_it_x86_runtime_pleq6k`는 tied lm_head + `skip_prefill=true`로 동작이 확인된 pack이다(§11의 보류 사유는 `fa82a1799`로 해제됐다). 구조는 35개 레이어가 4 sliding + 1 full 패턴 7조, `num_kv_shared_layers=20`(KV 오너 15개 = sliding 12 + full 3, 나머지 20개는 alias), `sliding_window` 512, `max_seq_len` 3072, `init_seq_len` 2560, `num_to_generate` 60.
+
+기본 설정의 windowed 상한은 full height다: `roundUp64(512 + max(2560, 60)) = 3072 = max_seq`. 원본 pack을 그대로 `NNTR_KV_WINDOW_CAP=1`로 돌려 확인했다 — `[kvcache] window-ring: 35 layers, KV rows 107520 (vs 107520 full), 126.0 MB`. §11이 든 gemma4_it_x86(전체 높이 5000)과 같은 "설정값 산식이 전체 높이" 케이스이며, **이 pack의 전체 높이는 3072**다. 즉 기본 설정에서는 축소가 관측되지 않는다.
+
+축소가 발동하는 비교 pack을 tmpdir에 복제한다(가중치는 심링크, 설정만 복제 — 원본 디렉터리는 읽기만 한다):
+
+| 경로 | 내용 |
+|---|---|
+| `/tmp/kvwin-g4-real` | A·B용. `nntr_config.json`만 수정 — `init_seq_len` 2560→512, `num_to_generate` 60→1024, `tokenizer_file`을 복제본으로 재지향, `chat_input`을 짧은 프롬프트로 교체(실행에는 미사용, requests 모드 사용). `config.json`·`generation_config.json`·`tokenizer.json`·`tokenizer_config.json` 복사, 가중치 bin 심링크. windowed 상한 = roundUp64(512+1024) = **1536 < 3072** → sliding 레이어 1536행 vs 3072행 |
+| `/tmp/kvwin-g4-real-fsu` | C용. 위와 동일 구성 + `nntr_config.json`에 `kv_flash_fsu {type: "directory", directory: "/tmp/kvwin-g4-real/kv", lookahead: 1}` 추가. 나머지 파일은 전부 `/tmp/kvwin-g4-real` 심링크 |
+| `/tmp/kvwin-g4-real/kv` | FSU 백킹 파일이 만들어지는 실제 경로. tmpfs가 아닌 ext4(`/dev/nvme0n1p2`)라 `direct_io=1` 프로브가 성공한다 |
+
+pack에 `requests.json`이 없어 새로 만들었다. gemma4 템플릿을 직접 적용한 40토큰 프롬프트 1건(`--requests` 모드, `init_seq_len` 512 이하). `generation_config.json`은 원본 그대로(do_sample=true, temperature 1.0, top_k 64, top_p 0.95 — 매 실행 고정 시드 재사용으로 결정적, §10과 같은 전제). 세 구성 모두 `cached_after` 1064(프리필 40 + 생성 1024, EOS 조기 종료 없음)로 끝까지 생성했다.
+
+### 매트릭스
+
+| 구성 | 설정 | 기대 저장소 |
+|---|---|---|
+| A | resident, 기본 | 전 레이어 3072행(기존 의미 — §11 이전 기준선) |
+| B | resident + `NNTR_KV_WINDOW_CAP=1` | sliding 오너 12개 1536행(windowed·compacting), full 3072행, flash 없음 |
+| C | `kv_flash_fsu`(lookahead 1) + 자동 상한 | B와 같은 상한 + full 오너 3개는 flash 스트리밍(혼재 저장소) |
+
+환경: `NNTR_ENGINE=cpu`(스레드 기본값, 32), 피크 RSS는 `/usr/bin/time -v`의 Maximum resident set size, 로그는 `/tmp/kvwin-g4-real/logs/{a,b,c}-r*.log`. A 5회(첫 회 이상치 확인을 위해 2회 추가), B·C 3회, A→B→C 교차.
+
+### 결과
+
+**output_ids는 전 회차 일치다.** 완주 실행 11회(A×5, B×3, C×3)가 모두 1,024 ids로 동일한 해시(`42ff968760ff`), 아래 구조분해 프루브 3회(gen=1)도 첫 토큰 1408로 일치.
+
+| 구성 | peak RSS KB, 중앙값 (min–max) | 저장소 증거 (로그 그대로) | decode ms/tok | TTFT ms |
+|---|---|---|---|---|
+| A resident 풀높이 (5회) | 3,469,980 (3,468,804–3,650,560)* | `[kvcache] window-ring: 35 layers, KV rows 107520 (vs 107520 full), 126.0 MB` | 49.93 (49.83–50.16) | 233.5 (232.0–285.5) |
+| B resident windowed (3회) | 3,451,912 (3,451,268–3,452,004) | `[kvcache] window-ring: 35 layers, KV rows 64512 (vs 107520 full), 84.0 MB` | 50.04 (49.90–50.16) | 231.1 (229.0–231.2) |
+| C FSU 혼재 (3회) | 3,439,392 (3,434,804–3,443,316) | `[kv-fsu] mixed storage: 12 windowed layer(s) on host DRAM (compacting rows), 3 streaming through flash, 20 aliased, of 35 layers` | 63.79 (62.96–63.82) | 242.9 (241.6–245.2) |
+
+\* A의 첫 회(3,650,560)만 이후 4회와 프루브 대비 +176 MiB 높다. 출력·시간은 동일하고 r2–r5는 모두 3.47 GB대라 첫 실행 한정 할당 히스토리로 보는데, 중앙값에 영향이 없어(min–max에 그대로 남김) 별표로만 기록한다.
+
+window-ring 라인의 행 수는 논리합(35레이어, alias 포함)이다. B의 64,512 = 28 sliding × 1,536 + 7 full × 3,072로 상한 산식과 정확히 일치하고, MB 표기는 MiB다. C에는 window-ring 라인이 없는데, flash 분기가 `allocate()`에서 링 진단 블록 전에 리턴하기 때문이다 — 그 자리의 증인이 mixed 라인이며(12 windowed / 3 streaming / 20 aliased는 예상 오너 분해와 정확히 같다), kv-share 라인(`20 of 35 layers alias …, 72.0 MB not allocated`)은 세 구성 모두 동일했다. window-ring 라인은 `ml_logi`라 stderr가 아니라 `~/.cache/nntrainer/logs/log_nntrainer_*.out`에 남는다.
+
+### 절감 수치
+
+| 비교 | time -v 중앙값 차이 | `[REQUEST]` peak_memory_kb 중앙값 차이 | 물리 평면 회계(오너 15개, K+V fp16) |
+|---|---|---|---|
+| A−B | 18,068 KB = 17.6 MiB (전체 RSS의 0.52%) | 17.1 MiB | sliding 오너 12 × 1,536행 절감 = 18.0 MiB |
+| A−C | 30,588 KB = 29.9 MiB (0.88%) | 33.7 MiB | 18.0 + full 오너 18.0 − 플래시 스테이징 2.1 = 33.9 MiB |
+| B−C | 12,480 KB = 12.2 MiB | 16.5 MiB | 18.0 − 2.1 = 15.9 MiB |
+
+전체 RSS의 대부분(≈3.3 GB)은 가중치 매핑이라 %로는 작지만, 절감량이 물리 평면 회계와 같은 자리에서 나온다는 두 갈래 확인(절감량이 상한 수식으로 계산한 평면 차이와 일치, `peak_memory_kb` 독립 계측과 방향·크기 일치)이 이 측정의 핵심 산출이다. 절감은 로드+프리필 시점의 구조적 차이로 거의 정해지고, 디코드 구간의 추가 성장은 세 구성 모두 작다(아래 프루브).
+
+FSU 회계(C, 3회 모두 바이트 단위 동일): `lookahead=1 direct_io=1 peak_kv_bytes=2179072 read_bytes=8126791680 write_bytes=25411584 reused_buffers=7172 parallel_reads=305 async_writes=0 staging_bytes=0 retained_bytes=0 deferred_writes=0`. `retained_bytes=0`은 예산을 설정하지 않은 순수 스트리밍 구성 때문이다(§10의 24 MiB 예산 구성과 다른 설정). write 24.2 MB는 4 KB pwrite 그레인의 예상치(디코드 스텝당 레이어당 K·V 2×4 KB × 3레이어 × 1,024스텝 ≈ 24 MB)와 일치하고, read 7.57 GiB는 스텝별 가시행 최소 합계(≈3.2 GiB)의 2.35×로 §8의 읽기 증폭과 같은 성격이다.
+
+### 구조분해 프루브 (num_to_generate=1)
+
+RSS 차이가 언제 생기는지 보려고 같은 프롬프트에 생성 1토큰만 받는 복제 구성 세 개를 돌렸다:
+
+| 구성 | gen=1 KB | gen=1024 중앙값 KB | 디코드 구간 증가 |
+|---|---|---|---|
+| A | 3,461,128 | 3,469,980 | +8.6 MiB |
+| B | 3,439,008 | 3,451,912 | +12.6 MiB |
+| C | 3,434,052 | 3,439,392 | +5.2 MiB |
+
+프루브 시점의 A−B 격차 21.6 MiB ≈ 평면 절감 18.0 MiB + 프리필 스크래치 차이라는 계산과 부합한다. 즉 RSS 절감의 대부분은 할당 시점에 확정되는 평면 높이 차이고, 디코드가 길어져도 세 구성 모두 13 MiB 이내로 수렴한다.
+
+### 의미 변화 확인 — A = B
+
+§11의 의미 변화 단락이 주장한 "창 밖 접두 행을 버려도 sliding 레이어의 출력이 같다"를 실팩 규모에서 처음 확인했다. 풀높이 상주(A)와 창 상한 상주(B)가 1,024개 생성 토큰 전체에서 비트 일치한다 — do_sample=true(temperature 1.0) 조건의 일치라 확률 벡터까지 실질적으로 동일하다는 뜻이다. 여기에 C(혼재)까지 3-way 일치이므로 compact 이동과 flash 스트리밍이 끼어든 구경도 같은 결과를 낸다. sliding 의미 보존의 증거는 이제 tiny fixture(§11)와 실팩 양쪽에 있다.
+
+### 유의점
+
+1. C의 decode +13.9 ms/tok(+27.8%)는 알려진 비용의 실팩 확인이다. full 오너 3개를 매 스텝 ext4에서 읽는 비용과, fc2fec519가 기록한 "flash 레이어 뒤에 windowed 레이어가 오면 lookahead 1겹침을 잃는다"는 구조(gemma4는 4 sliding 뒤 full 패턴이라 매 조에서 겹침이 끊긴다)가 겹친다. B는 A와 decode 차이가 없다(50.04 vs 49.93 ms/tok) — windowed 상한 자체는 속도를 바꾸지 않는다.
+2. 상한 산식은 설정값(`init_seq_len`, `num_to_generate`) 기준이지 실제 프롬프트 길이가 아니다. 이 pack의 본래 용도(2,560토큰 프롬프트)로는 상한이 full height라 절감이 없다. 이 기능이 발동하는 프로파일은 "짧은 프롬프트 예산 + 긴 생성" — 즉 `max(init_seq_len, num_to_generate) < max_seq − window`일 때다.
+3. FSU 스트리밍의 절감이 full 레이어 3개분(18.0 MiB)으로 작은 건 이 모델의 KV 오너 분해(sliding 12 : full 3) 탓이다. sliding 비중이 더 큰 모델이나 sliding_window·컨텍스트가 큰 설정에서는 windowed 절감과 스트리밍 절감이 모두 커진다.
+4. 원본 pack 무수정: 프리미스 확인 실행(원본 + `NNTR_KV_WINDOW_CAP=1`)은 읽기만 했고, 이 실행이 내놓은 경고(`chat_input`에 채팅 템플릿이 없어 `sample_input`으로 폴백)는 상한 확인과 무관하다 — 상한은 설정값 산식이라 프롬프트와 무관하게 full height로 확인됐다.
+5. 로그·pack은 tmpdir과 사용자 캐시에만 있다(`/tmp/kvwin-g4-real*`, `~/.cache/nntrainer/logs`). 재현 절차는 이 절의 표와 명령(`nntr_causallm <pack> --requests <requests.json>`)으로 충분하다.
